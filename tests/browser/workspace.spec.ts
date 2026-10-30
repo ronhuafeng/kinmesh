@@ -732,9 +732,9 @@ test('permission loss purges workspace snapshot instead of retaining stale team 
   await expect(
     page.getByRole('article', { name: 'Previously authorized task' }),
   ).toHaveCount(0);
-  await expect(
-    page.getByRole('navigation', { name: 'Channels' }),
-  ).toHaveCount(0);
+  await expect(page.getByRole('navigation', { name: 'Channels' })).toHaveCount(
+    0,
+  );
   await expect(
     page.getByRole('form', { name: 'Message your team' }),
   ).toHaveCount(0);
