@@ -27,13 +27,16 @@ export const WorkerConfig = z.strictObject({
 });
 export type WorkerConfig = z.infer<typeof WorkerConfig>;
 export function loadWorkerConfig(path: string) {
-  const fd = openSync(path, constants.O_RDONLY | constants.O_NOFOLLOW);
+  const fd = openSync(
+    path,
+    constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK,
+  );
   try {
     const stat = fstatSync(fd);
     if (
       !stat.isFile() ||
       stat.size > 65536 ||
-      (stat.mode & 0o077) !== 0 ||
+      (stat.mode & 0o177) !== 0 ||
       stat.uid !== process.getuid?.()
     )
       throw new Error('Private worker configuration required');
