@@ -6,7 +6,7 @@ import type {
   ExecutionSnapshot,
   WorkspaceSnapshot,
 } from '../src/workspace/contracts.js';
-import { api, value } from './api.js';
+import { api, HttpError, value } from './api.js';
 import { ActionForm, Field, Notice } from './forms.js';
 function Activity({
   agent,
@@ -26,11 +26,21 @@ function Activity({
         setSnapshot(decodeExecutionEvent(raw));
         setError('');
       })
-      .catch(() => {
-        if (!controller.signal.aborted)
+      .catch((cause: unknown) => {
+        if (controller.signal.aborted) return;
+        if (
+          cause instanceof HttpError &&
+          (cause.status === 401 || cause.status === 403)
+        ) {
+          // Never retain a formerly authorized execution snapshot after access loss.
+          setSnapshot(null);
+          setError('Execution access no longer authorized. Sign in again or contact your team owner.');
+        } else {
+          // A temporary transport/server outage does not certify a new snapshot.
           setError(
             'Execution snapshot unavailable. Use Reconnect / refresh to retry.',
           );
+        }
       });
     return () => {
       controller.abort();
