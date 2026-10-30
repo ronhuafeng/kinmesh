@@ -1,4 +1,6 @@
-import { useRef, useState } from 'react';
+import { createContext, useContext, useRef, useState } from 'react';
+
+export const MutationPermission = createContext(true);
 export class HttpError extends Error {
   constructor(readonly status: number) {
     super(
@@ -35,16 +37,18 @@ interface Pending {
   path: string;
   body: string;
   headers: Record<string, string>;
+  onSuccess?: () => void;
 }
 /** A lost response keeps the exact command/key in memory for an explicit retry. Never auto-resend. */
 export function useAction() {
+  const permitted = useContext(MutationPermission);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [uncertain, setUncertain] = useState(false);
   const pending = useRef<Pending | null>(null);
   const running = useRef(false);
   async function perform(command: Pending): Promise<boolean> {
-    if (running.current) return false;
+    if (!permitted || running.current) return false;
     running.current = true;
     setBusy(true);
     setError('');
@@ -56,7 +60,6 @@ export function useAction() {
       });
       pending.current = null;
       setUncertain(false);
-      return true;
     } catch (cause) {
       if (
         cause instanceof HttpError &&
@@ -78,9 +81,12 @@ export function useAction() {
       running.current = false;
       setBusy(false);
     }
+    command.onSuccess?.();
+    return true;
   }
   return {
     busy,
+    disabled: !permitted,
     error,
     uncertain,
     invalid() {
@@ -91,6 +97,7 @@ export function useAction() {
       body: Record<string, unknown>,
       keyed = true,
       extraHeaders: Record<string, string> = {},
+      onSuccess?: () => void,
     ) {
       if (pending.current) return false;
       return perform({
@@ -99,6 +106,7 @@ export function useAction() {
           keyed ? { ...body, operationKey: crypto.randomUUID() } : body,
         ),
         headers: { 'content-type': 'application/json', ...extraHeaders },
+        ...(onSuccess ? { onSuccess } : {}),
       });
     },
     async retry() {

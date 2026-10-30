@@ -51,11 +51,9 @@ export function Auth({ onLogin }: { onLogin: () => void }) {
                     username: value(new FormData(form), 'username'),
                     password: value(new FormData(form), 'password'),
                   });
-                  void action.send('/api/login', data, false).then((ok) => {
-                    if (ok) {
-                      form.reset();
-                      onLogin();
-                    }
+                  void action.send('/api/login', data, false, {}, () => {
+                    form.reset();
+                    onLogin();
                   });
                 } catch {
                   action.invalid();
@@ -104,17 +102,19 @@ export function Auth({ onLogin }: { onLogin: () => void }) {
                     teamName: value(f, 'teamName'),
                   });
                   const token = value(f, 'setupToken');
-                  void action
-                    .send('/api/setup', data, false, {
+                  void action.send(
+                    '/api/setup',
+                    data,
+                    false,
+                    {
                       authorization: `Bearer ${token}`,
-                    })
-                    .then((ok) => {
-                      if (ok) {
-                        form.reset();
-                        setCreated(true);
-                        setTab('login');
-                      }
-                    });
+                    },
+                    () => {
+                      form.reset();
+                      setCreated(true);
+                      setTab('login');
+                    },
+                  );
                 } catch {
                   action.invalid();
                 }
@@ -161,15 +161,7 @@ export function Auth({ onLogin }: { onLogin: () => void }) {
           <button
             disabled={action.busy}
             onClick={() => {
-              void action.retry().then((ok) => {
-                if (ok) {
-                  if (tab === 'login') onLogin();
-                  else {
-                    setCreated(true);
-                    setTab('login');
-                  }
-                }
-              });
+              void action.retry();
             }}
           >
             Retry same action

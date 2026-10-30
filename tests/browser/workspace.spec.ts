@@ -24,6 +24,7 @@ async function onboard(page: Page, hub: { origin: string; setup: string }) {
   await page.getByLabel('Password', { exact: true }).fill(password);
   await page.getByRole('button', { name: 'Sign in', exact: true }).click();
   await expect(page.getByRole('heading', { name: '# general' })).toBeVisible();
+  return password;
 }
 async function snapshot(request: APIRequestContext, origin: string) {
   const response = await request.get(origin + '/api/workspace');
@@ -481,4 +482,204 @@ test('human claim and request-review controls, plus leave/rejoin of known member
   await expect(
     card.getByText('review-requested', { exact: true }),
   ).toBeVisible();
+});
+
+test('sidebar mutations block submission while workspace GET is loading or failing, then reconnect', async ({
+  page,
+  context,
+  hub,
+}) => {
+  await onboard(page, hub);
+  const state = await snapshot(context.request, hub.origin);
+  if (!state.channel) throw new Error('Local channel unavailable');
+  await page.getByText('New channel', { exact: true }).click();
+  const create = page.getByRole('form', { name: 'Create a channel' });
+  await create.getByLabel('Channel name').fill('after-reconnect');
+  await page.getByText('Rejoin a channel', { exact: true }).click();
+  await page.getByLabel('Known channel ID').fill(state.channel.id);
+  const join = page.getByRole('form', { name: 'Rejoin membership' });
+  let posts = 0;
+  page.on('request', (request) => {
+    if (request.method() === 'POST') posts++;
+  });
+  let release: () => void = () => {
+    throw new Error('Workspace request not intercepted');
+  };
+  const held = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  await page.route('**/api/workspace?*', async (route) => {
+    await held;
+    await route.fulfill({
+      status: 503,
+      contentType: 'application/json',
+      body: '{}',
+    });
+  });
+  await page.getByRole('button', { name: 'Reconnect / refresh' }).click();
+  await expect(page.getByText('Refreshing…', { exact: true })).toBeVisible();
+  for (const form of [create, join]) {
+    await expect(
+      form.getByRole('button', { name: /Create channel|Join channel/ }),
+    ).toBeDisabled();
+    // Bypass native disabled controls to verify the submit handler also fails closed.
+    await form.evaluate((node) =>
+      node.dispatchEvent(
+        new Event('submit', { bubbles: true, cancelable: true }),
+      ),
+    );
+  }
+  await expect(
+    page.getByRole('button', { name: 'Sign out', exact: true }),
+  ).toBeDisabled();
+  expect(posts).toBe(0);
+  release();
+  await expect(page.getByText('Disconnected', { exact: true })).toBeVisible();
+  for (const form of [create, join]) {
+    await expect(
+      form.getByRole('button', { name: /Create channel|Join channel/ }),
+    ).toBeDisabled();
+    await form.evaluate((node) =>
+      node.dispatchEvent(
+        new Event('submit', { bubbles: true, cancelable: true }),
+      ),
+    );
+  }
+  expect(posts).toBe(0);
+  // Only GET is broken: real server POST remains reachable to the authenticated owner.
+  const probe = await context.request.post(
+    `${hub.origin}/api/teams/${state.team.id}/channels`,
+    { data: { name: 'reachable-post', operationKey: randomUUID() } },
+  );
+  expect(probe.status()).toBe(201);
+  await page.unroute('**/api/workspace?*');
+  await page.getByRole('button', { name: 'Reconnect / refresh' }).click();
+  await expect(
+    page.getByText('Snapshot connected', { exact: true }),
+  ).toBeVisible();
+  await join.getByRole('button', { name: 'Join channel', exact: true }).click();
+  await expect(
+    create.getByRole('button', { name: 'Create channel', exact: true }),
+  ).toBeEnabled();
+  await create
+    .getByRole('button', { name: 'Create channel', exact: true })
+    .click();
+  await expect(
+    page
+      .getByRole('navigation', { name: 'Channels' })
+      .getByRole('button', { name: 'after-reconnect', exact: true }),
+  ).toBeVisible();
+  expect(posts).toBe(2);
+});
+
+test('ambiguous login retry retains original request and login completion after switching to setup', async ({
+  page,
+  hub,
+}) => {
+  const password = await onboard(page, hub);
+  await page.getByRole('button', { name: 'Sign out', exact: true }).click();
+  await expect(
+    page.getByRole('heading', { name: 'Welcome back' }),
+  ).toBeVisible();
+  let attempts = 0;
+  let original = '';
+  let identical = false;
+  let setupPosts = 0;
+  page.on('request', (request) => {
+    if (
+      request.method() === 'POST' &&
+      new URL(request.url()).pathname === '/api/setup'
+    )
+      setupPosts++;
+  });
+  await page.route('**/api/login', async (route) => {
+    attempts++;
+    const request = route.request();
+    const serialized = JSON.stringify({
+      url: request.url(),
+      method: request.method(),
+      body: request.postData(),
+      headers: request.headers(),
+    });
+    if (attempts === 1) {
+      original = serialized;
+      await route.abort('timedout');
+    } else {
+      identical = serialized === original;
+      await route.continue();
+    }
+  });
+  await page.getByLabel('Username', { exact: true }).fill('browser_owner');
+  await page.getByLabel('Password', { exact: true }).fill(password);
+  await page.getByRole('button', { name: 'Sign in', exact: true }).click();
+  await expect(
+    page.getByRole('button', { name: 'Retry same action' }),
+  ).toBeVisible();
+  await page.getByRole('tab', { name: 'First owner setup' }).click();
+  await expect(
+    page.getByRole('button', { name: 'Create owner and team' }),
+  ).toBeDisabled();
+  expect(attempts).toBe(1);
+  await page.getByRole('button', { name: 'Retry same action' }).click();
+  await expect(page.getByRole('heading', { name: '# general' })).toBeVisible();
+  expect(attempts).toBe(2);
+  expect(identical).toBe(true);
+  expect(setupPosts).toBe(0);
+});
+
+test('ambiguous setup retry retains setup completion after switching to login', async ({
+  page,
+  hub,
+}) => {
+  await page.goto(hub.origin);
+  await page.getByRole('tab', { name: 'First owner setup' }).click();
+  const password = randomBytes(24).toString('base64url');
+  await page.getByLabel('Setup secret', { exact: true }).fill(hub.setup);
+  await page.getByLabel('Owner username', { exact: true }).fill('retry_owner');
+  await page.getByLabel('Owner password', { exact: true }).fill(password);
+  await page.getByLabel('Team name', { exact: true }).fill('Retry team');
+  let attempts = 0;
+  let original = '';
+  let identical = false;
+  let loginPosts = 0;
+  page.on('request', (request) => {
+    if (
+      request.method() === 'POST' &&
+      new URL(request.url()).pathname === '/api/login'
+    )
+      loginPosts++;
+  });
+  await page.route('**/api/setup', async (route) => {
+    attempts++;
+    const request = route.request();
+    const serialized = JSON.stringify({
+      body: request.postData(),
+      headers: request.headers(),
+      url: request.url(),
+      method: request.method(),
+    });
+    if (attempts === 1) {
+      original = serialized;
+      await route.abort('timedout');
+    } else {
+      identical = serialized === original;
+      await route.continue();
+    }
+  });
+  await page.getByRole('button', { name: 'Create owner and team' }).click();
+  await expect(
+    page.getByRole('button', { name: 'Retry same action' }),
+  ).toBeVisible();
+  await page.getByRole('tab', { name: 'Sign in', exact: true }).click();
+  await page.getByRole('button', { name: 'Retry same action' }).click();
+  await expect(
+    page.getByText('Owner created. Sign in with your new credentials.'),
+  ).toBeVisible();
+  expect(attempts).toBe(2);
+  expect(identical).toBe(true);
+  expect(loginPosts).toBe(0);
+  await page.getByLabel('Username', { exact: true }).fill('retry_owner');
+  await page.getByLabel('Password', { exact: true }).fill(password);
+  await page.getByRole('button', { name: 'Sign in', exact: true }).click();
+  await expect(page.getByRole('heading', { name: '# general' })).toBeVisible();
 });

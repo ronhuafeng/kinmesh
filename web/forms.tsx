@@ -52,6 +52,7 @@ export function ActionForm({
       className="action-form"
       onSubmit={(event) => {
         event.preventDefault();
+        if (action.disabled) return;
         const form = event.currentTarget;
         try {
           const body = build(new FormData(form));
@@ -67,7 +68,7 @@ export function ActionForm({
       }}
     >
       <h3 id={id}>{title}</h3>
-      <fieldset disabled={action.busy || action.uncertain}>
+      <fieldset disabled={action.disabled || action.busy || action.uncertain}>
         {children}
         <button type="submit">{action.busy ? 'Saving…' : submit}</button>
       </fieldset>
@@ -75,7 +76,7 @@ export function ActionForm({
       {action.uncertain && (
         <button
           type="button"
-          disabled={action.busy}
+          disabled={action.disabled || action.busy}
           onClick={() => {
             void action.retry().then((ok) => {
               if (ok) {
