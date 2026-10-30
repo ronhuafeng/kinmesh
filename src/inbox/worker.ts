@@ -231,8 +231,10 @@ export async function runWorker(
   config: WorkerConfig,
   factory: BackendFactory,
   stopping: AbortSignal,
+  onReady?: () => Promise<void>,
 ) {
   const stopped = () => stopping.aborted;
+  let initialized = false;
   const running = new Set<Promise<void>>();
   const bindings = new Map(config.bindings.map((b) => [b.agentId, b]));
   try {
@@ -248,6 +250,10 @@ export async function runWorker(
           },
         );
         running.add(work);
+      }
+      if (!initialized) {
+        await onReady?.();
+        initialized = true;
       }
       try {
         await delay(config.pollMs, undefined, { signal: stopping });

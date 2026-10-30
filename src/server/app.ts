@@ -17,7 +17,12 @@ declare module '@fastify/secure-session' {
     humanId: string;
   }
 }
-export async function createApp(config: Config, store: Store) {
+export async function createApp(
+  config: Config,
+  store: Store,
+  workerReady: () => boolean = () => true,
+  beforeClose?: () => Promise<void>,
+) {
   const app = Fastify({ logger: false, bodyLimit: 16_384, trustProxy: false });
   await app.register(rateLimit, { max: 60, timeWindow: '1 minute' });
   await app.register(secureSession, {
@@ -82,7 +87,7 @@ export async function createApp(config: Config, store: Store) {
     }
   });
   app.get('/health', (_request, reply) => {
-    const ready = store.ready();
+    const ready = store.ready() && workerReady();
     return reply.code(ready ? 200 : 503).send({
       status: ready ? 'ok' : 'unavailable',
       component: 'kinmesh-team-hub',
@@ -181,6 +186,7 @@ export async function createApp(config: Config, store: Store) {
     });
     done();
   });
+  if (beforeClose) app.addHook('preClose', beforeClose);
   app.addHook('onClose', () => {
     store.close();
   });

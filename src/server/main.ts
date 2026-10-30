@@ -1,26 +1,69 @@
 import { createApp } from './app.js';
 import { loadConfig } from './config.js';
 import { openStore } from '../persistence/store.js';
+import { InboxSupervisor } from './inbox-supervisor.js';
+import { once } from 'node:events';
 
 process.umask(0o077);
+const stopping = new AbortController();
+for (const signal of ['SIGTERM', 'SIGINT'])
+  process.once(signal, () => {
+    stopping.abort();
+  });
+let store: ReturnType<typeof openStore> | undefined;
+let app: Awaited<ReturnType<typeof createApp>> | undefined;
+let supervisor: InboxSupervisor | undefined;
+stopping.signal.addEventListener(
+  'abort',
+  () => {
+    void supervisor?.stop().catch(() => {
+      process.exitCode = 1;
+    });
+  },
+  { once: true },
+);
 try {
   const config = loadConfig(process.env);
-  const store = openStore(config.database);
-  const app = await createApp(config, store);
-  for (const signal of ['SIGTERM', 'SIGINT'])
-    process.once(signal, () => {
-      void app.close();
+  const path = process.env.KINMESH_INBOX_CONFIG;
+  if (path !== undefined)
+    supervisor = new InboxSupervisor(path, config.database, () => {
+      process.exitCode = 1;
+      stopping.abort();
     });
-  try {
-    await app.listen({ host: '127.0.0.1', port: config.port });
-  } catch {
-    await app.close();
-    throw new Error('Listener unavailable');
-  }
-  console.info('Kinmesh Team Hub ready on configured loopback port.');
-} catch {
-  console.error(
-    'Kinmesh startup failed. Check local configuration and database availability.',
+  store = openStore(config.database);
+  app = await createApp(
+    config,
+    store,
+    () => !stopping.signal.aborted && (supervisor?.ready() ?? true),
+    async () => {
+      await supervisor?.stop();
+    },
   );
-  process.exitCode = 1;
+  stopping.signal.throwIfAborted();
+  await supervisor?.prepare();
+  stopping.signal.throwIfAborted();
+  await app.listen({ host: '127.0.0.1', port: config.port });
+  stopping.signal.throwIfAborted();
+  await supervisor?.activate();
+  stopping.signal.throwIfAborted();
+  console.info('Kinmesh Team Hub ready on configured loopback port.');
+  await once(stopping.signal, 'abort');
+} catch {
+  if (!stopping.signal.aborted) {
+    console.error(
+      'Kinmesh startup failed. Check local configuration and database availability.',
+    );
+    process.exitCode = 1;
+  }
+} finally {
+  try {
+    // Abort pending startup handshakes/backoff immediately on a shutdown signal.
+    await supervisor?.stop();
+    await app?.close();
+  } catch {
+    console.error('Kinmesh shutdown failed. Check local process supervision.');
+    process.exitCode = 1;
+  } finally {
+    store?.close();
+  }
 }

@@ -7,7 +7,7 @@ Kinmesh is a persistent collaboration workspace for humans and AI agents. It own
 - Durable tasks with atomic claims, work/reviewer handoffs, explicit human acceptance, decision history and external execution references. Technical review or a completed provider run does not accept a task.
 - SQLite WAL persistence with migrations, transactional idempotency receipts and durable outbox facts.
 - A standalone authenticated Team MCP service for agent collaboration through standard SDK clients.
-- A durable Agent Inbox and independently supervised worker for explicit mentions and bounded task handoffs, with fenced result publication.
+- A durable Agent Inbox and optional supervised worker for explicit mentions and bounded task handoffs, with fenced result publication.
 - An external T3 OAuth MCP adapter using the official SDK, with durable operation intent and recovery for uncertain results.
 
 ## Run locally
@@ -26,7 +26,7 @@ npm run onboard     # masked password prompt; creates owner, team and general ch
 
 The service applies migrations before listening. Keep `drizzle/` beside `src/` when running from source; `npm start` requires the TypeScript runner installed by `npm ci`, including development dependencies. Keep `.env`, database/WAL files and backups private, and back up the database before upgrades.
 
-`GET /health` reports Kinmesh database readiness (200 when queryable, 503 on failure). It does not report T3 health or agent readiness.
+`GET /health` reports database readiness and, when configured, supervised Inbox process readiness (200 when ready, 503 otherwise). It does not verify T3 OAuth or Provider capability.
 
 ## Use the HTTP APIs
 
@@ -81,4 +81,4 @@ Keep development status and acceptance evidence in GitHub Issues, implementation
 
 Keep the listener on loopback. For remote access, use a same-origin HTTPS reverse proxy and configure `KINMESH_ORIGIN`; mutating browser requests with an Origin must match it, and cookies are Secure for HTTPS origins. Proxy trust and distributed rate limiting are not enabled. Setup/login have per-IP limits, and the service has a general request limit. Do not expose the listener directly.
 
-The optional [Inbox worker](docs/agent-inbox.md) consumes transactionally enqueued mentions and task handoffs through approved external T3 configuration. Deploy it separately alongside the human service and Team MCP; `npm start` runs the human service only. There is no UI, general workflow language or PR automation. Human invitations, password recovery, session revocation, MFA and multi-node deployment are not implemented. Task acceptors cannot be reassigned through the API; see the task guide for recovery limits. Protect persisted team content and credentials, and assess deployment, browser and provider behavior separately before production use.
+The optional [Inbox worker](docs/agent-inbox.md) consumes transactionally enqueued mentions and task handoffs through approved external T3 configuration. Set `KINMESH_INBOX_CONFIG` to a private configuration to have `npm start` supervise a separate worker child using the same database. Without it, startup runs the human service only. Independently supervising `npm run inbox:worker` remains an alternative; Team MCP runs separately. There is no UI, general workflow language or PR automation. Human invitations, password recovery, session revocation, MFA and multi-node deployment are not implemented. Task acceptors cannot be reassigned through the API; see the task guide for recovery limits. Protect persisted team content and credentials, and assess deployment, browser and provider behavior separately before production use.

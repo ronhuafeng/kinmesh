@@ -4,7 +4,9 @@ The Inbox connects committed collaboration facts to the existing external T3 ada
 
 ## Ordinary deployment
 
-Run three independently supervised processes against the **same local database**: the human service (`npm start`), Team MCP (`npm run team:mcp`) and the Inbox worker (`npm run inbox:worker`). `npm start` starts the human service only. Execution is optional: the human and Team MCP services can operate without the worker or any T3 credentials. Restart the worker through your normal process supervisor; it has no PID/file lock or resident model process.
+Execution is optional. With `KINMESH_INBOX_CONFIG` **absent**, `npm start` starts only the human service and needs no worker/T3 credentials. With that variable set to a private worker configuration, ordinary startup also supervises a separate Inbox child process. Team MCP (`npm run team:mcp`) always remains a separate service. All components use the **same local database**.
+
+Alternatively, leave the variable absent from the human service and supervise `npm run inbox:worker` independently. Choose one ordinary deployment arrangement; do not accidentally start both. Intentional worker replicas still share the existing SQLite capacity and leases. Neither arrangement uses durable PID files or a resident model process.
 
 Use Node 24 and `npm ci`, then the owner bootstrap/login/enrollment APIs in the [identity](agent-identities.md), [channel](channels-messages.md) and [task](tasks.md) guides. For each worker-bound agent:
 
@@ -33,16 +35,34 @@ Create a private mode-0600 configuration, in a private directory outside source 
 ```
 
 ```sh
-# Separate terminals/services, same database as the worker configuration:
-npm start
+# Ordinary supervised deployment; KINMESH_DATABASE must match inbox.json:
+KINMESH_INBOX_CONFIG=/private/kinmesh/inbox.json npm start
+# Another terminal/service, using that same database:
 npm run team:mcp
-KINMESH_INBOX_CONFIG=/private/kinmesh/inbox.json npm run inbox:worker
 KINMESH_INBOX_CONFIG=/private/kinmesh/inbox.json npm run inbox:status
+
+# Alternative: independent worker supervision (omit the variable from npm start):
+npm start
+KINMESH_INBOX_CONFIG=/private/kinmesh/inbox.json npm run inbox:worker
 ```
 
-The strict configuration supports at most 32 unique agent bindings; an empty list is an idle worker. File descriptors reject symlinks, other-owner/public-readable or oversized configuration/agent token files. The existing T3 loader enforces its credential-file and scope contract. The database, WAL and backups contain private prompts and team content. On POSIX, run the services as the same private OS owner with `umask 077`. Unsupported schema/version/model/permission settings fail closed.
+The strict configuration supports at most 32 unique agent bindings; an empty list is an idle worker. File descriptors reject symlinks, other-owner/public-readable or oversized configuration/agent token files; worker configuration must also be non-executable. Nonregular configuration files fail without waiting on FIFO readers/writers. The existing T3 loader enforces its credential-file and scope contract. The database, WAL and backups contain private prompts and team content. On POSIX, run the services as the same private OS owner with `umask 077`. Unsupported schema/version/model/permission settings fail closed.
 
-For systemd, use a dedicated unprivileged user and a service such as the following, adapting installation paths. Install the human and Team MCP units separately. Deployment should apply/back up migrations before enabling worker replicas.
+### Normal startup supervision
+
+The hub validates the owned private configuration before opening HTTP or spawning a child. The worker database and `KINMESH_DATABASE` must resolve to the **same absolute pathname relative to the hub working directory**; alternate symlink/hard-link path spellings are rejected. The existing database's canonical path/device/inode are pinned across child restarts. Replacing a live database file requires stopping the entire installation and reconciling/restoring it deliberately.
+
+The hub forks the actual `src/inbox/main.ts` entrypoint through Node 24/tsx, with an inherited private IPC channel. It omits the hub setup/session secrets from the child environment. The child receives a validated configuration snapshot, verifies the shared database identity before/after opening, and acknowledges preparation. It waits for HTTP bind before the hub permits claims, then acknowledges its first successful loop scan. Each startup handshake has a 10-second deadline. Invalid configuration, missing acknowledgement or bind failure fails startup with exit 1 and cleans up the child. No child output or IPC payload is forwarded to logs; lifecycle diagnostics use fixed text.
+
+`GET /health` retains the existing response shape. Without opt-in it checks the hub database; with opt-in it additionally requires a running supervised loop. It returns 503 during worker loss, startup, restart backoff or shutdown. Worker readiness says nothing about OAuth validity, Team MCP reachability, Provider isolation or native model capability. Those remain separate operational/live checks; empty bindings intentionally permit a credential-free idle worker.
+
+An unexpected child exit allows **three replacement attempts total per hub lifetime**, after 250, 500 and 1000 ms. Becoming healthy does not reset that budget. Every replacement reloads and validates the private config and checks the pinned database identity. Initial startup errors are not retried. Exhaustion or supervision failure stops the hub with exit 1, so an outer service manager can alert/restart the installation; no healthy HTTP-only fallback silently loses an opted-in worker. The outer manager should also have its own bounded restart/alert policy.
+
+`SIGTERM`/`SIGINT` cancel startup/backoff and stop the child before the hub closes its database. A child gets 10 seconds to abort claims/adapter work and close SQLite; the hub then uses SIGKILL and allows at most five more seconds to observe exit. Native work is not automatically interrupted. If the hub is killed, IPC disconnection makes the child stop claiming and apply its own 10-second exit deadline. Forced shutdown leaves existing durable Inbox/native leases and intents for normal reconciliation; it never resets delivery keys. A service manager should allow at least 20 seconds for hub shutdown. Config edits are not hot-reloaded into a running child; deliberate restart is required.
+
+### Independent worker supervision
+
+For systemd, use a dedicated unprivileged user and a service such as the following for the standalone alternative, adapting installation paths. Install the human and Team MCP units separately and leave `KINMESH_INBOX_CONFIG` absent from the human unit. For normal child supervision instead, put that variable on the human unit and omit this separate worker unit. Deployment should apply/back up migrations before enabling worker replicas.
 
 ```ini
 [Unit]
@@ -65,7 +85,7 @@ UMask=0077
 WantedBy=multi-user.target
 ```
 
-`SIGTERM`/`SIGINT` stop claiming, abort in-flight adapter work and wait for cleanup before closing SQLite. Native execution is not implicitly interrupted on worker shutdown. A killed process leaves its durable leases; a successor waits for expiry and reconciles the original intent. SDK connection/discovery requests retain their bounded SDK deadlines; the worker deadline prevents a subsequent late launch. A forced supervisor kill also follows lease recovery. Fixed readiness/stopped/error lines omit credentials and team content. Startup readiness means the loop/database started, not that OAuth, Team MCP or a Provider passed a live check. `inbox:status` prints aggregate delivery counts only; `/health` still describes the human service/database.
+`SIGTERM`/`SIGINT` stop claiming, abort in-flight adapter work and wait for cleanup before closing SQLite. Native execution is not implicitly interrupted on worker shutdown. A killed process leaves its durable leases; a successor waits for expiry and reconciles the original intent. SDK connection/discovery requests retain their bounded SDK deadlines; the worker deadline prevents a subsequent late launch. A forced supervisor kill also follows lease recovery. Fixed readiness/stopped/error lines omit credentials and team content. Startup readiness means the loop/database started, not that OAuth, Team MCP or a Provider passed a live check. `inbox:status` prints aggregate delivery counts only. An independently deployed worker does not affect the human service's `/health`; the optional child-supervision health policy is described above.
 
 ## Wake policy and causality
 
