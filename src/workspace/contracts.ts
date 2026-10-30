@@ -3,6 +3,7 @@ import { EventType, PROTOCOL_VERSION } from '@ag-ui/core';
 import { StateSnapshotEventSchema } from '@ag-ui/core/schemas';
 import { Agent, Correlation, RuntimeEvent } from '../domain/agents.js';
 import { Reference } from '../domain/execution.js';
+import { nativeThreadUrl } from './links.js';
 import { Status } from '../adapters/t3/contracts.js';
 import { Human, Team, AgentId } from '../domain/contracts.js';
 import {
@@ -15,6 +16,10 @@ import { Task } from '../domain/tasks.js';
 
 export const WorkspaceSnapshot = z.strictObject({
   observedAt: z.iso.datetime(),
+  nativeT3Origin: z
+    .url()
+    .refine((origin) => new URL(origin).origin === origin)
+    .nullable(),
   human: Human,
   team: Team,
   channels: pageOf(ChannelView),
@@ -58,15 +63,56 @@ export function decodeExecutionEvent(value: unknown): ExecutionSnapshot {
 }
 
 /** One fresh authoritative native read, never a fabricated AG-UI lifecycle stream. */
-export const NativeObservation = z.strictObject({
-  source: z.literal('t3-native-verified'),
-  observedAt: z.iso.datetime(),
-  reference: Reference,
-  status: z.union([Status, z.literal('unobserved')]),
-  terminal: z.boolean(),
-  threadPendingRequests: z.number().int().nonnegative(),
-  providerId: z.string().min(1),
-  modelId: z.string().min(1),
-  verifiedUrl: z.url().nullable(),
-});
+export const NativeObservation = z
+  .strictObject({
+    source: z.literal('t3-native-verified'),
+    observedAt: z.iso.datetime(),
+    reference: Reference,
+    status: z.union([Status, z.literal('unobserved')]),
+    terminal: z.boolean(),
+    threadPendingRequests: z.number().int().nonnegative(),
+    providerId: z.string().min(1).nullable(),
+    modelId: z.string().min(1).nullable(),
+    verifiedUrl: z.url().nullable(),
+  })
+  .refine(
+    (value) =>
+      value.verifiedUrl === null ||
+      nativeThreadUrl(value.verifiedUrl, value.reference) !== null,
+    { message: 'Invalid native thread URL' },
+  )
+  .refine(
+    (value) =>
+      value.terminal ===
+      [
+        'completed',
+        'failed',
+        'cancelled',
+        'interrupted',
+        'rolled_back',
+      ].includes(value.status),
+    { message: 'Inconsistent native terminal state' },
+  );
 export type NativeObservation = z.infer<typeof NativeObservation>;
+
+/** Bind every response to the immutable association requested by the browser. */
+export function decodeNativeObservation(
+  value: unknown,
+  expected: z.infer<typeof Reference>,
+  trustedOrigin: string | null,
+): NativeObservation {
+  const result = NativeObservation.parse(value);
+  if (
+    result.reference.environmentId !== expected.environmentId ||
+    result.reference.threadId !== expected.threadId ||
+    result.reference.runId !== expected.runId
+  )
+    throw new Error('Mismatched native reference');
+  if (
+    result.verifiedUrl !== null &&
+    (trustedOrigin === null ||
+      new URL(result.verifiedUrl).origin !== trustedOrigin)
+  )
+    throw new Error('Mismatched native origin');
+  return result;
+}

@@ -14,5 +14,5 @@ jobs:
       - run: npm ci
       - run: npx playwright install --with-deps chromium
       - run: npm run build
-      - name: Actual Chromium desktop/mobile workspace tests (no T3 or model)
+      - name: Actual Chromium workspace, native fallback and mock DTO security (no T3 or model)
         run: npm run test:browser

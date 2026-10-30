@@ -518,6 +518,12 @@ export function agentRepository(db: BetterSQLite3Database<typeof s>) {
         return correlation(teamId, agentId, id);
       });
     },
+    /** Exact immutable association, restricted to a currently authorized human owner. */
+    getCorrelation(p: Principal, teamId: TeamId, agentId: AgentId, id: string) {
+      owner(p, teamId);
+      access(p, teamId, agentId, 'executions:read');
+      return correlation(teamId, agentId, id);
+    },
     correlations(p: Principal, teamId: TeamId, agentId: AgentId) {
       access(p, teamId, agentId, 'executions:read');
       return db

@@ -18,5 +18,9 @@ jobs:
       - run: npm run format:check
       - name: Unit, persistence, HTTP and independent Team MCP SDK process tests
         run: npm test
+      - name: Generated migration drift
+        run: |
+          npm run db:generate
+          test -z "$(git status --porcelain -- drizzle)"
       - run: npm run architecture
       - run: npm audit --omit=dev

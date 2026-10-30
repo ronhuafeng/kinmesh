@@ -27,6 +27,7 @@ await test('protected workspace and AG-UI 1.0 snapshots reconstruct persisted re
     assert.equal(workspace.headers['cache-control'], 'no-store');
     const snapshot = WorkspaceSnapshot.parse(workspace.json<unknown>());
     assert.equal(snapshot.human.id, f.owner.id);
+    assert.equal(snapshot.nativeT3Origin, null);
     assert.deepEqual(snapshot.joinedAgentIds, []);
     assert.equal(snapshot.agents[0]?.id, f.agent.id);
     const execution = await f.execution();

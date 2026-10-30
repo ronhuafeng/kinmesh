@@ -1,11 +1,8 @@
-import { z } from 'zod';
+import type { z } from 'zod';
 import { ExecutionFailure, Reference } from '../domain/execution.js';
-import {
-  Descriptor,
-  Read,
-  ValidatedTools,
-} from '../adapters/t3/contracts.js';
-import type { Credential } from '../adapters/t3/oauth.js';
+import { Descriptor, Read, ValidatedTools } from '../adapters/t3/contracts.js';
+import { Endpoint, type Credential } from '../adapters/t3/oauth.js';
+import { nativeThreadUrl } from './links.js';
 import { SdkWire } from '../adapters/t3/sdk.js';
 import { NativeObservation } from './contracts.js';
 
@@ -21,28 +18,13 @@ export function verifiedNativeLink(
   endpoint: string,
   reference: ExecutionReference,
 ): string | null {
-  if (typeof candidate !== 'string' || candidate.length > 4096) return null;
-  try {
-    const value = new URL(candidate);
-    const authority = new URL(endpoint);
-    if (
-      value.origin !== authority.origin ||
-      value.username !== '' ||
-      value.password !== '' ||
-      value.search !== '' ||
-      value.hash !== '' ||
-      !['http:', 'https:'].includes(value.protocol)
-    )
-      return null;
-    if (
-      decodeURIComponent(value.pathname) !==
-      '/' + reference.environmentId + '/' + reference.threadId
-    )
-      return null;
-    return value.href;
-  } catch {
-    return null;
-  }
+  const link = nativeThreadUrl(candidate, reference);
+  if (!link) return null;
+  const authority = Endpoint.safeParse(endpoint);
+  return authority.success &&
+    new URL(link).origin === new URL(authority.data).origin
+    ? link
+    : null;
 }
 
 /** Project only the requested Run's native state, not the thread's other Runs. */
@@ -77,8 +59,11 @@ export function projectNativeRead(
       'rolled_back',
     ].includes(status),
     threadPendingRequests: read.thread.pendingRequestCount,
-    providerId: run?.providerInstanceId ?? read.thread.providerInstanceId,
-    modelId: run?.model ?? read.thread.model,
+    providerId:
+      ref.runId === undefined
+        ? read.thread.providerInstanceId
+        : (run?.providerInstanceId ?? null),
+    modelId: ref.runId === undefined ? read.thread.model : (run?.model ?? null),
     verifiedUrl: verifiedNativeLink(read.thread.link, endpoint, ref),
   });
 }
@@ -95,9 +80,15 @@ export async function readNativeExecution(
   const ref = Reference.parse(reference);
   if (credential.environmentId !== ref.environmentId)
     throw new ExecutionFailure('incompatible');
-  const wire = new SdkWire(credential);
+  const wire = new SdkWire(credential, {
+    readOnly: true,
+    ...(signal ? { signal } : {}),
+  });
   try {
-    const tools = new ValidatedTools(wire, await wire.list());
+    const tools = new ValidatedTools(wire, await wire.list(), [
+      't3_environment_read',
+      't3_thread_read',
+    ]);
     const descriptor = Descriptor.parse(
       await tools.call('t3_environment_read', {}, signal),
     );

@@ -23,7 +23,10 @@ const boundedFetch: FetchLike = (input, init) => {
 export class SdkWire implements Wire {
   private client: Client | undefined;
   private connecting: Promise<Client> | undefined;
-  constructor(private readonly credential: Credential) {
+  constructor(
+    private readonly credential: Credential,
+    private readonly options: { signal?: AbortSignal; readOnly?: boolean } = {},
+  ) {
     Endpoint.parse(credential.endpoint);
   }
   private async connected(): Promise<Client> {
@@ -37,14 +40,46 @@ export class SdkWire implements Wire {
       try {
         await client.connect(
           new StreamableHTTPClientTransport(new URL(this.credential.endpoint), {
-            authProvider: storedProvider(this.credential),
-            fetch: boundedFetch,
+            ...(this.options.readOnly
+              ? {
+                  requestInit: {
+                    headers: {
+                      Authorization: `Bearer ${this.credential.tokens.access_token}`,
+                    },
+                  },
+                }
+              : { authProvider: storedProvider(this.credential) }),
+            fetch: (input, init) => {
+              this.options.signal?.throwIfAborted();
+              if (this.options.readOnly) {
+                const target = new URL(
+                  input instanceof Request ? input.url : String(input),
+                );
+                if (target.href !== this.credential.endpoint)
+                  throw new ExecutionFailure('incompatible');
+              }
+              const inherited =
+                init?.signal ??
+                (input instanceof Request ? input.signal : undefined);
+              const signals = [inherited, this.options.signal].filter(
+                (value): value is AbortSignal => value != null,
+              );
+              return boundedFetch(input, {
+                ...init,
+                ...(this.options.readOnly ? { redirect: 'error' } : {}),
+                ...(signals.length ? { signal: AbortSignal.any(signals) } : {}),
+              });
+            },
           }),
         );
-        const raw = await client.callTool({
-          name: 't3_environment_read',
-          arguments: {},
-        });
+        const raw = await client.callTool(
+          {
+            name: 't3_environment_read',
+            arguments: {},
+          },
+          undefined,
+          this.options.signal ? { signal: this.options.signal } : undefined,
+        );
         let value: unknown = raw.structuredContent;
         if (value === undefined) {
           const text = z
@@ -76,7 +111,10 @@ export class SdkWire implements Wire {
     return this.connecting;
   }
   async list(): Promise<unknown> {
-    return (await this.connected()).listTools();
+    return (await this.connected()).listTools(
+      undefined,
+      this.options.signal ? { signal: this.options.signal } : undefined,
+    );
   }
   async call(
     name: string,
@@ -85,6 +123,11 @@ export class SdkWire implements Wire {
     timeoutMs = 30000,
   ): Promise<unknown> {
     try {
+      if (
+        this.options.readOnly &&
+        !['t3_environment_read', 't3_thread_read'].includes(name)
+      )
+        throw new ExecutionFailure('permission');
       const client = await this.connected();
       signal?.throwIfAborted();
       return await client.callTool({ name, arguments: args }, undefined, {

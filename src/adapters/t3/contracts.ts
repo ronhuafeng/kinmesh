@@ -136,10 +136,7 @@ export class ValidatedTools {
   constructor(
     readonly wire: Wire,
     discovered: unknown,
-  ) {
-    const tools = ToolList.parse(discovered).tools;
-    const ajv = new Ajv({ strict: false, allErrors: false });
-    for (const name of [
+    names: readonly string[] = [
       't3_environment_read',
       'orchestrator_capabilities',
       't3_thread_launch',
@@ -148,7 +145,11 @@ export class ValidatedTools {
       't3_thread_wait',
       't3_thread_interrupt',
       't3_thread_organize',
-    ]) {
+    ],
+  ) {
+    const tools = ToolList.parse(discovered).tools;
+    const ajv = new Ajv({ strict: false, allErrors: false });
+    for (const name of names) {
       const tool = tools.find((t) => t.name === name);
       if (
         tool === undefined ||

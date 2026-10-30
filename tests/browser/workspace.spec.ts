@@ -324,6 +324,20 @@ test('AG-UI snapshots render persisted reports honestly; identity spoofing and c
   await expect(
     page.getByRole('button', { name: 'Open in T3 (link unavailable)' }),
   ).toBeDisabled();
+  const nativeResponse = page.waitForResponse((response) =>
+    response.url().endsWith('/executions/' + correlation.id + '/native'),
+  );
+  await page.getByRole('button', { name: 'Check native status' }).click();
+  expect((await nativeResponse).status()).toBe(503);
+  await expect(page.getByText(/Native T3 status unavailable/)).toBeVisible();
+  await expect(page.getByText(/Native verified at/)).toHaveCount(0);
+  await expect(
+    page.getByRole('link', { name: 'Open verified T3 thread' }),
+  ).toHaveCount(0);
+  await expect(page.getByText('Last recorded: waiting')).toBeVisible();
+  expect((await context.request.get(hub.origin + '/api/me')).status()).toBe(
+    200,
+  );
   for (const status of ['failed', 'stopped', 'succeeded']) {
     expect(
       (
@@ -820,3 +834,165 @@ test('AG-UI access revocation clears prior reports while a transient outage pres
     ).status(),
   ).toBe(200);
 });
+
+// All fulfilled observations below are local browser mocks, never live native acceptance.
+async function openMockNativeCard(
+  page: Page,
+  request: APIRequestContext,
+  hub: { origin: string; setup: string },
+) {
+  await page.route('**/api/workspace**', async (route) => {
+    const response = await route.fetch();
+    if (!response.ok()) {
+      await route.fulfill({ response });
+      return;
+    }
+    const data = WorkspaceSnapshot.parse(await response.json());
+    await route.fulfill({
+      response,
+      json: { ...data, nativeT3Origin: 'https://native-mock.invalid' },
+    });
+  });
+  await onboard(page, hub);
+  await register(page, 'Mock Native Observer', 'assistant');
+  const state = await snapshot(request, hub.origin);
+  const agent = state.agents.find(
+    (item) => item.name === 'Mock Native Observer',
+  );
+  if (!agent) throw new Error('Mock agent missing');
+  const reference = {
+    backend: 't3',
+    environmentId: 'MOCK-environment',
+    threadId: 'MOCK-thread',
+    runId: 'MOCK-run',
+  };
+  const created = await request.post(
+    `${hub.origin}/api/teams/${state.team.id}/agents/${agent.id}/executions`,
+    {
+      data: { reference, providerSessionId: null, invocationId: null },
+    },
+  );
+  expect(created.status()).toBe(201);
+  await page
+    .getByRole('button', { name: 'View Mock Native Observer activity' })
+    .click();
+  await expect(page.getByText('MOCK-thread', { exact: true })).toBeVisible();
+  return {
+    source: 't3-native-verified',
+    observedAt: '2026-10-30T12:00:00.000Z',
+    reference,
+    status: 'interrupted',
+    terminal: true,
+    threadPendingRequests: 2,
+    providerId: 'MOCK-provider',
+    modelId: 'MOCK-model',
+    verifiedUrl: 'https://native-mock.invalid/MOCK-environment/MOCK-thread',
+  };
+}
+
+test('MOCK UI only: strict native observation renders separate exact state/link and clears on 503 or invalid DTO', async ({
+  page,
+  context,
+  hub,
+}) => {
+  await page.setViewportSize({ width: 375, height: 1000 });
+  const observation = await openMockNativeCard(page, context.request, hub);
+  let body: unknown = observation;
+  let status = 200;
+  await page.route('**/executions/*/native', async (route) => {
+    expect(route.request().method()).toBe('GET');
+    expect(route.request().headers().authorization).toBeUndefined();
+    await route.fulfill({
+      status,
+      contentType: 'application/json',
+      body: JSON.stringify(body),
+    });
+  });
+  const check = page.getByRole('button', { name: 'Check native status' });
+  await check.click();
+  await expect(page.getByText(/Native verified at/)).toBeVisible();
+  await expect(
+    page.getByText('Exact Run status: interrupted · terminal'),
+  ).toBeVisible();
+  await expect(page.getByText(/Thread pending requests: 2/)).toBeVisible();
+  await expect(page.getByText('Last recorded: unknown')).toBeVisible();
+  const link = page.getByRole('link', { name: 'Open verified T3 thread' });
+  await expect(link).toHaveAttribute('href', observation.verifiedUrl);
+  await expect(link).toHaveAttribute('target', '_blank');
+  await expect(link).toHaveAttribute('rel', 'noopener noreferrer');
+  expect(
+    await page.evaluate(
+      () => document.documentElement.scrollWidth <= window.innerWidth,
+    ),
+  ).toBe(true);
+  status = 503;
+  await check.click();
+  await expect(page.getByText(/Native T3 status unavailable/)).toBeVisible();
+  await expect(link).toHaveCount(0);
+  await expect(page.getByText(/Native verified at/)).toHaveCount(0);
+  status = 200;
+  for (const invalid of [
+    { ...observation, verifiedUrl: 'javascript:alert(1)' },
+    { ...observation, verifiedUrl: 't3-thread://MOCK-thread' },
+    { ...observation, verifiedUrl: 'https://evil.invalid/wrong/thread' },
+    {
+      ...observation,
+      verifiedUrl: 'https://evil.invalid/MOCK-environment/MOCK-thread',
+    },
+    {
+      ...observation,
+      reference: { ...observation.reference, runId: 'wrong-run' },
+    },
+    { ...observation, token: 'invalid-extra-field' },
+  ]) {
+    body = observation;
+    await check.click();
+    await expect(link).toBeVisible();
+    body = invalid;
+    await check.click();
+    await expect(page.getByText(/Native T3 status unavailable/)).toBeVisible();
+    await expect(link).toHaveCount(0);
+    await expect(page.getByText(/Native verified at/)).toHaveCount(0);
+  }
+  expect((await context.request.get(hub.origin + '/api/me')).status()).toBe(
+    200,
+  );
+});
+
+for (const denied of [401, 403]) {
+  test(`MOCK UI only: native HTTP ${String(denied)} purges native result and protected AG-UI card`, async ({
+    page,
+    context,
+    hub,
+  }) => {
+    const observation = await openMockNativeCard(page, context.request, hub);
+    let status = 200;
+    await page.route('**/executions/*/native', async (route) => {
+      await route.fulfill({
+        status,
+        contentType: 'application/json',
+        body: JSON.stringify(status === 200 ? observation : {}),
+      });
+    });
+    await page.getByRole('button', { name: 'Check native status' }).click();
+    await expect(
+      page.getByRole('link', { name: 'Open verified T3 thread' }),
+    ).toBeVisible();
+    status = denied;
+    await page.getByRole('button', { name: 'Check native status' }).click();
+    await expect(
+      page.getByText(
+        'Execution access no longer authorized. Sign in again or contact your team owner.',
+      ),
+    ).toBeVisible();
+    await expect(
+      page.getByRole('link', { name: 'Open verified T3 thread' }),
+    ).toHaveCount(0);
+    await expect(page.getByText(/Native verified at/)).toHaveCount(0);
+    await expect(page.getByText('MOCK-thread', { exact: true })).toHaveCount(0);
+    await expect(page.getByText('Last recorded: unknown')).toHaveCount(0);
+    expect((await context.request.get(hub.origin + '/api/me')).status()).toBe(
+      200,
+    );
+  });
+}

@@ -1,28 +1,178 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { ProfileInput } from '../src/domain/agents.js';
 import type { Agent } from '../src/domain/agents.js';
-import { decodeExecutionEvent } from '../src/workspace/contracts.js';
+import {
+  decodeExecutionEvent,
+  decodeNativeObservation,
+} from '../src/workspace/contracts.js';
 import type {
+  NativeObservation,
   ExecutionSnapshot,
   WorkspaceSnapshot,
 } from '../src/workspace/contracts.js';
 import { api, HttpError, value } from './api.js';
 import { ActionForm, Field, Notice } from './forms.js';
+function NativeStatus({
+  correlation,
+  teamId,
+  agentId,
+  onAccessLoss,
+  trustedOrigin,
+}: {
+  correlation: ExecutionSnapshot['executions'][number]['correlation'];
+  teamId: string;
+  agentId: string;
+  onAccessLoss: () => void;
+  trustedOrigin: string | null;
+}) {
+  const [observation, setObservation] = useState<NativeObservation | null>(
+    null,
+  );
+  const [error, setError] = useState('');
+  const [busy, setBusy] = useState(false);
+  const pending = useRef<AbortController | null>(null);
+  useEffect(
+    () => () => {
+      pending.current?.abort();
+    },
+    [],
+  );
+  async function check() {
+    if (pending.current) return;
+    const controller = new AbortController();
+    pending.current = controller;
+    setBusy(true);
+    setObservation(null);
+    setError('');
+    try {
+      const raw = await api(
+        `/api/teams/${teamId}/agents/${agentId}/executions/${correlation.id}/native`,
+        {
+          signal: AbortSignal.any([
+            controller.signal,
+            AbortSignal.timeout(10000),
+          ]),
+        },
+      );
+      if (controller.signal.aborted) return;
+      setObservation(
+        decodeNativeObservation(raw, correlation.reference, trustedOrigin),
+      );
+    } catch (cause) {
+      if (controller.signal.aborted) return;
+      setObservation(null);
+      if (
+        cause instanceof HttpError &&
+        (cause.status === 401 || cause.status === 403)
+      ) {
+        onAccessLoss();
+      } else {
+        setError(
+          'Native T3 status unavailable. The owner must configure an authorized observer, or retry when T3 is reachable.',
+        );
+      }
+    } finally {
+      if (!controller.signal.aborted) setBusy(false);
+      pending.current = null;
+    }
+  }
+  return (
+    <div className="native-status">
+      <button
+        type="button"
+        disabled={busy}
+        aria-busy={busy}
+        onClick={() => {
+          void check();
+        }}
+      >
+        Check native status
+      </button>
+      <div role="status" aria-live="polite">
+        {busy && <p>Checking native status…</p>}
+        {error && <p>{error}</p>}
+        {observation && (
+          <>
+            <p>
+              {observation.status === 'unobserved'
+                ? 'Native read at '
+                : 'Native verified at '}
+              {new Date(observation.observedAt).toLocaleString()}
+            </p>
+            <p>
+              {correlation.reference.runId
+                ? 'Exact Run status'
+                : 'Thread status'}
+              : {observation.status} ·{' '}
+              {observation.terminal ? 'terminal' : 'nonterminal'}
+            </p>
+            {observation.status === 'unobserved' && (
+              <p>
+                This Run is outside the bounded recent Run history. Its status
+                is unobserved.
+              </p>
+            )}
+            <p>
+              Thread pending requests: {observation.threadPendingRequests}{' '}
+              (thread-scoped, not attributed to this Run).
+            </p>
+            <p>
+              Provider: {observation.providerId ?? 'unobserved'} · Model:{' '}
+              {observation.modelId ?? 'unobserved'}
+            </p>
+          </>
+        )}
+      </div>
+      {observation?.verifiedUrl ? (
+        <a
+          href={observation.verifiedUrl}
+          target="_blank"
+          rel="noopener noreferrer"
+        >
+          Open verified T3 thread
+        </a>
+      ) : (
+        <button
+          disabled
+          title="T3 has not returned a verified browser URL for this thread."
+        >
+          Open in T3 (link unavailable)
+        </button>
+      )}
+      <p className="muted">
+        Native checks are read-only. Kinmesh never guesses a T3 link or accepts
+        tasks from a Run result.
+      </p>
+    </div>
+  );
+}
 function Activity({
   agent,
   teamId,
   revision,
+  trustedOrigin,
 }: {
   agent: Agent;
   teamId: string;
   revision: string;
+  trustedOrigin: string | null;
 }) {
   const [snapshot, setSnapshot] = useState<ExecutionSnapshot | null>(null);
   const [error, setError] = useState('');
+  const snapshotRequest = useRef<AbortController | null>(null);
+  function loseAccess() {
+    snapshotRequest.current?.abort();
+    setSnapshot(null);
+    setError(
+      'Execution access no longer authorized. Sign in again or contact your team owner.',
+    );
+  }
   useEffect(() => {
     const controller = new AbortController();
+    snapshotRequest.current = controller;
     void api(`/api/agui/${teamId}/${agent.id}`, { signal: controller.signal })
       .then((raw) => {
+        if (controller.signal.aborted) return;
         setSnapshot(decodeExecutionEvent(raw));
         setError('');
       })
@@ -53,8 +203,8 @@ function Activity({
       <h3>{agent.name} · Execution activity</h3>
       <p className="eyebrow">AG-UI 1.0 · refreshed snapshot</p>
       <p>
-        Stored reports, not a live T3 feed. Reports may be stale; this page does
-        not contact T3 or verify native status.
+        Stored reports may be stale. Last recorded status is an AG-UI snapshot.
+        Check native status explicitly for a separate, fresh read from T3.
       </p>
       {error && <Notice>{error}</Notice>}
       {snapshot && (
@@ -92,16 +242,13 @@ function Activity({
                   Association by {e.correlation.author.kind}. Execution does not
                   imply task acceptance.
                 </p>
-                <button
-                  disabled
-                  title="No verified native launch URL is stored with this association."
-                >
-                  Open in T3 (link unavailable)
-                </button>
-                <p className="muted">
-                  Use these references in your authorized T3 workspace. Kinmesh
-                  does not invent a deep link.
-                </p>
+                <NativeStatus
+                  correlation={e.correlation}
+                  teamId={teamId}
+                  agentId={agent.id}
+                  onAccessLoss={loseAccess}
+                  trustedOrigin={trustedOrigin}
+                />
                 {e.eventsTruncated && (
                   <p>Showing the latest 100 recorded reports.</p>
                 )}
@@ -239,10 +386,11 @@ export function Agents({
       )}
       {current && (
         <Activity
-          key={current.id}
+          key={current.id + (data.nativeT3Origin ?? '')}
           agent={current}
           teamId={data.team.id}
           revision={data.observedAt}
+          trustedOrigin={data.nativeT3Origin}
         />
       )}
     </section>

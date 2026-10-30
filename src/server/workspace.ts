@@ -5,6 +5,9 @@ import { AgentId, ChannelId, TeamId } from '../domain/contracts.js';
 import { IdentityError } from '../domain/agents.js';
 import { TopicId } from '../domain/communication.js';
 import type { Store } from '../persistence/store.js';
+import type { Config } from './config.js';
+import { loadCredential } from '../adapters/t3/oauth.js';
+import { readNativeExecution } from '../workspace/native.js';
 import { WorkspaceSnapshot, executionEvent } from '../workspace/contracts.js';
 
 const Query = z.strictObject({
@@ -15,7 +18,57 @@ const Query = z.strictObject({
   topicsCursor: z.string().min(1).max(2048).optional(),
   channelsCursor: z.string().min(1).max(2048).optional(),
 });
-export function registerWorkspace(app: FastifyInstance, store: Store) {
+export function registerWorkspace(
+  app: FastifyInstance,
+  store: Store,
+  config: Config,
+) {
+  app.get(
+    '/api/teams/:teamId/agents/:agentId/executions/:executionId/native',
+    async (request, reply) => {
+      reply.header('Cache-Control', 'no-store');
+      const principal = request.principal;
+      if (principal?.kind !== 'human') throw new IdentityError(403);
+      const { teamId, agentId, executionId } = z
+        .strictObject({
+          teamId: TeamId,
+          agentId: AgentId,
+          executionId: z.uuid(),
+        })
+        .parse(request.params);
+      z.strictObject({}).parse(request.query);
+      // Do not mask Kinmesh authorization denials as external-service outages.
+      const correlation = store.agents.getCorrelation(
+        principal,
+        teamId,
+        agentId,
+        executionId,
+      );
+      try {
+        if (!config.nativeT3) throw new Error('Unavailable');
+        const credential = loadCredential(
+          config.nativeT3.authFile,
+          config.nativeT3.endpoint,
+        );
+        if (credential.environmentId !== correlation.reference.environmentId)
+          throw new Error('Unavailable');
+        const observation = await readNativeExecution(
+          credential,
+          correlation.reference,
+          AbortSignal.timeout(8000),
+        );
+        // Access may have changed while the external read was in flight.
+        store.agents.getCorrelation(principal, teamId, agentId, executionId);
+        return observation;
+      } catch (error) {
+        if (error instanceof IdentityError) throw error;
+        // A concurrent Kinmesh access loss still takes precedence over an upstream outage.
+        store.agents.getCorrelation(principal, teamId, agentId, executionId);
+        // External OAuth/permission failures are never Kinmesh session expiry.
+        return reply.code(503).send({ error: 'Native T3 status unavailable' });
+      }
+    },
+  );
   app.get('/api/workspace', (request, reply) => {
     reply.header('Cache-Control', 'no-store');
     const principal = request.principal;
@@ -57,6 +110,9 @@ export function registerWorkspace(app: FastifyInstance, store: Store) {
       : [];
     return WorkspaceSnapshot.parse({
       observedAt: new Date().toISOString(),
+      nativeT3Origin: config.nativeT3
+        ? new URL(config.nativeT3.endpoint).origin
+        : null,
       human,
       team: membership.team,
       channels,
