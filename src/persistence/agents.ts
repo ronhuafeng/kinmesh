@@ -1,5 +1,5 @@
 import { createHash, randomBytes, randomUUID } from 'node:crypto';
-import { and, eq, isNull } from 'drizzle-orm';
+import { and, eq, isNull, sql, asc, desc } from 'drizzle-orm';
 import type { BetterSQLite3Database } from 'drizzle-orm/better-sqlite3';
 import { z } from 'zod';
 import * as s from './schema.js';
@@ -315,6 +315,69 @@ export function agentRepository(db: BetterSQLite3Database<typeof s>) {
         .where(eq(s.agents.teamId, teamId))
         .all()
         .map((r) => profile(teamId, AgentId.parse(r.id)));
+    },
+    /** Bounded owner projection. Existing list/identity API contracts remain unchanged. */
+    workspaceProfiles(p: Principal, teamId: TeamId) {
+      return atomic(() => {
+        owner(p, teamId);
+        const rows = db
+          .select({ id: s.agents.id })
+          .from(s.agents)
+          .where(eq(s.agents.teamId, teamId))
+          .orderBy(asc(sql`${s.agents}.rowid`))
+          .limit(101)
+          .all();
+        return {
+          agents: rows
+            .slice(0, 100)
+            .map((row) => profile(teamId, AgentId.parse(row.id))),
+          truncated: rows.length > 100,
+        };
+      });
+    },
+    /** Append order is authoritative for persisted reports, even if wall-clock timestamps tie. */
+    workspaceExecutions(p: Principal, teamId: TeamId, agentId: AgentId) {
+      return atomic(() => {
+        const agent = access(p, teamId, agentId, 'executions:read');
+        const rows = db
+          .select({ id: s.agentCorrelations.id })
+          .from(s.agentCorrelations)
+          .where(
+            and(
+              eq(s.agentCorrelations.agentId, agentId),
+              eq(s.agentCorrelations.teamId, teamId),
+            ),
+          )
+          .orderBy(desc(sql`${s.agentCorrelations}.rowid`))
+          .limit(21)
+          .all();
+        return {
+          agent,
+          executionsTruncated: rows.length > 20,
+          executions: rows.slice(0, 20).map((row) => {
+            const events = db
+              .select()
+              .from(s.agentRuntimeEvents)
+              .where(eq(s.agentRuntimeEvents.correlationId, row.id))
+              .orderBy(desc(sql`${s.agentRuntimeEvents}.rowid`))
+              .limit(101)
+              .all();
+            return {
+              correlation: correlation(teamId, agentId, row.id),
+              eventsTruncated: events.length > 100,
+              events: events
+                .slice(0, 100)
+                .reverse()
+                .map((event) =>
+                  RuntimeEvent.parse({
+                    ...event,
+                    author: parseJson(event.author),
+                  }),
+                ),
+            };
+          }),
+        };
+      });
     },
     update(
       p: Principal,

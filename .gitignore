@@ -13,3 +13,6 @@ coverage/
 *.db-*
 artifacts/
 *.log
+web-dist/
+test-results/
+playwright-report/

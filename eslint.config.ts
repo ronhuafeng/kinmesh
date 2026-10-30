@@ -4,7 +4,7 @@ export default defineConfig(
   ...tseslint.configs.strictTypeChecked,
   ...tseslint.configs.stylisticTypeChecked,
   {
-    files: ['**/*.ts'],
+    files: ['**/*.ts', '**/*.tsx'],
     languageOptions: {
       parserOptions: {
         projectService: true,
@@ -24,6 +24,9 @@ export default defineConfig(
       'drizzle/**',
       '.store/**',
       'dist/**',
+      'web-dist/**',
+      'test-results/**',
+      'playwright-report/**',
     ],
   },
 );

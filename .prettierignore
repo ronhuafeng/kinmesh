@@ -4,3 +4,7 @@ coverage
 drizzle
 package-lock.json
 dist
+web-dist
+test-results
+playwright-report
+artifacts
