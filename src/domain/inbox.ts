@@ -115,6 +115,7 @@ export const NativeTerminalNotice = z.strictObject({
   reference: Result.shape.reference,
   state: z.enum(['failed', 'stopped']),
 });
+export type NativeTerminalNotice = z.infer<typeof NativeTerminalNotice>;
 export const PublishedOutcome = z.union([Result, NativeTerminalNotice]);
 export type PublishedOutcome = z.infer<typeof PublishedOutcome>;
 /** Only explicit human mentions and changes of task responsibility wake agents.
