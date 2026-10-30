@@ -161,6 +161,69 @@ await test('MOCK external adapter: exact-run actual assistant is attributed and 
     await f.dispose();
   }
 });
+await test('MOCK native terminal failure without assistant posts truthful notice and releases the same-agent queue', async () => {
+  const f = await inboxFixture();
+  try {
+    const source = mention(f);
+    const failed = mockRead('failed');
+    failed.items = [];
+    f.wire.values.t3_thread_read = failed;
+    const c = claim(f);
+    await deliver(f.store, c, f.binding, f.factory, signal());
+    const row = f.inbox.get(c.id);
+    assert.equal(row.state, 'acked');
+    assert.equal(row.reason, 'native-terminal-notice-published');
+    assert.ok(row.resultMessageId);
+    const notice = f.comm.message(
+      f.principal,
+      f.teamId,
+      f.channelId,
+      row.resultMessageId,
+    );
+    assert.ok(notice.body.includes('T3 failed; native status notice only'));
+    assert.ok(notice.body.includes('no assistant message observed'));
+    assert.ok(!notice.body.includes('item '));
+    assert.ok(!notice.body.includes('Fixture assistant output'));
+    assert.equal(notice.sourceMessageId, source.id);
+    assert.equal(notice.sourceEventId, c.eventId);
+    assert.equal(notice.author.kind, 'agent');
+    assert.equal(notice.author.agentId, f.agent.id);
+    const reopened = f.open();
+    try {
+      assert.equal(reopened.inbox.get(c.id).state, 'acked');
+      assert.equal(
+        reopened.agents.correlations(f.principal, f.teamId, f.agent.id).length,
+        1,
+      );
+    } finally {
+      reopened.close();
+    }
+    mention(f, 'Second independently authorized human request');
+    const following = claim(f);
+    assert.notEqual(following.id, c.id);
+    const backend = await T3Backend.connect(
+      f.wire,
+      f.store.operations,
+      options,
+    );
+    const interrupted = mockRead('interrupted');
+    interrupted.items = [];
+    f.wire.values.t3_thread_read = interrupted;
+    const stopped = await assistantResult(
+      backend,
+      reference,
+      launch.model,
+      signal(),
+    );
+    assert.equal(stopped.kind, 'result');
+    if (stopped.kind !== 'result' || !('kind' in stopped.result))
+      throw new Error('Expected native terminal status notice');
+    assert.equal(stopped.result.kind, 'native-terminal-no-assistant');
+    assert.equal(stopped.result.state, 'stopped');
+  } finally {
+    await f.dispose();
+  }
+});
 for (const failedTable of [
   'communication_outbox',
   'inbox_results',

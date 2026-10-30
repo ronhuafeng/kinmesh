@@ -13,6 +13,8 @@ import {
   INBOX_ATTEMPT_MS,
   INBOX_CAPACITY,
   Result,
+  NativeTerminalNotice,
+  type PublishedOutcome,
   type Claim,
 } from '../domain/inbox.js';
 import type { Binding, WorkerConfig } from './config.js';
@@ -25,7 +27,7 @@ export async function assistantResult(
   model: Observation['model'],
   signal: AbortSignal,
 ): Promise<
-  | { kind: 'result'; result: Result }
+  | { kind: 'result'; result: PublishedOutcome }
   | { kind: 'waiting' | 'uncertain'; reason: string }
 > {
   let after: number | undefined;
@@ -65,6 +67,19 @@ export async function assistantResult(
       )
         selected = item;
     if (!observation.hasMore) {
+      if (
+        !selected?.text &&
+        reference.runId !== undefined &&
+        (terminal === 'failed' || terminal === 'stopped')
+      )
+        return {
+          kind: 'result',
+          result: NativeTerminalNotice.parse({
+            kind: 'native-terminal-no-assistant',
+            reference,
+            state: terminal,
+          }),
+        };
       if (!selected?.text || reference.runId === undefined)
         return { kind: 'waiting', reason: 'assistant-result-unavailable' };
       return {
