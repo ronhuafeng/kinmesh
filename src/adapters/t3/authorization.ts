@@ -1,5 +1,4 @@
 import { createServer } from 'node:http';
-import { z } from 'zod';
 import type { FetchLike } from '@modelcontextprotocol/sdk/shared/transport.js';
 import {
   auth,
@@ -13,6 +12,7 @@ import type {
 import { randomBytes } from 'node:crypto';
 import { Descriptor } from './contracts.js';
 import { Credential, Endpoint } from './oauth.js';
+import { verifiedOAuthMetadata } from './metadata.js';
 
 export const CALLBACK = 'http://127.0.0.1:49871/callback';
 export const AUTH_TIMEOUT_MS = 180_000;
@@ -228,30 +228,7 @@ export async function authorize(
     const issuer = new URL(endpoint).origin;
     const fetchFn = authorizationFetch(endpoint, signal, transport);
     const discovered = await discoverOAuthServerInfo(endpoint, { fetchFn });
-    const metadata = discovered.authorizationServerMetadata;
-    const resource = discovered.resourceMetadata;
-    if (
-      !metadata ||
-      !resource ||
-      discovered.authorizationServerUrl !== issuer ||
-      metadata.issuer !== issuer ||
-      resource.resource !== endpoint ||
-      resource.authorization_servers?.length !== 1 ||
-      resource.authorization_servers[0] !== issuer ||
-      !metadata.code_challenge_methods_supported?.includes('S256') ||
-      !z
-        .object({
-          authorization_response_iss_parameter_supported: z.literal(true),
-        })
-        .safeParse(metadata).success
-    )
-      throw rejected();
-    for (const [field, path] of [
-      [metadata.authorization_endpoint, '/oauth/mcp/authorize'],
-      [metadata.token_endpoint, '/oauth/mcp/token'],
-      [metadata.registration_endpoint, '/oauth/mcp/register'],
-    ] as const)
-      if (field !== issuer + path) throw rejected();
+    const { metadata, resource } = verifiedOAuthMetadata(endpoint, discovered);
     const descriptor = Descriptor.parse(
       await (
         await fetchFn(new URL('/.well-known/t3/environment', endpoint))

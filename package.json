@@ -20,6 +20,7 @@
     "onboard": "node --env-file=.env --import tsx scripts/onboard.ts",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
+    "t3:preflight": "node --import tsx scripts/t3-preflight.ts",
     "t3:auth": "node --env-file-if-exists=.env --import tsx scripts/t3-auth.ts",
     "t3:smoke": "node --env-file-if-exists=.env --import tsx scripts/t3-smoke.ts",
     "test:live": "node --env-file-if-exists=.env --import tsx scripts/t3-live.ts",
