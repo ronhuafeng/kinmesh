@@ -13,8 +13,10 @@ import {
 } from '../../domain/execution.js';
 import type {
   Operation,
+  ClaimedOperation,
   OperationJournal,
 } from '../../persistence/operations.js';
+import { EXECUTION_ATTEMPT_MS } from '../../persistence/operations.js';
 import {
   ValidatedTools,
   Descriptor,
@@ -194,9 +196,13 @@ export class T3Backend implements ExecutionBackend {
       throw new ExecutionFailure(
         row.rejection === 'authentication' ? 'authentication' : 'permission',
       );
-    if (!this.journal.claim(row.id))
+    // Normal dispatch never replays an uncertain intent; explicit reconciliation owns recovery.
+    if (row.phase !== 'prepared')
       return { kind: 'uncertain', operationId: row.id, reason: 'in-flight' };
-    return this.execute(row, signal);
+    const claim = this.journal.claim(row.id);
+    if (!claim)
+      return { kind: 'uncertain', operationId: row.id, reason: 'in-flight' };
+    return this.execute(claim, signal);
   }
   private verifyObservation(row: Operation, observation: Observation) {
     if (observation.state === 'uncertain')
@@ -218,14 +224,19 @@ export class T3Backend implements ExecutionBackend {
     }
   }
   private async execute(
-    row: Operation,
+    row: ClaimedOperation,
     signal?: AbortSignal,
   ): Promise<Dispatch> {
+    const deadline = AbortSignal.timeout(EXECUTION_ATTEMPT_MS);
+    signal =
+      signal === undefined ? deadline : AbortSignal.any([signal, deadline]);
     let effectReturned = false;
     try {
       const args = z
         .record(z.string(), z.unknown())
         .parse(JSON.parse(row.payload));
+      signal.throwIfAborted();
+      if (!this.journal.owned(row)) return this.fenced(row.id);
       const raw = await this.tools.call(
         row.tool,
         { ...args, clientRequestId: row.requestId },
@@ -266,10 +277,10 @@ export class T3Backend implements ExecutionBackend {
       }
       // A response is not enough: bind the journal only after an authoritative read succeeds.
       effectReturned = true;
-      this.journal.remember(row.id, ref);
+      if (!this.journal.remember(row, ref)) return this.fenced(row.id);
       const observation = await this.read(ref, undefined, signal);
       this.verifyObservation(row, observation);
-      this.journal.known(row.id, ref);
+      if (!this.journal.known(row, ref)) return this.fenced(row.id);
       return { kind: 'known', reference: ref };
     } catch (error) {
       if (
@@ -277,10 +288,10 @@ export class T3Backend implements ExecutionBackend {
         error instanceof ExecutionFailure &&
         (error.kind === 'permission' || error.kind === 'authentication')
       ) {
-        this.journal.rejected(row.id, error.kind);
+        if (!this.journal.rejected(row, error.kind)) return this.fenced(row.id);
         throw error;
       }
-      this.journal.uncertain(row.id);
+      if (!this.journal.uncertain(row)) return this.fenced(row.id);
       return {
         kind: 'uncertain',
         operationId: row.id,
@@ -293,14 +304,18 @@ export class T3Backend implements ExecutionBackend {
       };
     }
   }
+  private fenced(id: string): Dispatch {
+    return { kind: 'uncertain', operationId: id, reason: 'in-flight' };
+  }
   async reconcile(
     intent: Intent,
     operationId: string,
     signal?: AbortSignal,
   ): Promise<Dispatch> {
     this.permitted();
+    if (signal?.aborted) throw new ExecutionFailure('cancelled');
     Intent.parse(intent);
-    const row = this.journal.get(operationId);
+    let row = this.journal.get(operationId);
     if (
       row.scope !== this.scope() ||
       row.actor !== intent.actor ||
@@ -311,7 +326,7 @@ export class T3Backend implements ExecutionBackend {
       .record(z.string(), z.unknown())
       .parse(JSON.parse(row.payload));
     // Fingerprint also binds retries to the exact original OAuth authority; reauthorization cannot silently duplicate work.
-    this.journal.prepare(
+    row = this.journal.prepare(
       this.scope(),
       intent,
       row.tool,
@@ -327,14 +342,21 @@ export class T3Backend implements ExecutionBackend {
       await this.read(reference, undefined, signal);
       return { kind: 'known', reference };
     }
-    if (row.reference !== null) {
+    const claim = this.journal.claim(row.id, true);
+    if (!claim) return this.fenced(row.id);
+    // Claim returns the current reference atomically; an active dispatcher cannot be raced.
+    if (claim.reference !== null) {
+      const deadline = AbortSignal.timeout(EXECUTION_ATTEMPT_MS);
+      signal =
+        signal === undefined ? deadline : AbortSignal.any([signal, deadline]);
       try {
-        const reference = Reference.parse(JSON.parse(row.reference));
+        const reference = Reference.parse(JSON.parse(claim.reference));
         const observation = await this.read(reference, undefined, signal);
-        this.verifyObservation(row, observation);
-        this.journal.known(row.id, reference);
+        this.verifyObservation(claim, observation);
+        if (!this.journal.known(claim, reference)) return this.fenced(row.id);
         return { kind: 'known', reference };
       } catch {
+        if (!this.journal.uncertain(claim)) return this.fenced(row.id);
         return {
           kind: 'uncertain',
           operationId: row.id,
@@ -343,7 +365,7 @@ export class T3Backend implements ExecutionBackend {
       }
     }
     // Explicit reconciliation replays only the persisted command/key on a version that advertises idempotency.
-    return this.execute(row, signal);
+    return this.execute(claim, signal);
   }
   async read(
     reference: Reference,

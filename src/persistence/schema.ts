@@ -89,6 +89,9 @@ export const executionOperations = sqliteTable(
     }).notNull(),
     reference: text('reference'),
     rejection: text('rejection'),
+    generation: integer('generation').notNull().default(0),
+    claimToken: text('claim_token'),
+    leaseUntil: integer('lease_until').notNull().default(0),
   },
   (t) => [
     uniqueIndex('execution_intent_scope').on(t.scope, t.actor, t.operationKey),
