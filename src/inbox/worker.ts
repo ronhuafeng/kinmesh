@@ -197,7 +197,7 @@ export async function deliver(
       frozen.input.model,
       signal,
     );
-    if (result.kind === 'waiting' || result.kind === 'uncertain') {
+    if ('reason' in result) {
       store.inbox.defer(claim, result.kind, result.reason);
       return;
     }
