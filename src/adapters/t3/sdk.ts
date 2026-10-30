@@ -86,6 +86,7 @@ export class SdkWire implements Wire {
   ): Promise<unknown> {
     try {
       const client = await this.connected();
+      signal?.throwIfAborted();
       return await client.callTool({ name, arguments: args }, undefined, {
         timeout: timeoutMs,
         ...(signal === undefined ? {} : { signal }),

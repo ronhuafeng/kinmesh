@@ -36,6 +36,13 @@
       "when": 1793337066682,
       "tag": "0004_pale_thanos",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "6",
+      "when": 1793346085262,
+      "tag": "0005_lame_juggernaut",
+      "breakpoints": true
     }
   ]
 }

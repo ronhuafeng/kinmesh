@@ -1,5 +1,5 @@
 import { createHash, randomUUID } from 'node:crypto';
-import { and, eq } from 'drizzle-orm';
+import { and, eq, or, lte, gt, sql } from 'drizzle-orm';
 import type { BetterSQLite3Database } from 'drizzle-orm/better-sqlite3';
 import { z } from 'zod';
 import * as schema from './schema.js';
@@ -17,13 +17,36 @@ const Row = z.object({
   phase: z.enum(['prepared', 'dispatching', 'uncertain', 'known', 'rejected']),
   reference: z.string().nullable(),
   rejection: z.string().nullable(),
+  generation: z.number().int().nonnegative(),
+  claimToken: z.string().nullable(),
+  leaseUntil: z.number().int().nonnegative(),
 });
 export type Operation = z.infer<typeof Row>;
+const Claimed = Row.extend({
+  claimToken: z.uuid(),
+  leaseUntil: z.number().int().positive(),
+});
+export type ClaimedOperation = z.infer<typeof Claimed>;
+// SDK mutations default to 30s; an entire attempt is capped at 60s. No lease renewal.
+export const EXECUTION_LEASE_MS = 120_000;
+export const EXECUTION_ATTEMPT_MS = 60_000;
 export function operationJournal(db: BetterSQLite3Database<typeof schema>) {
   const table = schema.executionOperations;
   function get(id: string) {
     return Row.parse(db.select().from(table).where(eq(table.id, id)).get());
   }
+  // Evaluate expiry inside SQLite, including after waiting for another writer.
+  const now = sql`cast(unixepoch('subsec') * 1000 as integer)`;
+  function fence(row: ClaimedOperation) {
+    return and(
+      eq(table.id, row.id),
+      eq(table.phase, 'dispatching'),
+      eq(table.generation, row.generation),
+      eq(table.claimToken, row.claimToken),
+      gt(table.leaseUntil, now),
+    );
+  }
+  const released = { claimToken: null, leaseUntil: 0 };
   return {
     prepare(
       scope: string,
@@ -72,41 +95,80 @@ export function operationJournal(db: BetterSQLite3Database<typeof schema>) {
       );
     },
     get,
-    claim(id: string) {
+    // Recovery eligibility belongs in this CAS, not in a preceding (possibly stale) read.
+    claim(id: string, recover = false) {
+      const row = db
+        .update(table)
+        .set({
+          phase: 'dispatching',
+          generation: sql`${table.generation}+1`,
+          claimToken: randomUUID(),
+          leaseUntil: sql`${now} + ${EXECUTION_LEASE_MS}`,
+        })
+        .where(
+          and(
+            eq(table.id, id),
+            recover
+              ? or(
+                  eq(table.phase, 'prepared'),
+                  eq(table.phase, 'uncertain'),
+                  and(
+                    eq(table.phase, 'dispatching'),
+                    lte(table.leaseUntil, now),
+                  ),
+                )
+              : eq(table.phase, 'prepared'),
+          ),
+        )
+        .returning()
+        .all()[0];
+      return row === undefined ? undefined : Claimed.parse(row);
+    },
+    owned(row: ClaimedOperation) {
+      return (
+        db.select({ id: table.id }).from(table).where(fence(row)).get() !==
+        undefined
+      );
+    },
+    uncertain(row: ClaimedOperation) {
       return (
         db
           .update(table)
-          .set({ phase: 'dispatching' })
-          .where(and(eq(table.id, id), eq(table.phase, 'prepared')))
+          .set({ phase: 'uncertain', ...released })
+          .where(fence(row))
           .run().changes === 1
       );
     },
-    uncertain(id: string) {
-      db.update(table)
-        .set({ phase: 'uncertain' })
-        .where(and(eq(table.id, id), eq(table.phase, 'dispatching')))
-        .run();
+    remember(row: ClaimedOperation, reference: Reference) {
+      return (
+        db
+          .update(table)
+          .set({ reference: JSON.stringify(Reference.parse(reference)) })
+          .where(fence(row))
+          .run().changes === 1
+      );
     },
-    remember(id: string, reference: Reference) {
-      db.update(table)
-        .set({ reference: JSON.stringify(Reference.parse(reference)) })
-        .where(eq(table.id, id))
-        .run();
+    known(row: ClaimedOperation, reference: Reference) {
+      return (
+        db
+          .update(table)
+          .set({
+            phase: 'known',
+            reference: JSON.stringify(Reference.parse(reference)),
+            ...released,
+          })
+          .where(fence(row))
+          .run().changes === 1
+      );
     },
-    known(id: string, reference: Reference) {
-      db.update(table)
-        .set({
-          phase: 'known',
-          reference: JSON.stringify(Reference.parse(reference)),
-        })
-        .where(eq(table.id, id))
-        .run();
-    },
-    rejected(id: string, kind: 'authentication' | 'permission') {
-      db.update(table)
-        .set({ phase: 'rejected', rejection: kind })
-        .where(eq(table.id, id))
-        .run();
+    rejected(row: ClaimedOperation, kind: 'authentication' | 'permission') {
+      return (
+        db
+          .update(table)
+          .set({ phase: 'rejected', rejection: kind, ...released })
+          .where(fence(row))
+          .run().changes === 1
+      );
     },
   };
 }
