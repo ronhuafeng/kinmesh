@@ -359,6 +359,8 @@ await test('AUTH FILES: exclusive new publication, private directory/file checks
     });
     const foreign = join(f.directory, 'foreign.json');
     writeFileSync(foreign, 'private-marker', { mode: 0o644 });
+    // File creation respects the runner's umask; make the unsafe-mode fixture explicit.
+    chmodSync(foreign, 0o644);
     assert.throws(() => {
       saveCredential(foreign, value);
     });
