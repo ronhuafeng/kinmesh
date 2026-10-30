@@ -5,8 +5,14 @@ import {
   writeFileSync,
   renameSync,
   rmSync,
+  openSync,
+  fstatSync,
+  closeSync,
+  constants,
+  linkSync,
+  realpathSync,
 } from 'node:fs';
-import { dirname } from 'node:path';
+import { dirname, resolve } from 'node:path';
 import { createHash, randomUUID } from 'node:crypto';
 import { z } from 'zod';
 import {
@@ -49,31 +55,64 @@ function approvedScopes(credential: Credential) {
     throw new ExecutionFailure('authentication');
 }
 export function loadCredential(path: string, endpoint: string): Credential {
+  let fd: number | undefined;
   try {
-    const stat = lstatSync(path);
+    fd = openSync(
+      path,
+      constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK,
+    );
+    const stat = fstatSync(fd);
     if (
       !stat.isFile() ||
-      (stat.mode & 0o077) !== 0 ||
+      stat.size > 65536 ||
+      (stat.mode & 0o177) !== 0 ||
       (process.getuid !== undefined && stat.uid !== process.getuid())
     )
       throw new Error('Unsafe credential file');
-    const data = Credential.parse(JSON.parse(readFileSync(path, 'utf8')));
+    const data = Credential.parse(JSON.parse(readFileSync(fd, 'utf8')));
     if (data.endpoint !== Endpoint.parse(endpoint))
       throw new Error('Wrong endpoint');
     approvedScopes(data);
     return data;
   } catch {
     throw new ExecutionFailure('authentication');
+  } finally {
+    if (fd !== undefined) closeSync(fd);
   }
 }
-export function saveCredential(path: string, value: Credential) {
+export function credentialDestination(path: string, replace = false) {
+  mkdirSync(dirname(path), { recursive: true, mode: 0o700 });
+  const directory = lstatSync(dirname(path));
+  if (
+    !directory.isDirectory() ||
+    directory.uid !== process.getuid?.() ||
+    (directory.mode & 0o077) !== 0 ||
+    realpathSync(dirname(path)) !== resolve(dirname(path))
+  )
+    throw new ExecutionFailure('authentication');
+  const file = lstatSync(path, { throwIfNoEntry: false });
+  if (
+    file &&
+    (!replace ||
+      !file.isFile() ||
+      file.uid !== process.getuid() ||
+      (file.mode & 0o177) !== 0)
+  )
+    throw new ExecutionFailure('authentication');
+}
+export function saveCredential(
+  path: string,
+  value: Credential,
+  options: { replace: boolean } = { replace: true },
+) {
   const data = Credential.parse(value);
   approvedScopes(data);
-  mkdirSync(dirname(path), { recursive: true, mode: 0o700 });
+  credentialDestination(path, options.replace);
   const temporary = path + '.' + randomUUID() + '.tmp';
   try {
     writeFileSync(temporary, JSON.stringify(data), { mode: 0o600, flag: 'wx' });
-    renameSync(temporary, path);
+    if (options.replace) renameSync(temporary, path);
+    else linkSync(temporary, path); // Atomic no-overwrite publication for a newly approved CLI grant.
   } finally {
     rmSync(temporary, { force: true });
   }
