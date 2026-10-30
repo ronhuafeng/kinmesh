@@ -58,8 +58,13 @@ export function App() {
       })
       .catch((cause: unknown) => {
         if (controller.signal.aborted) return;
-        if (cause instanceof HttpError && cause.status === 401) {
+        if (
+          cause instanceof HttpError &&
+          (cause.status === 401 || cause.status === 403)
+        ) {
+          // Auth loss is not a transient outage: purge the protected snapshot.
           setData(null);
+          setError(cause.status === 403 ? cause.message : '');
           setStatus('signedout');
         } else {
           setError(
@@ -90,7 +95,13 @@ export function App() {
     setSelection({ channel, topic: '' });
     setCursors({});
   };
-  if (status === 'signedout') return <Auth onLogin={refresh} />;
+  if (status === 'signedout')
+    return (
+      <>
+        {error && <Notice>{error} Sign in with an authorized account.</Notice>}
+        <Auth onLogin={refresh} />
+      </>
+    );
   if (!data)
     return (
       <main className="initial-state">
