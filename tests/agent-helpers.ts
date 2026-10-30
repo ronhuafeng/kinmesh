@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import { z } from 'zod';
+import type { Config } from '../src/server/config.js';
 import { createApp } from '../src/server/app.js';
 import {
   Agent,
@@ -37,8 +38,9 @@ export const correlationInput = {
   invocationId: 'invocation-one',
 } as const;
 export const Issued = z.strictObject({ grant: Grant, token: z.string() });
-export async function agentFixture() {
+export async function agentFixture(overrides: Partial<Config> = {}) {
   const f = fixture();
+  f.config = { ...f.config, ...overrides };
   const store = f.open();
   const app = await createApp(f.config, store);
   const input = {

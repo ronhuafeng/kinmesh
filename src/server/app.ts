@@ -185,7 +185,7 @@ export async function createApp(
   registerAgents(app, store);
   registerCommunication(app, store);
   registerTasks(app, store);
-  registerWorkspace(app, store);
+  registerWorkspace(app, store, config);
   await registerWeb(app);
   await app.register((protectedApi, _options, done) => {
     protectedApi.get('/api/me', (request) => {

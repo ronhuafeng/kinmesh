@@ -53,6 +53,8 @@ export const Read = z.object({
   thread: z.object({
     threadId: z.string(),
     projectId: z.string(),
+    /** Optional native web link; may be custom or absent for other clients. */
+    link: z.string().optional(),
     status: Status,
     latestRunId: z.string().nullable(),
     activeRunId: z.string().nullable(),
@@ -134,10 +136,7 @@ export class ValidatedTools {
   constructor(
     readonly wire: Wire,
     discovered: unknown,
-  ) {
-    const tools = ToolList.parse(discovered).tools;
-    const ajv = new Ajv({ strict: false, allErrors: false });
-    for (const name of [
+    names: readonly string[] = [
       't3_environment_read',
       'orchestrator_capabilities',
       't3_thread_launch',
@@ -146,7 +145,11 @@ export class ValidatedTools {
       't3_thread_wait',
       't3_thread_interrupt',
       't3_thread_organize',
-    ]) {
+    ],
+  ) {
+    const tools = ToolList.parse(discovered).tools;
+    const ajv = new Ajv({ strict: false, allErrors: false });
+    for (const name of names) {
       const tool = tools.find((t) => t.name === name);
       if (
         tool === undefined ||

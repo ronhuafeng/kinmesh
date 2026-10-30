@@ -66,3 +66,49 @@ await test('new session key rejects existing encrypted session', async () => {
     f.cleanup();
   }
 });
+
+await test('native observer configuration is optional, paired and strictly endpoint-validated', () => {
+  const env = {
+    KINMESH_SETUP_TOKEN: 'a'.repeat(64),
+    KINMESH_SESSION_KEY: 'b'.repeat(64),
+  };
+  assert.equal(loadConfig(env).nativeT3, undefined);
+  assert.throws(() =>
+    loadConfig({ ...env, KINMESH_T3_ENDPOINT: 'https://t3.example/mcp' }),
+  );
+  assert.throws(() =>
+    loadConfig({ ...env, KINMESH_T3_AUTH_FILE: '/private/observer.json' }),
+  );
+  for (const endpoint of [
+    'http://remote.example/mcp',
+    'https://user:secret@t3.example/mcp',
+    'https://t3.example/wrong',
+    'https://t3.example/mcp?secret=x',
+    't3-thread://thread',
+    'https://t3.example/mcp?',
+    'https://t3.example/mcp#',
+    ' https://t3.example/mcp',
+  ])
+    assert.throws(() =>
+      loadConfig({
+        ...env,
+        KINMESH_T3_ENDPOINT: endpoint,
+        KINMESH_T3_AUTH_FILE: '/private/observer.json',
+      }),
+    );
+  assert.throws(() =>
+    loadConfig({
+      ...env,
+      KINMESH_T3_ENDPOINT: 'https://t3.example/mcp',
+      KINMESH_T3_AUTH_FILE: '',
+    }),
+  );
+  assert.deepEqual(
+    loadConfig({
+      ...env,
+      KINMESH_T3_ENDPOINT: 'https://t3.example/mcp',
+      KINMESH_T3_AUTH_FILE: '/private/observer.json',
+    }).nativeT3,
+    { endpoint: 'https://t3.example/mcp', authFile: '/private/observer.json' },
+  );
+});

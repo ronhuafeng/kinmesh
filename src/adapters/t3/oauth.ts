@@ -22,19 +22,25 @@ import {
 import type { OAuthClientProvider } from '@modelcontextprotocol/sdk/client/auth.js';
 import { ExecutionFailure } from '../../domain/execution.js';
 
-export const Endpoint = z.url().refine((value) => {
-  const u = new URL(value);
-  return (
-    u.pathname === '/mcp' &&
-    u.search === '' &&
-    u.hash === '' &&
-    u.username === '' &&
-    u.password === '' &&
-    (u.protocol === 'https:' ||
-      (u.protocol === 'http:' &&
-        ['127.0.0.1', 'localhost', '[::1]'].includes(u.hostname)))
-  );
-});
+export const Endpoint = z
+  .string()
+  .refine((value) => value === value.trim())
+  .pipe(z.url())
+  .refine((value) => {
+    const u = new URL(value);
+    return (
+      u.href === value &&
+      !/[\\?#\s]/u.test(value) &&
+      u.pathname === '/mcp' &&
+      u.search === '' &&
+      u.hash === '' &&
+      u.username === '' &&
+      u.password === '' &&
+      (u.protocol === 'https:' ||
+        (u.protocol === 'http:' &&
+          ['127.0.0.1', 'localhost', '[::1]'].includes(u.hostname)))
+    );
+  });
 export const Credential = z.object({
   endpoint: Endpoint,
   environmentId: z.string().min(1),
