@@ -268,7 +268,12 @@ await test('MOCK native terminal failure without assistant posts truthful notice
       pendingRequestCount: 1,
     });
     f.wire.values.t3_thread_read = completed;
-    const actual = await assistantResult(backend, reference, launch.model, signal());
+    const actual = await assistantResult(
+      backend,
+      reference,
+      launch.model,
+      signal(),
+    );
     if (actual.kind !== 'result')
       throw new Error('Expected the exact completed Run assistant result');
     assert.equal(actual.result.reference.runId, reference.runId);
