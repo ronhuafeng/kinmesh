@@ -1,0 +1,261 @@
+{
+  "t3_environment_read": {
+    "environmentId": "fixture-id-1",
+    "label": "fixture-redacted",
+    "serverVersion": "0.1.5",
+    "platform": {
+      "os": "linux",
+      "arch": "x64"
+    },
+    "preferences": {
+      "newWorktreesStartFromOrigin": true,
+      "enableProviderUpdateChecks": true,
+      "backgroundActivity": {
+        "profile": "balanced"
+      },
+      "sourceControlWritingStyle": {
+        "mode": "repo_conventions",
+        "followChangeRequestTemplates": true,
+        "customInstructions": "fixture-redacted",
+        "truncated": false
+      }
+    }
+  },
+  "orchestrator_capabilities": {
+    "parentThreadId": null,
+    "inheritedProviderInstanceId": null,
+    "inheritedModel": null,
+    "inheritedOptions": [],
+    "runtimeMode": "approval-required",
+    "interactionMode": "default",
+    "providers": [
+      {
+        "providerInstanceId": "codex",
+        "driverKind": "codex",
+        "displayName": "Codex",
+        "models": [
+          {
+            "id": "gpt-6.1-sol",
+            "options": [
+              {
+                "id": "fixture-id-2",
+                "values": ["low", "medium", "high", "xhigh", "max", "ultra"],
+                "default": "low"
+              },
+              {
+                "id": "fixture-id-3",
+                "values": ["default", "priority"],
+                "default": "default"
+              }
+            ]
+          },
+          {
+            "id": "fixture-id-4",
+            "options": [
+              {
+                "id": "fixture-id-2",
+                "values": ["low", "medium", "high", "xhigh", "max", "ultra"],
+                "default": "medium"
+              },
+              {
+                "id": "fixture-id-3",
+                "values": ["default", "priority"],
+                "default": "default"
+              }
+            ]
+          },
+          {
+            "id": "fixture-id-5",
+            "options": [
+              {
+                "id": "fixture-id-2",
+                "values": ["low", "medium", "high", "xhigh", "max"],
+                "default": "medium"
+              },
+              {
+                "id": "fixture-id-3",
+                "values": ["default", "priority"],
+                "default": "priority"
+              }
+            ]
+          },
+          {
+            "id": "fixture-id-6",
+            "label": "fixture-redacted",
+            "options": [
+              {
+                "id": "fixture-id-2",
+                "values": ["low", "medium", "high", "xhigh", "max", "ultra"],
+                "default": "low"
+              },
+              {
+                "id": "fixture-id-3",
+                "values": ["default", "priority"],
+                "default": "default"
+              }
+            ]
+          }
+        ],
+        "omittedModels": 5,
+        "canRunChildTask": true,
+        "canRunCrossProviderChildTask": true,
+        "constraints": []
+      }
+    ],
+    "features": {
+      "appOwnedSubagents": true,
+      "asyncPolling": true,
+      "cancellation": true,
+      "batchThreadCreation": true,
+      "threadManagement": true,
+      "incrementalThreadRead": true,
+      "scheduledTasks": true,
+      "maxBatchThreads": 20
+    }
+  },
+  "t3_thread_launch": {
+    "threadId": "fixture-id-7",
+    "projectId": "fixture-id-8",
+    "modelSelection": {
+      "instanceId": "codex",
+      "model": "gpt-6.1-sol"
+    },
+    "runId": "fixture-id-9",
+    "status": "completed"
+  },
+  "t3_thread_read": {
+    "thread": {
+      "threadId": "fixture-id-7",
+      "projectId": "fixture-id-8",
+      "title": "fixture-redacted",
+      "createdBy": "agent",
+      "creationSource": "mcp",
+      "status": "interrupted",
+      "latestRunId": "fixture-id-10",
+      "activeRunId": null,
+      "providerInstanceId": "codex",
+      "model": "gpt-6.1-sol",
+      "runtimeMode": "approval-required",
+      "interactionMode": "default",
+      "linkedPullRequest": null,
+      "pullRequests": [],
+      "titleRegeneration": null,
+      "branch": null,
+      "worktreePath": "/fixture/disposable",
+      "parentThreadId": null,
+      "relationshipToParent": null,
+      "runCount": 2,
+      "itemCount": 8,
+      "pendingRequestCount": 0,
+      "archived": true,
+      "settled": false,
+      "settledAt": null,
+      "snoozed": false,
+      "snoozedUntil": null,
+      "createdAt": "2026-10-30T04:06:15.720Z",
+      "updatedAt": "2026-10-30T04:06:21.236Z"
+    },
+    "recentRuns": [
+      {
+        "runId": "fixture-id-10",
+        "ordinal": 2,
+        "status": "interrupted",
+        "providerInstanceId": "codex",
+        "model": "gpt-6.1-sol",
+        "requestedAt": "2026-10-30T04:06:19.427Z",
+        "startedAt": "2026-10-30T04:06:19.464Z",
+        "completedAt": "2026-10-30T04:06:19.727Z"
+      },
+      {
+        "runId": "fixture-id-9",
+        "ordinal": 1,
+        "status": "completed",
+        "providerInstanceId": "codex",
+        "model": "gpt-6.1-sol",
+        "requestedAt": "2026-10-30T04:06:15.729Z",
+        "startedAt": "2026-10-30T04:06:15.965Z",
+        "completedAt": "2026-10-30T04:06:19.187Z"
+      }
+    ],
+    "items": [
+      {
+        "position": 0,
+        "visibility": "local",
+        "sourceThreadId": "fixture-id-7",
+        "itemId": "fixture-id-11",
+        "runId": "fixture-id-9",
+        "messageId": "fixture-id-7",
+        "createdBy": "agent",
+        "creationSource": "mcp",
+        "type": "user_message",
+        "status": "completed",
+        "title": null,
+        "text": "fixture-redacted",
+        "textTruncated": false,
+        "nextTextOffset": null,
+        "updatedAt": "2026-10-30T04:06:15.729Z"
+      },
+      {
+        "position": 2,
+        "visibility": "local",
+        "sourceThreadId": "fixture-id-7",
+        "itemId": "fixture-id-12",
+        "runId": "fixture-id-9",
+        "messageId": "fixture-id-13",
+        "createdBy": "agent",
+        "creationSource": "provider",
+        "type": "assistant_message",
+        "status": "completed",
+        "title": null,
+        "text": "fixture-redacted",
+        "textTruncated": false,
+        "nextTextOffset": null,
+        "updatedAt": "2026-10-30T04:06:19.139Z"
+      },
+      {
+        "position": 4,
+        "visibility": "local",
+        "sourceThreadId": "fixture-id-7",
+        "itemId": "fixture-id-14",
+        "runId": "fixture-id-10",
+        "messageId": "fixture-id-15",
+        "createdBy": "agent",
+        "creationSource": "mcp",
+        "type": "user_message",
+        "status": "completed",
+        "title": null,
+        "text": "fixture-redacted",
+        "textTruncated": false,
+        "nextTextOffset": null,
+        "updatedAt": "2026-10-30T04:06:19.427Z"
+      }
+    ],
+    "nextPosition": 4,
+    "hasMore": false
+  },
+  "t3_thread_wait": {
+    "threadId": "fixture-id-7",
+    "runId": "fixture-id-9",
+    "status": "completed",
+    "timedOut": false
+  },
+  "t3_thread_send": {
+    "threadId": "fixture-threadId",
+    "messageId": "fixture-messageId",
+    "runId": "fixture-runId",
+    "status": "interrupted",
+    "delivery": "started"
+  },
+  "t3_thread_interrupt": {
+    "threadId": "fixture-id-7",
+    "runId": null,
+    "status": "no_active_run"
+  },
+  "native-denial": {
+    "isError": true,
+    "structuredContent": {
+      "code": "capability_denied"
+    },
+    "content": []
+  }
+}

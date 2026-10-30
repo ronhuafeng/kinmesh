@@ -1,3 +1,4 @@
+import { operationJournal } from './operations.js';
 import Database from 'better-sqlite3';
 import { drizzle } from 'drizzle-orm/better-sqlite3';
 import { migrate } from 'drizzle-orm/better-sqlite3/migrator';
@@ -35,6 +36,7 @@ export function openStore(path: string) {
     throw error;
   }
   return {
+    operations: operationJournal(db),
     close: () => {
       if (sqlite.open) sqlite.close();
     },

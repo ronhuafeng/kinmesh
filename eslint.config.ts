@@ -17,5 +17,13 @@ export default defineConfig(
       '@typescript-eslint/no-unsafe-type-assertion': 'error',
     },
   },
-  { ignores: ['node_modules/**', 'coverage/**', 'drizzle/**'] },
+  {
+    ignores: [
+      'node_modules/**',
+      'coverage/**',
+      'drizzle/**',
+      '.store/**',
+      'dist/**',
+    ],
+  },
 );

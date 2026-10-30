@@ -67,3 +67,29 @@ export const bootstrap = sqliteTable(
   },
   (t) => [check('one_bootstrap', sql`${t.singleton} = 1`)],
 );
+
+export const executionOperations = sqliteTable(
+  'execution_operations',
+  {
+    id: text('id').primaryKey(),
+    scope: text('scope').notNull(),
+    actor: text('actor').notNull(),
+    operationKey: text('operation_key').notNull(),
+    requestId: text('request_id').notNull().unique(),
+    fingerprint: text('fingerprint').notNull(),
+    tool: text('tool').notNull(),
+    payload: text('payload').notNull(),
+    phase: text('phase', {
+      enum: ['prepared', 'dispatching', 'uncertain', 'known', 'rejected'],
+    }).notNull(),
+    reference: text('reference'),
+    rejection: text('rejection'),
+  },
+  (t) => [
+    uniqueIndex('execution_intent_scope').on(t.scope, t.actor, t.operationKey),
+    check(
+      'execution_phase',
+      sql`${t.phase} IN ('prepared','dispatching','uncertain','known','rejected')`,
+    ),
+  ],
+);
