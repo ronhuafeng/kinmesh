@@ -78,12 +78,7 @@ await test(
       delete env.KINMESH_INBOX_CONFIG;
       child = spawn(
         process.execPath,
-        [
-          '--env-file-if-exists=.env',
-          '--import',
-          'tsx',
-          'src/server/main.ts',
-        ],
+        ['--env-file-if-exists=.env', '--import', 'tsx', 'src/server/main.ts'],
         { cwd: directory, env, stdio: 'ignore' },
       );
       let ready = false;
