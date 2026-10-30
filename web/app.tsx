@@ -64,6 +64,15 @@ export function App() {
         ) {
           // Auth loss is not a transient outage: purge the protected snapshot.
           setData(null);
+          // Drop stale channel and pagination identifiers before another user signs in.
+          setSelection((previous) => {
+            if (!previous.channel && !previous.topic) return previous;
+            return { channel: '', topic: '' };
+          });
+          setCursors((previous) => {
+            if (Object.keys(previous).length === 0) return previous;
+            return {};
+          });
           setError(cause.status === 403 ? cause.message : '');
           setStatus('signedout');
         } else {
