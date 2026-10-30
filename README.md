@@ -26,6 +26,8 @@ npm run onboard     # masked password prompt; creates owner, team and general ch
 
 The service applies migrations before listening. Keep `drizzle/` beside `src/` when running from source; `npm start` requires the TypeScript runner installed by `npm ci`, including development dependencies. Keep `.env`, database/WAL files and backups private, and back up the database before upgrades.
 
+For managed deployments that inject secrets into the process environment, `npm start` and `npm run dev` also work without a local `.env` file. The required `KINMESH_SETUP_TOKEN` and `KINMESH_SESSION_KEY` must still be supplied as valid private 64-character lowercase hex values; missing or malformed credentials fail startup. The documented `npm run setup` → `npm run onboard` path remains the recommended local-first flow, and `npm run onboard` still reads `.env`. Do not put secrets in arguments, the repository or CI logs.
+
 `GET /health` reports database readiness and, when configured, supervised Inbox process readiness (200 when ready, 503 otherwise). It does not verify T3 OAuth or Provider capability.
 
 ## Use the HTTP APIs
