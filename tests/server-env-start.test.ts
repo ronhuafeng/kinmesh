@@ -14,6 +14,7 @@ import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { test } from 'node:test';
 import { setTimeout as delay } from 'node:timers/promises';
+import { z } from 'zod';
 
 async function availablePort(): Promise<number> {
   const server = createServer();
@@ -21,19 +22,24 @@ async function availablePort(): Promise<number> {
   await once(server, 'listening');
   const address = server.address();
   assert.ok(address !== null && typeof address !== 'string');
-  await new Promise<void>((resolveClose, reject) =>
-    server.close((error) =>
-      error === undefined ? resolveClose() : reject(error),
-    ),
-  );
+  await new Promise<void>((resolveClose, reject) => {
+    server.close((error) => {
+      if (error !== undefined) reject(error);
+      else resolveClose();
+    });
+  });
   return address.port;
 }
 
+function running(child: ChildProcess): boolean {
+  return child.exitCode === null && child.signalCode === null;
+}
+
 async function stop(child: ChildProcess): Promise<void> {
-  if (child.exitCode !== null || child.signalCode !== null) return;
+  if (!running(child)) return;
   child.kill('SIGTERM');
   await Promise.race([once(child, 'exit'), delay(2000)]);
-  if (child.exitCode === null && child.signalCode === null) {
+  if (running(child)) {
     child.kill('SIGKILL');
     await once(child, 'exit');
   }
@@ -49,15 +55,18 @@ await test(
       copyFileSync(resolve('package.json'), join(directory, 'package.json'));
       for (const name of ['src', 'node_modules', 'drizzle'])
         symlinkSync(resolve(name), join(directory, name), 'dir');
-      const packageFile = JSON.parse(
+      const packageJson: unknown = JSON.parse(
         readFileSync(join(directory, 'package.json'), 'utf8'),
-      ) as { scripts?: { start?: string } };
+      );
+      const packageFile = z
+        .object({ scripts: z.object({ start: z.string() }) })
+        .parse(packageJson);
       assert.equal(
         packageFile.scripts?.start,
         'node --env-file-if-exists=.env --import tsx src/server/main.ts',
       );
       const port = await availablePort();
-      const origin = `http://127.0.0.1:${port}`;
+      const origin = 'http://127.0.0.1:' + String(port);
       const env: NodeJS.ProcessEnv = {
         ...process.env,
         KINMESH_SETUP_TOKEN: randomBytes(32).toString('hex'),
