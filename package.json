@@ -23,13 +23,16 @@
     "t3:auth": "node --env-file-if-exists=.env --import tsx scripts/t3-auth.ts",
     "test:live": "node --env-file-if-exists=.env --import tsx scripts/t3-live.ts",
     "build": "tsc --project tsconfig.build.json && node --import tsx scripts/stage-migrations.ts",
-    "release:check": "npm run check && npm run format:check && npm run build && npm audit --omit=dev && npm run test:live && npm run test:team-live",
+    "release:check": "npm run check && npm run format:check && npm run build && npm audit --omit=dev && npm run test:live && npm run test:team-live && npm run test:inbox-live",
     "test:contract": "node --import tsx --test tests/t3-contract.test.ts tests/t3-recovery.test.ts tests/t3-auth.test.ts",
     "team:mcp": "node --env-file-if-exists=.env --import tsx src/team-mcp/main.ts",
     "team:smoke": "node --env-file-if-exists=.env --import tsx scripts/team-mcp-smoke.ts",
     "team:live:prepare": "node --env-file-if-exists=.env --import tsx scripts/team-live-prepare.ts",
     "test:team-mcp": "node --import tsx --test tests/team-mcp.test.ts",
-    "test:team-live": "node --env-file-if-exists=.env --import tsx scripts/team-t3-live.ts"
+    "test:team-live": "node --env-file-if-exists=.env --import tsx scripts/team-t3-live.ts",
+    "inbox:worker": "node --env-file-if-exists=.env --import tsx src/inbox/main.ts",
+    "inbox:status": "node --env-file-if-exists=.env --import tsx src/inbox/main.ts status",
+    "test:inbox-live": "node --env-file-if-exists=.env --import tsx scripts/inbox-t3-live.ts"
   },
   "dependencies": {
     "@fastify/rate-limit": "^11.2.1",

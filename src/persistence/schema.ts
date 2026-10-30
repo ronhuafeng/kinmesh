@@ -435,3 +435,123 @@ export const taskExecutions = sqliteTable(
     index('task_execution_order').on(t.taskId, t.position),
   ],
 );
+
+export const inboxCauses = sqliteTable(
+  'inbox_causes',
+  {
+    eventId: text('event_id')
+      .primaryKey()
+      .references(() => communicationOutbox.id),
+    rootId: text('root_id')
+      .notNull()
+      .references(() => communicationOutbox.id),
+    depth: integer('depth').notNull(),
+  },
+  (t) => [check('inbox_depth', sql`${t.depth} BETWEEN 0 AND 5`)],
+);
+export const agentInbox = sqliteTable(
+  'agent_inbox',
+  {
+    position: integer('position').primaryKey({ autoIncrement: true }),
+    id: text('id').notNull().unique(),
+    eventId: text('event_id')
+      .notNull()
+      .references(() => communicationOutbox.id),
+    teamId: text('team_id').notNull(),
+    channelId: text('channel_id').notNull(),
+    agentId: text('agent_id').notNull(),
+    rootId: text('root_id')
+      .notNull()
+      .references(() => communicationOutbox.id),
+    depth: integer('depth').notNull(),
+    taskId: text('task_id'),
+    messageId: text('message_id'),
+    topicId: text('topic_id'),
+    state: text('state').notNull(),
+    generation: integer('generation').notNull().default(0),
+    claimToken: text('claim_token'),
+    leaseUntil: integer('lease_until').notNull().default(0),
+    nextAttempt: integer('next_attempt').notNull(),
+    attempts: integer('attempts').notNull().default(0),
+    expiresAt: integer('expires_at').notNull(),
+    launch: text('launch'),
+    operationId: text('operation_id'),
+    reference: text('reference'),
+    resultMessageId: text('result_message_id').references(() => messages.id),
+    reason: text('reason').notNull().default('enqueued'),
+  },
+  (t) => [
+    foreignKey({
+      columns: [t.channelId, t.teamId],
+      foreignColumns: [channels.id, channels.teamId],
+    }),
+    foreignKey({
+      columns: [t.agentId, t.teamId],
+      foreignColumns: [agents.id, agents.teamId],
+    }),
+    foreignKey({
+      columns: [t.taskId, t.channelId],
+      foreignColumns: [tasks.id, tasks.channelId],
+    }),
+    foreignKey({
+      columns: [t.messageId, t.channelId],
+      foreignColumns: [messages.id, messages.channelId],
+    }),
+    foreignKey({
+      columns: [t.topicId, t.channelId],
+      foreignColumns: [topics.id, topics.channelId],
+    }),
+    uniqueIndex('inbox_event_target').on(t.eventId, t.agentId),
+    uniqueIndex('inbox_chain_target').on(t.rootId, t.agentId),
+    index('inbox_due').on(t.state, t.nextAttempt, t.leaseUntil),
+    index('inbox_agent_order').on(t.agentId, t.position),
+    check(
+      'inbox_state',
+      sql`${t.state} IN ('ready','waiting','uncertain','acked','blocked','expired')`,
+    ),
+    check(
+      'inbox_counters',
+      sql`${t.generation} >= 0 AND ${t.attempts} >= 0 AND ${t.leaseUntil} >= 0 AND ${t.depth} BETWEEN 0 AND 4`,
+    ),
+    check(
+      'inbox_claim',
+      sql`(${t.claimToken} IS NULL AND ${t.leaseUntil}=0) OR (${t.claimToken} IS NOT NULL AND ${t.leaseUntil}>0)`,
+    ),
+    check(
+      'inbox_ack',
+      sql`(${t.state} = 'acked' AND ${t.resultMessageId} IS NOT NULL) OR (${t.state} != 'acked' AND ${t.resultMessageId} IS NULL)`,
+    ),
+  ],
+);
+export const inboxHistory = sqliteTable(
+  'inbox_history',
+  {
+    position: integer('position').primaryKey({ autoIncrement: true }),
+    deliveryId: text('delivery_id')
+      .notNull()
+      .references(() => agentInbox.id),
+    generation: integer('generation').notNull(),
+    state: text('state').notNull(),
+    reason: text('reason').notNull(),
+    createdAt: integer('created_at').notNull(),
+  },
+  (t) => [index('inbox_history_order').on(t.deliveryId, t.position)],
+);
+export const inboxResults = sqliteTable(
+  'inbox_results',
+  {
+    deliveryId: text('delivery_id')
+      .primaryKey()
+      .references(() => agentInbox.id),
+    messageId: text('message_id')
+      .notNull()
+      .unique()
+      .references(() => messages.id),
+    correlationId: text('correlation_id')
+      .notNull()
+      .references(() => agentCorrelations.id),
+    taskLinkId: text('task_link_id').references(() => taskExecutions.id),
+    result: text('result').notNull(),
+  },
+  (t) => [check('inbox_result_json', sql`json_valid(${t.result})`)],
+);
