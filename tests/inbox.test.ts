@@ -247,7 +247,6 @@ await test('MOCK native terminal failure without assistant posts truthful notice
       launch.model,
       signal(),
     );
-    assert.equal(stopped.kind, 'terminal-notice');
     if (stopped.kind !== 'terminal-notice')
       throw new Error('Expected native terminal status notice');
     assert.equal(stopped.notice.kind, 'native-terminal-no-assistant');
@@ -273,7 +272,6 @@ await test('MOCK native terminal failure without assistant posts truthful notice
     };
     f.wire.values.t3_thread_read = completed;
     const actual = await assistantResult(backend, reference, launch.model, signal());
-    assert.equal(actual.kind, 'result');
     if (actual.kind !== 'result')
       throw new Error('Expected the exact completed Run assistant result');
     assert.equal(actual.result.reference.runId, reference.runId);
