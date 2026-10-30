@@ -2,6 +2,8 @@ import { z } from 'zod';
 import { EventType, PROTOCOL_VERSION } from '@ag-ui/core';
 import { StateSnapshotEventSchema } from '@ag-ui/core/schemas';
 import { Agent, Correlation, RuntimeEvent } from '../domain/agents.js';
+import { Reference } from '../domain/execution.js';
+import { Status } from '../adapters/t3/contracts.js';
 import { Human, Team, AgentId } from '../domain/contracts.js';
 import {
   ChannelView,
@@ -54,3 +56,17 @@ export function decodeExecutionEvent(value: unknown): ExecutionSnapshot {
   const event = StateSnapshotEventSchema.parse(value);
   return ExecutionSnapshot.parse(event.snapshot);
 }
+
+/** One fresh authoritative native read, never a fabricated AG-UI lifecycle stream. */
+export const NativeObservation = z.strictObject({
+  source: z.literal('t3-native-verified'),
+  observedAt: z.iso.datetime(),
+  reference: Reference,
+  status: z.union([Status, z.literal('unobserved')]),
+  terminal: z.boolean(),
+  threadPendingRequests: z.number().int().nonnegative(),
+  providerId: z.string().min(1),
+  modelId: z.string().min(1),
+  verifiedUrl: z.url().nullable(),
+});
+export type NativeObservation = z.infer<typeof NativeObservation>;
