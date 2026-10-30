@@ -17,3 +17,5 @@ This is a single-node, single-owner foundation with a loopback HTTP listener. Pr
 Runtime dependency audit is available with `npm audit --omit=dev`. Drizzle Kit's current development-only legacy esbuild chain has moderate advisories; do not expose its development server and do not force a breaking dependency downgrade to hide them. Track upstream updates. No external/private credentials are required by CI, and no live T3/provider/browser result is claimed.
 
 Agent identity and credential policy is documented in [agent identities](agent-identities.md): per-request principal resolution, immutable agent/team grants, hash-only 256-bit opaque credentials, scoped access, expiration, rotation and transactional disable/revocation. These grant no human owner or T3 OAuth authority.
+
+Communication authorization, channel enrollment, bounded history/mention reads, idempotent writes and sensitive DB/outbox retention are documented in [channels and messages](channels-messages.md). All channel reads recheck current team/channel membership and grant scopes; outbox facts do not confer authority or imply delivery.

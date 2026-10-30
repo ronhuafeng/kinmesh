@@ -7,6 +7,7 @@ import {
   check,
   uniqueIndex,
   foreignKey,
+  index,
 } from 'drizzle-orm/sqlite-core';
 
 export const humans = sqliteTable(
@@ -54,8 +55,11 @@ export const channels = sqliteTable(
       .notNull()
       .references(() => teams.id, { onDelete: 'cascade' }),
     name: text('name').notNull(),
+    position: integer('position').notNull().default(0),
   },
   (t) => [
+    uniqueIndex('channel_position').on(t.position),
+    uniqueIndex('channel_id_team').on(t.id, t.teamId),
     uniqueIndex('channel_team_name').on(t.teamId, t.name),
     check('channel_name_length', sql`length(trim(${t.name})) BETWEEN 1 AND 80`),
   ],
@@ -212,4 +216,134 @@ export const agentRuntimeEvents = sqliteTable(
       sql`${t.state} IN ('unknown','active','waiting','succeeded','failed','stopped')`,
     ),
   ],
+);
+
+export const channelParticipants = sqliteTable(
+  'channel_participants',
+  {
+    channelId: text('channel_id').notNull(),
+    teamId: text('team_id').notNull(),
+    memberKey: text('member_key').notNull(),
+    humanId: text('human_id'),
+    agentId: text('agent_id'),
+    state: text('state').notNull(),
+  },
+  (t) => [
+    primaryKey({ columns: [t.channelId, t.memberKey] }),
+    foreignKey({
+      columns: [t.channelId, t.teamId],
+      foreignColumns: [channels.id, channels.teamId],
+    }),
+    foreignKey({
+      columns: [t.humanId, t.teamId],
+      foreignColumns: [memberships.humanId, memberships.teamId],
+    }).onDelete('cascade'),
+    foreignKey({
+      columns: [t.agentId, t.teamId],
+      foreignColumns: [agents.id, agents.teamId],
+    }),
+    check(
+      'participant_identity',
+      sql`(${t.humanId} IS NOT NULL AND ${t.agentId} IS NULL AND ${t.memberKey} = 'human:' || ${t.humanId}) OR (${t.agentId} IS NOT NULL AND ${t.humanId} IS NULL AND ${t.memberKey} = 'agent:' || ${t.agentId})`,
+    ),
+    check('participant_state', sql`${t.state} IN ('joined','left','removed')`),
+    index('participant_visibility').on(
+      t.teamId,
+      t.memberKey,
+      t.state,
+      t.channelId,
+    ),
+  ],
+);
+export const topics = sqliteTable(
+  'topics',
+  {
+    position: integer('position').primaryKey({ autoIncrement: true }),
+    id: text('id').notNull().unique(),
+    channelId: text('channel_id')
+      .notNull()
+      .references(() => channels.id),
+    title: text('title').notNull(),
+    author: text('author').notNull(),
+    createdAt: text('created_at').notNull(),
+  },
+  (t) => [
+    uniqueIndex('topic_channel_identity').on(t.id, t.channelId),
+    index('topic_timeline').on(t.channelId, t.position),
+    check('topic_title_bound', sql`length(trim(${t.title})) BETWEEN 1 AND 160`),
+  ],
+);
+export const messages = sqliteTable(
+  'messages',
+  {
+    position: integer('position').primaryKey({ autoIncrement: true }),
+    id: text('id').notNull().unique(),
+    channelId: text('channel_id')
+      .notNull()
+      .references(() => channels.id),
+    topicId: text('topic_id'),
+    author: text('author').notNull(),
+    createdAt: text('created_at').notNull(),
+    body: text('body').notNull(),
+    sourceMessageId: text('source_message_id'),
+    sourceEventId: text('source_event_id'),
+  },
+  (t) => [
+    foreignKey({
+      columns: [t.topicId, t.channelId],
+      foreignColumns: [topics.id, topics.channelId],
+    }),
+    uniqueIndex('message_channel_identity').on(t.id, t.channelId),
+    index('message_channel_timeline').on(t.channelId, t.position),
+    index('message_topic_timeline').on(t.channelId, t.topicId, t.position),
+    check('message_body_bound', sql`length(${t.body}) BETWEEN 1 AND 8000`),
+  ],
+);
+export const messageMentions = sqliteTable(
+  'message_mentions',
+  {
+    messageId: text('message_id').notNull(),
+    channelId: text('channel_id').notNull(),
+    memberKey: text('member_key').notNull(),
+    target: text('target').notNull(),
+  },
+  (t) => [
+    primaryKey({ columns: [t.messageId, t.memberKey] }),
+    foreignKey({
+      columns: [t.messageId, t.channelId],
+      foreignColumns: [messages.id, messages.channelId],
+    }),
+    foreignKey({
+      columns: [t.channelId, t.memberKey],
+      foreignColumns: [
+        channelParticipants.channelId,
+        channelParticipants.memberKey,
+      ],
+    }),
+  ],
+);
+export const communicationOutbox = sqliteTable(
+  'communication_outbox',
+  {
+    position: integer('position').primaryKey({ autoIncrement: true }),
+    id: text('id').notNull().unique(),
+    channelId: text('channel_id')
+      .notNull()
+      .references(() => channels.id),
+    fact: text('fact').notNull(),
+  },
+  (t) => [
+    index('outbox_channel_order').on(t.channelId, t.position),
+    check('outbox_fact_json', sql`json_valid(${t.fact})`),
+  ],
+);
+export const communicationOperations = sqliteTable(
+  'communication_operations',
+  {
+    scope: text('scope').notNull(),
+    operationKey: text('operation_key').notNull(),
+    fingerprint: text('fingerprint').notNull(),
+    result: text('result').notNull(),
+  },
+  (t) => [primaryKey({ columns: [t.scope, t.operationKey] })],
 );

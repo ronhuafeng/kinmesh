@@ -1,3 +1,4 @@
+import { registerCommunication } from './communication.js';
 import { registerAgents } from './agents.js';
 import { resolvePrincipal } from './principals.js';
 import { z } from 'zod';
@@ -166,6 +167,7 @@ export async function createApp(config: Config, store: Store) {
       return reply.code(403).send({ error: 'Human authentication required' });
   });
   registerAgents(app, store);
+  registerCommunication(app, store);
   await app.register((protectedApi, _options, done) => {
     protectedApi.get('/api/me', (request) => {
       const id = HumanId.parse(request.session.get('humanId'));

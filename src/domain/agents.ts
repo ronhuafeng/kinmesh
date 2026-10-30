@@ -5,6 +5,7 @@ import { Reference } from './execution.js';
 export const Scope = z.enum([
   'agents:read',
   'channels:read',
+  'channels:write',
   'tasks:write',
   'executions:read',
   'executions:write',
@@ -53,7 +54,7 @@ export const GrantInput = z.strictObject({
   scopes: z
     .array(Scope)
     .min(1)
-    .max(5)
+    .max(6)
     .refine((v) => new Set(v).size === v.length),
   lifetimeSeconds: z
     .number()

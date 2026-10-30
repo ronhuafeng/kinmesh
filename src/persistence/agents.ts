@@ -253,6 +253,34 @@ export function agentRepository(db: BetterSQLite3Database<typeof s>) {
       return principal;
     },
     authorize: access,
+    teamAccess(p: Principal, teamId: TeamId, scope: Scope) {
+      Principal.parse(p);
+      TeamId.parse(teamId);
+      if (p.kind === 'agent') {
+        const current = checkedGrant(p);
+        if (p.teamId !== teamId || !current.scopes.includes(scope))
+          throw new IdentityError(403);
+        return { role: 'agent' as const };
+      }
+      const human = db
+        .select()
+        .from(s.humans)
+        .where(eq(s.humans.id, p.humanId))
+        .get();
+      if (human === undefined) throw new IdentityError(401);
+      const membership = db
+        .select()
+        .from(s.memberships)
+        .where(
+          and(
+            eq(s.memberships.humanId, p.humanId),
+            eq(s.memberships.teamId, teamId),
+          ),
+        )
+        .get();
+      if (membership === undefined) throw new IdentityError(403);
+      return { role: membership.role };
+    },
     create(p: Principal, teamId: TeamId, input: ProfileInput) {
       return atomic(() => {
         owner(p, teamId);

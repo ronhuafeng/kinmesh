@@ -1,3 +1,6 @@
+import { CommunicationFact } from '../domain/communication.js';
+import { communicationRepository } from './communication.js';
+import { max, asc } from 'drizzle-orm';
 import { agentRepository } from './agents.js';
 import { operationJournal } from './operations.js';
 import Database from 'better-sqlite3';
@@ -36,9 +39,11 @@ export function openStore(path: string) {
     sqlite.close();
     throw error;
   }
+  const agentStore = agentRepository(db);
   return {
+    communication: communicationRepository(db, agentStore),
     operations: operationJournal(db),
-    agents: agentRepository(db),
+    agents: agentStore,
     close: () => {
       if (sqlite.open) sqlite.close();
     },
@@ -65,7 +70,48 @@ export function openStore(path: string) {
           tx.insert(tables.memberships)
             .values({ humanId: human.id, teamId: team.id, role: 'owner' })
             .run();
-          tx.insert(tables.channels).values(channel).run();
+          const position =
+            (tx
+              .select({ value: max(tables.channels.position) })
+              .from(tables.channels)
+              .get()?.value ?? 0) + 1;
+          tx.insert(tables.channels)
+            .values({ ...channel, position })
+            .run();
+          tx.insert(tables.channelParticipants)
+            .values({
+              channelId: channel.id,
+              teamId: team.id,
+              memberKey: `human:${human.id}`,
+              humanId: human.id,
+              agentId: null,
+              state: 'joined',
+            })
+            .run();
+          const event = CommunicationFact.parse({
+            version: 1,
+            id: randomUUID(),
+            teamId: team.id,
+            channelId: channel.id,
+            createdAt: new Date().toISOString(),
+            author: { kind: 'human', humanId: human.id },
+            kind: 'channel.created',
+            topicId: null,
+            messageId: null,
+            mentions: [],
+            participant: null,
+            participantState: null,
+            sourceMessageId: null,
+            sourceEventId: null,
+            operationKey: 'bootstrap.general',
+          });
+          tx.insert(tables.communicationOutbox)
+            .values({
+              id: event.id,
+              channelId: channel.id,
+              fact: JSON.stringify(event),
+            })
+            .run();
           return { human, team, channel };
         },
         { behavior: 'immediate' },
@@ -109,15 +155,29 @@ export function openStore(path: string) {
           .where(eq(tables.teams.id, verified.teamId))
           .get(),
       );
-      const channels = z
-        .array(Channel)
-        .parse(
-          db
-            .select()
-            .from(tables.channels)
-            .where(eq(tables.channels.teamId, team.id))
-            .all(),
-        );
+      const channels = z.array(Channel).parse(
+        db
+          .select({
+            id: tables.channels.id,
+            teamId: tables.channels.teamId,
+            name: tables.channels.name,
+          })
+          .from(tables.channels)
+          .innerJoin(
+            tables.channelParticipants,
+            eq(tables.channels.id, tables.channelParticipants.channelId),
+          )
+          .where(
+            and(
+              eq(tables.channels.teamId, team.id),
+              eq(tables.channelParticipants.memberKey, `human:${id}`),
+              eq(tables.channelParticipants.state, 'joined'),
+            ),
+          )
+          .orderBy(asc(tables.channels.position))
+          .limit(100)
+          .all(),
+      );
       return { team, channels, role: verified.role };
     },
     ready: () => {
