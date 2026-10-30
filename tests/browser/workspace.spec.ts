@@ -722,7 +722,9 @@ test('permission loss purges workspace snapshot instead of retaining stale team 
     });
   });
   await page.getByRole('button', { name: 'Reconnect / refresh' }).click();
-  await expect(page.getByRole('heading', { name: 'Welcome back' })).toBeVisible();
+  await expect(
+    page.getByRole('heading', { name: 'Welcome back' }),
+  ).toBeVisible();
   await expect(
     page.getByText(/HTTP 403: You are not authorized for this action/),
   ).toBeVisible();
@@ -771,15 +773,23 @@ test('AG-UI access revocation clears prior reports while a transient outage pres
     },
   });
   expect(created.status()).toBe(201);
-  await page.getByRole('button', { name: 'View Revoked Activity activity' }).click();
+  await page
+    .getByRole('button', { name: 'View Revoked Activity activity' })
+    .click();
   await expect(page.getByText(thread, { exact: true })).toBeVisible();
 
   await page.route('**/api/agui/**', async (route) => {
-    await route.fulfill({ status: 503, contentType: 'application/json', body: '{}' });
+    await route.fulfill({
+      status: 503,
+      contentType: 'application/json',
+      body: '{}',
+    });
   });
   await page.getByRole('button', { name: 'Reconnect / refresh' }).click();
   await expect(
-    page.getByText('Execution snapshot unavailable. Use Reconnect / refresh to retry.'),
+    page.getByText(
+      'Execution snapshot unavailable. Use Reconnect / refresh to retry.',
+    ),
   ).toBeVisible();
   await expect(page.getByText(thread, { exact: true })).toBeVisible();
 
@@ -787,16 +797,20 @@ test('AG-UI access revocation clears prior reports while a transient outage pres
   let denied = 0;
   await page.route('**/api/agui/**', async (route) => {
     denied++;
-    await route.fulfill({ status: 403, contentType: 'application/json', body: '{}' });
+    await route.fulfill({
+      status: 403,
+      contentType: 'application/json',
+      body: '{}',
+    });
   });
   await page.getByRole('button', { name: 'Reconnect / refresh' }).click();
   await expect(
-    page.getByText('Execution access no longer authorized. Sign in again or contact your team owner.'),
+    page.getByText(
+      'Execution access no longer authorized. Sign in again or contact your team owner.',
+    ),
   ).toBeVisible();
   await expect(page.getByText(thread, { exact: true })).toHaveCount(0);
-  await expect(
-    page.getByText('Last recorded: unknown'),
-  ).toHaveCount(0);
+  await expect(page.getByText('Last recorded: unknown')).toHaveCount(0);
   expect(denied).toBeGreaterThan(0);
   expect(
     (
