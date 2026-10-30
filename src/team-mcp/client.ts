@@ -17,8 +17,7 @@ export const TeamEndpoint = z.url().refine((value) => {
     u.username === '' &&
     u.password === '' &&
     (u.protocol === 'https:' ||
-      (u.protocol === 'http:' &&
-        ['127.0.0.1', 'localhost', '[::1]'].includes(u.hostname)))
+      (u.protocol === 'http:' && u.hostname === '127.0.0.1'))
   );
 });
 export function loadAgentToken(path: string) {
