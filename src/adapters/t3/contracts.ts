@@ -53,6 +53,8 @@ export const Read = z.object({
   thread: z.object({
     threadId: z.string(),
     projectId: z.string(),
+    /** Optional native web link; may be custom or absent for other clients. */
+    link: z.string().optional(),
     status: Status,
     latestRunId: z.string().nullable(),
     activeRunId: z.string().nullable(),
