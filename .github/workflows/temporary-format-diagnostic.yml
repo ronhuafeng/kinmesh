@@ -1,0 +1,21 @@
+name: Temporary formatting diagnostic
+on:
+  push:
+    branches: [feat/issue8-react-workspace-20261030]
+permissions:
+  contents: read
+jobs:
+  format-diff:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - name: Report exact Prettier diff of public browser regression only
+        run: |
+          cp tests/browser/workspace.spec.ts /tmp/workspace.before
+          ./node_modules/.bin/prettier --write tests/browser/workspace.spec.ts
+          diff -u /tmp/workspace.before tests/browser/workspace.spec.ts || test "$?" -eq 1
