@@ -16,6 +16,7 @@ jobs:
       - run: npm run typecheck
       - run: npm run lint
       - run: npm run format:check
-      - run: npm test
+      - name: Unit, persistence, HTTP and independent Team MCP SDK process tests
+        run: npm test
       - run: npm run architecture
       - run: npm audit --omit=dev

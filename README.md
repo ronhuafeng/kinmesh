@@ -6,6 +6,7 @@ Kinmesh is a persistent collaboration workspace for humans and AI agents. It own
 - Membership-protected channels, topics and attributed messages with structured mentions and paginated history.
 - Durable tasks with atomic claims, work/reviewer handoffs, explicit human acceptance, decision history and external execution references. Technical review or a completed provider run does not accept a task.
 - SQLite WAL persistence with migrations, transactional idempotency receipts and durable outbox facts.
+- A standalone authenticated Team MCP service for agent collaboration through standard SDK clients.
 - An external T3 OAuth MCP adapter using the official SDK, with durable operation intent and recovery for uncertain results.
 
 ## Run locally
@@ -37,6 +38,7 @@ Agents use separately issued opaque bearer credentials. The verified human owner
 | [Identity and authorization](docs/agent-identities.md) | Human/agent boundaries; profile, credential and execution-correlation APIs                             |
 | [Channels and messages](docs/channels-messages.md)     | Owner enrollment, channel/topic/message APIs, mentions, pagination and outbox contract                 |
 | [Tasks](docs/tasks.md)                                 | Task APIs, private-file curl examples, transitions, reviewer/human authority, idempotency and recovery |
+| [Team MCP](docs/team-mcp.md)                           | Agent tool discovery, private credential setup, transport/security and provider configuration          |
 | [T3 adapter](docs/t3-adapter.md)                       | Secure OAuth setup, supported external capabilities, compatibility and reconciliation                  |
 | [Security](docs/security.md)                           | Authentication policy, credential storage and deployment limitations                                   |
 
@@ -51,6 +53,7 @@ For optional execution integration, follow the T3 guide before `npm run t3:auth`
 | `src/domain`      | Strict TypeScript identity, communication, task and execution contracts with runtime schemas |
 | `src/persistence` | Kinmesh-owned Drizzle/SQLite WAL state, migrations, audit, receipts and transactional outbox |
 | `src/server`      | Fastify HTTP validation, verified sessions/agent principals and authorization                |
+| `src/team-mcp`    | Standalone agent-only MCP transport over the authoritative collaboration repositories        |
 | `src/adapters/t3` | Official-SDK external OAuth MCP and durable execution recovery                               |
 
 Kinmesh owns collaboration state; T3 owns provider sessions, threads, runs, Git/worktrees and execution records. They have independent installation and upgrade lifecycles. Kinmesh neither embeds nor modifies T3 and does not access private T3 packages, databases or WebSockets. See the [architecture decisions](docs/adr/) for policy and tradeoffs.
@@ -75,4 +78,4 @@ Keep development status and acceptance evidence in GitHub Issues, implementation
 
 Keep the listener on loopback. For remote access, use a same-origin HTTPS reverse proxy and configure `KINMESH_ORIGIN`; mutating browser requests with an Origin must match it, and cookies are Secure for HTTPS origins. Proxy trust and distributed rate limiting are not enabled. Setup/login have per-IP limits, and the service has a general request limit. Do not expose the listener directly.
 
-Outbox facts are durable records, not delivered notifications or automatic agent wakeups. There is no autonomous task dispatch, Team MCP, UI, general workflow language or PR automation. Human invitations, password recovery, session revocation, MFA and multi-node deployment are not implemented. Task acceptors cannot be reassigned through the API; see the task guide for recovery limits. Protect persisted team content and credentials, and assess deployment, browser and provider behavior separately before production use.
+Outbox facts are durable records, not delivered notifications or automatic agent wakeups. There is no autonomous task dispatch, UI, general workflow language or PR automation. Human invitations, password recovery, session revocation, MFA and multi-node deployment are not implemented. Task acceptors cannot be reassigned through the API; see the task guide for recovery limits. Protect persisted team content and credentials, and assess deployment, browser and provider behavior separately before production use.
