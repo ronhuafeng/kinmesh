@@ -215,11 +215,11 @@ await test('MOCK native terminal failure without assistant posts truthful notice
       launch.model,
       signal(),
     );
-    assert.equal(stopped.kind, 'result');
-    if (stopped.kind !== 'result' || !('kind' in stopped.result))
+    assert.equal(stopped.kind, 'terminal-notice');
+    if (stopped.kind !== 'terminal-notice')
       throw new Error('Expected native terminal status notice');
-    assert.equal(stopped.result.kind, 'native-terminal-no-assistant');
-    assert.equal(stopped.result.state, 'stopped');
+    assert.equal(stopped.notice.kind, 'native-terminal-no-assistant');
+    assert.equal(stopped.notice.state, 'stopped');
   } finally {
     await f.dispose();
   }
