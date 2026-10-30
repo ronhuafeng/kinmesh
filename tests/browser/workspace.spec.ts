@@ -683,3 +683,126 @@ test('ambiguous setup retry retains setup completion after switching to login', 
   await page.getByRole('button', { name: 'Sign in', exact: true }).click();
   await expect(page.getByRole('heading', { name: '# general' })).toBeVisible();
 });
+
+test('permission loss purges workspace snapshot instead of retaining stale team data', async ({
+  page,
+  context,
+  hub,
+}) => {
+  await onboard(page, hub);
+  const state = await snapshot(context.request, hub.origin);
+  const privateMessage = 'Previously authorized channel message';
+  const composer = page.getByRole('form', { name: 'Message your team' });
+  await composer.getByLabel('Message', { exact: true }).fill(privateMessage);
+  await composer.getByRole('button', { name: 'Send message' }).click();
+  await expect(page.getByText(privateMessage, { exact: true })).toBeVisible();
+
+  await page.getByRole('tab', { name: 'Tasks', exact: true }).click();
+  await page
+    .locator('summary')
+    .filter({ hasText: /^Create task$/ })
+    .click();
+  const taskForm = page.getByRole('form', { name: 'New task' });
+  await taskForm.getByLabel('Task title').fill('Previously authorized task');
+  await taskForm
+    .getByLabel('Acceptance criteria (one per line)')
+    .fill('Do not display after access is revoked');
+  await taskForm.getByRole('button', { name: 'Create task' }).click();
+  await expect(
+    page.getByRole('article', { name: 'Previously authorized task' }),
+  ).toBeVisible();
+
+  let unauthorizedWorkspaceReads = 0;
+  await page.route('**/api/workspace?*', async (route) => {
+    unauthorizedWorkspaceReads++;
+    await route.fulfill({
+      status: 403,
+      contentType: 'application/json',
+      body: '{}',
+    });
+  });
+  await page.getByRole('button', { name: 'Reconnect / refresh' }).click();
+  await expect(page.getByRole('heading', { name: 'Welcome back' })).toBeVisible();
+  await expect(
+    page.getByText(/HTTP 403: You are not authorized for this action/),
+  ).toBeVisible();
+  await expect(page.getByText(privateMessage, { exact: true })).toHaveCount(0);
+  await expect(
+    page.getByRole('article', { name: 'Previously authorized task' }),
+  ).toHaveCount(0);
+  await expect(
+    page.getByRole('navigation', { name: 'Channels' }),
+  ).toHaveCount(0);
+  await expect(
+    page.getByRole('form', { name: 'Message your team' }),
+  ).toHaveCount(0);
+  expect(unauthorizedWorkspaceReads).toBeGreaterThan(0);
+
+  // Browser response was denied while the same authenticated backend remains reachable.
+  // No stale UI actions may be submitted after the access-loss transition.
+  expect(
+    (await context.request.get(hub.origin + '/api/workspace')).status(),
+  ).toBe(200);
+  expect(state.channel).not.toBeNull();
+});
+
+test('AG-UI access revocation clears prior reports while a transient outage preserves a labeled stale snapshot', async ({
+  page,
+  context,
+  hub,
+}) => {
+  await onboard(page, hub);
+  await register(page, 'Revoked Activity', 'assistant');
+  const state = await snapshot(context.request, hub.origin);
+  const agent = state.agents.find((a) => a.name === 'Revoked Activity');
+  if (!agent) throw new Error('Test agent missing');
+  const thread = 'former-authorized-execution-thread';
+  const base = `${hub.origin}/api/teams/${state.team.id}/agents/${agent.id}`;
+  const created = await context.request.post(base + '/executions', {
+    data: {
+      reference: {
+        backend: 't3',
+        environmentId: 'fixture-environment',
+        threadId: thread,
+        runId: 'fixture-run',
+      },
+      providerSessionId: null,
+      invocationId: null,
+    },
+  });
+  expect(created.status()).toBe(201);
+  await page.getByRole('button', { name: 'View Revoked Activity activity' }).click();
+  await expect(page.getByText(thread, { exact: true })).toBeVisible();
+
+  await page.route('**/api/agui/**', async (route) => {
+    await route.fulfill({ status: 503, contentType: 'application/json', body: '{}' });
+  });
+  await page.getByRole('button', { name: 'Reconnect / refresh' }).click();
+  await expect(
+    page.getByText('Execution snapshot unavailable. Use Reconnect / refresh to retry.'),
+  ).toBeVisible();
+  await expect(page.getByText(thread, { exact: true })).toBeVisible();
+
+  await page.unroute('**/api/agui/**');
+  let denied = 0;
+  await page.route('**/api/agui/**', async (route) => {
+    denied++;
+    await route.fulfill({ status: 403, contentType: 'application/json', body: '{}' });
+  });
+  await page.getByRole('button', { name: 'Reconnect / refresh' }).click();
+  await expect(
+    page.getByText('Execution access no longer authorized. Sign in again or contact your team owner.'),
+  ).toBeVisible();
+  await expect(page.getByText(thread, { exact: true })).toHaveCount(0);
+  await expect(
+    page.getByText('Last recorded: unknown'),
+  ).toHaveCount(0);
+  expect(denied).toBeGreaterThan(0);
+  expect(
+    (
+      await context.request.get(
+        `${hub.origin}/api/agui/${state.team.id}/${agent.id}`,
+      )
+    ).status(),
+  ).toBe(200);
+});
