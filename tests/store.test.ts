@@ -34,7 +34,7 @@ await test('deterministic migrations enable WAL and foreign keys; bootstrap surv
         .prepare('SELECT count(*) AS n FROM __drizzle_migrations')
         .pluck()
         .get(),
-      1,
+      2,
     );
     raw.close();
   } finally {

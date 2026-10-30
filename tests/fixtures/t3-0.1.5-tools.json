@@ -1,0 +1,1624 @@
+{
+  "tools": [
+    {
+      "name": "orchestrator_capabilities",
+      "title": "Get orchestration capabilities",
+      "description": "List providers, models, options, and runtime modes for `delegate_task`. Short list. `search` finds others. Any catalog model works.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "environmentId": {
+            "type": "string"
+          },
+          "search": {
+            "type": "string"
+          }
+        }
+      },
+      "outputSchema": {
+        "type": "object",
+        "properties": {
+          "parentThreadId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "inheritedProviderInstanceId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "inheritedModel": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "inheritedOptions": {
+            "anyOf": [
+              {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "value": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "boolean"
+                        }
+                      ]
+                    }
+                  },
+                  "required": ["id", "value"],
+                  "additionalProperties": true
+                }
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "runtimeMode": {
+            "type": "string",
+            "enum": [
+              "approval-required",
+              "auto-accept-edits",
+              "auto",
+              "full-access"
+            ]
+          },
+          "interactionMode": {
+            "type": "string",
+            "enum": ["default", "plan"]
+          },
+          "providers": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "providerInstanceId": {
+                  "type": "string"
+                },
+                "driverKind": {
+                  "type": "string"
+                },
+                "displayName": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "models": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "id": {
+                        "type": "string"
+                      },
+                      "label": {
+                        "anyOf": [
+                          {
+                            "type": "string"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "options": {
+                        "anyOf": [
+                          {
+                            "type": "array",
+                            "items": {
+                              "type": "object",
+                              "properties": {
+                                "id": {
+                                  "type": "string"
+                                },
+                                "values": {
+                                  "type": "array",
+                                  "items": {
+                                    "anyOf": [
+                                      {
+                                        "type": "string"
+                                      },
+                                      {
+                                        "type": "boolean"
+                                      }
+                                    ]
+                                  }
+                                },
+                                "default": {
+                                  "anyOf": [
+                                    {
+                                      "anyOf": [
+                                        {
+                                          "type": "string"
+                                        },
+                                        {
+                                          "type": "boolean"
+                                        }
+                                      ]
+                                    },
+                                    {
+                                      "type": "null"
+                                    }
+                                  ]
+                                }
+                              },
+                              "required": ["id", "values"],
+                              "additionalProperties": true
+                            }
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      }
+                    },
+                    "required": ["id"],
+                    "additionalProperties": true
+                  }
+                },
+                "omittedModels": {
+                  "anyOf": [
+                    {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 9007199254740991
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "runtimeModes": {
+                  "anyOf": [
+                    {
+                      "type": "array",
+                      "items": {
+                        "type": "string",
+                        "enum": [
+                          "approval-required",
+                          "auto-accept-edits",
+                          "auto",
+                          "full-access"
+                        ]
+                      }
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "canRunChildTask": {
+                  "type": "boolean"
+                },
+                "canRunCrossProviderChildTask": {
+                  "type": "boolean"
+                },
+                "constraints": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                }
+              },
+              "required": [
+                "providerInstanceId",
+                "driverKind",
+                "displayName",
+                "models",
+                "canRunChildTask",
+                "canRunCrossProviderChildTask",
+                "constraints"
+              ],
+              "additionalProperties": true
+            }
+          },
+          "features": {
+            "type": "object",
+            "properties": {
+              "appOwnedSubagents": {
+                "type": "boolean"
+              },
+              "asyncPolling": {
+                "type": "boolean"
+              },
+              "cancellation": {
+                "type": "boolean"
+              },
+              "batchThreadCreation": {
+                "type": "boolean"
+              },
+              "threadManagement": {
+                "type": "boolean"
+              },
+              "incrementalThreadRead": {
+                "type": "boolean"
+              },
+              "scheduledTasks": {
+                "type": "boolean"
+              },
+              "maxBatchThreads": {
+                "anyOf": [
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "string",
+                    "enum": ["Infinity", "-Infinity", "NaN"]
+                  }
+                ]
+              }
+            },
+            "required": [
+              "appOwnedSubagents",
+              "asyncPolling",
+              "cancellation",
+              "batchThreadCreation",
+              "threadManagement",
+              "incrementalThreadRead",
+              "scheduledTasks",
+              "maxBatchThreads"
+            ],
+            "additionalProperties": true
+          }
+        },
+        "required": [
+          "parentThreadId",
+          "inheritedProviderInstanceId",
+          "inheritedModel",
+          "runtimeMode",
+          "interactionMode",
+          "providers",
+          "features"
+        ],
+        "additionalProperties": true
+      },
+      "annotations": {
+        "title": "Get orchestration capabilities",
+        "readOnlyHint": true,
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": true
+      }
+    },
+    {
+      "name": "t3_thread_read",
+      "title": "Read a T3 thread",
+      "description": "Read any thread by id. `messages` (default): user and assistant messages and plans. `activity`: all timeline items. Keep reads small: low `limit` and `maxCharsPerItem`. Page with `afterPosition=nextPosition`. Cut-off text: `itemId` with `textOffset=nextTextOffset`. Reading a child's final result marks it delivered. In your reply, name it as its `link` verbatim.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "environmentId": {
+            "type": "string"
+          },
+          "threadId": {
+            "type": "string"
+          },
+          "itemId": {
+            "type": "string"
+          },
+          "textOffset": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "view": {
+            "type": "string",
+            "enum": ["messages", "activity"]
+          },
+          "afterPosition": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "limit": {
+            "type": "integer",
+            "minimum": 1,
+            "description": "Max items, 1 to 100."
+          },
+          "runLimit": {
+            "type": "integer",
+            "minimum": 1,
+            "description": "Max recent runs, 1 to 50."
+          },
+          "maxCharsPerItem": {
+            "type": "integer",
+            "minimum": 1,
+            "description": "Max chars per item, 1 to 50000."
+          }
+        },
+        "required": ["threadId"]
+      },
+      "outputSchema": {
+        "type": "object",
+        "properties": {
+          "thread": {
+            "type": "object",
+            "properties": {
+              "threadId": {
+                "type": "string"
+              },
+              "projectId": {
+                "type": "string"
+              },
+              "title": {
+                "type": "string"
+              },
+              "link": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "createdBy": {
+                "type": "string",
+                "enum": ["user", "agent", "system"]
+              },
+              "creationSource": {
+                "type": "string",
+                "enum": ["web", "mobile", "mcp", "provider", "server"]
+              },
+              "status": {
+                "type": "string",
+                "enum": [
+                  "idle",
+                  "preparing",
+                  "queued",
+                  "starting",
+                  "running",
+                  "waiting",
+                  "completed",
+                  "interrupted",
+                  "failed",
+                  "cancelled",
+                  "rolled_back"
+                ]
+              },
+              "latestRunId": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "activeRunId": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "providerInstanceId": {
+                "type": "string"
+              },
+              "model": {
+                "type": "string"
+              },
+              "runtimeMode": {
+                "type": "string",
+                "enum": [
+                  "approval-required",
+                  "auto-accept-edits",
+                  "auto",
+                  "full-access"
+                ]
+              },
+              "interactionMode": {
+                "type": "string",
+                "enum": ["default", "plan"]
+              },
+              "linkedPullRequest": {
+                "anyOf": [
+                  {
+                    "type": "object",
+                    "properties": {
+                      "projectId": {
+                        "type": "string"
+                      },
+                      "repository": {
+                        "type": "string"
+                      },
+                      "number": {
+                        "type": "integer",
+                        "minimum": 1,
+                        "maximum": 9007199254740991
+                      },
+                      "url": {
+                        "type": "string"
+                      }
+                    },
+                    "required": ["projectId", "repository", "number", "url"],
+                    "additionalProperties": true
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "pullRequests": {
+                "anyOf": [
+                  {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "host": {
+                          "type": "string"
+                        },
+                        "repository": {
+                          "type": "string"
+                        },
+                        "number": {
+                          "type": "integer",
+                          "minimum": 1,
+                          "maximum": 9007199254740991
+                        },
+                        "url": {
+                          "type": "string"
+                        },
+                        "source": {
+                          "type": "string",
+                          "enum": [
+                            "manual",
+                            "created",
+                            "agent",
+                            "stack",
+                            "stack-dismissed"
+                          ]
+                        },
+                        "state": {
+                          "anyOf": [
+                            {
+                              "type": "string",
+                              "enum": ["open", "closed", "merged"]
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        }
+                      },
+                      "required": [
+                        "host",
+                        "repository",
+                        "number",
+                        "url",
+                        "source",
+                        "state"
+                      ],
+                      "additionalProperties": true
+                    }
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "titleRegeneration": {
+                "anyOf": [
+                  {
+                    "type": "object",
+                    "properties": {
+                      "requestId": {
+                        "type": "string"
+                      },
+                      "startedAt": {
+                        "type": "string"
+                      }
+                    },
+                    "required": ["requestId", "startedAt"],
+                    "additionalProperties": true
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "branch": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "worktreePath": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "parentThreadId": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "relationshipToParent": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "enum": ["fork", "subagent"]
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "runCount": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 9007199254740991
+              },
+              "itemCount": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 9007199254740991
+              },
+              "pendingRequestCount": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 9007199254740991
+              },
+              "archived": {
+                "type": "boolean"
+              },
+              "settled": {
+                "type": "boolean"
+              },
+              "settledAt": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "snoozed": {
+                "type": "boolean"
+              },
+              "snoozedUntil": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "createdAt": {
+                "type": "string"
+              },
+              "updatedAt": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "threadId",
+              "projectId",
+              "title",
+              "createdBy",
+              "creationSource",
+              "status",
+              "latestRunId",
+              "activeRunId",
+              "providerInstanceId",
+              "model",
+              "runtimeMode",
+              "interactionMode",
+              "linkedPullRequest",
+              "titleRegeneration",
+              "branch",
+              "worktreePath",
+              "parentThreadId",
+              "relationshipToParent",
+              "runCount",
+              "itemCount",
+              "pendingRequestCount",
+              "archived",
+              "settled",
+              "settledAt",
+              "snoozed",
+              "snoozedUntil",
+              "createdAt",
+              "updatedAt"
+            ],
+            "additionalProperties": true
+          },
+          "recentRuns": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "runId": {
+                  "type": "string"
+                },
+                "ordinal": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 9007199254740991
+                },
+                "status": {
+                  "type": "string",
+                  "enum": [
+                    "preparing",
+                    "queued",
+                    "starting",
+                    "running",
+                    "waiting",
+                    "completed",
+                    "interrupted",
+                    "failed",
+                    "cancelled",
+                    "rolled_back"
+                  ]
+                },
+                "providerInstanceId": {
+                  "type": "string"
+                },
+                "model": {
+                  "type": "string"
+                },
+                "requestedAt": {
+                  "type": "string"
+                },
+                "startedAt": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "completedAt": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                }
+              },
+              "required": [
+                "runId",
+                "ordinal",
+                "status",
+                "providerInstanceId",
+                "model",
+                "requestedAt",
+                "startedAt",
+                "completedAt"
+              ],
+              "additionalProperties": true
+            }
+          },
+          "items": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "position": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 9007199254740991
+                },
+                "visibility": {
+                  "type": "string",
+                  "enum": ["local", "inherited", "synthetic"]
+                },
+                "sourceThreadId": {
+                  "type": "string"
+                },
+                "itemId": {
+                  "type": "string"
+                },
+                "subagentId": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "runId": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "messageId": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "createdBy": {
+                  "anyOf": [
+                    {
+                      "type": "string",
+                      "enum": ["user", "agent", "system"]
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "creationSource": {
+                  "anyOf": [
+                    {
+                      "type": "string",
+                      "enum": ["web", "mobile", "mcp", "provider", "server"]
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "senderThreadId": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "type": {
+                  "type": "string"
+                },
+                "status": {
+                  "type": "string",
+                  "enum": [
+                    "idle",
+                    "pending",
+                    "running",
+                    "waiting",
+                    "completed",
+                    "failed",
+                    "cancelled",
+                    "interrupted"
+                  ]
+                },
+                "title": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "text": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "textTruncated": {
+                  "type": "boolean"
+                },
+                "nextTextOffset": {
+                  "anyOf": [
+                    {
+                      "anyOf": [
+                        {
+                          "type": "integer",
+                          "minimum": 0,
+                          "maximum": 9007199254740991
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "updatedAt": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "position",
+                "visibility",
+                "sourceThreadId",
+                "itemId",
+                "runId",
+                "messageId",
+                "createdBy",
+                "creationSource",
+                "type",
+                "status",
+                "title",
+                "text",
+                "textTruncated",
+                "updatedAt"
+              ],
+              "additionalProperties": true
+            }
+          },
+          "nextPosition": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 9007199254740991
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "hasMore": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "thread",
+          "recentRuns",
+          "items",
+          "nextPosition",
+          "hasMore"
+        ],
+        "additionalProperties": true
+      },
+      "annotations": {
+        "title": "Read a T3 thread",
+        "readOnlyHint": false,
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": true
+      }
+    },
+    {
+      "name": "t3_thread_send",
+      "title": "Send to a T3 thread",
+      "description": "Send a message to any thread. The target cannot run with broader modes than yours. `mode:'auto'` starts an idle thread, steers a running turn, or queues. `queue`: new turn. `steer`: mid-turn update. `restart`: interrupt and restart. A send to a finished child thread starts a fresh task and returns its `taskId`. In your reply, name it as its `link` verbatim.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "environmentId": {
+            "type": "string"
+          },
+          "threadId": {
+            "type": "string"
+          },
+          "message": {
+            "type": "string"
+          },
+          "mode": {
+            "type": "string",
+            "enum": ["auto", "queue", "steer", "restart"]
+          },
+          "clientRequestId": {
+            "type": "string"
+          }
+        },
+        "required": ["threadId", "message"]
+      },
+      "outputSchema": {
+        "type": "object",
+        "properties": {
+          "threadId": {
+            "type": "string"
+          },
+          "link": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "messageId": {
+            "type": "string"
+          },
+          "runId": {
+            "type": "string"
+          },
+          "taskId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "preparing",
+              "queued",
+              "starting",
+              "running",
+              "waiting",
+              "completed",
+              "interrupted",
+              "failed",
+              "cancelled",
+              "rolled_back"
+            ]
+          },
+          "delivery": {
+            "type": "string",
+            "enum": ["started", "queued", "steered", "restarted"]
+          }
+        },
+        "required": ["threadId", "messageId", "runId", "status", "delivery"],
+        "additionalProperties": true
+      },
+      "annotations": {
+        "title": "Send to a T3 thread",
+        "readOnlyHint": false,
+        "destructiveHint": true,
+        "idempotentHint": false,
+        "openWorldHint": true
+      }
+    },
+    {
+      "name": "t3_thread_wait",
+      "title": "Wait for a T3 thread",
+      "description": "Wait for a thread's run to finish. No `runId`: latest. Idle: at once. On timeout, with `next` end your turn; without, call again.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "environmentId": {
+            "type": "string"
+          },
+          "threadId": {
+            "type": "string"
+          },
+          "runId": {
+            "type": "string"
+          },
+          "timeoutMs": {
+            "type": "number"
+          },
+          "untilDelegatedWorkSettled": {
+            "type": "boolean",
+            "description": "Also wait for its delegated and background tasks and their completions to settle. `resultRun` then names the run with its final answer."
+          }
+        },
+        "required": ["threadId"]
+      },
+      "outputSchema": {
+        "type": "object",
+        "properties": {
+          "threadId": {
+            "type": "string"
+          },
+          "runId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "idle",
+              "preparing",
+              "queued",
+              "starting",
+              "running",
+              "waiting",
+              "completed",
+              "interrupted",
+              "failed",
+              "cancelled",
+              "rolled_back"
+            ]
+          },
+          "timedOut": {
+            "type": "boolean"
+          },
+          "next": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "Completion wakes this thread, so end your turn. Do not wait on it or poll it."
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "resultRun": {
+            "anyOf": [
+              {
+                "type": "object",
+                "properties": {
+                  "runId": {
+                    "type": "string"
+                  },
+                  "status": {
+                    "type": "string",
+                    "enum": [
+                      "preparing",
+                      "queued",
+                      "starting",
+                      "running",
+                      "waiting",
+                      "completed",
+                      "interrupted",
+                      "failed",
+                      "cancelled",
+                      "rolled_back"
+                    ]
+                  }
+                },
+                "required": ["runId", "status"],
+                "additionalProperties": true
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": ["threadId", "runId", "status", "timedOut"],
+        "additionalProperties": true
+      },
+      "annotations": {
+        "title": "Wait for a T3 thread",
+        "readOnlyHint": true,
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": true
+      }
+    },
+    {
+      "name": "t3_thread_interrupt",
+      "title": "Interrupt a T3 thread",
+      "description": "Interrupt a top-level thread's running turn. No `runId`: newest running turn. No effect when idle. For a delegate, use `task_cancel`.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "environmentId": {
+            "type": "string"
+          },
+          "threadId": {
+            "type": "string"
+          },
+          "runId": {
+            "type": "string"
+          },
+          "reason": {
+            "type": "string",
+            "maxLength": 2000
+          },
+          "stop": {
+            "type": "boolean"
+          },
+          "clientRequestId": {
+            "type": "string"
+          }
+        },
+        "required": ["threadId"]
+      },
+      "outputSchema": {
+        "type": "object",
+        "properties": {
+          "threadId": {
+            "type": "string"
+          },
+          "runId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "interrupt_requested",
+              "no_active_run",
+              "completed",
+              "failed",
+              "cancelled",
+              "interrupted",
+              "rolled_back"
+            ]
+          }
+        },
+        "required": ["threadId", "runId", "status"],
+        "additionalProperties": true
+      },
+      "annotations": {
+        "title": "Interrupt a T3 thread",
+        "readOnlyHint": false,
+        "destructiveHint": true,
+        "idempotentHint": false,
+        "openWorldHint": true
+      }
+    },
+    {
+      "name": "t3_thread_launch",
+      "description": "Create one new top-level thread, bound to its workspace before the agent starts. Task in `message`. Omit `projectId`, model and modes to inherit yours (outside a thread, pass `projectId` or `scratch`); modes cannot exceed yours. After an error or lost reply, retry with the same `clientRequestId`. Follow it with `t3_thread_read` or `t3_thread_wait`. Mention it with its `link`.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "environmentId": {
+            "type": "string"
+          },
+          "projectId": {
+            "type": "string"
+          },
+          "scratch": {
+            "type": "boolean",
+            "description": "No project: a new Scratch folder. Not with `projectId` or `workspaceStrategy`."
+          },
+          "title": {
+            "type": "string"
+          },
+          "modelSelection": {
+            "type": "object",
+            "properties": {
+              "provider": {},
+              "instanceId": {},
+              "model": {},
+              "options": {}
+            },
+            "required": ["model"]
+          },
+          "runtimeMode": {
+            "type": "string",
+            "enum": [
+              "approval-required",
+              "auto-accept-edits",
+              "auto",
+              "full-access"
+            ]
+          },
+          "interactionMode": {
+            "type": "string",
+            "enum": ["default", "plan"]
+          },
+          "workspaceStrategy": {
+            "type": "object",
+            "properties": {
+              "type": {
+                "type": "string",
+                "enum": ["root", "existing_worktree", "worktree"]
+              },
+              "branch": {
+                "type": "string"
+              },
+              "worktreePath": {
+                "type": "string"
+              },
+              "baseRef": {
+                "type": "string"
+              },
+              "startFromOrigin": {
+                "type": "boolean"
+              }
+            },
+            "required": ["type"],
+            "description": "'worktree': new checkout from `baseRef`. 'existing_worktree': bind `worktreePath`, a project worktree. 'root': project checkout, the default, not your worktree. Stack: parent branch as `baseRef`, `startFromOrigin: false`. Uncommitted edits are not copied."
+          },
+          "message": {
+            "type": "string",
+            "maxLength": 120000,
+            "description": "First prompt. Omit it and `attachments` for idle."
+          },
+          "attachments": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "type": {
+                  "type": "string",
+                  "enum": ["image", "file"]
+                },
+                "id": {
+                  "type": "string"
+                },
+                "name": {
+                  "type": "string"
+                },
+                "mimeType": {
+                  "type": "string"
+                },
+                "sizeBytes": {
+                  "anyOf": [
+                    {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 10485760
+                    },
+                    {
+                      "type": "integer",
+                      "minimum": 1,
+                      "maximum": 52428800
+                    }
+                  ]
+                },
+                "source": {
+                  "type": "object",
+                  "properties": {
+                    "_tag": {
+                      "type": "string",
+                      "enum": ["pasted-text"]
+                    }
+                  },
+                  "required": ["_tag"]
+                }
+              },
+              "required": ["type", "id", "name", "mimeType", "sizeBytes"]
+            },
+            "maxItems": 8
+          },
+          "clientRequestId": {
+            "type": "string"
+          },
+          "delegatedFrom": {
+            "type": "object",
+            "properties": {
+              "environmentId": {
+                "type": "string"
+              },
+              "threadId": {
+                "type": "string"
+              },
+              "title": {
+                "type": "string"
+              }
+            },
+            "required": ["environmentId", "threadId", "title"]
+          }
+        },
+        "required": ["title"]
+      },
+      "outputSchema": {
+        "type": "object",
+        "properties": {
+          "threadId": {
+            "type": "string"
+          },
+          "link": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "projectId": {
+            "type": "string"
+          },
+          "modelSelection": {
+            "type": "object",
+            "properties": {
+              "provider": {
+                "anyOf": [
+                  {},
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "instanceId": {
+                "anyOf": [
+                  {},
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "model": {},
+              "options": {
+                "anyOf": [
+                  {},
+                  {
+                    "type": "null"
+                  }
+                ]
+              }
+            },
+            "required": ["model"],
+            "additionalProperties": true
+          },
+          "runId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "status": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "preparing",
+                  "queued",
+                  "starting",
+                  "running",
+                  "waiting",
+                  "completed",
+                  "interrupted",
+                  "failed",
+                  "cancelled",
+                  "rolled_back"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "threadId",
+          "projectId",
+          "modelSelection",
+          "runId",
+          "status"
+        ],
+        "additionalProperties": true
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": true,
+        "idempotentHint": false,
+        "openWorldHint": true
+      }
+    },
+    {
+      "name": "t3_environment_read",
+      "description": "Read this server's identity and preferences. Providers and models: `orchestrator_capabilities`.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "environmentId": {
+            "type": "string"
+          }
+        }
+      },
+      "outputSchema": {
+        "type": "object",
+        "properties": {
+          "environmentId": {
+            "type": "string"
+          },
+          "label": {
+            "type": "string"
+          },
+          "serverVersion": {
+            "type": "string"
+          },
+          "platform": {
+            "type": "object",
+            "properties": {
+              "os": {
+                "type": "string",
+                "enum": ["darwin", "linux", "windows", "unknown"]
+              },
+              "arch": {
+                "type": "string",
+                "enum": ["arm64", "x64", "other"]
+              },
+              "machine": {}
+            },
+            "required": ["os", "arch"],
+            "additionalProperties": true
+          },
+          "preferences": {
+            "type": "object",
+            "properties": {
+              "defaultThreadEnvMode": {},
+              "newWorktreesStartFromOrigin": {
+                "anyOf": [
+                  {
+                    "type": "boolean"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "enableProviderUpdateChecks": {
+                "anyOf": [
+                  {
+                    "type": "boolean"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "backgroundActivity": {
+                "type": "object",
+                "properties": {
+                  "profile": {
+                    "type": "string",
+                    "enum": [
+                      "balanced",
+                      "performance",
+                      "battery-saver",
+                      "custom"
+                    ]
+                  }
+                },
+                "required": ["profile"],
+                "additionalProperties": true
+              },
+              "sourceControlWritingStyle": {
+                "type": "object",
+                "properties": {
+                  "mode": {
+                    "type": "string"
+                  },
+                  "followChangeRequestTemplates": {
+                    "type": "boolean"
+                  },
+                  "customInstructions": {
+                    "type": "string"
+                  },
+                  "truncated": {
+                    "type": "boolean"
+                  }
+                },
+                "required": [
+                  "mode",
+                  "followChangeRequestTemplates",
+                  "customInstructions",
+                  "truncated"
+                ],
+                "additionalProperties": true
+              }
+            },
+            "required": ["backgroundActivity", "sourceControlWritingStyle"],
+            "additionalProperties": true
+          }
+        },
+        "required": [
+          "environmentId",
+          "label",
+          "serverVersion",
+          "platform",
+          "preferences"
+        ],
+        "additionalProperties": true
+      },
+      "annotations": {
+        "readOnlyHint": true,
+        "destructiveHint": false,
+        "idempotentHint": false,
+        "openWorldHint": true
+      }
+    },
+    {
+      "name": "t3_thread_organize",
+      "title": "Organize a thread",
+      "description": "Pin, snooze, settle, archive, or mark a thread unread. Omit `threadId` for this thread. `snooze` needs `snoozedUntil`. Settling this thread applies at turn end. A failed turn or queued message leaves it active.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "environmentId": {
+            "type": "string"
+          },
+          "threadId": {
+            "type": "string"
+          },
+          "action": {
+            "type": "string",
+            "enum": [
+              "pin",
+              "unpin",
+              "snooze",
+              "unsnooze",
+              "settle",
+              "unsettle",
+              "archive",
+              "unarchive",
+              "mark_unread"
+            ]
+          },
+          "snoozedUntil": {
+            "type": "string"
+          }
+        },
+        "required": ["action"]
+      },
+      "annotations": {
+        "title": "Organize a thread",
+        "readOnlyHint": false,
+        "destructiveHint": true,
+        "idempotentHint": false,
+        "openWorldHint": true
+      }
+    }
+  ]
+}

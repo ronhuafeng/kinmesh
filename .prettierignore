@@ -3,3 +3,4 @@ node_modules
 coverage
 drizzle
 package-lock.json
+dist
