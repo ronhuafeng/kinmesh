@@ -26,6 +26,7 @@ import type { Store } from '../persistence/store.js';
 
 export const Failure = z.strictObject({
   code: z.enum([
+    'invalid_input',
     'unauthenticated',
     'forbidden',
     'not_found',
@@ -51,6 +52,8 @@ export const outcome = <T extends z.ZodType>(data: T) =>
 function failure(error: unknown): z.infer<typeof Failure> {
   if (error instanceof IdentityError) {
     switch (error.statusCode) {
+      case 400:
+        return { code: 'invalid_input', message: 'Invalid input' };
       case 401:
         return { code: 'unauthenticated', message: 'Authentication required' };
       case 403:

@@ -239,6 +239,19 @@ await test('Team MCP HTTP boundary rejects unauthenticated/cookie/spoofed/origin
       assert.ok([400, 403].includes(res.status));
       assert.equal((await res.text()).includes(f.writer.token), false);
     }
+    for (const host of [
+      `localhost:${String(f.port)}`,
+      `[::1]:${String(f.port)}`,
+    ]) {
+      const response = await fetch(f.endpoint, {
+        method: 'POST',
+        headers: { ...headers, host },
+        body: '{}',
+      });
+      // Fastify may reject the Host syntax before the application allowlist.
+      assert.ok([400, 403].includes(response.status));
+      assert.equal((await response.text()).includes(f.writer.token), false);
+    }
     assert.equal(
       (
         await fetch(f.endpoint + '?actorId=' + f.owner.id, {
@@ -287,13 +300,13 @@ await test('Team SDK strict input/output schemas reject impersonation and unknow
       { channelId: f.channelId, actorId: f.owner.id },
       { channelId: 123 },
       { channelId: f.channelId, limit: 0 },
-      { channelId: f.channelId, cursor: 'invalid' },
     ]) {
       const result = await client.callTool({
         name: 'team_messages_read',
         arguments: args,
       });
       assert.equal(result.isError, true);
+      assert.equal(result.structuredContent, undefined); // SDK schema errors are not domain result envelopes.
     }
     assert.equal(
       (await client.callTool({ name: 'team_task_accept', arguments: {} }))
@@ -850,4 +863,67 @@ await test('disposable provider fixture CLI prepares private state and refuses o
   } finally {
     rmSync(directory, { recursive: true, force: true });
   }
+});
+
+for (const cursorCase of ['bad', 'wrong-context'] as const) {
+  await test(`real SDK process returns exact redacted invalid_input for ${cursorCase} snapshot cursor`, async () => {
+    const f = await fixture();
+    try {
+      const { client } = await f.connect();
+      const marker = 'private-cursor-input-' + randomUUID();
+      let cursor = marker;
+      let name = 'team_messages_read';
+      if (cursorCase === 'wrong-context') {
+        for (let i = 0; i < 2; i++)
+          f.comm.post(
+            f.principal,
+            f.teamId,
+            f.channelId,
+            postInput({ body: marker }),
+          );
+        const page = await call(
+          client,
+          'team_messages_read',
+          { channelId: f.channelId, limit: 1 },
+          pageOf(Message),
+        );
+        assert.ok(page.ok && page.data.nextCursor !== null);
+        cursor = page.data.nextCursor;
+        name = 'team_tasks_list'; // Valid server-issued cursor for a different view.
+      }
+      const raw = await client.callTool({
+        name,
+        arguments: { channelId: f.channelId, cursor },
+      });
+      assert.equal(raw.isError, true);
+      const serialized = JSON.stringify(raw);
+      assert.equal(serialized.includes(marker), false);
+      assert.equal(serialized.includes(cursor), false);
+      assert.equal(serialized.includes(f.writer.token), false);
+      const decoded = outcome(z.unknown()).parse(raw.structuredContent).result;
+      assert.deepEqual(decoded, {
+        ok: false,
+        error: { code: 'invalid_input', message: 'Invalid input' },
+      });
+    } finally {
+      await f.cleanup();
+    }
+  });
+}
+
+await test('Team endpoint plaintext allowlist matches IPv4 listener while HTTPS proxy URLs remain supported', () => {
+  for (const endpoint of [
+    'http://localhost:3001/mcp',
+    'http://[::1]:3001/mcp',
+  ]) {
+    assert.equal(TeamEndpoint.safeParse(endpoint).success, false);
+  }
+  assert.equal(
+    TeamEndpoint.safeParse('http://127.0.0.1:3001/mcp').success,
+    true,
+  );
+  assert.equal(
+    TeamEndpoint.safeParse('https://team.example.com/mcp').success,
+    true,
+  );
 });
