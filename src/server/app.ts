@@ -1,3 +1,4 @@
+import { registerTasks } from './tasks.js';
 import { registerCommunication } from './communication.js';
 import { registerAgents } from './agents.js';
 import { resolvePrincipal } from './principals.js';
@@ -168,6 +169,7 @@ export async function createApp(config: Config, store: Store) {
   });
   registerAgents(app, store);
   registerCommunication(app, store);
+  registerTasks(app, store);
   await app.register((protectedApi, _options, done) => {
     protectedApi.get('/api/me', (request) => {
       const id = HumanId.parse(request.session.get('humanId'));

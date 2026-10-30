@@ -1,3 +1,5 @@
+import { TaskStatus, TaskAction } from './task-state.js';
+import { TaskId } from './contracts.js';
 import { z } from 'zod';
 import { AgentId, HumanId, TeamId, ChannelId, Channel } from './contracts.js';
 import { Author } from './agents.js';
@@ -108,9 +110,34 @@ export const CommunicationFact = z
     )
       ctx.addIssue({ code: 'custom', message: 'Invalid fact shape' });
   });
+export const TaskFact = z.strictObject({
+  version: z.literal(1),
+  id: z.uuid(),
+  teamId: TeamId,
+  channelId: ChannelId,
+  createdAt: z.iso.datetime(),
+  author: Author,
+  kind: z.literal('task.changed'),
+  topicId: TopicId.nullable(),
+  messageId: z.null(),
+  mentions: z.array(Member).max(2),
+  participant: z.null(),
+  participantState: z.null(),
+  sourceMessageId: z.uuid().nullable(),
+  sourceEventId: z.uuid().nullable(),
+  operationKey: OperationKey,
+  taskId: TaskId,
+  taskVersion: z.number().int().positive(),
+  taskStatus: TaskStatus,
+  taskAction: TaskAction,
+  owner: Member.nullable(),
+  reviewer: Member.nullable(),
+  executionLinkId: z.uuid().nullable(),
+});
+export const OutboxFact = z.union([CommunicationFact, TaskFact]);
 export const Event = z.strictObject({
   position: z.number().int().positive(),
-  fact: CommunicationFact,
+  fact: OutboxFact,
 });
 export const PageInput = z.strictObject({
   limit: z.coerce.number().int().min(1).max(100).default(50),

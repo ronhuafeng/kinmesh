@@ -1,3 +1,5 @@
+import { Task, TaskResult, TaskEvent } from '../src/domain/tasks.js';
+import { taskInput } from './task-helpers.js';
 import {
   ChannelView,
   Topic,
@@ -52,7 +54,7 @@ await test('setup command creates private secrets, never prints values and refus
     f.cleanup();
   }
 });
-await test('actual server entrypoint authenticates owner, exchanges human/agent topic messages, denies disabled agent and shuts down', async () => {
+await test('actual server entrypoint authenticates owner, exchanges messages, completes reviewed human task acceptance and recovers after process restart', async () => {
   const listener = createServer();
   listener.listen(0, '127.0.0.1');
   await once(listener, 'listening');
@@ -63,10 +65,8 @@ await test('actual server entrypoint authenticates owner, exchanges human/agent 
   listener.close();
   await closed;
   const f = fixture();
-  const child = spawn(
-    process.execPath,
-    ['--import', 'tsx', 'src/server/main.ts'],
-    {
+  const start = () =>
+    spawn(process.execPath, ['--import', 'tsx', 'src/server/main.ts'], {
       cwd: new URL('..', import.meta.url),
       stdio: ['ignore', 'pipe', 'ignore'],
       env: {
@@ -77,9 +77,9 @@ await test('actual server entrypoint authenticates owner, exchanges human/agent 
         KINMESH_PORT: String(port),
         KINMESH_ORIGIN: `http://127.0.0.1:${String(port)}`,
       },
-    },
-  );
-  try {
+    });
+  let child = start();
+  const ready = async () => {
     await Promise.race([
       once(child.stdout, 'data'),
       once(child, 'exit').then(() => {
@@ -92,6 +92,9 @@ await test('actual server entrypoint authenticates owner, exchanges human/agent 
         timer.unref();
       }),
     ]);
+  };
+  try {
+    await ready();
     const origin = `http://127.0.0.1:${String(port)}`;
     assert.equal((await fetch(origin + '/health')).status, 200);
     assert.equal((await fetch(origin + '/api/team')).status, 401);
@@ -134,7 +137,13 @@ await test('actual server entrypoint authenticates owner, exchanges human/agent 
       path + '/grants',
       {
         ...grantInput,
-        scopes: [...grantInput.scopes, 'channels:read', 'channels:write'],
+        scopes: [
+          ...grantInput.scopes,
+          'channels:read',
+          'channels:write',
+          'tasks:read',
+          'tasks:write',
+        ],
       },
       { cookie },
     );
@@ -211,6 +220,88 @@ await test('actual server entrypoint authenticates owner, exchanges human/agent 
       );
     }
 
+    const reviewerResponse = await post(
+      `/api/teams/${team.id}/agents`,
+      { ...profileInput, name: 'HTTP Reviewer', role: 'reviewer' },
+      { cookie },
+    );
+    assert.equal(reviewerResponse.status, 201);
+    const reviewer = Agent.parse(await reviewerResponse.json());
+    const reviewerGrantResponse = await post(
+      `/api/teams/${team.id}/agents/${reviewer.id}/grants`,
+      {
+        label: 'HTTP reviewer',
+        scopes: ['channels:read', 'tasks:read', 'tasks:review'],
+        lifetimeSeconds: 3600,
+      },
+      { cookie },
+    );
+    assert.equal(reviewerGrantResponse.status, 201);
+    const reviewerGrant = Issued.parse(await reviewerGrantResponse.json());
+    const reviewHeaders = { authorization: 'Bearer ' + reviewerGrant.token };
+    assert.equal(
+      (
+        await post(
+          channelPath + '/participants/invite',
+          { operationKey: key(), member: { kind: 'agent', id: reviewer.id } },
+          { cookie },
+        )
+      ).status,
+      200,
+    );
+    const tasksPath = channelPath + '/tasks';
+    const createdTask = await post(
+      tasksPath,
+      taskInput({ topicId: topic.id }),
+      { cookie },
+    );
+    assert.equal(createdTask.status, 201);
+    let task = TaskResult.parse(await createdTask.json()).task;
+    const claim = await post(
+      tasksPath + '/' + task.id + '/claim',
+      { operationKey: key(), expectedVersion: task.version },
+      headers,
+    );
+    assert.equal(claim.status, 200);
+    task = TaskResult.parse(await claim.json()).task;
+    const handoff = await post(
+      tasksPath + '/' + task.id + '/handoff',
+      {
+        operationKey: key(),
+        expectedVersion: task.version,
+        recipient: { kind: 'agent', id: reviewer.id },
+        mode: 'review',
+        note: 'Independent review',
+      },
+      headers,
+    );
+    assert.equal(handoff.status, 200);
+    task = TaskResult.parse(await handoff.json()).task;
+    const review = await post(
+      tasksPath + '/' + task.id + '/review',
+      {
+        operationKey: key(),
+        expectedVersion: task.version,
+        decision: 'approve',
+        note: 'Technical feedback',
+      },
+      reviewHeaders,
+    );
+    assert.equal(review.status, 200);
+    task = TaskResult.parse(await review.json()).task;
+    assert.equal(task.state.status, 'awaiting-human');
+    const accepted = await post(
+      tasksPath + '/' + task.id + '/accept',
+      {
+        operationKey: key(),
+        expectedVersion: task.version,
+        note: 'Verified human owner accepts',
+      },
+      { cookie },
+    );
+    assert.equal(accepted.status, 200);
+    task = TaskResult.parse(await accepted.json()).task;
+    assert.equal(task.state.status, 'accepted');
     assert.equal(
       (await post(path + '/lifecycle', { lifecycle: 'disabled' }, { cookie }))
         .status,
@@ -228,6 +319,32 @@ await test('actual server entrypoint authenticates owner, exchanges human/agent 
     await assert.rejects(
       fetch(origin + '/health', { signal: AbortSignal.timeout(1000) }),
     );
+    child = start();
+    await ready();
+    const recovered = await fetch(origin + tasksPath + '/' + task.id, {
+      headers: { cookie },
+    });
+    assert.equal(recovered.status, 200);
+    assert.deepEqual(Task.parse(await recovered.json()), task);
+    const recoveredHistory = await fetch(
+      origin + tasksPath + '/' + task.id + '/history',
+      { headers: { cookie } },
+    );
+    assert.equal(recoveredHistory.status, 200);
+    assert.equal(
+      pageOf(TaskEvent)
+        .parse(await recoveredHistory.json())
+        .items.at(-1)?.author.kind,
+      'human',
+    );
+    assert.equal(
+      (await fetch(origin + tasksPath + '/' + task.id, { headers })).status,
+      401,
+    );
+    const secondExit = once(child, 'exit');
+    child.kill('SIGTERM');
+    await secondExit;
+    assert.equal(child.exitCode, 0);
   } finally {
     if (child.exitCode === null && child.signalCode === null) {
       const exit = once(child, 'exit');

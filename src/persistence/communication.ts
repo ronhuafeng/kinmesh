@@ -1,7 +1,8 @@
-import { createHash, randomUUID } from 'node:crypto';
-import { and, asc, eq, gt, lte, max } from 'drizzle-orm';
+import { transactional, snapshotPage } from './transactional.js';
+import { randomUUID } from 'node:crypto';
+import { and, asc, eq, gt, lte, max, sql } from 'drizzle-orm';
 import type { BetterSQLite3Database } from 'drizzle-orm/better-sqlite3';
-import { z } from 'zod';
+import type { z } from 'zod';
 import * as s from './schema.js';
 import type { agentRepository } from './agents.js';
 import type { ChannelId, TeamId } from '../domain/contracts.js';
@@ -11,11 +12,12 @@ import {
   ChannelView,
   CommunicationFact,
   Event,
+  OutboxFact,
   Member,
   Message,
   MessageId,
   Mutation,
-  PageInput,
+  type PageInput,
   Participant,
   ParticipantInput,
   PostInput,
@@ -23,21 +25,10 @@ import {
   TopicId,
   TopicInput,
   memberKey,
-  pageOf,
 } from '../domain/communication.js';
 type ChannelId = z.infer<typeof ChannelId>;
 const decode = (value: string): unknown => JSON.parse(value);
 const now = () => new Date().toISOString();
-const hash = (value: unknown) =>
-  createHash('sha256').update(JSON.stringify(value)).digest('hex');
-const Cursor = z
-  .strictObject({
-    v: z.literal(1),
-    context: z.string().max(1024),
-    after: z.number().int().nonnegative(),
-    max: z.number().int().nonnegative(),
-  })
-  .refine((v) => v.after <= v.max);
 function member(p: Principal): Member {
   return p.kind === 'human'
     ? { kind: 'human', id: p.humanId }
@@ -54,16 +45,7 @@ export function communicationRepository(
   db: BetterSQLite3Database<typeof s>,
   agents: ReturnType<typeof agentRepository>,
 ) {
-  function atomic<T>(action: () => T) {
-    try {
-      return db.transaction(action, { behavior: 'immediate' });
-    } catch (error) {
-      const code = z.object({ code: z.string() }).safeParse(error);
-      if (code.success && code.data.code.startsWith('SQLITE_CONSTRAINT'))
-        throw new IdentityError(409);
-      throw error;
-    }
-  }
+  const { atomic, receipt } = transactional(db);
   function team(p: Principal, teamId: TeamId, write = false) {
     agents.teamAccess(p, teamId, 'channels:read');
     return agents.teamAccess(
@@ -181,32 +163,9 @@ export function communicationRepository(
   ) {
     Mutation.parse({ operationKey: input.operationKey });
     const scope = JSON.stringify([teamId, memberKey(member(p)), target, kind]);
-    const fingerprint = hash(input);
-    const old = db
-      .select()
-      .from(s.communicationOperations)
-      .where(
-        and(
-          eq(s.communicationOperations.scope, scope),
-          eq(s.communicationOperations.operationKey, input.operationKey),
-        ),
-      )
-      .get();
-    if (old !== undefined) {
-      if (old.fingerprint !== fingerprint) throw new IdentityError(409);
-      return schema.parse(decode(old.result));
-    }
-    const result = schema.parse(effect());
-    db.insert(s.communicationOperations)
-      .values({
-        scope,
-        operationKey: input.operationKey,
-        fingerprint,
-        result: JSON.stringify(result),
-      })
-      .run();
-    return result;
+    return receipt(scope, input.operationKey, input, schema, effect);
   }
+
   function fact(
     p: Principal,
     teamId: TeamId,
@@ -262,48 +221,56 @@ export function communicationRepository(
       .map((r) => Member.parse(decode(r.target)));
     return Message.parse({ ...row, author: decode(row.author), mentions });
   }
-  function page<T extends { position: number }>(
-    input: PageInput,
-    context: unknown,
-    schema: z.ZodType<T>,
-    high: () => number,
-    select: (after: number, max: number, limit: number) => T[],
+  const page = snapshotPage;
+  const highest = (value: number | null | undefined) => value ?? 0;
+  function visibleEvent(
+    p: Principal,
+    teamId: TeamId,
+    channelId: ChannelId,
+    eventId: string,
   ) {
-    const parsed = PageInput.parse(input);
-    const binding = JSON.stringify(context);
-    let after = 0;
-    let maximum: number;
-    if (parsed.cursor === undefined) maximum = high();
-    else {
+    const row = db
+      .select()
+      .from(s.communicationOutbox)
+      .where(
+        and(
+          eq(s.communicationOutbox.id, eventId),
+          eq(s.communicationOutbox.channelId, channelId),
+        ),
+      )
+      .get();
+    if (row === undefined) throw new IdentityError(404);
+    if (OutboxFact.parse(decode(row.fact)).kind === 'task.changed') {
       try {
-        const cursor = Cursor.parse(
-          decode(Buffer.from(parsed.cursor, 'base64url').toString('utf8')),
-        );
-        if (cursor.context !== binding) throw new Error('Wrong cursor');
-        after = cursor.after;
-        maximum = cursor.max;
-      } catch {
-        throw new IdentityError(400);
+        agents.teamAccess(p, teamId, 'tasks:read');
+      } catch (error) {
+        if (error instanceof IdentityError && error.statusCode === 403)
+          throw new IdentityError(404);
+        throw error;
       }
     }
-    const rows = select(after, maximum, parsed.limit + 1);
-    const items = rows.slice(0, parsed.limit);
-    const last = items.at(-1);
-    const nextCursor =
-      rows.length > parsed.limit && last !== undefined
-        ? Buffer.from(
-            JSON.stringify({
-              v: 1,
-              context: binding,
-              after: last.position,
-              max: maximum,
-            }),
-          ).toString('base64url')
-        : null;
-    return pageOf(schema).parse({ items, nextCursor });
   }
-  const highest = (value: number | null | undefined) => value ?? 0;
   return {
+    validateParticipant(
+      p: Principal,
+      teamId: TeamId,
+      channelId: ChannelId,
+      target: Member,
+    ) {
+      access(p, teamId, channelId);
+      validTarget(teamId, channelId, target, true);
+    },
+    validateCause(
+      p: Principal,
+      teamId: TeamId,
+      channelId: ChannelId,
+      messageId: string | null,
+      eventId: string | null,
+    ) {
+      access(p, teamId, channelId);
+      if (messageId !== null) message(channelId, MessageId.parse(messageId));
+      if (eventId !== null) visibleEvent(p, teamId, channelId, eventId);
+    },
     createChannel(
       p: Principal,
       teamId: TeamId,
@@ -583,20 +550,8 @@ export function communicationRepository(
               validTarget(teamId, channelId, target, true);
             if (data.sourceMessageId !== null)
               message(channelId, data.sourceMessageId);
-            if (
-              data.sourceEventId !== null &&
-              db
-                .select()
-                .from(s.communicationOutbox)
-                .where(
-                  and(
-                    eq(s.communicationOutbox.id, data.sourceEventId),
-                    eq(s.communicationOutbox.channelId, channelId),
-                  ),
-                )
-                .get() === undefined
-            )
-              throw new IdentityError(404);
+            if (data.sourceEventId !== null)
+              visibleEvent(p, teamId, channelId, data.sourceEventId);
             const id = MessageId.parse(randomUUID());
             db.insert(s.messages)
               .values({
@@ -689,16 +644,32 @@ export function communicationRepository(
     ) {
       return atomic(() => {
         access(p, teamId, channelId);
+        let taskFacts = true;
+        if (p.kind === 'agent') {
+          try {
+            agents.teamAccess(p, teamId, 'tasks:read');
+          } catch (error) {
+            if (error instanceof IdentityError && error.statusCode === 403)
+              taskFacts = false;
+            else throw error;
+          }
+        }
+        const condition = and(
+          eq(s.communicationOutbox.channelId, channelId),
+          taskFacts
+            ? undefined
+            : sql`json_extract(${s.communicationOutbox.fact}, '$.kind') != 'task.changed'`,
+        );
         return page(
           input,
-          ['events', teamId, channelId, memberKey(member(p))],
+          ['events', teamId, channelId, memberKey(member(p)), taskFacts],
           Event,
           () =>
             highest(
               db
                 .select({ value: max(s.communicationOutbox.position) })
                 .from(s.communicationOutbox)
-                .where(eq(s.communicationOutbox.channelId, channelId))
+                .where(condition)
                 .get()?.value,
             ),
           (after, maximum, limit) =>
@@ -707,7 +678,7 @@ export function communicationRepository(
               .from(s.communicationOutbox)
               .where(
                 and(
-                  eq(s.communicationOutbox.channelId, channelId),
+                  condition,
                   gt(s.communicationOutbox.position, after),
                   lte(s.communicationOutbox.position, maximum),
                 ),
