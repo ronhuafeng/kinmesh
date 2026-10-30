@@ -22,6 +22,13 @@
       "when": 1793334708243,
       "tag": "0002_normal_talon",
       "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "6",
+      "when": 1793335964039,
+      "tag": "0003_young_smasher",
+      "breakpoints": true
     }
   ]
 }

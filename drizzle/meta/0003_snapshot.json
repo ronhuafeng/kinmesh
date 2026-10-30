@@ -1,0 +1,1452 @@
+{
+  "version": "6",
+  "dialect": "sqlite",
+  "id": "9ee42589-b6be-49d6-965d-bced9f2f06b1",
+  "prevId": "5e7fd683-cb60-4ae3-85f1-e5ceb7b4dd10",
+  "tables": {
+    "agent_audit": {
+      "name": "agent_audit",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "agent_id": {
+          "name": "agent_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "team_id": {
+          "name": "team_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "kind": {
+          "name": "kind",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "author": {
+          "name": "author",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "detail": {
+          "name": "detail",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "agent_audit_agent_id_team_id_agents_id_team_id_fk": {
+          "name": "agent_audit_agent_id_team_id_agents_id_team_id_fk",
+          "tableFrom": "agent_audit",
+          "tableTo": "agents",
+          "columnsFrom": [
+            "agent_id",
+            "team_id"
+          ],
+          "columnsTo": [
+            "id",
+            "team_id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {
+        "audit_json": {
+          "name": "audit_json",
+          "value": "json_valid(\"agent_audit\".\"author\") AND json_valid(\"agent_audit\".\"detail\")"
+        }
+      }
+    },
+    "agent_correlations": {
+      "name": "agent_correlations",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "agent_id": {
+          "name": "agent_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "team_id": {
+          "name": "team_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "reference_key": {
+          "name": "reference_key",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "reference": {
+          "name": "reference",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "provider_session_id": {
+          "name": "provider_session_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "invocation_id": {
+          "name": "invocation_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "author": {
+          "name": "author",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        }
+      },
+      "indexes": {
+        "correlation_execution_owner": {
+          "name": "correlation_execution_owner",
+          "columns": [
+            "team_id",
+            "reference_key"
+          ],
+          "isUnique": true
+        }
+      },
+      "foreignKeys": {
+        "agent_correlations_agent_id_team_id_agents_id_team_id_fk": {
+          "name": "agent_correlations_agent_id_team_id_agents_id_team_id_fk",
+          "tableFrom": "agent_correlations",
+          "tableTo": "agents",
+          "columnsFrom": [
+            "agent_id",
+            "team_id"
+          ],
+          "columnsTo": [
+            "id",
+            "team_id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {
+        "correlation_reference_json": {
+          "name": "correlation_reference_json",
+          "value": "json_valid(\"agent_correlations\".\"reference\")"
+        },
+        "correlation_author_json": {
+          "name": "correlation_author_json",
+          "value": "json_valid(\"agent_correlations\".\"author\")"
+        }
+      }
+    },
+    "agent_grants": {
+      "name": "agent_grants",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "agent_id": {
+          "name": "agent_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "team_id": {
+          "name": "team_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "token_hash": {
+          "name": "token_hash",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "label": {
+          "name": "label",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "scopes": {
+          "name": "scopes",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "issued_by": {
+          "name": "issued_by",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "expires_at": {
+          "name": "expires_at",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "revoked_at": {
+          "name": "revoked_at",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        }
+      },
+      "indexes": {
+        "agent_grants_token_hash_unique": {
+          "name": "agent_grants_token_hash_unique",
+          "columns": [
+            "token_hash"
+          ],
+          "isUnique": true
+        }
+      },
+      "foreignKeys": {
+        "agent_grants_issued_by_humans_id_fk": {
+          "name": "agent_grants_issued_by_humans_id_fk",
+          "tableFrom": "agent_grants",
+          "tableTo": "humans",
+          "columnsFrom": [
+            "issued_by"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "agent_grants_agent_id_team_id_agents_id_team_id_fk": {
+          "name": "agent_grants_agent_id_team_id_agents_id_team_id_fk",
+          "tableFrom": "agent_grants",
+          "tableTo": "agents",
+          "columnsFrom": [
+            "agent_id",
+            "team_id"
+          ],
+          "columnsTo": [
+            "id",
+            "team_id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {
+        "grant_hash_length": {
+          "name": "grant_hash_length",
+          "value": "length(\"agent_grants\".\"token_hash\") = 64"
+        },
+        "grant_scopes_json": {
+          "name": "grant_scopes_json",
+          "value": "json_valid(\"agent_grants\".\"scopes\")"
+        }
+      }
+    },
+    "agent_runtime_events": {
+      "name": "agent_runtime_events",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "correlation_id": {
+          "name": "correlation_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "state": {
+          "name": "state",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "author": {
+          "name": "author",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "agent_runtime_events_correlation_id_agent_correlations_id_fk": {
+          "name": "agent_runtime_events_correlation_id_agent_correlations_id_fk",
+          "tableFrom": "agent_runtime_events",
+          "tableTo": "agent_correlations",
+          "columnsFrom": [
+            "correlation_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {
+        "runtime_state": {
+          "name": "runtime_state",
+          "value": "\"agent_runtime_events\".\"state\" IN ('unknown','active','waiting','succeeded','failed','stopped')"
+        }
+      }
+    },
+    "agents": {
+      "name": "agents",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "team_id": {
+          "name": "team_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "name": {
+          "name": "name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "role": {
+          "name": "role",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "capabilities": {
+          "name": "capabilities",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "preferences": {
+          "name": "preferences",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "memory_location": {
+          "name": "memory_location",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "lifecycle": {
+          "name": "lifecycle",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        }
+      },
+      "indexes": {
+        "agent_team_identity": {
+          "name": "agent_team_identity",
+          "columns": [
+            "id",
+            "team_id"
+          ],
+          "isUnique": true
+        },
+        "agent_team_name": {
+          "name": "agent_team_name",
+          "columns": [
+            "team_id",
+            "name"
+          ],
+          "isUnique": true
+        }
+      },
+      "foreignKeys": {
+        "agents_team_id_teams_id_fk": {
+          "name": "agents_team_id_teams_id_fk",
+          "tableFrom": "agents",
+          "tableTo": "teams",
+          "columnsFrom": [
+            "team_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {
+        "agent_name_length": {
+          "name": "agent_name_length",
+          "value": "length(trim(\"agents\".\"name\")) BETWEEN 1 AND 80"
+        },
+        "agent_role": {
+          "name": "agent_role",
+          "value": "\"agents\".\"role\" IN ('developer','reviewer','assistant')"
+        },
+        "agent_lifecycle": {
+          "name": "agent_lifecycle",
+          "value": "\"agents\".\"lifecycle\" IN ('active','disabled')"
+        },
+        "agent_capabilities_json": {
+          "name": "agent_capabilities_json",
+          "value": "json_valid(\"agents\".\"capabilities\")"
+        },
+        "agent_preferences_json": {
+          "name": "agent_preferences_json",
+          "value": "json_valid(\"agents\".\"preferences\")"
+        },
+        "agent_memory_bound": {
+          "name": "agent_memory_bound",
+          "value": "\"agents\".\"memory_location\" IS NULL OR length(\"agents\".\"memory_location\") BETWEEN 1 AND 1024"
+        }
+      }
+    },
+    "bootstrap": {
+      "name": "bootstrap",
+      "columns": {
+        "singleton": {
+          "name": "singleton",
+          "type": "integer",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "completed_at": {
+          "name": "completed_at",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {
+        "one_bootstrap": {
+          "name": "one_bootstrap",
+          "value": "\"bootstrap\".\"singleton\" = 1"
+        }
+      }
+    },
+    "channel_participants": {
+      "name": "channel_participants",
+      "columns": {
+        "channel_id": {
+          "name": "channel_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "team_id": {
+          "name": "team_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "member_key": {
+          "name": "member_key",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "human_id": {
+          "name": "human_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "agent_id": {
+          "name": "agent_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "state": {
+          "name": "state",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        }
+      },
+      "indexes": {
+        "participant_visibility": {
+          "name": "participant_visibility",
+          "columns": [
+            "team_id",
+            "member_key",
+            "state",
+            "channel_id"
+          ],
+          "isUnique": false
+        }
+      },
+      "foreignKeys": {
+        "channel_participants_channel_id_team_id_channels_id_team_id_fk": {
+          "name": "channel_participants_channel_id_team_id_channels_id_team_id_fk",
+          "tableFrom": "channel_participants",
+          "tableTo": "channels",
+          "columnsFrom": [
+            "channel_id",
+            "team_id"
+          ],
+          "columnsTo": [
+            "id",
+            "team_id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "channel_participants_human_id_team_id_memberships_human_id_team_id_fk": {
+          "name": "channel_participants_human_id_team_id_memberships_human_id_team_id_fk",
+          "tableFrom": "channel_participants",
+          "tableTo": "memberships",
+          "columnsFrom": [
+            "human_id",
+            "team_id"
+          ],
+          "columnsTo": [
+            "human_id",
+            "team_id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "channel_participants_agent_id_team_id_agents_id_team_id_fk": {
+          "name": "channel_participants_agent_id_team_id_agents_id_team_id_fk",
+          "tableFrom": "channel_participants",
+          "tableTo": "agents",
+          "columnsFrom": [
+            "agent_id",
+            "team_id"
+          ],
+          "columnsTo": [
+            "id",
+            "team_id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {
+        "channel_participants_channel_id_member_key_pk": {
+          "columns": [
+            "channel_id",
+            "member_key"
+          ],
+          "name": "channel_participants_channel_id_member_key_pk"
+        }
+      },
+      "uniqueConstraints": {},
+      "checkConstraints": {
+        "participant_identity": {
+          "name": "participant_identity",
+          "value": "(\"channel_participants\".\"human_id\" IS NOT NULL AND \"channel_participants\".\"agent_id\" IS NULL AND \"channel_participants\".\"member_key\" = 'human:' || \"channel_participants\".\"human_id\") OR (\"channel_participants\".\"agent_id\" IS NOT NULL AND \"channel_participants\".\"human_id\" IS NULL AND \"channel_participants\".\"member_key\" = 'agent:' || \"channel_participants\".\"agent_id\")"
+        },
+        "participant_state": {
+          "name": "participant_state",
+          "value": "\"channel_participants\".\"state\" IN ('joined','left','removed')"
+        }
+      }
+    },
+    "channels": {
+      "name": "channels",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "team_id": {
+          "name": "team_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "name": {
+          "name": "name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "position": {
+          "name": "position",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": 0
+        }
+      },
+      "indexes": {
+        "channel_position": {
+          "name": "channel_position",
+          "columns": [
+            "position"
+          ],
+          "isUnique": true
+        },
+        "channel_id_team": {
+          "name": "channel_id_team",
+          "columns": [
+            "id",
+            "team_id"
+          ],
+          "isUnique": true
+        },
+        "channel_team_name": {
+          "name": "channel_team_name",
+          "columns": [
+            "team_id",
+            "name"
+          ],
+          "isUnique": true
+        }
+      },
+      "foreignKeys": {
+        "channels_team_id_teams_id_fk": {
+          "name": "channels_team_id_teams_id_fk",
+          "tableFrom": "channels",
+          "tableTo": "teams",
+          "columnsFrom": [
+            "team_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {
+        "channel_name_length": {
+          "name": "channel_name_length",
+          "value": "length(trim(\"channels\".\"name\")) BETWEEN 1 AND 80"
+        }
+      }
+    },
+    "communication_operations": {
+      "name": "communication_operations",
+      "columns": {
+        "scope": {
+          "name": "scope",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "operation_key": {
+          "name": "operation_key",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "fingerprint": {
+          "name": "fingerprint",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "result": {
+          "name": "result",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {},
+      "compositePrimaryKeys": {
+        "communication_operations_scope_operation_key_pk": {
+          "columns": [
+            "scope",
+            "operation_key"
+          ],
+          "name": "communication_operations_scope_operation_key_pk"
+        }
+      },
+      "uniqueConstraints": {},
+      "checkConstraints": {}
+    },
+    "communication_outbox": {
+      "name": "communication_outbox",
+      "columns": {
+        "position": {
+          "name": "position",
+          "type": "integer",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": true
+        },
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "channel_id": {
+          "name": "channel_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "fact": {
+          "name": "fact",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        }
+      },
+      "indexes": {
+        "communication_outbox_id_unique": {
+          "name": "communication_outbox_id_unique",
+          "columns": [
+            "id"
+          ],
+          "isUnique": true
+        },
+        "outbox_channel_order": {
+          "name": "outbox_channel_order",
+          "columns": [
+            "channel_id",
+            "position"
+          ],
+          "isUnique": false
+        }
+      },
+      "foreignKeys": {
+        "communication_outbox_channel_id_channels_id_fk": {
+          "name": "communication_outbox_channel_id_channels_id_fk",
+          "tableFrom": "communication_outbox",
+          "tableTo": "channels",
+          "columnsFrom": [
+            "channel_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {
+        "outbox_fact_json": {
+          "name": "outbox_fact_json",
+          "value": "json_valid(\"communication_outbox\".\"fact\")"
+        }
+      }
+    },
+    "execution_operations": {
+      "name": "execution_operations",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "scope": {
+          "name": "scope",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "actor": {
+          "name": "actor",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "operation_key": {
+          "name": "operation_key",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "request_id": {
+          "name": "request_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "fingerprint": {
+          "name": "fingerprint",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "tool": {
+          "name": "tool",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "payload": {
+          "name": "payload",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "phase": {
+          "name": "phase",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "reference": {
+          "name": "reference",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "rejection": {
+          "name": "rejection",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        }
+      },
+      "indexes": {
+        "execution_operations_request_id_unique": {
+          "name": "execution_operations_request_id_unique",
+          "columns": [
+            "request_id"
+          ],
+          "isUnique": true
+        },
+        "execution_intent_scope": {
+          "name": "execution_intent_scope",
+          "columns": [
+            "scope",
+            "actor",
+            "operation_key"
+          ],
+          "isUnique": true
+        }
+      },
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {
+        "execution_phase": {
+          "name": "execution_phase",
+          "value": "\"execution_operations\".\"phase\" IN ('prepared','dispatching','uncertain','known','rejected')"
+        }
+      }
+    },
+    "humans": {
+      "name": "humans",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "username": {
+          "name": "username",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "password_hash": {
+          "name": "password_hash",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        }
+      },
+      "indexes": {
+        "humans_username_unique": {
+          "name": "humans_username_unique",
+          "columns": [
+            "username"
+          ],
+          "isUnique": true
+        }
+      },
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {
+        "username_length": {
+          "name": "username_length",
+          "value": "length(\"humans\".\"username\") BETWEEN 3 AND 64"
+        }
+      }
+    },
+    "memberships": {
+      "name": "memberships",
+      "columns": {
+        "human_id": {
+          "name": "human_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "team_id": {
+          "name": "team_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "role": {
+          "name": "role",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "memberships_human_id_humans_id_fk": {
+          "name": "memberships_human_id_humans_id_fk",
+          "tableFrom": "memberships",
+          "tableTo": "humans",
+          "columnsFrom": [
+            "human_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "memberships_team_id_teams_id_fk": {
+          "name": "memberships_team_id_teams_id_fk",
+          "tableFrom": "memberships",
+          "tableTo": "teams",
+          "columnsFrom": [
+            "team_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {
+        "memberships_human_id_team_id_pk": {
+          "columns": [
+            "human_id",
+            "team_id"
+          ],
+          "name": "memberships_human_id_team_id_pk"
+        }
+      },
+      "uniqueConstraints": {},
+      "checkConstraints": {
+        "valid_role": {
+          "name": "valid_role",
+          "value": "\"memberships\".\"role\" IN ('owner', 'member')"
+        }
+      }
+    },
+    "message_mentions": {
+      "name": "message_mentions",
+      "columns": {
+        "message_id": {
+          "name": "message_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "channel_id": {
+          "name": "channel_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "member_key": {
+          "name": "member_key",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "target": {
+          "name": "target",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "message_mentions_message_id_channel_id_messages_id_channel_id_fk": {
+          "name": "message_mentions_message_id_channel_id_messages_id_channel_id_fk",
+          "tableFrom": "message_mentions",
+          "tableTo": "messages",
+          "columnsFrom": [
+            "message_id",
+            "channel_id"
+          ],
+          "columnsTo": [
+            "id",
+            "channel_id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "message_mentions_channel_id_member_key_channel_participants_channel_id_member_key_fk": {
+          "name": "message_mentions_channel_id_member_key_channel_participants_channel_id_member_key_fk",
+          "tableFrom": "message_mentions",
+          "tableTo": "channel_participants",
+          "columnsFrom": [
+            "channel_id",
+            "member_key"
+          ],
+          "columnsTo": [
+            "channel_id",
+            "member_key"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {
+        "message_mentions_message_id_member_key_pk": {
+          "columns": [
+            "message_id",
+            "member_key"
+          ],
+          "name": "message_mentions_message_id_member_key_pk"
+        }
+      },
+      "uniqueConstraints": {},
+      "checkConstraints": {}
+    },
+    "messages": {
+      "name": "messages",
+      "columns": {
+        "position": {
+          "name": "position",
+          "type": "integer",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": true
+        },
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "channel_id": {
+          "name": "channel_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "topic_id": {
+          "name": "topic_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "author": {
+          "name": "author",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "body": {
+          "name": "body",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "source_message_id": {
+          "name": "source_message_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "source_event_id": {
+          "name": "source_event_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        }
+      },
+      "indexes": {
+        "messages_id_unique": {
+          "name": "messages_id_unique",
+          "columns": [
+            "id"
+          ],
+          "isUnique": true
+        },
+        "message_channel_identity": {
+          "name": "message_channel_identity",
+          "columns": [
+            "id",
+            "channel_id"
+          ],
+          "isUnique": true
+        },
+        "message_channel_timeline": {
+          "name": "message_channel_timeline",
+          "columns": [
+            "channel_id",
+            "position"
+          ],
+          "isUnique": false
+        },
+        "message_topic_timeline": {
+          "name": "message_topic_timeline",
+          "columns": [
+            "channel_id",
+            "topic_id",
+            "position"
+          ],
+          "isUnique": false
+        }
+      },
+      "foreignKeys": {
+        "messages_channel_id_channels_id_fk": {
+          "name": "messages_channel_id_channels_id_fk",
+          "tableFrom": "messages",
+          "tableTo": "channels",
+          "columnsFrom": [
+            "channel_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "messages_topic_id_channel_id_topics_id_channel_id_fk": {
+          "name": "messages_topic_id_channel_id_topics_id_channel_id_fk",
+          "tableFrom": "messages",
+          "tableTo": "topics",
+          "columnsFrom": [
+            "topic_id",
+            "channel_id"
+          ],
+          "columnsTo": [
+            "id",
+            "channel_id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {
+        "message_body_bound": {
+          "name": "message_body_bound",
+          "value": "length(\"messages\".\"body\") BETWEEN 1 AND 8000"
+        }
+      }
+    },
+    "teams": {
+      "name": "teams",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "name": {
+          "name": "name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {
+        "team_name_length": {
+          "name": "team_name_length",
+          "value": "length(trim(\"teams\".\"name\")) BETWEEN 1 AND 80"
+        }
+      }
+    },
+    "topics": {
+      "name": "topics",
+      "columns": {
+        "position": {
+          "name": "position",
+          "type": "integer",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": true
+        },
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "channel_id": {
+          "name": "channel_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "title": {
+          "name": "title",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "author": {
+          "name": "author",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        }
+      },
+      "indexes": {
+        "topics_id_unique": {
+          "name": "topics_id_unique",
+          "columns": [
+            "id"
+          ],
+          "isUnique": true
+        },
+        "topic_channel_identity": {
+          "name": "topic_channel_identity",
+          "columns": [
+            "id",
+            "channel_id"
+          ],
+          "isUnique": true
+        },
+        "topic_timeline": {
+          "name": "topic_timeline",
+          "columns": [
+            "channel_id",
+            "position"
+          ],
+          "isUnique": false
+        }
+      },
+      "foreignKeys": {
+        "topics_channel_id_channels_id_fk": {
+          "name": "topics_channel_id_channels_id_fk",
+          "tableFrom": "topics",
+          "tableTo": "channels",
+          "columnsFrom": [
+            "channel_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {
+        "topic_title_bound": {
+          "name": "topic_title_bound",
+          "value": "length(trim(\"topics\".\"title\")) BETWEEN 1 AND 160"
+        }
+      }
+    }
+  },
+  "views": {},
+  "enums": {},
+  "_meta": {
+    "schemas": {},
+    "tables": {},
+    "columns": {}
+  },
+  "internal": {
+    "indexes": {}
+  }
+}

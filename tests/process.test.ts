@@ -1,6 +1,13 @@
+import {
+  ChannelView,
+  Topic,
+  Message,
+  pageOf,
+} from '../src/domain/communication.js';
+import { key, postInput } from './communication-helpers.js';
 import { z } from 'zod';
 import { Agent } from '../src/domain/agents.js';
-import { Team } from '../src/domain/contracts.js';
+import { Team, Human } from '../src/domain/contracts.js';
 import { profileInput, grantInput, Issued } from './agent-helpers.js';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
@@ -45,7 +52,7 @@ await test('setup command creates private secrets, never prints values and refus
     f.cleanup();
   }
 });
-await test('actual server entrypoint authenticates owner, issues scoped agent grant, denies disabled agent and shuts down', async () => {
+await test('actual server entrypoint authenticates owner, exchanges human/agent topic messages, denies disabled agent and shuts down', async () => {
   const listener = createServer();
   listener.listen(0, '127.0.0.1');
   await once(listener, 'listening');
@@ -123,18 +130,97 @@ await test('actual server entrypoint authenticates owner, issues scoped agent gr
     assert.equal(created.status, 201);
     const agent = Agent.parse(await created.json());
     const path = `/api/teams/${team.id}/agents/${agent.id}`;
-    const issued = await post(path + '/grants', grantInput, { cookie });
+    const issued = await post(
+      path + '/grants',
+      {
+        ...grantInput,
+        scopes: [...grantInput.scopes, 'channels:read', 'channels:write'],
+      },
+      { cookie },
+    );
     assert.equal(issued.status, 201);
     const grant = Issued.parse(await issued.json());
     const headers = { authorization: 'Bearer ' + grant.token };
     assert.equal((await fetch(origin + path, { headers })).status, 200);
     assert.equal((await fetch(origin + '/api/team', { headers })).status, 403);
+    const channelResponse = await post(
+      `/api/teams/${team.id}/channels`,
+      { operationKey: key(), name: 'HTTP discussion' },
+      { cookie },
+    );
+    assert.equal(channelResponse.status, 201);
+    const channel = ChannelView.parse(await channelResponse.json());
+    const channelPath = `/api/teams/${team.id}/channels/${channel.id}`;
+    assert.equal(
+      (
+        await post(
+          channelPath + '/participants/invite',
+          { operationKey: key(), member: { kind: 'agent', id: agent.id } },
+          { cookie },
+        )
+      ).status,
+      200,
+    );
+    const topicResponse = await post(
+      channelPath + '/topics',
+      { operationKey: key(), title: 'HTTP topic' },
+      { cookie },
+    );
+    assert.equal(topicResponse.status, 201);
+    const topic = Topic.parse(await topicResponse.json());
+    const humanResponse = await post(
+      channelPath + '/messages',
+      postInput({
+        topicId: topic.id,
+        body: 'Human request',
+        mentions: [{ kind: 'agent', id: agent.id }],
+      }),
+      { cookie },
+    );
+    assert.equal(humanResponse.status, 201);
+    const humanMessage = Message.parse(await humanResponse.json());
+    const ownerHuman = z
+      .object({ human: Human })
+      .parse(
+        await (await fetch(origin + '/api/me', { headers: { cookie } })).json(),
+      ).human;
+    const agentResponse = await post(
+      channelPath + '/messages',
+      postInput({
+        topicId: topic.id,
+        body: 'Agent reply',
+        sourceMessageId: humanMessage.id,
+        mentions: [{ kind: 'human', id: ownerHuman.id }],
+      }),
+      headers,
+    );
+    assert.equal(agentResponse.status, 201);
+    const agentMessage = Message.parse(await agentResponse.json());
+    assert.equal(agentMessage.author.kind, 'agent');
+    for (const timeline of [
+      channelPath + '/messages',
+      channelPath + '/topics/' + topic.id + '/messages',
+    ]) {
+      const response = await fetch(origin + timeline, { headers });
+      assert.equal(response.status, 200);
+      assert.deepEqual(
+        pageOf(Message)
+          .parse(await response.json())
+          .items.map((m) => m.id),
+        [humanMessage.id, agentMessage.id],
+      );
+    }
+
     assert.equal(
       (await post(path + '/lifecycle', { lifecycle: 'disabled' }, { cookie }))
         .status,
       200,
     );
     assert.equal((await fetch(origin + path, { headers })).status, 401);
+    assert.equal(
+      (await fetch(origin + channelPath + '/messages', { headers })).status,
+      401,
+    );
     const exit = once(child, 'exit');
     child.kill('SIGTERM');
     await exit;
