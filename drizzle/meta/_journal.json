@@ -29,6 +29,13 @@
       "when": 1793335964039,
       "tag": "0003_young_smasher",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "6",
+      "when": 1793337066682,
+      "tag": "0004_pale_thanos",
+      "breakpoints": true
     }
   ]
 }

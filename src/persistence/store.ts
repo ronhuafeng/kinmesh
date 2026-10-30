@@ -1,3 +1,4 @@
+import { taskRepository } from './tasks.js';
 import { CommunicationFact } from '../domain/communication.js';
 import { communicationRepository } from './communication.js';
 import { max, asc } from 'drizzle-orm';
@@ -40,8 +41,10 @@ export function openStore(path: string) {
     throw error;
   }
   const agentStore = agentRepository(db);
+  const communicationStore = communicationRepository(db, agentStore);
   return {
-    communication: communicationRepository(db, agentStore),
+    tasks: taskRepository(db, agentStore, communicationStore),
+    communication: communicationStore,
     operations: operationJournal(db),
     agents: agentStore,
     close: () => {

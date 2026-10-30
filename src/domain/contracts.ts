@@ -9,25 +9,6 @@ export type HumanId = z.infer<typeof HumanId>;
 export type TeamId = z.infer<typeof TeamId>;
 export type AgentId = z.infer<typeof AgentId>;
 export type TaskId = z.infer<typeof TaskId>;
-export const ExecutionRef = z.strictObject({
-  backend: z.literal('t3'),
-  externalId: z.string().min(1).max(256),
-});
-export type ExecutionRef = z.infer<typeof ExecutionRef>;
-export const TaskState = z.enum([
-  'proposed',
-  'working',
-  'review',
-  'awaiting-human',
-  'accepted',
-]);
-export type TaskState = z.infer<typeof TaskState>;
-// Contract only: no dispatch or task persistence in issue #1.
-export type TaskTransition =
-  | { type: 'begin'; actor: AgentId }
-  | { type: 'request-review'; actor: AgentId; execution: ExecutionRef }
-  | { type: 'review-complete'; actor: AgentId }
-  | { type: 'accept'; actor: HumanId };
 export type TransportCapability =
   { kind: 'external-mcp'; oauth: true } | { kind: 'host-cli'; localOnly: true };
 export const Human = z.strictObject({

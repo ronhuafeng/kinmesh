@@ -7,6 +7,8 @@ export const Scope = z.enum([
   'channels:read',
   'channels:write',
   'tasks:write',
+  'tasks:read',
+  'tasks:review',
   'executions:read',
   'executions:write',
 ]);
@@ -54,7 +56,7 @@ export const GrantInput = z.strictObject({
   scopes: z
     .array(Scope)
     .min(1)
-    .max(6)
+    .max(8)
     .refine((v) => new Set(v).size === v.length),
   lifetimeSeconds: z
     .number()

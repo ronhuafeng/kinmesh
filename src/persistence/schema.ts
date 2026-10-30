@@ -347,3 +347,88 @@ export const communicationOperations = sqliteTable(
   },
   (t) => [primaryKey({ columns: [t.scope, t.operationKey] })],
 );
+
+export const tasks = sqliteTable(
+  'tasks',
+  {
+    position: integer('position').primaryKey({ autoIncrement: true }),
+    id: text('id').notNull().unique(),
+    teamId: text('team_id').notNull(),
+    channelId: text('channel_id').notNull(),
+    topicId: text('topic_id'),
+    title: text('title').notNull(),
+    description: text('description').notNull(),
+    criteria: text('criteria').notNull(),
+    creator: text('creator').notNull(),
+    acceptorHumanId: text('acceptor_human_id').notNull(),
+    state: text('state').notNull(),
+    status: text('status').notNull(),
+    ownerKey: text('owner_key'),
+    version: integer('version').notNull(),
+    createdAt: text('created_at').notNull(),
+    updatedAt: text('updated_at').notNull(),
+  },
+  (t) => [
+    foreignKey({
+      columns: [t.channelId, t.teamId],
+      foreignColumns: [channels.id, channels.teamId],
+    }),
+    foreignKey({
+      columns: [t.topicId, t.channelId],
+      foreignColumns: [topics.id, topics.channelId],
+    }),
+    foreignKey({
+      columns: [t.acceptorHumanId, t.teamId],
+      foreignColumns: [memberships.humanId, memberships.teamId],
+    }),
+    uniqueIndex('task_channel_identity').on(t.id, t.channelId),
+    index('task_channel_order').on(t.channelId, t.position),
+    check('task_version_positive', sql`${t.version}>0`),
+    check(
+      'task_valid_state',
+      sql`json_valid(${t.state}) AND json_extract(${t.state},'$.status') = ${t.status}`,
+    ),
+    check(
+      'task_owner_state',
+      sql`(${t.ownerKey} IS NULL AND json_extract(${t.state},'$.owner') IS NULL AND ${t.status} IN ('proposed','cancelled')) OR (${t.ownerKey} IS NOT NULL AND ${t.status} IN ('in-progress','review-requested','awaiting-human','rework-requested','accepted','cancelled') AND ${t.ownerKey} = json_extract(${t.state},'$.owner.kind') || ':' || json_extract(${t.state},'$.owner.id'))`,
+    ),
+  ],
+);
+export const taskEvents = sqliteTable(
+  'task_events',
+  {
+    position: integer('position').primaryKey({ autoIncrement: true }),
+    id: text('id')
+      .notNull()
+      .unique()
+      .references(() => communicationOutbox.id),
+    taskId: text('task_id')
+      .notNull()
+      .references(() => tasks.id),
+    version: integer('version').notNull(),
+    event: text('event').notNull(),
+  },
+  (t) => [
+    uniqueIndex('task_revision_event').on(t.taskId, t.version),
+    index('task_history_order').on(t.taskId, t.position),
+    check('task_event_json', sql`json_valid(${t.event})`),
+  ],
+);
+export const taskExecutions = sqliteTable(
+  'task_executions',
+  {
+    position: integer('position').primaryKey({ autoIncrement: true }),
+    id: text('id').notNull().unique(),
+    taskId: text('task_id')
+      .notNull()
+      .references(() => tasks.id),
+    referenceKey: text('reference_key').notNull(),
+    reference: text('reference').notNull(),
+    author: text('author').notNull(),
+    createdAt: text('created_at').notNull(),
+  },
+  (t) => [
+    uniqueIndex('task_execution_reference').on(t.taskId, t.referenceKey),
+    index('task_execution_order').on(t.taskId, t.position),
+  ],
+);
