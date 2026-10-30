@@ -29,7 +29,8 @@ import {
 } from '../src/adapters/t3/oauth.js';
 import { fixture } from './helpers.js';
 import { readSmoke } from '../src/adapters/t3/smoke.js';
-import { MockWire, environment, captured } from './t3-helpers.js';
+import { MockWire, environment, captured, schemas } from './t3-helpers.js';
+import { ToolList } from '../src/adapters/t3/contracts.js';
 
 const state = 'fixture-state';
 const issuer = 'https://t3.invalid';
@@ -434,6 +435,42 @@ await test('AUTH SMOKE FIXTURE: read/capabilities only, scope distinction, pinni
     runtimeMode: 'full-access',
   };
   await assert.rejects(readSmoke(wire, credential));
+});
+
+await test('AUTH READ TOOL DISCOVERY: scope-filtered listing succeeds without write tools', async () => {
+  const credential = Credential.parse({
+    endpoint: issuer + '/mcp',
+    environmentId: environment.environmentId,
+    client: { client_id: 'read-only-unit-client' },
+    tokens: {
+      access_token: 'fake-read-only-unit-token',
+      token_type: 'Bearer',
+      scope: 'orchestration:read',
+    },
+  });
+  const names = new Set(['t3_environment_read', 'orchestrator_capabilities']);
+  const source = ToolList.parse(schemas);
+  const tools = source.tools.filter((tool) => names.has(tool.name));
+  assert.equal(tools.length, 2);
+  const wire = new MockWire();
+  wire.listValue = { tools };
+  wire.values.orchestrator_capabilities = {
+    ...z
+      .record(z.string(), z.unknown())
+      .parse(captured.orchestrator_capabilities),
+    runtimeMode: 'approval-required',
+  };
+  assert.equal((await readSmoke(wire, credential)).operate, false);
+  assert.deepEqual(
+    wire.calls.map((call) => call.name),
+    ['t3_environment_read', 'orchestrator_capabilities'],
+  );
+  const incomplete = new MockWire();
+  incomplete.listValue = {
+    tools: tools.filter((tool) => tool.name === 't3_environment_read'),
+  };
+  await assert.rejects(readSmoke(incomplete, credential));
+  assert.equal(incomplete.calls.length, 0);
 });
 
 await test('AUTH SDK FIXTURE: input deadline cancels a pending owner paste before any exchange', async () => {

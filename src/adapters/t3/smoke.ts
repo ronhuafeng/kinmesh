@@ -9,7 +9,12 @@ import { ExecutionFailure } from '../../domain/execution.js';
 
 /** Explicit read-only probe. A granted operate scope is reported, never exercised. */
 export async function readSmoke(wire: Wire, credential: Credential) {
-  const tools = new ValidatedTools(wire, await wire.list());
+  // A read-only OAuth grant may discover only readable MCP tools. Never
+  // require launch/send/interrupt descriptors merely to inspect the environment.
+  const tools = new ValidatedTools(wire, await wire.list(), [
+    't3_environment_read',
+    'orchestrator_capabilities',
+  ]);
   const descriptor = Descriptor.parse(
     await tools.call('t3_environment_read', {}),
   );
