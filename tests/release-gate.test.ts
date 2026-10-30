@@ -29,10 +29,11 @@ await test(
       return position;
     }
     const build = index('npm run build');
+    const audit = index('npm audit --omit=dev');
     const browser = index('npm run test:browser');
     assert.ok(
-      build < browser,
-      'The real browser requires built workspace assets',
+      build < audit && audit < browser,
+      'Build and audit must precede the real browser gate',
     );
     for (const native of [
       'npm run test:live',
@@ -53,7 +54,7 @@ await test(
       new URL('../.github/workflows/t3-live.yml', import.meta.url),
       'utf8',
     );
-    assert.ok(workflow.includes('workflow_dispatch:'));
+    assert.match(workflow, /^on:\n {2}workflow_dispatch:\npermissions:/m);
     assert.ok(
       workflow.includes('runs-on: [self-hosted, kinmesh-t3-acceptance]'),
     );
@@ -62,5 +63,6 @@ await test(
     const release = workflow.indexOf('- run: npm run release:check');
     assert.ok(install >= 0 && chromium > install && release > chromium);
     assert.ok(!workflow.includes('--with-deps'));
+    assert.doesNotMatch(workflow, /\bcontinue-on-error\s*:/);
   },
 );
