@@ -62,7 +62,7 @@ await test(
         .object({ scripts: z.object({ start: z.string() }) })
         .parse(packageJson);
       assert.equal(
-        packageFile.scripts?.start,
+        packageFile.scripts.start,
         'node --env-file-if-exists=.env --import tsx src/server/main.ts',
       );
       const port = await availablePort();
