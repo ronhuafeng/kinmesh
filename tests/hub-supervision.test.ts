@@ -112,12 +112,13 @@ async function fixture(database?: string) {
   const port = await freePort();
   const endpoint = `http://127.0.0.1:${String(port)}`;
   const setupToken = randomBytes(32).toString('hex');
+  const sessionKey = randomBytes(32).toString('hex');
   writeFileSync(
     join(directory, '.env'),
     [
       'KINMESH_DATABASE=' + dbPath,
       'KINMESH_SETUP_TOKEN=' + setupToken,
-      'KINMESH_SESSION_KEY=' + randomBytes(32).toString('hex'),
+      'KINMESH_SESSION_KEY=' + sessionKey,
       'KINMESH_PORT=' + String(port),
       'KINMESH_ORIGIN=' + endpoint,
     ].join('\n'),
@@ -128,13 +129,21 @@ async function fixture(database?: string) {
     closed: Promise<number | null>;
     output: () => string;
   }[] = [];
-  function start(optIn = true, override?: string) {
+  function start(optIn = true, override?: string, fromProcessEnv = false) {
     const env = Object.fromEntries(
       Object.entries(process.env).filter(
         ([key]) => !key.startsWith('KINMESH_') && key !== 'NODE_OPTIONS',
       ),
     );
     if (optIn) env.KINMESH_INBOX_CONFIG = override ?? configPath;
+    if (fromProcessEnv)
+      Object.assign(env, {
+        KINMESH_DATABASE: dbPath,
+        KINMESH_SETUP_TOKEN: setupToken,
+        KINMESH_SESSION_KEY: sessionKey,
+        KINMESH_PORT: String(port),
+        KINMESH_ORIGIN: endpoint,
+      });
     const child = spawn('npm', ['--silent', 'start'], {
       cwd: directory,
       env,
@@ -202,6 +211,7 @@ async function fixture(database?: string) {
     configPath,
     endpoint,
     setupToken,
+    sessionKey,
     port,
     start,
     health,
@@ -262,6 +272,29 @@ await test(
         401,
       );
       assert.equal(await p.stop(), 0);
+      assert.equal(await f.health(), 0);
+    } finally {
+      await f.dispose();
+    }
+  },
+);
+
+await test(
+  'normal npm start uses validated process env without .env; missing secrets still fail closed',
+  { timeout: 35000 },
+  async () => {
+    const f = await fixture();
+    try {
+      rmSync(join(f.directory, '.env'));
+      const p = f.start(true, undefined, true);
+      await p.ready();
+      assert.ok(!p.output().includes(f.setupToken));
+      assert.ok(!p.output().includes(f.sessionKey));
+      assert.equal(p.workers().length, 1);
+      assert.equal(await p.stop(), 0);
+      assert.equal(await f.health(), 0);
+      const invalid = f.start(false);
+      assert.equal(await deadline(invalid.closed, 10000), 1);
       assert.equal(await f.health(), 0);
     } finally {
       await f.dispose();
