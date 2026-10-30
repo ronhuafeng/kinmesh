@@ -8,7 +8,7 @@ await test('FIXTURE: only a native MCP capability_denied error proves Read only 
     isError: true,
     structuredContent: { code: 'capability_denied' },
   };
-  const calls: Array<{ name: string; args: Record<string, unknown> }> = [];
+  const calls: { name: string; args: Record<string, unknown> }[] = [];
   const wire: Pick<Wire, 'call'> = {
     call(name, args) {
       calls.push({ name, args });
@@ -17,10 +17,12 @@ await test('FIXTURE: only a native MCP capability_denied error proves Read only 
   };
   assert.equal(await nativeReadOnlyDenial(wire), true);
   assert.equal(calls.length, 1);
-  assert.equal(calls[0]?.name, 't3_thread_organize');
-  assert.equal(calls[0]?.args.action, 'archive');
-  assert.match(String(calls[0]?.args.threadId), /^[0-9a-f-]{36}$/);
-  assert.equal(Object.keys(calls[0]?.args).length, 2);
+  const call = calls[0];
+  assert.ok(call);
+  assert.equal(call.name, 't3_thread_organize');
+  assert.equal(call.args.action, 'archive');
+  assert.match(String(call.args.threadId), /^[0-9a-f-]{36}$/);
+  assert.equal(Object.keys(call.args).length, 2);
 });
 
 await test('FIXTURE: transport exceptions and local scope errors are not native-denial evidence', async () => {
