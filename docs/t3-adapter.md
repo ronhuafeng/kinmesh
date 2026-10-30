@@ -2,6 +2,20 @@
 
 Kinmesh's execution authority remains **unmodified external T3**, independently installed/upgraded. This adapter uses official MCP SDK Streamable HTTP and OAuth only. No T3 implementation code, private package, database, WebSocket or host-CLI execution fallback is included. Tool schemas are wire-contract fixtures, not vendored runtime code. Reuse → Adapt → Extend → Build: SDK for transport/OAuth, Zod + Ajv for boundary validation, and the existing Drizzle/SQLite transaction layer for owned operation intent. The small journal fills the cross-system atomicity gap; it is not another execution harness or queue.
 
+## No-credential external OAuth/MCP preflight
+
+Before owner sign-in, Node 24 can check public readiness without a grant:
+
+```sh
+KINMESH_T3_ENDPOINT=https://your-t3-origin.example/mcp npm run --silent t3:preflight
+```
+
+This command reads only `KINMESH_T3_ENDPOINT`; it does not load `.env` or a credential file. Use the exact canonical HTTPS `/mcp` URL (plain HTTP is allowed only on the existing loopback allowlist). One overall 10-second deadline covers connections, discovery and response bodies. The official maintained MCP SDK discovers metadata through a same-origin, fixed-path, GET-only fetch that rejects redirects, bounds JSON to 64 KiB and never forwards cookies or authorization. Only the standard path-aware protected-resource 404 can fall back to root metadata; other discovery failures remain failures.
+
+PASS requires unauthenticated `/mcp` to reject with HTTP 401 and a Bearer challenge, a public T3 environment descriptor with a nonempty identity and exact version `0.1.5`, and pinned issuer/resource/authorization/token/registration endpoints. It also checks S256 PKCE, authorization-response issuer support, authorization-code/public-client capabilities and advertised read/operate scopes. No scopes are requested. A 502, wrong version, missing capability or unavailable endpoint fails closed. Output is fixed PASS/FAIL text and never includes the host, environment ID or response/error bodies.
+
+**Preflight is public network, issuer and capability readiness, not OAuth authentication or live acceptance.** It never initializes MCP, registers a client, opens consent, exchanges a token, calls a tool or runs a model. The tests use local HTTP fixtures, not an owner T3 instance. Actual owner OAuth still requires the browser or private interactive terminal flow below. Kinmesh has no supported automatic T3 session OAuth through `app.t3.codes`; an app login does not replace native external-client approval. Never paste pairing codes, one-time callback credentials or tokens into chat, GitHub or logs. Issue #2 remains open until real approved acceptance is proven separately.
+
 ## Owner sign-in: local browser or remote terminal
 
 Use Node 24 on the trusted machine that will hold Kinmesh's **own** external T3 OAuth grant. Provider account login, Team MCP bearer credentials and T3 native sessions are separate; do not copy them into this flow. Authorization itself makes no model call. The owner must approve the external client through T3's native consent page; Kinmesh cannot approve for them.
