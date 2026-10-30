@@ -1,3 +1,4 @@
+import { agentRepository } from './agents.js';
 import { operationJournal } from './operations.js';
 import Database from 'better-sqlite3';
 import { drizzle } from 'drizzle-orm/better-sqlite3';
@@ -37,6 +38,7 @@ export function openStore(path: string) {
   }
   return {
     operations: operationJournal(db),
+    agents: agentRepository(db),
     close: () => {
       if (sqlite.open) sqlite.close();
     },

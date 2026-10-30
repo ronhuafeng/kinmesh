@@ -15,3 +15,5 @@ This is a single-node, single-owner foundation with a loopback HTTP listener. Pr
 - Architecture checks parse source imports/calls and scan manifests, with negative fixtures. They detect common violations, not arbitrary data flow, shell obfuscation, symlinks or malicious dependencies. Review all adapter/dependency changes; never vendor, patch or inspect private T3 state.
 
 Runtime dependency audit is available with `npm audit --omit=dev`. Drizzle Kit's current development-only legacy esbuild chain has moderate advisories; do not expose its development server and do not force a breaking dependency downgrade to hide them. Track upstream updates. No external/private credentials are required by CI, and no live T3/provider/browser result is claimed.
+
+Agent identity and credential policy is documented in [agent identities](agent-identities.md): per-request principal resolution, immutable agent/team grants, hash-only 256-bit opaque credentials, scoped access, expiration, rotation and transactional disable/revocation. These grant no human owner or T3 OAuth authority.

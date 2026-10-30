@@ -1,3 +1,5 @@
+import { registerAgents } from './agents.js';
+import { resolvePrincipal } from './principals.js';
 import { z } from 'zod';
 import Fastify from 'fastify';
 import secureSession from '@fastify/secure-session';
@@ -34,7 +36,10 @@ export async function createApp(config: Config, store: Store) {
     timeCost: 2,
     parallelism: 1,
   });
+  app.decorateRequest('principal', null);
   app.setErrorHandler((error, _request, reply) => {
+    if (error instanceof z.ZodError)
+      return void reply.code(400).send({ error: 'Invalid input' });
     const known = z
       .object({ statusCode: z.number().int().min(400).max(499) })
       .safeParse(error);
@@ -50,7 +55,7 @@ export async function createApp(config: Config, store: Store) {
   });
   app.addHook('onRequest', async (request, reply) => {
     if (
-      ['x-actor-id', 'x-member-id', 'x-user-id'].some(
+      ['x-actor-id', 'x-member-id', 'x-user-id', 'x-kinmesh-actor'].some(
         (header) => request.headers[header] !== undefined,
       )
     ) {
@@ -58,6 +63,14 @@ export async function createApp(config: Config, store: Store) {
         .code(400)
         .send({ error: 'Actor headers are not credentials' });
     }
+    if (
+      [...new URL(request.url, config.origin).searchParams.keys()].some((key) =>
+        ['actor', 'actorid', 'agentid', 'humanid', 'role'].includes(
+          key.toLowerCase(),
+        ),
+      )
+    )
+      return reply.code(400).send({ error: 'Actor query is not a credential' });
     if (
       !['GET', 'HEAD'].includes(request.method) &&
       request.headers.origin !== undefined &&
@@ -141,10 +154,18 @@ export async function createApp(config: Config, store: Store) {
       ['/api/setup', '/api/login'].includes(request.routeOptions.url ?? '')
     )
       return;
-    const id = HumanId.safeParse(request.session.get('humanId'));
-    if (!id.success || store.human(id.data) === undefined)
-      return reply.code(401).send({ error: 'Authentication required' });
+    request.principal = resolvePrincipal(
+      store,
+      request.headers.authorization,
+      request.session.get('humanId'),
+    );
+    if (
+      !request.url.startsWith('/api/teams/') &&
+      request.principal.kind !== 'human'
+    )
+      return reply.code(403).send({ error: 'Human authentication required' });
   });
+  registerAgents(app, store);
   await app.register((protectedApi, _options, done) => {
     protectedApi.get('/api/me', (request) => {
       const id = HumanId.parse(request.session.get('humanId'));
