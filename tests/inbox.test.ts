@@ -177,13 +177,12 @@ await test('MOCK native terminal failure without assistant posts truthful notice
       runId: newerRun,
       status: 'waiting',
     });
-    failed.thread = {
-      ...failed.thread,
+    Object.assign(failed.thread, {
       status: 'waiting',
       activeRunId: newerRun,
       latestRunId: newerRun,
       pendingRequestCount: 1,
-    };
+    });
     f.wire.values.t3_thread_read = failed;
     const c = claim(f);
     await deliver(f.store, c, f.binding, f.factory, signal());
@@ -233,13 +232,12 @@ await test('MOCK native terminal failure without assistant posts truthful notice
       runId: newerRun2,
       status: 'waiting',
     });
-    interrupted.thread = {
-      ...interrupted.thread,
+    Object.assign(interrupted.thread, {
       status: 'waiting',
       activeRunId: newerRun2,
       latestRunId: newerRun2,
       pendingRequestCount: 1,
-    };
+    });
     f.wire.values.t3_thread_read = interrupted;
     const stopped = await assistantResult(
       backend,
@@ -263,13 +261,12 @@ await test('MOCK native terminal failure without assistant posts truthful notice
       runId: newerRun3,
       status: 'waiting',
     });
-    completed.thread = {
-      ...completed.thread,
+    Object.assign(completed.thread, {
       status: 'waiting',
       activeRunId: newerRun3,
       latestRunId: newerRun3,
       pendingRequestCount: 1,
-    };
+    });
     f.wire.values.t3_thread_read = completed;
     const actual = await assistantResult(backend, reference, launch.model, signal());
     if (actual.kind !== 'result')
