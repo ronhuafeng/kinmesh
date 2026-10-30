@@ -1,27 +1,73 @@
 # Kinmesh
 
-**A persistent, agent-native workspace for humans and AI agents.**
+A persistent collaboration workspace for humans and AI agents. **Composition over Modification: Reuse → Adapt → Extend → Build.** This issue #1 foundation implements Kinmesh-owned identity, one-time onboarding, an authenticated Team Hub and transactional storage. It does **not** yet execute agents or provide a collaboration UI.
 
-Kinmesh is being rebuilt from a clean slate. The previous proof-of-concept implementation has been deliberately removed from `main`. This repository currently contains **no running application**.
+## Run locally (Node 24)
 
-## Product north star
+```sh
+npm ci
+npm run setup        # creates a random .env with mode 0600; refuses overwrite
+npm start            # loopback 127.0.0.1:3000; keep this terminal running
+# In another terminal:
+npm run onboard     # masked owner-password prompt; creates owner + team + general channel
+```
 
-Humans and autonomous agents collaborate as persistent team members with durable identities, channels, topic conversations, owned tasks, handoffs, shared context, and explicit human acceptance.
+No T3 install, external credentials, or provider calls are needed. Do not expose the loopback listener directly. Keep `.env`, the database, WAL and backups private. `.env.example` documents configuration; it contains no working credentials. The service migrates its own SQLite database automatically before listening. Keep `drizzle/` beside `src/` when deploying; use `npm ci` including the TypeScript runner, rather than pruning development dependencies.
 
-The initial vertical slice is: **Human → Developer Agent → Reviewer Agent → Human acceptance**. Execution completion must not be conflated with task acceptance.
+`GET /health` returns `200 {"status":"ok","component":"kinmesh-team-hub"}` only when its database can be queried; database failure returns 503. This is **not T3 health or live-agent readiness**.
 
-## Architecture principles
+### HTTP contract
 
-1. **Composition over Modification.** Reuse → Adapt → Extend → Build. Prefer maintained open-source libraries to custom protocol implementations, file locks, queues, or UI stacks. Document exceptions.
-2. **Keep T3 Code unmodified and independently upgradeable.** Treat [T3 Code](https://github.com/pingdotgg/t3code) as an external execution backend. Connect through documented external OAuth MCP interfaces, optionally through its official host-local CLI. Never fork or vendor its runtime, read its private database, or import internal packages.
-3. **Own coordination, not execution.** Kinmesh owns member identities, team channels, tasks, inbox/delivery semantics, authorization, and a collaboration UI. T3 owns provider sessions, run lifecycles, code execution, Git/worktrees, and execution history.
-4. **Strict TypeScript everywhere.** All new first-party application, backend, worker, adapter, frontend, and test code must use `.ts`/`.tsx` with `strict`, `noUncheckedIndexedAccess`, `exactOptionalPropertyTypes` and mandatory CI type checking. Validate external input at runtime; no unchecked `any` or type-suppression shortcuts.
-5. **Composable interface.** React and shadcn/ui for the workspace, with AG-UI/CopilotKit components where they add verified agent interaction capability. AG-UI is an interaction projection, not a source of truth.
-6. **Reliable state.** Use Kinmesh-owned transactional storage (SQLite + WAL for an initial single-node implementation, or justified alternatives), database-backed outbox/inbox and stable idempotency. Avoid custom JSON-file mutexes and PID-based ownership.
-7. **Evidence-led releases.** Keep unit tests, typed schema/contract tests, authenticated live T3 integration tests, real-agent collaboration tests, and browser E2E separate. A mock-only green CI is not a product acceptance.
+All bodies are JSON; errors omit validation input and internal diagnostics. Only health, secret-protected first-run setup, and password login are public. Other `/api/` routes require an encrypted, verified session and an existing account. No actor/member header grants access; those headers are rejected.
 
-## Starting point
+| Method/path        | Authorization and behavior                                                                                                                         |
+| ------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `GET /health`      | Public database readiness, no identities or secrets                                                                                                |
+| `POST /api/setup`  | One-time `Authorization: Bearer <setup-secret>` from private `.env`; `{username,password,teamName}`; 201 once, 409 after setup, 401 without secret |
+| `POST /api/login`  | `{username,password}`; verified Argon2id password; HttpOnly, SameSite=Strict encrypted cookie, one-hour lifetime                                   |
+| `GET /api/me`      | Session-derived human identity; never password hash                                                                                                |
+| `GET /api/team`    | Session-derived owner membership; its team and channels only                                                                                       |
+| `POST /api/logout` | Authenticated cookie deletion                                                                                                                      |
 
-The authoritative rebuild plan and acceptance criteria are in [GitHub Issues #1–#9](https://github.com/ronhuafeng/kinmesh/issues). Begin with [#1: architecture and strict TypeScript foundation](https://github.com/ronhuafeng/kinmesh/issues/1), [#2: T3 external MCP integration](https://github.com/ronhuafeng/kinmesh/issues/2), and [#3: agent identity and authentication](https://github.com/ronhuafeng/kinmesh/issues/3).
+Use the CLI for setup so credentials never enter command arguments or shell history. To exercise login/reads without a UI, a local client can POST credentials from a protected input file and retain cookies in a private cookie jar. Never commit or log either. Usernames: lowercase letters/digits/underscore/hyphen, 3–64 characters. Passwords: 15–128 characters. Setup creates no login session; explicitly log in afterward. Setup/login have per-IP limits (five attempts/minute); the service has a general request limit. Incorrect/unknown accounts return the same login error. Mutating browser requests with an Origin must match configured `KINMESH_ORIGIN`; cookies are Secure for HTTPS origins. Use a same-origin HTTPS reverse proxy for remote access; proxy trust and distributed rate limiting are deliberately not enabled.
 
-There is intentionally no implementation code or runnable UI in this reset commit.
+## Ownership and module map
+
+See [ADR 0001](docs/adr/0001-composition-and-foundation.md) and [security notes](docs/security.md).
+
+| Module                                     | Responsibility                                                                                                                      |
+| ------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------- |
+| `src/domain`                               | Kinmesh-owned branded identity contracts, task/transition/execution-reference contracts; runtime schemas; no infrastructure imports |
+| `src/persistence`                          | Kinmesh-only SQLite WAL, Drizzle schema/migrations and transactional bootstrap                                                      |
+| `src/server`                               | Validated configuration, Fastify HTTP, encrypted session and membership authorization                                               |
+| `scripts`                                  | Local secret creation/onboarding; deterministic static architecture validation                                                      |
+| `tests`                                    | Type-checked unit/integration/HTTP/restart/crash-recovery/negative architecture fixtures                                            |
+| Future `src/adapters/t3`                   | Issue #2 only: documented external OAuth MCP via official SDK; optional official host-local CLI                                     |
+| Future frontend / Team MCP / AG-UI adapter | Separate owned boundaries, introduced only by their issues                                                                          |
+
+One package avoids speculative services, workers and empty adapters while preserving these logical boundaries. Kinmesh owns persistent humans/agents, teams/channels, tasks, inbox/delivery and the collaboration UI. **Only the human/team/channel foundation is persisted today.** T3 owns provider sessions, runs, execution, Git/worktrees and execution records. T3 is independently installed and upgraded; this repository neither embeds nor modifies it.
+
+The three invariants are independent deployment/upgrade lifecycles, stable external integration seams, and replaceable components behind Kinmesh-owned contracts. Allowed T3 seams are documented external OAuth MCP and, if appropriate, its official host-local CLI, exclusively through the future adapter. Private packages, source patches/vendoring, direct database/event-store reads and private WebSocket/RPC contracts are forbidden. Never treat AG-UI as a team database or fabricate execution events.
+
+## Validate and change
+
+```sh
+npm ci
+npm run typecheck       # all application, tests, scripts and TS configuration
+npm run lint            # type-aware strict rules; unsafe suppressions/assertions rejected
+npm test                # real local SQLite + HTTP and process tests; no provider credentials
+npm run architecture    # source imports/resource calls AND manifests/lockfile
+npm audit --omit=dev     # runtime dependency audit; not live acceptance
+# After an intentional Drizzle schema change:
+npm run db:generate     # review and commit generated SQL + metadata; never edit an applied migration
+```
+
+`npm run check` combines typecheck, lint, tests and architecture. Push/PR CI runs each explicitly on Node 24 using `npm ci`. The architecture guard rejects private T3 package imports (including dynamic imports), manifests/npm aliases/lock entries, obvious private file reads/writes, WebSocket construction, CLI installation changes, vendored paths, JavaScript runtime files and domain→infrastructure imports. Negative tests prove these detections. It is a static guard, **not a sandbox or complete data-flow analyzer**; obfuscated/computed access and external modifications still require review. No live T3 test or external compatibility suite is implemented, gated or claimed.
+
+## v0.1 acceptance scenario and remaining work
+
+Target: **Human → Developer Agent → Reviewer Agent → human acceptance**. A human creates a task in a channel; the Developer executes through the T3 adapter, the Reviewer independently checks evidence, and the human accepts or returns it. A completed execution never means an accepted task. Persist task ownership, handoffs and idempotent inbox/outbox events before implementing autonomous dispatch. This scenario is documented, **not runnable end to end** in this PR.
+
+Remaining integrations: external MCP OAuth/scope/revocation and upgrades (#2), persistent agent credentials and richer membership/auth lifecycle (#3), channels/topics/tasks/inbox/outbox, React/shadcn/CopilotKit UI and verified AG-UI projections, execution evidence, browser/provider E2E, packaging and operational acceptance. No mocks stand in for T3. Session revocation/password recovery/invitations/MFA and multi-node operation are not implemented. See security notes before deployment.
+
+The reset base contains only README/.gitignore; there is no retained JS/JSON-state implementation to migrate. All new first-party code/tests are strict TypeScript. Future imported prototype modules must be migrated in their responsible issue, without parallel JS implementations or handwritten MCP/locking. Adopt T3 upgrades separately, run real external compatibility tests before pin changes, and repair adapters rather than T3 internals.
