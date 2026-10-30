@@ -17,7 +17,9 @@ await test(
   'release check runs an actual Chromium browser gate before every native model acceptance',
   () => {
     const manifest = Manifest.parse(
-      JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8')),
+      JSON.parse(
+        readFileSync(new URL('../package.json', import.meta.url), 'utf8'),
+      ),
     );
     assert.equal(manifest.scripts['test:browser'], 'playwright test');
     const commands = manifest.scripts['release:check'].split(' && ');
@@ -28,7 +30,10 @@ await test(
     }
     const build = index('npm run build');
     const browser = index('npm run test:browser');
-    assert.ok(build < browser, 'The real browser requires built workspace assets');
+    assert.ok(
+      build < browser,
+      'The real browser requires built workspace assets',
+    );
     for (const native of [
       'npm run test:live',
       'npm run test:team-live',
@@ -49,7 +54,9 @@ await test(
       'utf8',
     );
     assert.ok(workflow.includes('workflow_dispatch:'));
-    assert.ok(workflow.includes('runs-on: [self-hosted, kinmesh-t3-acceptance]'));
+    assert.ok(
+      workflow.includes('runs-on: [self-hosted, kinmesh-t3-acceptance]'),
+    );
     const install = workflow.indexOf('- run: npm ci');
     const chromium = workflow.indexOf('- run: npx playwright install chromium');
     const release = workflow.indexOf('- run: npm run release:check');
