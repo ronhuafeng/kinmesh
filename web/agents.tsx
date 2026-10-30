@@ -34,7 +34,9 @@ function Activity({
         ) {
           // Never retain a formerly authorized execution snapshot after access loss.
           setSnapshot(null);
-          setError('Execution access no longer authorized. Sign in again or contact your team owner.');
+          setError(
+            'Execution access no longer authorized. Sign in again or contact your team owner.',
+          );
         } else {
           // A temporary transport/server outage does not certify a new snapshot.
           setError(
