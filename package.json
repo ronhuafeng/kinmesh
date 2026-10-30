@@ -8,8 +8,8 @@
     "node": ">=24 <25"
   },
   "scripts": {
-    "dev": "node --env-file=.env --import tsx src/server/main.ts",
-    "start": "node --env-file=.env --import tsx src/server/main.ts",
+    "dev": "node --env-file-if-exists=.env --import tsx src/server/main.ts",
+    "start": "node --env-file-if-exists=.env --import tsx src/server/main.ts",
     "setup": "node --import tsx scripts/setup.ts",
     "db:generate": "drizzle-kit generate",
     "typecheck": "tsc --noEmit",
