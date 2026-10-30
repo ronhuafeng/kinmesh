@@ -43,6 +43,13 @@
       "when": 1793346085262,
       "tag": "0005_lame_juggernaut",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "6",
+      "when": 1793370445657,
+      "tag": "0006_perpetual_marvex",
+      "breakpoints": true
     }
   ]
 }

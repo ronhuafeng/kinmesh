@@ -34,7 +34,7 @@ Noninteractive execution never opens a browser or silently changes authorities. 
 
 ## Contract and supported surface
 
-`src/domain/execution.ts` owns `ExecutionBackend`, explicit project/scratch targets, operation intent, stable environment/thread/optional-run references, normalized observations and discriminated dispatch/wait/stop results. SDK/native types remain inside `src/adapters/t3`. This is a library plus smoke/auth CLIs, not a production team task dispatcher or unauthenticated execution API.
+`src/domain/execution.ts` owns `ExecutionBackend`, explicit project/scratch targets, operation intent, stable environment/thread/optional-run references, normalized observations and discriminated dispatch/wait/stop results. SDK/native types remain inside `src/adapters/t3`. The adapter is a library plus smoke/auth CLIs. The separately deployed [Agent Inbox worker](agent-inbox.md) supplies bounded collaboration wake policy; there is no unauthenticated execution API.
 
 | Domain operation | External T3 tool / semantics                                                                                                                                     |
 | ---------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- |

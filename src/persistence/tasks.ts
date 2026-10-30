@@ -1,3 +1,4 @@
+import { enqueueFact } from './inbox-enqueue.js';
 import { randomUUID } from 'node:crypto';
 import { and, asc, eq, gt, isNull, lte, max } from 'drizzle-orm';
 import type { BetterSQLite3Database } from 'drizzle-orm/better-sqlite3';
@@ -152,6 +153,7 @@ export function taskRepository(
       .returning({ position: s.taskEvents.position })
       .get();
     TaskEvent.parse({ ...event, position: inserted.position });
+    enqueueFact(db, fact);
     return TaskResult.parse({ task, eventId: id, executionLink });
   }
   return {

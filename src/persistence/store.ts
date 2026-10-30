@@ -1,3 +1,4 @@
+import { inboxRepository } from './inbox.js';
 import { taskRepository } from './tasks.js';
 import { CommunicationFact } from '../domain/communication.js';
 import { communicationRepository } from './communication.js';
@@ -42,8 +43,10 @@ export function openStore(path: string) {
   }
   const agentStore = agentRepository(db);
   const communicationStore = communicationRepository(db, agentStore);
+  const tasks = taskRepository(db, agentStore, communicationStore);
   return {
-    tasks: taskRepository(db, agentStore, communicationStore),
+    inbox: inboxRepository(db, agentStore, communicationStore, tasks),
+    tasks,
     communication: communicationStore,
     operations: operationJournal(db),
     agents: agentStore,

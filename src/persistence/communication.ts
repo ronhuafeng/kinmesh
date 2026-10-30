@@ -1,3 +1,4 @@
+import { enqueueFact } from './inbox-enqueue.js';
 import { transactional, snapshotPage } from './transactional.js';
 import { randomUUID } from 'node:crypto';
 import { and, asc, eq, gt, lte, max, sql } from 'drizzle-orm';
@@ -195,6 +196,7 @@ export function communicationRepository(
     db.insert(s.communicationOutbox)
       .values({ id: value.id, channelId, fact: JSON.stringify(value) })
       .run();
+    enqueueFact(db, value);
   }
   function topic(channelId: ChannelId, id: TopicId) {
     const row = db
