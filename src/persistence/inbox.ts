@@ -18,7 +18,7 @@ import {
   INBOX_CAPACITY,
   INBOX_LEASE_MS,
   SourceContext,
-  Result,
+  PublishedOutcome,
   retryDelay,
   InboxState,
 } from '../domain/inbox.js';
@@ -307,10 +307,10 @@ export function inboxRepository(
         history(get(c.id), reason);
       });
     },
-    ack(c: Claim, p: Principal, input: Result) {
+    ack(c: Claim, p: Principal, input: PublishedOutcome) {
       return atomic(() => {
         const { task } = authorized(c, p);
-        const result = Result.parse(input);
+        const result = PublishedOutcome.parse(input);
         const row = get(c.id);
         if (
           row.reference !== JSON.stringify(result.reference) ||
@@ -341,9 +341,19 @@ export function inboxRepository(
                 expectedVersion: task.version,
                 operationKey: 'inbox-link:' + c.id,
                 reference: result.reference,
-                note: 'Inbox execution result; human acceptance remains separate.',
+                note:
+                  'kind' in result
+                    ? 'Inbox native terminal status; human acceptance remains separate.'
+                    : 'Inbox execution result; human acceptance remains separate.',
               }).executionLink;
-        const body = `${result.text}\n\n[T3 ${result.state}${result.truncated ? '; excerpt' : ''}; environment ${result.reference.environmentId}; thread ${result.reference.threadId}; run ${result.reference.runId}; item ${result.itemId}; inbox ${c.id}; source event ${c.eventId}]`;
+        const body =
+          'kind' in result
+            ? `[T3 ${result.state}; native status notice only; no assistant message observed in bounded read; environment ${result.reference.environmentId}; thread ${result.reference.threadId}; run ${result.reference.runId}; inbox ${c.id}; source event ${c.eventId}]`
+            : `${result.text}\n\n[T3 ${result.state}${result.truncated ? '; excerpt' : ''}; environment ${result.reference.environmentId}; thread ${result.reference.threadId}; run ${result.reference.runId}; item ${result.itemId}; inbox ${c.id}; source event ${c.eventId}]`;
+        const publicationReason =
+          'kind' in result
+            ? 'native-terminal-notice-published'
+            : 'assistant-result-published';
         const message = communication.post(p, c.teamId, c.channelId, {
           operationKey: 'inbox-result:' + c.id,
           body,
@@ -366,9 +376,9 @@ export function inboxRepository(
           resultMessageId: message.id,
           claimToken: null,
           leaseUntil: 0,
-          reason: 'assistant-result-published',
+          reason: publicationReason,
         });
-        history(get(c.id), 'assistant-result-published');
+        history(get(c.id), publicationReason);
         return message;
       });
     },

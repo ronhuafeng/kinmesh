@@ -13,6 +13,7 @@ import {
   INBOX_ATTEMPT_MS,
   INBOX_CAPACITY,
   Result,
+  NativeTerminalNotice,
   type Claim,
 } from '../domain/inbox.js';
 import type { Binding, WorkerConfig } from './config.js';
@@ -26,6 +27,7 @@ export async function assistantResult(
   signal: AbortSignal,
 ): Promise<
   | { kind: 'result'; result: Result }
+  | { kind: 'terminal-notice'; notice: NativeTerminalNotice }
   | { kind: 'waiting' | 'uncertain'; reason: string }
 > {
   let after: number | undefined;
@@ -41,7 +43,13 @@ export async function assistantResult(
       throw new ExecutionFailure('incompatible');
     if (observation.state === 'uncertain')
       return { kind: 'uncertain', reason: 'run-unobserved' };
-    if (observation.pendingRequests > 0 || !observation.terminal)
+    // pendingRequests belongs to the whole T3 thread, not this exact Run.
+    // A newer Run awaiting approval cannot keep an older terminal Run's
+    // Inbox delivery blocked, or hide its real assistant item.
+    if (
+      !observation.terminal ||
+      (reference.runId === undefined && observation.pendingRequests > 0)
+    )
       return {
         kind: 'waiting',
         reason:
@@ -65,6 +73,19 @@ export async function assistantResult(
       )
         selected = item;
     if (!observation.hasMore) {
+      if (
+        !selected?.text &&
+        reference.runId !== undefined &&
+        (terminal === 'failed' || terminal === 'stopped')
+      )
+        return {
+          kind: 'terminal-notice',
+          notice: NativeTerminalNotice.parse({
+            kind: 'native-terminal-no-assistant',
+            reference,
+            state: terminal,
+          }),
+        };
       if (!selected?.text || reference.runId === undefined)
         return { kind: 'waiting', reason: 'assistant-result-unavailable' };
       return {
@@ -182,7 +203,7 @@ export async function deliver(
       frozen.input.model,
       signal,
     );
-    if (result.kind !== 'result') {
+    if ('reason' in result) {
       store.inbox.defer(claim, result.kind, result.reason);
       return;
     }
@@ -192,7 +213,11 @@ export async function deliver(
     const current = store.agents.resolveToken(
       loadAgentToken(binding.tokenFile),
     );
-    store.inbox.ack(claim, current, result.result);
+    store.inbox.ack(
+      claim,
+      current,
+      result.kind === 'terminal-notice' ? result.notice : result.result,
+    );
   } catch (error) {
     const blocked =
       (error instanceof IdentityError && error.statusCode !== 409) ||

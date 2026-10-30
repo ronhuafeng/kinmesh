@@ -108,6 +108,16 @@ export const Result = z.strictObject({
   state: z.enum(['succeeded', 'failed', 'stopped']),
 });
 export type Result = z.infer<typeof Result>;
+/** Verified terminal native status without a retrievable exact-run assistant item.
+ * This is a status notice, never a synthetic assistant message. */
+export const NativeTerminalNotice = z.strictObject({
+  kind: z.literal('native-terminal-no-assistant'),
+  reference: Result.shape.reference,
+  state: z.enum(['failed', 'stopped']),
+});
+export type NativeTerminalNotice = z.infer<typeof NativeTerminalNotice>;
+export const PublishedOutcome = z.union([Result, NativeTerminalNotice]);
+export type PublishedOutcome = z.infer<typeof PublishedOutcome>;
 /** Only explicit human mentions and changes of task responsibility wake agents.
  * Agent messages cannot mint wake chains; task audit predecessors establish agent handoff causality. */
 export function wakeTargets(fact: z.infer<typeof OutboxFact>) {

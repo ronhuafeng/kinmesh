@@ -161,6 +161,127 @@ await test('MOCK external adapter: exact-run actual assistant is attributed and 
     await f.dispose();
   }
 });
+await test('MOCK native terminal failure without assistant posts truthful notice and releases the same-agent queue', async () => {
+  const f = await inboxFixture();
+  try {
+    const source = mention(f);
+    const failed = mockRead('failed');
+    failed.items = [];
+    // The exact Run failed even though a DIFFERENT later Run in its thread
+    // is now waiting for approval; thread pending count is not Run-scoped.
+    const newerRun = 'later-pending-run';
+    const oldRun = failed.recentRuns[0];
+    assert.ok(oldRun);
+    failed.recentRuns.unshift({
+      ...oldRun,
+      runId: newerRun,
+      status: 'waiting',
+    });
+    Object.assign(failed.thread, {
+      status: 'waiting',
+      activeRunId: newerRun,
+      latestRunId: newerRun,
+      pendingRequestCount: 1,
+    });
+    f.wire.values.t3_thread_read = failed;
+    const c = claim(f);
+    await deliver(f.store, c, f.binding, f.factory, signal());
+    const row = f.inbox.get(c.id);
+    assert.equal(row.state, 'acked');
+    assert.equal(row.reason, 'native-terminal-notice-published');
+    assert.ok(row.resultMessageId);
+    const notice = f.comm.message(
+      f.principal,
+      f.teamId,
+      f.channelId,
+      row.resultMessageId,
+    );
+    assert.ok(notice.body.includes('T3 failed; native status notice only'));
+    assert.ok(notice.body.includes('no assistant message observed'));
+    assert.ok(!notice.body.includes('item '));
+    assert.ok(!notice.body.includes('Fixture assistant output'));
+    assert.equal(notice.sourceMessageId, source.id);
+    assert.equal(notice.sourceEventId, c.eventId);
+    assert.equal(notice.author.kind, 'agent');
+    assert.equal(notice.author.agentId, f.agent.id);
+    const reopened = f.open();
+    try {
+      assert.equal(reopened.inbox.get(c.id).state, 'acked');
+      assert.equal(
+        reopened.agents.correlations(f.principal, f.teamId, f.agent.id).length,
+        1,
+      );
+    } finally {
+      reopened.close();
+    }
+    mention(f, 'Second independently authorized human request');
+    const following = claim(f);
+    assert.notEqual(following.id, c.id);
+    const backend = await T3Backend.connect(
+      f.wire,
+      f.store.operations,
+      options,
+    );
+    const interrupted = mockRead('interrupted');
+    interrupted.items = [];
+    const newerRun2 = 'even-later-pending-run';
+    const stoppedRun = interrupted.recentRuns[0];
+    assert.ok(stoppedRun);
+    interrupted.recentRuns.unshift({
+      ...stoppedRun,
+      runId: newerRun2,
+      status: 'waiting',
+    });
+    Object.assign(interrupted.thread, {
+      status: 'waiting',
+      activeRunId: newerRun2,
+      latestRunId: newerRun2,
+      pendingRequestCount: 1,
+    });
+    f.wire.values.t3_thread_read = interrupted;
+    const stopped = await assistantResult(
+      backend,
+      reference,
+      launch.model,
+      signal(),
+    );
+    if (stopped.kind !== 'terminal-notice')
+      throw new Error('Expected native terminal status notice');
+    assert.equal(stopped.notice.kind, 'native-terminal-no-assistant');
+    assert.equal(stopped.notice.state, 'stopped');
+
+    // A completed older Run must still publish the actual assistant item
+    // while another Run in the same thread is waiting for human approval.
+    const completed = mockRead('completed');
+    const newerRun3 = 'yet-another-waiting-run';
+    const completedRun = completed.recentRuns[0];
+    assert.ok(completedRun);
+    completed.recentRuns.unshift({
+      ...completedRun,
+      runId: newerRun3,
+      status: 'waiting',
+    });
+    Object.assign(completed.thread, {
+      status: 'waiting',
+      activeRunId: newerRun3,
+      latestRunId: newerRun3,
+      pendingRequestCount: 1,
+    });
+    f.wire.values.t3_thread_read = completed;
+    const actual = await assistantResult(
+      backend,
+      reference,
+      launch.model,
+      signal(),
+    );
+    if (actual.kind !== 'result')
+      throw new Error('Expected the exact completed Run assistant result');
+    assert.equal(actual.result.reference.runId, reference.runId);
+    assert.equal(actual.result.text, 'fixture-redacted');
+  } finally {
+    await f.dispose();
+  }
+});
 for (const failedTable of [
   'communication_outbox',
   'inbox_results',
@@ -864,7 +985,8 @@ await test('MOCK native waiting/pending approval remains waiting across retries 
   const f = await inboxFixture();
   try {
     const task = f.create({ owner: { kind: 'agent', id: f.agent.id } }).task;
-    const base = assistantRead('Fixture pending approval');
+    // A pending approval belongs to this nonterminal Run, not a completed Run.
+    const base = assistantRead('Fixture pending approval', 'waiting');
     const pending = {
       ...base,
       thread: { ...base.thread, pendingRequestCount: 1 },
