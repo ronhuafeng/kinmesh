@@ -8,11 +8,11 @@ import {
   Endpoint,
 } from '../src/adapters/t3/oauth.js';
 import { SdkWire } from '../src/adapters/t3/sdk.js';
+import { nativeReadOnlyDenial } from './t3-native-denial.js';
 import { ValidatedTools, type Wire } from '../src/adapters/t3/contracts.js';
 import { T3Backend } from '../src/adapters/t3/backend.js';
 import { openStore } from '../src/persistence/store.js';
 import {
-  ExecutionFailure,
   type Reference,
   type Dispatch,
   type Intent,
@@ -201,23 +201,10 @@ try {
     'LIVE_RESTART_SAME_KEY_RECONCILIATION',
   );
   passed.push('lost-reply', 'journal-restart', 'same-key-reconciliation');
-  const readTools = new ValidatedTools(readWire, await readWire.list());
-  let denied = false;
-  try {
-    await readTools.call('t3_thread_launch', {
-      scratch: true,
-      title: 'Denied disposable launch',
-      modelSelection: {
-        instanceId: config.KINMESH_T3_PROVIDER,
-        model: config.KINMESH_T3_MODEL,
-      },
-      runtimeMode: 'approval-required',
-      clientRequestId: randomUUID(),
-    });
-  } catch (error) {
-    denied = error instanceof ExecutionFailure && error.kind === 'permission';
-  }
-  check(denied, 'LIVE_NATIVE_PERMISSION_DENIAL');
+  // Prove the T3 server itself rejects a Read only mutation. Do not ask
+  // tools/list for the operating tool: a scope-filtered grant may hide it.
+  // A random nonexistent ID is non-destructive even if authorization regresses.
+  check(await nativeReadOnlyDenial(readWire), 'LIVE_NATIVE_PERMISSION_DENIAL');
   passed.push('native-permission-denial');
   mkdirSync(dirname(config.KINMESH_T3_LIVE_REPORT), {
     recursive: true,
