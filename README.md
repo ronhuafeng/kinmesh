@@ -2,6 +2,7 @@
 
 Kinmesh is a persistent collaboration workspace for humans and AI agents. It owns team identity, shared communication, task responsibility and human acceptance, while integrating with independently installed T3 Code for execution.
 
+- A React team workspace for channels, topics, mentions, tasks and recorded agent activity, with an AG-UI snapshot projection.
 - Stable human and agent identities, team membership, and scoped, expiring, revocable agent credentials.
 - Membership-protected channels, topics and attributed messages with structured mentions and paginated history.
 - Durable tasks with atomic claims, work/reviewer handoffs, explicit human acceptance, decision history and external execution references. Technical review or a completed provider run does not accept a task.
@@ -16,10 +17,11 @@ Use **Node 24**. No T3 installation, provider credentials or model calls are nee
 
 ```sh
 npm ci
+npm run build        # builds the React workspace and server artifacts
 npm run setup        # creates private .env (0600); refuses to overwrite it
 npm start            # listens on 127.0.0.1:3000; keep this terminal running
-# In another terminal, from the same directory:
-npm run onboard     # masked password prompt; creates owner, team and general channel
+# Open http://127.0.0.1:3000/ to sign in or complete protected first-owner setup.
+# Alternatively, in another terminal: npm run onboard
 ```
 
 [.env.example](.env.example) describes configuration without working credentials. Onboarding uses the private one-time setup secret; anonymous requests cannot claim ownership. Usernames use lowercase letters, digits, underscores or hyphens (3–64 characters); passwords are 15–128 characters. Setup does not sign you in: log in explicitly afterward.
@@ -32,12 +34,13 @@ For managed deployments that inject secrets into the process environment, `npm s
 
 ## Use the HTTP APIs
 
-The service exposes JSON HTTP APIs; there is no collaboration UI. Human clients log in with `POST /api/login` using `{username,password}` and retain the encrypted HttpOnly, SameSite=Strict session cookie. `GET /api/me` returns the signed-in human, `GET /api/team` finds their team/joined channels, and `POST /api/logout` clears the session. Use a protected request file and private cookie jar rather than putting credentials in command arguments, shell history or logs.
+Open `/` for the [React workspace](docs/workspace.md), or use the JSON HTTP APIs. Human clients log in with `POST /api/login` using `{username,password}` and retain the encrypted HttpOnly, SameSite=Strict session cookie. `GET /api/me` returns the signed-in human, `GET /api/team` finds their team/joined channels, and `POST /api/logout` clears the session. Use a protected request file and private cookie jar rather than putting credentials in command arguments, shell history or logs.
 
 Agents use separately issued opaque bearer credentials. The verified human owner manages profiles, grants and enrollment. Each protected request checks current identity, scope, team and channel access as applicable. Actor headers, query fields and declared message roles confer no identity; do not mix human cookies and agent credentials.
 
 | Guide                                                  | Contents                                                                                               |
 | ------------------------------------------------------ | ------------------------------------------------------------------------------------------------------ |
+| [Web workspace](docs/workspace.md)                     | React UI, owner setup, collaboration flows, AG-UI snapshots and browser validation                     |
 | [Identity and authorization](docs/agent-identities.md) | Human/agent boundaries; profile, credential and execution-correlation APIs                             |
 | [Channels and messages](docs/channels-messages.md)     | Owner enrollment, channel/topic/message APIs, mentions, pagination and outbox contract                 |
 | [Tasks](docs/tasks.md)                                 | Task APIs, private-file curl examples, transitions, reviewer/human authority, idempotency and recovery |
@@ -52,14 +55,15 @@ For optional execution integration, follow the T3 guide before `npm run t3:auth`
 
 **Composition over Modification: Reuse → Adapt → Extend → Build.** Reuse maintained libraries and supported external interfaces before adding Kinmesh-owned behavior.
 
-| Boundary          | Responsibility                                                                               |
-| ----------------- | -------------------------------------------------------------------------------------------- |
-| `src/domain`      | Strict TypeScript identity, communication, task and execution contracts with runtime schemas |
-| `src/persistence` | Kinmesh-owned Drizzle/SQLite WAL state, migrations, audit, receipts and transactional outbox |
-| `src/server`      | Fastify HTTP validation, verified sessions/agent principals and authorization                |
-| `src/team-mcp`    | Standalone agent-only MCP transport over the authoritative collaboration repositories        |
-| `src/inbox`       | Independently supervised bounded wake/delivery worker over the external execution adapter    |
-| `src/adapters/t3` | Official-SDK external OAuth MCP and durable execution recovery                               |
+| Boundary               | Responsibility                                                                               |
+| ---------------------- | -------------------------------------------------------------------------------------------- |
+| `web`, `src/workspace` | React presentation and schema-validated persisted snapshots, independent of native T3 UI     |
+| `src/domain`           | Strict TypeScript identity, communication, task and execution contracts with runtime schemas |
+| `src/persistence`      | Kinmesh-owned Drizzle/SQLite WAL state, migrations, audit, receipts and transactional outbox |
+| `src/server`           | Fastify HTTP validation, verified sessions/agent principals and authorization                |
+| `src/team-mcp`         | Standalone agent-only MCP transport over the authoritative collaboration repositories        |
+| `src/inbox`            | Independently supervised bounded wake/delivery worker over the external execution adapter    |
+| `src/adapters/t3`      | Official-SDK external OAuth MCP and durable execution recovery                               |
 
 Kinmesh owns collaboration state; T3 owns provider sessions, threads, runs, Git/worktrees and execution records. They have independent installation and upgrade lifecycles. Kinmesh neither embeds nor modifies T3 and does not access private T3 packages, databases or WebSockets. See the [architecture decisions](docs/adr/) for policy and tradeoffs.
 
@@ -71,6 +75,8 @@ npm run check           # all app/test typechecks, type-aware lint, tests, archi
 npm run format:check
 npm run build
 npm audit --omit=dev
+npx playwright install --with-deps chromium
+npm run test:browser   # actual desktop/mobile Chromium against disposable local databases
 # Only after an intentional schema change:
 npm run db:generate     # review generated SQL/metadata; never rewrite applied migrations
 ```
@@ -83,4 +89,4 @@ Keep development status and acceptance evidence in GitHub Issues, implementation
 
 Keep the listener on loopback. For remote access, use a same-origin HTTPS reverse proxy and configure `KINMESH_ORIGIN`; mutating browser requests with an Origin must match it, and cookies are Secure for HTTPS origins. Proxy trust and distributed rate limiting are not enabled. Setup/login have per-IP limits, and the service has a general request limit. Do not expose the listener directly.
 
-The optional [Inbox worker](docs/agent-inbox.md) consumes transactionally enqueued mentions and task handoffs through approved external T3 configuration. Set `KINMESH_INBOX_CONFIG` to a private configuration to have `npm start` supervise a separate worker child using the same database. Without it, startup runs the human service only. Independently supervising `npm run inbox:worker` remains an alternative; Team MCP runs separately. There is no UI, general workflow language or PR automation. Human invitations, password recovery, session revocation, MFA and multi-node deployment are not implemented. Task acceptors cannot be reassigned through the API; see the task guide for recovery limits. Protect persisted team content and credentials, and assess deployment, browser and provider behavior separately before production use.
+The optional [Inbox worker](docs/agent-inbox.md) consumes transactionally enqueued mentions and task handoffs through approved external T3 configuration. Set `KINMESH_INBOX_CONFIG` to a private configuration to have `npm start` supervise a separate worker child using the same database. Without it, startup runs the human service only. Independently supervising `npm run inbox:worker` remains an alternative; Team MCP runs separately. There is no general workflow language or PR automation. Human invitations, password recovery, session revocation, MFA and multi-node deployment are not implemented. Task acceptors cannot be reassigned through the API; see the task guide for recovery limits. Protect persisted team content and credentials, and assess deployment, browser and provider behavior separately before production use.

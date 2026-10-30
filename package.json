@@ -23,7 +23,7 @@
     "t3:auth": "node --env-file-if-exists=.env --import tsx scripts/t3-auth.ts",
     "t3:smoke": "node --env-file-if-exists=.env --import tsx scripts/t3-smoke.ts",
     "test:live": "node --env-file-if-exists=.env --import tsx scripts/t3-live.ts",
-    "build": "tsc --project tsconfig.build.json && node --import tsx scripts/stage-migrations.ts",
+    "build": "npm run typecheck && vite build && tsc --project tsconfig.build.json && node --import tsx scripts/stage-migrations.ts && node --import tsx scripts/stage-web.ts",
     "release:check": "npm run check && npm run format:check && npm run build && npm audit --omit=dev && npm run test:live && npm run test:team-live && npm run test:inbox-live",
     "test:contract": "node --import tsx --test tests/t3-contract.test.ts tests/t3-recovery.test.ts tests/t3-auth.test.ts",
     "team:mcp": "node --env-file-if-exists=.env --import tsx src/team-mcp/main.ts",
@@ -33,31 +33,43 @@
     "test:team-live": "node --env-file-if-exists=.env --import tsx scripts/team-t3-live.ts",
     "inbox:worker": "node --env-file-if-exists=.env --import tsx src/inbox/main.ts",
     "inbox:status": "node --env-file-if-exists=.env --import tsx src/inbox/main.ts status",
-    "test:inbox-live": "node --env-file-if-exists=.env --import tsx scripts/inbox-t3-live.ts"
+    "test:inbox-live": "node --env-file-if-exists=.env --import tsx scripts/inbox-t3-live.ts",
+    "test:browser": "playwright test",
+    "web:watch": "vite build --watch"
   },
   "dependencies": {
+    "@ag-ui/core": "^1.0.3",
     "@fastify/rate-limit": "^11.2.1",
     "@fastify/secure-session": "^8.4.1",
+    "@fastify/static": "^10.1.8",
     "@inquirer/prompts": "^8.7.5",
     "@modelcontextprotocol/sdk": "1.32.2",
     "@node-rs/argon2": "^2.2.2",
+    "@radix-ui/react-tabs": "^1.2.1",
     "ajv": "8.20.0",
     "better-sqlite3": "^13.0.3",
     "drizzle-orm": "^0.45.4",
     "fastify": "^5.12.7",
     "open": "^11.0.4",
+    "react": "^19.3.1",
+    "react-dom": "^19.3.1",
     "zod": "^4.6.7"
   },
   "devDependencies": {
+    "@playwright/test": "^1.64.1",
     "@types/better-sqlite3": "^9.6.0",
     "@types/json-schema": "^7.0.15",
     "@types/node": "^24.19.2",
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
+    "@vitejs/plugin-react": "^6.1.2",
     "drizzle-kit": "^0.31.11",
     "eslint": "^10.13.0",
     "jiti": "^2.7.0",
     "prettier": "^3.9.10",
     "tsx": "^4.23.15",
     "typescript": "^6.0.3",
-    "typescript-eslint": "^8.72.1"
+    "typescript-eslint": "^8.72.1",
+    "vite": "^8.3.5"
   }
 }

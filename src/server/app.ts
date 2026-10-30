@@ -1,3 +1,5 @@
+import { registerWorkspace } from './workspace.js';
+import { registerWeb } from './web.js';
 import { registerTasks } from './tasks.js';
 import { registerCommunication } from './communication.js';
 import { registerAgents } from './agents.js';
@@ -44,6 +46,14 @@ export async function createApp(
     parallelism: 1,
   });
   app.decorateRequest('principal', null);
+  app.addHook('onSend', async (_request, reply) => {
+    reply.header('X-Content-Type-Options', 'nosniff');
+    reply.header('Referrer-Policy', 'no-referrer');
+    reply.header(
+      'Content-Security-Policy',
+      "default-src 'self'; script-src 'self'; style-src 'self'; connect-src 'self'; img-src 'self' data:; object-src 'none'; base-uri 'none'; frame-ancestors 'none'; form-action 'self'",
+    );
+  });
   app.setErrorHandler((error, _request, reply) => {
     if (error instanceof z.ZodError)
       return void reply.code(400).send({ error: 'Invalid input' });
@@ -175,6 +185,8 @@ export async function createApp(
   registerAgents(app, store);
   registerCommunication(app, store);
   registerTasks(app, store);
+  registerWorkspace(app, store);
+  await registerWeb(app);
   await app.register((protectedApi, _options, done) => {
     protectedApi.get('/api/me', (request) => {
       const id = HumanId.parse(request.session.get('humanId'));

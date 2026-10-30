@@ -86,7 +86,14 @@ export function checkRepository(root: string): string[] {
       if (
         ['node_modules', '.git', '.store', 'coverage', 'dist'].includes(
           entry.name,
-        )
+        ) ||
+        (dir === root &&
+          [
+            'web-dist',
+            'test-results',
+            'playwright-report',
+            'artifacts',
+          ].includes(entry.name))
       )
         continue;
       const absolute = join(dir, entry.name);
