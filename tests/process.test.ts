@@ -1,3 +1,7 @@
+import { z } from 'zod';
+import { Agent } from '../src/domain/agents.js';
+import { Team } from '../src/domain/contracts.js';
+import { profileInput, grantInput, Issued } from './agent-helpers.js';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawn, execFileSync } from 'node:child_process';
@@ -41,7 +45,7 @@ await test('setup command creates private secrets, never prints values and refus
     f.cleanup();
   }
 });
-await test('actual server entrypoint listens, reports health, rejects anonymous API and shuts down', async () => {
+await test('actual server entrypoint authenticates owner, issues scoped agent grant, denies disabled agent and shuts down', async () => {
   const listener = createServer();
   listener.listen(0, '127.0.0.1');
   await once(listener, 'listening');
@@ -84,6 +88,53 @@ await test('actual server entrypoint listens, reports health, rejects anonymous 
     const origin = `http://127.0.0.1:${String(port)}`;
     assert.equal((await fetch(origin + '/health')).status, 200);
     assert.equal((await fetch(origin + '/api/team')).status, 401);
+    const post = (
+      path: string,
+      body: unknown,
+      headers: Record<string, string> = {},
+    ) =>
+      fetch(origin + path, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', ...headers },
+        body: JSON.stringify(body),
+        redirect: 'error',
+        signal: AbortSignal.timeout(10000),
+      });
+    const owner = {
+      username: 'owner',
+      password: 'real-http-test-password-only',
+      teamName: 'HTTP team',
+    };
+    const setup = await post('/api/setup', owner, {
+      authorization: 'Bearer ' + f.config.setupToken,
+    });
+    assert.equal(setup.status, 201);
+    const team = z.object({ team: Team }).parse(await setup.json()).team;
+    const login = await post('/api/login', {
+      username: owner.username,
+      password: owner.password,
+    });
+    assert.equal(login.status, 200);
+    const cookie = login.headers.get('set-cookie')?.split(';')[0];
+    assert.ok(cookie);
+    const created = await post(`/api/teams/${team.id}/agents`, profileInput, {
+      cookie,
+    });
+    assert.equal(created.status, 201);
+    const agent = Agent.parse(await created.json());
+    const path = `/api/teams/${team.id}/agents/${agent.id}`;
+    const issued = await post(path + '/grants', grantInput, { cookie });
+    assert.equal(issued.status, 201);
+    const grant = Issued.parse(await issued.json());
+    const headers = { authorization: 'Bearer ' + grant.token };
+    assert.equal((await fetch(origin + path, { headers })).status, 200);
+    assert.equal((await fetch(origin + '/api/team', { headers })).status, 403);
+    assert.equal(
+      (await post(path + '/lifecycle', { lifecycle: 'disabled' }, { cookie }))
+        .status,
+      200,
+    );
+    assert.equal((await fetch(origin + path, { headers })).status, 401);
     const exit = once(child, 'exit');
     child.kill('SIGTERM');
     await exit;
