@@ -277,7 +277,7 @@ await test('MOCK native terminal failure without assistant posts truthful notice
     if (actual.kind !== 'result')
       throw new Error('Expected the exact completed Run assistant result');
     assert.equal(actual.result.reference.runId, reference.runId);
-    assert.ok(actual.result.text.includes('Fixture'));
+    assert.equal(actual.result.text, 'fixture-redacted');
   } finally {
     await f.dispose();
   }
