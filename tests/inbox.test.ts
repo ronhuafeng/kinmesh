@@ -985,7 +985,8 @@ await test('MOCK native waiting/pending approval remains waiting across retries 
   const f = await inboxFixture();
   try {
     const task = f.create({ owner: { kind: 'agent', id: f.agent.id } }).task;
-    const base = assistantRead('Fixture pending approval');
+    // A pending approval belongs to this nonterminal Run, not a completed Run.
+    const base = assistantRead('Fixture pending approval', 'waiting');
     const pending = {
       ...base,
       thread: { ...base.thread, pendingRequestCount: 1 },
