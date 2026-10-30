@@ -5,6 +5,7 @@ import {
   mkdtempSync,
   readFileSync,
   writeFileSync,
+  chmodSync,
   symlinkSync,
   rmSync,
   existsSync,
@@ -434,6 +435,8 @@ await test(
                     : 0o600,
             },
           );
+        // File creation is filtered by umask; enforce the public-mode rejection case.
+        if (variant === 'public') chmodSync(path, 0o644);
         const p = f.start(true, path);
         assert.equal(await deadline(p.closed, 10000), 1);
         assert.equal(p.output().includes('Team Hub ready'), false);
