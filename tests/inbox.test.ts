@@ -167,6 +167,23 @@ await test('MOCK native terminal failure without assistant posts truthful notice
     const source = mention(f);
     const failed = mockRead('failed');
     failed.items = [];
+    // The exact Run failed even though a DIFFERENT later Run in its thread
+    // is now waiting for approval; thread pending count is not Run-scoped.
+    const newerRun = 'later-pending-run';
+    const oldRun = failed.recentRuns[0];
+    assert.ok(oldRun);
+    failed.recentRuns.unshift({
+      ...oldRun,
+      runId: newerRun,
+      status: 'waiting',
+    });
+    failed.thread = {
+      ...failed.thread,
+      status: 'waiting',
+      activeRunId: newerRun,
+      latestRunId: newerRun,
+      pendingRequestCount: 1,
+    };
     f.wire.values.t3_thread_read = failed;
     const c = claim(f);
     await deliver(f.store, c, f.binding, f.factory, signal());
@@ -208,6 +225,21 @@ await test('MOCK native terminal failure without assistant posts truthful notice
     );
     const interrupted = mockRead('interrupted');
     interrupted.items = [];
+    const newerRun2 = 'even-later-pending-run';
+    const stoppedRun = interrupted.recentRuns[0];
+    assert.ok(stoppedRun);
+    interrupted.recentRuns.unshift({
+      ...stoppedRun,
+      runId: newerRun2,
+      status: 'waiting',
+    });
+    interrupted.thread = {
+      ...interrupted.thread,
+      status: 'waiting',
+      activeRunId: newerRun2,
+      latestRunId: newerRun2,
+      pendingRequestCount: 1,
+    };
     f.wire.values.t3_thread_read = interrupted;
     const stopped = await assistantResult(
       backend,
@@ -220,6 +252,32 @@ await test('MOCK native terminal failure without assistant posts truthful notice
       throw new Error('Expected native terminal status notice');
     assert.equal(stopped.notice.kind, 'native-terminal-no-assistant');
     assert.equal(stopped.notice.state, 'stopped');
+
+    // A completed older Run must still publish the actual assistant item
+    // while another Run in the same thread is waiting for human approval.
+    const completed = mockRead('completed');
+    const newerRun3 = 'yet-another-waiting-run';
+    const completedRun = completed.recentRuns[0];
+    assert.ok(completedRun);
+    completed.recentRuns.unshift({
+      ...completedRun,
+      runId: newerRun3,
+      status: 'waiting',
+    });
+    completed.thread = {
+      ...completed.thread,
+      status: 'waiting',
+      activeRunId: newerRun3,
+      latestRunId: newerRun3,
+      pendingRequestCount: 1,
+    };
+    f.wire.values.t3_thread_read = completed;
+    const actual = await assistantResult(backend, reference, launch.model, signal());
+    assert.equal(actual.kind, 'result');
+    if (actual.kind !== 'result')
+      throw new Error('Expected the exact completed Run assistant result');
+    assert.equal(actual.result.reference.runId, reference.runId);
+    assert.ok(actual.result.text.includes('Fixture'));
   } finally {
     await f.dispose();
   }
