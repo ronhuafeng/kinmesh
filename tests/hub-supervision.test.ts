@@ -211,6 +211,7 @@ async function fixture(database?: string) {
     configPath,
     endpoint,
     setupToken,
+    sessionKey,
     port,
     start,
     health,
@@ -287,13 +288,14 @@ await test(
       rmSync(join(f.directory, '.env'));
       const p = f.start(true, undefined, true);
       await p.ready();
+      assert.ok(!p.output().includes(f.setupToken));
+      assert.ok(!p.output().includes(f.sessionKey));
       assert.equal(p.workers().length, 1);
       assert.equal(await p.stop(), 0);
       assert.equal(await f.health(), 0);
       const invalid = f.start(false);
       assert.equal(await deadline(invalid.closed, 10000), 1);
       assert.equal(await f.health(), 0);
-      assert.ok(!invalid.output().includes(f.setupToken));
     } finally {
       await f.dispose();
     }
