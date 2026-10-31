@@ -50,7 +50,7 @@ Non-negotiables carried into every screen:
 
 - **Acceptance is explicit.** Only the designated human can accept a task, with a note.
   No provider result, review or poll implies acceptance.
-- **Recorded is not verified.** AG-UI reports show "Last recorded …" with time and
+- **Recorded is not verified.** AG-UI reports show "Last reported …" with time and
   provenance. Native T3 status is a separate, explicit read.
 - **Only a stale snapshot pauses sending.** A failed refresh keeps the last snapshot,
   labels it stale, and blocks every submission until a reconnect succeeds; so does a

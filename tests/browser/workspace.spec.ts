@@ -32,6 +32,39 @@ async function snapshot(request: APIRequestContext, origin: string) {
   expect(response.status()).toBe(200);
   return WorkspaceSnapshot.parse(await response.json());
 }
+/** The heartbeat is silent; a refresh on demand lives in the command palette. */
+async function refreshNow(page: Page) {
+  await page.keyboard.press('ControlOrMeta+k');
+  const search = page.getByRole('combobox', { name: /Search/ });
+  await search.fill('refresh now');
+  await search.press('Enter');
+}
+/** Healthy means no connection pill at all. */
+async function expectHealthy(page: Page) {
+  await expect(
+    page
+      .getByRole('status')
+      .filter({ hasText: /^(Refreshing…|Disconnected)$/ }),
+  ).toHaveCount(0);
+}
+/** Run and thread IDs sit behind each run's technical details. */
+async function showTechnical(page: Page) {
+  const details = page.locator('.execution details.technical');
+  await expect(details.first()).toBeAttached();
+  await details.evaluateAll((all) => {
+    for (const element of all)
+      if (element instanceof HTMLDetailsElement) element.open = true;
+  });
+}
+/** How a recorded runtime state is said to a person. */
+const spoken: Record<string, string> = {
+  unknown: 'unknown',
+  active: 'working',
+  waiting: 'waiting',
+  succeeded: 'finished',
+  failed: 'failed',
+  stopped: 'stopped',
+};
 /** Board columns are the five stages; a card's column is its status. */
 function inStage(page: Page, stage: string, title: string) {
   return page
@@ -141,14 +174,17 @@ for (const width of [1440, 375]) {
     await page.reload();
     await expect(page.getByText(sent, { exact: true })).toBeVisible();
     expect(await page.locator('.messages img').count()).toBe(0);
+    // Healthy is silent; the pill and its Reconnect button appear only offline.
+    await expectHealthy(page);
     await context.setOffline(true);
-    await page.getByRole('button', { name: 'Reconnect / refresh' }).click();
+    await refreshNow(page);
     await expect(page.getByText('Disconnected', { exact: true })).toBeVisible();
+    // Reconnecting while still offline keeps the honest state.
+    await page.getByRole('button', { name: 'Reconnect', exact: true }).click();
+    await expect(page.getByText('Disconnected', { exact: true })).toBeVisible();
+    // Coming back online reconnects by itself.
     await context.setOffline(false);
-    await page.getByRole('button', { name: 'Reconnect / refresh' }).click();
-    await expect(
-      page.getByText('Snapshot connected', { exact: true }),
-    ).toBeVisible();
+    await expectHealthy(page);
     await expect(page.getByText(sent, { exact: true })).toBeVisible();
     expect(
       await page.evaluate(
@@ -245,7 +281,7 @@ test('two independent task cards: real agent handoff, human review, acceptance a
         'review-requested',
       );
     }
-    await page.getByRole('button', { name: 'Reconnect / refresh' }).click();
+    await refreshNow(page);
     const alpha = page.getByRole('article', {
       name: 'Ship alpha',
       exact: true,
@@ -293,10 +329,13 @@ test('two independent task cards: real agent handoff, human review, acceptance a
     });
     await alpha.getByRole('button', { name: 'Ship alpha' }).click();
     await expect(
-      alphaDrawer.getByRole('heading', { name: 'Decision history' }),
+      alphaDrawer.getByRole('heading', { name: 'History' }),
     ).toBeVisible();
+    // History records the acceptance with its note, as a sentence.
     await expect(
-      alphaDrawer.getByText('I accept the alpha outcome'),
+      alphaDrawer.getByText('You accepted it: “I accept the alpha outcome”', {
+        exact: true,
+      }),
     ).toBeVisible();
     await page.keyboard.press('Escape');
     await expect(alphaDrawer).toHaveCount(0);
@@ -340,26 +379,27 @@ test('AG-UI snapshots render persisted reports honestly; identity spoofing and c
   expect(event.status()).toBe(201);
   await page.getByRole('button', { name: 'View Observer activity' }).click();
   await expect(
-    page.getByText('AG-UI 1.0 · refreshed snapshot', { exact: true }),
+    page.getByText('Last reported: waiting', { exact: true }),
   ).toBeVisible();
-  await expect(page.getByText('Last recorded: waiting')).toBeVisible();
+  await expect(page.getByText('Last reported: waiting')).toBeVisible();
+  await showTechnical(page);
   await expect(
     page.getByText('browser-fixture-thread', { exact: true }),
   ).toBeVisible();
   await expect(
-    page.getByRole('button', { name: 'Open in T3 (link unavailable)' }),
+    page.getByRole('button', { name: 'Open in T3 (no verified link)' }),
   ).toBeDisabled();
   const nativeResponse = page.waitForResponse((response) =>
     response.url().endsWith('/executions/' + correlation.id + '/native'),
   );
-  await page.getByRole('button', { name: 'Check native status' }).click();
+  await page.getByRole('button', { name: 'Check in T3' }).click();
   expect((await nativeResponse).status()).toBe(503);
-  await expect(page.getByText(/Native T3 status unavailable/)).toBeVisible();
-  await expect(page.getByText(/Native verified at/)).toHaveCount(0);
+  await expect(page.getByText(/T3 can’t be checked right now/)).toBeVisible();
+  await expect(page.getByText(/T3 confirms/)).toHaveCount(0);
   await expect(
-    page.getByRole('link', { name: 'Open verified T3 thread' }),
+    page.getByRole('link', { name: 'Open in T3', exact: true }),
   ).toHaveCount(0);
-  await expect(page.getByText('Last recorded: waiting')).toBeVisible();
+  await expect(page.getByText('Last reported: waiting')).toBeVisible();
   expect((await context.request.get(hub.origin + '/api/me')).status()).toBe(
     200,
   );
@@ -372,8 +412,10 @@ test('AG-UI snapshots render persisted reports honestly; identity spoofing and c
         )
       ).status(),
     ).toBe(201);
-    await page.getByRole('button', { name: 'Reconnect / refresh' }).click();
-    await expect(page.getByText('Last recorded: ' + status)).toBeVisible();
+    await refreshNow(page);
+    await expect(
+      page.getByText('Last reported: ' + (spoken[status] ?? status)),
+    ).toBeVisible();
   }
   const anon = await playwright.request.newContext();
   try {
@@ -443,7 +485,7 @@ test('keyboard mention, message becomes a task in its topic, and the needs-me fi
   } finally {
     worker.close();
   }
-  await page.getByRole('button', { name: 'Reconnect / refresh' }).click();
+  await refreshNow(page);
   await expect(adaRow.getByText('Can be woken', { exact: true })).toBeVisible();
   await expect(page.getByText(/No agent can be woken yet/)).toHaveCount(0);
   await page.getByRole('tab', { name: 'Chat', exact: true }).click();
@@ -595,7 +637,7 @@ test('a mention says what happened to it and leads to the agent’s reply', asyn
   } finally {
     sql.close();
   }
-  await page.getByRole('button', { name: 'Reconnect / refresh' }).click();
+  await refreshNow(page);
   await expect(responses).toContainText('Ada will pick this up');
   // Simulate what the worker does on success: the agent replies and the
   // delivery is acknowledged with that reply.
@@ -638,7 +680,7 @@ test('a mention says what happened to it and leads to the agent’s reply', asyn
   } finally {
     await agent.dispose();
   }
-  await page.getByRole('button', { name: 'Reconnect / refresh' }).click();
+  await refreshNow(page);
   await responses.getByRole('button', { name: /Ada replied/ }).click();
   const answer = page
     .getByRole('list', { name: 'Channel messages' })
@@ -880,7 +922,7 @@ test('a heartbeat refresh never interrupts work; after a failure nothing submits
   }
   // A: refreshing a confirmed snapshot changes nothing the person can do.
   const failRefresh = await holdWorkspace(503);
-  await page.getByRole('button', { name: 'Reconnect / refresh' }).click();
+  await refreshNow(page);
   await expect(page.getByText('Refreshing…', { exact: true })).toBeVisible();
   await expect(composer.getByLabel('Message', { exact: true })).toBeEditable();
   await expect(
@@ -898,7 +940,7 @@ test('a heartbeat refresh never interrupts work; after a failure nothing submits
   await expectNothingSubmits();
   // B': a reconnect still in flight has not confirmed anything yet.
   const succeed = await holdWorkspace(200);
-  await page.getByRole('button', { name: 'Reconnect / refresh' }).click();
+  await refreshNow(page);
   await expect(page.getByText('Refreshing…', { exact: true })).toBeVisible();
   await expect(create.getByLabel('Channel name')).toBeEditable();
   await expectNothingSubmits();
@@ -912,9 +954,7 @@ test('a heartbeat refresh never interrupts work; after a failure nothing submits
   );
   expect(probe.status()).toBe(201);
   succeed();
-  await expect(
-    page.getByText('Snapshot connected', { exact: true }),
-  ).toBeVisible();
+  await expectHealthy(page);
   await page.unroute('**/api/workspace?*');
   await join.getByRole('button', { name: 'Join channel', exact: true }).click();
   await expect(
@@ -1080,7 +1120,7 @@ test('permission loss purges workspace snapshot instead of retaining stale team 
       body: '{}',
     });
   });
-  await page.getByRole('button', { name: 'Reconnect / refresh' }).click();
+  await refreshNow(page);
   await expect(
     page.getByRole('heading', { name: 'Welcome back' }),
   ).toBeVisible();
@@ -1135,6 +1175,7 @@ test('AG-UI access revocation clears prior reports while a transient outage pres
   await page
     .getByRole('button', { name: 'View Revoked Activity activity' })
     .click();
+  await showTechnical(page);
   await expect(page.getByText(thread, { exact: true })).toBeVisible();
 
   await page.route('**/api/agui/**', async (route) => {
@@ -1144,12 +1185,13 @@ test('AG-UI access revocation clears prior reports while a transient outage pres
       body: '{}',
     });
   });
-  await page.getByRole('button', { name: 'Reconnect / refresh' }).click();
+  await refreshNow(page);
   await expect(
     page.getByText(
-      'Execution snapshot unavailable. Use Reconnect / refresh to retry.',
+      'Activity can’t be loaded right now. It will try again on the next refresh.',
     ),
   ).toBeVisible();
+  await showTechnical(page);
   await expect(page.getByText(thread, { exact: true })).toBeVisible();
 
   await page.unroute('**/api/agui/**');
@@ -1162,14 +1204,14 @@ test('AG-UI access revocation clears prior reports while a transient outage pres
       body: '{}',
     });
   });
-  await page.getByRole('button', { name: 'Reconnect / refresh' }).click();
+  await refreshNow(page);
   await expect(
     page.getByText(
-      'Execution access no longer authorized. Sign in again or contact your team owner.',
+      'You no longer have access to this activity. Sign in again or ask the team owner.',
     ),
   ).toBeVisible();
   await expect(page.getByText(thread, { exact: true })).toHaveCount(0);
-  await expect(page.getByText('Last recorded: unknown')).toHaveCount(0);
+  await expect(page.getByText('Last reported: unknown')).toHaveCount(0);
   expect(denied).toBeGreaterThan(0);
   expect(
     (
@@ -1221,6 +1263,7 @@ async function openMockNativeCard(
   await page
     .getByRole('button', { name: 'View Mock Native Observer activity' })
     .click();
+  await showTechnical(page);
   await expect(page.getByText('MOCK-thread', { exact: true })).toBeVisible();
   return {
     source: 't3-native-verified',
@@ -1253,15 +1296,15 @@ test('MOCK UI only: strict native observation renders separate exact state/link 
       body: JSON.stringify(body),
     });
   });
-  const check = page.getByRole('button', { name: 'Check native status' });
+  const check = page.getByRole('button', { name: 'Check in T3' });
   await check.click();
-  await expect(page.getByText(/Native verified at/)).toBeVisible();
+  await expect(page.getByText(/T3 confirms/)).toBeVisible();
   await expect(
-    page.getByText('Exact Run status: interrupted · terminal'),
+    page.getByText('This run: interrupted · finished'),
   ).toBeVisible();
-  await expect(page.getByText(/Thread pending requests: 2/)).toBeVisible();
-  await expect(page.getByText('Last recorded: unknown')).toBeVisible();
-  const link = page.getByRole('link', { name: 'Open verified T3 thread' });
+  await expect(page.getByText(/Open requests in this thread: 2/)).toBeVisible();
+  await expect(page.getByText('Last reported: unknown')).toBeVisible();
+  const link = page.getByRole('link', { name: 'Open in T3', exact: true });
   await expect(link).toHaveAttribute('href', observation.verifiedUrl);
   await expect(link).toHaveAttribute('target', '_blank');
   await expect(link).toHaveAttribute('rel', 'noopener noreferrer');
@@ -1272,9 +1315,9 @@ test('MOCK UI only: strict native observation renders separate exact state/link 
   ).toBe(true);
   status = 503;
   await check.click();
-  await expect(page.getByText(/Native T3 status unavailable/)).toBeVisible();
+  await expect(page.getByText(/T3 can’t be checked right now/)).toBeVisible();
   await expect(link).toHaveCount(0);
-  await expect(page.getByText(/Native verified at/)).toHaveCount(0);
+  await expect(page.getByText(/T3 confirms/)).toHaveCount(0);
   status = 200;
   for (const invalid of [
     { ...observation, verifiedUrl: 'javascript:alert(1)' },
@@ -1295,9 +1338,9 @@ test('MOCK UI only: strict native observation renders separate exact state/link 
     await expect(link).toBeVisible();
     body = invalid;
     await check.click();
-    await expect(page.getByText(/Native T3 status unavailable/)).toBeVisible();
+    await expect(page.getByText(/T3 can’t be checked right now/)).toBeVisible();
     await expect(link).toHaveCount(0);
-    await expect(page.getByText(/Native verified at/)).toHaveCount(0);
+    await expect(page.getByText(/T3 confirms/)).toHaveCount(0);
   }
   expect((await context.request.get(hub.origin + '/api/me')).status()).toBe(
     200,
@@ -1319,23 +1362,23 @@ for (const denied of [401, 403]) {
         body: JSON.stringify(status === 200 ? observation : {}),
       });
     });
-    await page.getByRole('button', { name: 'Check native status' }).click();
+    await page.getByRole('button', { name: 'Check in T3' }).click();
     await expect(
-      page.getByRole('link', { name: 'Open verified T3 thread' }),
+      page.getByRole('link', { name: 'Open in T3', exact: true }),
     ).toBeVisible();
     status = denied;
-    await page.getByRole('button', { name: 'Check native status' }).click();
+    await page.getByRole('button', { name: 'Check in T3' }).click();
     await expect(
       page.getByText(
-        'Execution access no longer authorized. Sign in again or contact your team owner.',
+        'You no longer have access to this activity. Sign in again or ask the team owner.',
       ),
     ).toBeVisible();
     await expect(
-      page.getByRole('link', { name: 'Open verified T3 thread' }),
+      page.getByRole('link', { name: 'Open in T3', exact: true }),
     ).toHaveCount(0);
-    await expect(page.getByText(/Native verified at/)).toHaveCount(0);
+    await expect(page.getByText(/T3 confirms/)).toHaveCount(0);
     await expect(page.getByText('MOCK-thread', { exact: true })).toHaveCount(0);
-    await expect(page.getByText('Last recorded: unknown')).toHaveCount(0);
+    await expect(page.getByText('Last reported: unknown')).toHaveCount(0);
     expect((await context.request.get(hub.origin + '/api/me')).status()).toBe(
       200,
     );

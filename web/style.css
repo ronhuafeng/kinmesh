@@ -2727,3 +2727,28 @@ a.button-link {
   justify-self: center;
   font-size: 0.78rem;
 }
+
+/* Voice (#57): technical facts stay one click away, never in front. */
+.author-role {
+  font-family: var(--mono);
+  font-size: 0.7rem;
+  color: var(--agent-text);
+}
+details.technical {
+  font-size: 0.8rem;
+  color: var(--ink-muted);
+}
+details.technical > summary {
+  font-size: 0.78rem;
+  font-weight: 500;
+}
+details.technical[open] {
+  display: grid;
+  gap: 0.4rem;
+}
+details.technical dl {
+  margin-top: 0.4rem;
+}
+details.technical p {
+  margin: 0;
+}

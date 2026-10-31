@@ -29,7 +29,7 @@ P7 (Needs you inbox) is covered by the "Waiting for you" strip and the board's
 - Branch, test counts, diff stats and runtime/latency footers
 - Threads, Decisions and Direct messages navigation entries
 - A "Backlog" column (Kinmesh has exactly seven statuses, starting at proposed)
-- "LIVE" presence badges: show only "Last recorded: <state> · <time>"
+- "LIVE" presence badges: show only "Last reported: <state> · <time>"
 - Pre-filled decision notes and pre-ticked criteria: criteria are not individually
   checkable in the API, and the note must be written by the human
 - Status bars and chrome: version badges, "runtime local · port", daemon/latency

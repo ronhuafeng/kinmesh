@@ -422,9 +422,7 @@ export function Chat({
                   ) : (
                     <strong>{name}</strong>
                   )}
-                  <span className="author-kind">
-                    {agent ? 'agent · ' + agent.role : m.author.kind}
-                  </span>
+                  {agent && <span className="author-role">{agent.role}</span>}
                   <time dateTime={m.createdAt}>{shortTime(m.createdAt)}</time>
                   {m.topicId && (
                     <small className="topic-tag">{topicTitle(m.topicId)}</small>
