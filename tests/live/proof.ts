@@ -89,7 +89,27 @@ export function completedCalls(
       if (!item.text || !/"toolName"\s*:\s*"kinmesh(?:\.|__)/.test(item.text))
         return [];
       assert.equal(item.textTruncated, false);
-      const call = parseCall(JSON.parse(item.text) as unknown);
+      const frame: unknown = JSON.parse(item.text) as unknown;
+      let call: ReturnType<typeof parseCall>;
+      try {
+        call = parseCall(frame);
+      } catch (error) {
+        const name = z
+          .object({ toolName: z.string() })
+          .parse(frame)
+          .toolName.replace(/^(?:kinmesh\.|kinmesh__)/, '');
+        if (
+          error instanceof SyntaxError &&
+          [
+            'team_message_get',
+            'team_messages_read',
+            'team_task_get',
+            'team_tasks_history',
+          ].includes(name)
+        )
+          return [];
+        throw error;
+      }
       return call?.output?.result.ok
         ? [
             {
@@ -132,29 +152,26 @@ export function reviewProof(
       ),
       'REVIEW_TASK_READ_MISSING',
     );
+  const message = z.object({
+    id: z.string().optional(),
+    body: z.string(),
+    sourceEventId: z.string().nullable(),
+    author: z.object({ kind: z.string(), agentId: z.string().optional() }),
+  });
   const artifacts = calls
     .filter(
       (call) =>
-        call.name === 'team_messages_read' &&
+        ['team_messages_read', 'team_message_get'].includes(call.name) &&
         call.input.channelId === context.channelId,
     )
-    .flatMap(
-      (call) =>
-        z
-          .object({
-            items: z.array(
-              z.object({
-                body: z.string(),
-                sourceEventId: z.string().nullable(),
-                author: z.object({
-                  kind: z.string(),
-                  agentId: z.string().optional(),
-                }),
-              }),
-            ),
-          })
-          .parse(call.data).items,
-    );
+    .flatMap((call) => {
+      if (call.name === 'team_message_get') {
+        const item = message.extend({ id: z.string() }).parse(call.data);
+        assert.equal(call.input.messageId, item.id);
+        return [item];
+      }
+      return z.object({ items: z.array(message) }).parse(call.data).items;
+    });
   assert.ok(
     artifacts.some(
       (message) =>

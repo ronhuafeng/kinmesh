@@ -234,3 +234,52 @@ await test('LIVE ORACLE FIXTURE: the correlation owner and task link must identi
     );
   });
 });
+
+await test('LIVE ORACLE FIXTURE: a clipped read is never proof and does not invalidate a later complete reply', () => {
+  const clipped = {
+    ...call('team_tasks_history', {}),
+    text: JSON.stringify({
+      toolName: 'kinmesh__team_tasks_history',
+      input: {
+        tool_name: 'kinmesh__team_tasks_history',
+        tool_input: { channelId: 'channel', taskId: 'task' },
+      },
+      output: {
+        tool_name: 'team_tasks_history',
+        server_name: 'kinmesh',
+        output: { OkayOutput: '{"result":{"ok":true,"data":' },
+      },
+    }),
+  };
+  const complete = valid();
+  complete.items.unshift(clipped);
+  assert.equal(reviewProof(complete, 'run', context).length, 3);
+  assert.throws(
+    () =>
+      reviewProof(
+        {
+          items: [
+            clipped,
+            ...valid().items.filter(
+              (item) => item.itemId !== 'team_tasks_history',
+            ),
+          ],
+        },
+        'run',
+        context,
+      ),
+    /REVIEW_TASK_READ_MISSING/,
+  );
+});
+await test('LIVE ORACLE FIXTURE: exact message lookup is valid independent artifact evidence', () => {
+  const activity = valid();
+  activity.items[2] = {
+    ...call('team_message_get', {}),
+    text: JSON.stringify({
+      toolName: 'kinmesh.team_message_get',
+      input: { channelId: 'channel', messageId: 'artifact' },
+      output: { result: { ok: true, data: { ...artifact, id: 'artifact' } } },
+    }),
+  };
+  assert.equal(reviewProof(activity, 'run', context).length, 3);
+});

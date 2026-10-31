@@ -165,7 +165,6 @@ test('complete real two-agent workflow, Human rework/acceptance, recovery and au
       for (const name of [
         'team_task_get',
         'team_tasks_history',
-        'team_messages_read',
         'team_messages_send',
         role === 'developer' ? 'team_task_handoff' : 'team_task_review',
       ]) {
@@ -176,6 +175,13 @@ test('complete real two-agent workflow, Human rework/acceptance, recovery and au
           ),
         );
       }
+      assert.ok(
+        successfulCalls.some(
+          (call) =>
+            ['team_messages_read', 'team_message_get'].includes(call.name) &&
+            call.input.channelId === hub.channelId,
+        ),
+      );
       const decisionIndex = successfulCalls.findIndex(
         (call) =>
           call.name ===
@@ -869,6 +875,19 @@ test('complete real two-agent workflow, Human rework/acceptance, recovery and au
     checks.realAgentGrantRevocationDenied = true;
     await auditNative();
     assert.equal(rows().length, 4);
+    for (const [table, expected] of [
+      ['tasks', 1],
+      ['agent_inbox', 4],
+      ['inbox_results', 4],
+      ['execution_operations', 4],
+      ['task_executions', 4],
+    ] as const) {
+      const count = z
+        .object({ n: z.number() })
+        .parse(db.prepare('select count(*) as n from ' + table).get());
+      assert.equal(count.n, expected);
+    }
+    checks.noExtraFixtureTasksDeliveriesOrNativeIntents = true;
     checks.fourUniqueNativeResults = true;
     evidence.result = 'PASS';
   } catch (error) {
