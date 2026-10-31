@@ -70,9 +70,10 @@ Task status colours (dot + label, also the colour of the stage column):
   required note, history timeline, execution references.
 - **Decision buttons**: primary "Accept task" in green, "Request rework" as an outlined
   danger button; disabled with an explanation when offline.
-- **Agent activity**: timeline of AG-UI recorded states ("Last recorded: waiting · 2 min
-  ago · by agent"), clearly separated from "Native verified at …" T3 checks.
-- **Connection pill**: dot + "Snapshot connected / Refreshing… / Disconnected" with read
+- **Agent activity**: what the agent reported ("Last reported: working · 2 min ago"),
+  clearly separated from what "T3 confirms" on an explicit check; IDs behind "Technical
+  details".
+- **Connection pill**: absent while healthy; dot + "Refreshing… / Disconnected" with last
   time; offline turns into a full-width stale banner.
 
 ## Motion
@@ -80,3 +81,16 @@ Task status colours (dot + label, also the colour of the stage column):
 Short and purposeful (160–320 ms, ease-out or gentle spring). Cards travel between
 status columns, drawers slide from the right, checklists draw their ticks on
 acceptance. Everything honours reduced-motion preferences.
+
+## Voice
+
+Say what is true for the person, in their words: "Ada is waiting for an approval in T3",
+not what the system disclaims ("Execution does not imply acceptance"). Every honesty
+guarantee stays (recorded vs verified, explicit acceptance, stale data); only its wording
+changes.
+
+- No protocol names, IDs or version counters in front: AG-UI, snapshot, T3 Run/Thread
+  IDs and `vN` live under a "Technical details" disclosure, one click away.
+- The machinery is silent when healthy: no heartbeat, no "connected" badge, no polling
+  interval. Show state only when it needs the person.
+- History and status are sentences ("You accepted it: '…'"), never API verbs.

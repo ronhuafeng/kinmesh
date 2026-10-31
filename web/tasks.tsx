@@ -191,6 +191,56 @@ function MemberChip({
     </span>
   );
 }
+const quote = (note: string) =>
+  ': “' + (note.length > 120 ? note.slice(0, 117) + '…' : note) + '”';
+/** One line of task history as a person would say it. */
+export function historySentence(
+  e: z.infer<typeof TaskEvent>,
+  data: WorkspaceSnapshot,
+): string {
+  const who =
+    e.author.kind === 'human' && e.author.humanId === data.human.id
+      ? 'You'
+      : authorName(e.author, data);
+  const name = (m: Member) =>
+    m.kind === 'human' && m.id === data.human.id
+      ? 'you'
+      : memberName(m, data).replace(/ \(human\)$/, '');
+  const c = e.command;
+  switch (c.type) {
+    case 'create':
+      return `${who} created the task`;
+    case 'claim':
+      return `${who} took it on`;
+    case 'progress':
+      return `${who} posted progress${quote(c.note)}`;
+    case 'handoff': {
+      const self =
+        e.author.kind === c.recipient.kind &&
+        (e.author.kind === 'human' ? e.author.humanId : e.author.agentId) ===
+          c.recipient.id;
+      return c.mode === 'review'
+        ? `${who} asked ${name(c.recipient)} to review${quote(c.note)}`
+        : self
+          ? `${who} took over the work${quote(c.note)}`
+          : `${who} handed the work to ${name(c.recipient)}${quote(c.note)}`;
+    }
+    case 'request-review':
+      return `${who} asked ${name(c.reviewer)} to review${quote(c.note)}`;
+    case 'review':
+      return c.decision === 'approve'
+        ? `${who} approved the review${quote(c.note)}`
+        : `${who} asked for changes${quote(c.note)}`;
+    case 'accept':
+      return `${who} accepted it${quote(c.note)}`;
+    case 'rework':
+      return `${who} sent it back${quote(c.note)}`;
+    case 'cancel':
+      return `${who} cancelled it${quote(c.note)}`;
+    case 'link-execution':
+      return `${who} linked a T3 run`;
+  }
+}
 function TaskHistory({
   task,
   path,
@@ -226,7 +276,7 @@ function TaskHistory({
   return (
     <div className="task-history">
       <div className="drawer-heading">
-        <h3>Decision history</h3>
+        <h3>History</h3>
         <button
           type="button"
           className="quiet"
@@ -234,37 +284,32 @@ function TaskHistory({
             setRefresh((value) => value + 1);
           }}
         >
-          Refresh activity
+          Refresh
         </button>
       </div>
       {error && <Notice>{error}</Notice>}
       <ol className="timeline">
         {history.map((e) => (
-          <li key={e.id}>
+          <li key={e.id} title={`${e.action} · version ${String(e.version)}`}>
             <time dateTime={e.createdAt}>{shortTime(e.createdAt)}</time>
-            <span>
-              <strong>{e.action}</strong> · {authorName(e.author, data)}
-            </span>
-            <small>v{e.version}</small>
+            <span>{historySentence(e, data)}</span>
           </li>
         ))}
       </ol>
-      <h3>Execution references</h3>
-      {links.length === 0 ? (
-        <p className="muted">No executions linked.</p>
-      ) : (
-        links.map((link) => (
-          <dl className="reference-list" key={link.id}>
-            <dt>Environment</dt>
-            <dd>{link.reference.environmentId}</dd>
-            <dt>T3 Thread</dt>
-            <dd>{link.reference.threadId}</dd>
-            <dt>T3 Run</dt>
-            <dd>
-              {link.reference.runId ?? 'Thread reference; no Run recorded'}
-            </dd>
-          </dl>
-        ))
+      {links.length > 0 && (
+        <details className="technical">
+          <summary>Linked T3 runs ({links.length}) · technical details</summary>
+          {links.map((link) => (
+            <dl className="reference-list" key={link.id}>
+              <dt>Environment</dt>
+              <dd>{link.reference.environmentId}</dd>
+              <dt>T3 thread</dt>
+              <dd>{link.reference.threadId}</dd>
+              <dt>T3 run</dt>
+              <dd>{link.reference.runId ?? 'none recorded'}</dd>
+            </dl>
+          ))}
+        </details>
       )}
     </div>
   );
@@ -590,7 +635,6 @@ export function TaskDrawer({
         <header className="drawer-header">
           <span className="task-number">#{task.position}</span>
           <StatusChip status={task.state.status} />
-          <small>v{task.version}</small>
         </header>
         <h2>{task.title}</h2>
         {task.description && (

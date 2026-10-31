@@ -168,7 +168,7 @@ export function App() {
           setError(
             cause instanceof HttpError
               ? cause.message
-              : 'Disconnected. Showing the last snapshot; actions are paused.',
+              : 'You’re offline. Showing what was here before; sending is paused until you’re back.',
           );
           setLastOk(false);
           setStatus('offline');
@@ -224,7 +224,7 @@ export function App() {
             ))}
           </div>
         )}
-        <button onClick={refreshNow}>Reconnect / refresh</button>
+        <button onClick={refreshNow}>Try again</button>
       </main>
     );
   const channel = data.channel;
@@ -328,8 +328,8 @@ export function App() {
     {
       id: 'action-refresh',
       group: 'Actions',
-      label: 'Reconnect / refresh',
-      run: refresh,
+      label: 'Refresh now',
+      run: refreshNow,
     },
     ...data.tasks.items.map((task) => ({
       id: 'task-' + task.id,
@@ -544,23 +544,26 @@ export function App() {
                 </p>
               </div>
               <CommandPalette commands={commands} />
-              <div className="connection" data-state={connection}>
-                <span className="connection-dot" aria-hidden="true" />
-                <span role="status">
-                  {connection === 'ready'
-                    ? 'Snapshot connected'
-                    : connection === 'loading'
-                      ? 'Refreshing…'
-                      : 'Disconnected'}
-                </span>
-                <small>
-                  Read {new Date(data.observedAt).toLocaleTimeString()} · polls
-                  every 15s
-                </small>
-                <button className="secondary" onClick={refreshNow}>
-                  Reconnect / refresh
-                </button>
-              </div>
+              {/* Healthy is silent: the pill appears only when something is off. */}
+              {connection !== 'ready' && (
+                <div className="connection" data-state={connection}>
+                  <span className="connection-dot" aria-hidden="true" />
+                  <span role="status">
+                    {connection === 'loading' ? 'Refreshing…' : 'Disconnected'}
+                  </span>
+                  {connection === 'offline' && (
+                    <>
+                      <small>
+                        Last update{' '}
+                        {new Date(data.observedAt).toLocaleTimeString()}
+                      </small>
+                      <button className="secondary" onClick={refreshNow}>
+                        Reconnect
+                      </button>
+                    </>
+                  )}
+                </div>
+              )}
             </header>
             {error && (
               <div className="stale-banner" data-state={status}>

@@ -12,7 +12,7 @@ import type {
 } from '../src/workspace/contracts.js';
 import { api, HttpError, value } from './api.js';
 import { ActionForm, Field, Notice } from './forms.js';
-import { Avatar, Drawer, shortTime, WakeLabel, wakeOf } from './ui.js';
+import { ago, Avatar, Drawer, shortTime, WakeLabel, wakeOf } from './ui.js';
 import { DeliveryLine } from './deliveries.js';
 import { AgentSetup } from './setup.js';
 function NativeStatus({
@@ -71,7 +71,7 @@ function NativeStatus({
         onAccessLoss();
       } else {
         setError(
-          'Native T3 status unavailable. The owner must configure an authorized observer, or retry when T3 is reachable.',
+          'T3 can’t be checked right now. The team owner can set up a T3 observer, or try again when T3 is reachable.',
         );
       }
     } finally {
@@ -79,6 +79,7 @@ function NativeStatus({
       pending.current = null;
     }
   }
+  const subject = correlation.reference.runId ? 'This run' : 'This thread';
   return (
     <div className="native-status">
       <button
@@ -90,39 +91,38 @@ function NativeStatus({
           void check();
         }}
       >
-        Check native status
+        Check in T3
       </button>
       <div role="status" aria-live="polite">
-        {busy && <p>Checking native status…</p>}
+        {busy && <p>Checking T3…</p>}
         {error && <p>{error}</p>}
+        {observation &&
+          (observation.status === 'unobserved' ? (
+            <p>
+              T3 checked at{' '}
+              {new Date(observation.observedAt).toLocaleTimeString()}, but this
+              run is older than its recent history, so its status is unknown.
+            </p>
+          ) : (
+            <>
+              <p>
+                T3 confirms (checked{' '}
+                {new Date(observation.observedAt).toLocaleTimeString()})
+              </p>
+              <p>
+                {subject}: {observation.status} ·{' '}
+                {observation.terminal ? 'finished' : 'still going'}
+              </p>
+            </>
+          ))}
         {observation && (
           <>
-            <p>
-              {observation.status === 'unobserved'
-                ? 'Native read at '
-                : 'Native verified at '}
-              {new Date(observation.observedAt).toLocaleString()}
+            <p title="Counted for the whole T3 thread, not only this run.">
+              Open requests in this thread: {observation.threadPendingRequests}
             </p>
             <p>
-              {correlation.reference.runId
-                ? 'Exact Run status'
-                : 'Thread status'}
-              : {observation.status} ·{' '}
-              {observation.terminal ? 'terminal' : 'nonterminal'}
-            </p>
-            {observation.status === 'unobserved' && (
-              <p>
-                This Run is outside the bounded recent Run history. Its status
-                is unobserved.
-              </p>
-            )}
-            <p>
-              Thread pending requests: {observation.threadPendingRequests}{' '}
-              (thread-scoped, not attributed to this Run).
-            </p>
-            <p>
-              Provider: {observation.providerId ?? 'unobserved'} · Model:{' '}
-              {observation.modelId ?? 'unobserved'}
+              Model: {observation.providerId ?? 'not reported'} ·{' '}
+              {observation.modelId ?? 'not reported'}
             </p>
           </>
         )}
@@ -133,23 +133,32 @@ function NativeStatus({
           target="_blank"
           rel="noopener noreferrer"
         >
-          Open verified T3 thread
+          Open in T3
         </a>
       ) : (
         <button
           disabled
-          title="T3 has not returned a verified browser URL for this thread."
+          title="T3 has not returned a verified link for this thread."
         >
-          Open in T3 (link unavailable)
+          Open in T3 (no verified link)
         </button>
       )}
       <p className="muted">
-        Native checks are read-only. Kinmesh never guesses a T3 link or accepts
-        tasks from a Run result.
+        Checking is read-only. Kinmesh never guesses a T3 link, and a finished
+        run never accepts a task.
       </p>
     </div>
   );
 }
+/** What a person calls each recorded runtime state. */
+const reported: Record<string, string> = {
+  unknown: 'unknown',
+  active: 'working',
+  waiting: 'waiting',
+  succeeded: 'finished',
+  failed: 'failed',
+  stopped: 'stopped',
+};
 function Activity({
   agent,
   teamId,
@@ -168,7 +177,7 @@ function Activity({
     snapshotRequest.current?.abort();
     setSnapshot(null);
     setError(
-      'Execution access no longer authorized. Sign in again or contact your team owner.',
+      'You no longer have access to this activity. Sign in again or ask the team owner.',
     );
   }
   useEffect(() => {
@@ -189,12 +198,12 @@ function Activity({
           // Never retain a formerly authorized execution snapshot after access loss.
           setSnapshot(null);
           setError(
-            'Execution access no longer authorized. Sign in again or contact your team owner.',
+            'You no longer have access to this activity. Sign in again or ask the team owner.',
           );
         } else {
           // A temporary transport/server outage does not certify a new snapshot.
           setError(
-            'Execution snapshot unavailable. Use Reconnect / refresh to retry.',
+            'Activity can’t be loaded right now. It will try again on the next refresh.',
           );
         }
       });
@@ -205,24 +214,21 @@ function Activity({
   return (
     <section className="activity" aria-label={agent.name + ' activity'}>
       <div className="drawer-heading">
-        <h3>Execution activity</h3>
-        <span className="eyebrow">AG-UI 1.0 · refreshed snapshot</span>
+        <h3>Activity</h3>
       </div>
       <p className="muted">
-        Stored reports may be stale. Last recorded status is an AG-UI snapshot.
-        Check native status explicitly for a separate, fresh read from T3.
+        What {agent.name} last reported. “Check in T3” asks T3 directly.
       </p>
       {error && <Notice>{error}</Notice>}
       {snapshot && (
         <>
-          <small>
-            Snapshot read at {new Date(snapshot.observedAt).toLocaleString()}
-          </small>
           {snapshot.executions.length === 0 && (
-            <p>No execution associations recorded.</p>
+            <p className="muted">No runs linked to {agent.name} yet.</p>
           )}
           {snapshot.executions.map((e) => {
             const latest = e.events.at(-1);
+            const by = (kind: string) =>
+              kind === 'agent' ? agent.name : 'a person';
             return (
               <article
                 className="execution"
@@ -230,41 +236,26 @@ function Activity({
                 data-state={latest?.state ?? 'unknown'}
               >
                 <span className="recorded-chip">
-                  Last recorded: {latest?.state ?? 'unknown'}
+                  Last reported: {reported[latest?.state ?? 'unknown']}
                 </span>
                 <p>
                   {latest
-                    ? 'Reported ' +
-                      new Date(latest.createdAt).toLocaleString() +
-                      ' by ' +
-                      latest.author.kind
-                    : 'No runtime observation recorded.'}
+                    ? `${ago(latest.createdAt)} · reported by ${by(latest.author.kind)}`
+                    : 'Nothing reported yet.'}
                 </p>
                 {e.events.length > 1 && (
-                  <ol className="timeline" aria-label="Recorded states">
+                  <ol className="timeline" aria-label="Reports">
                     {e.events.slice(-6).map((event) => (
                       <li key={event.id} data-state={event.state}>
                         <time dateTime={event.createdAt}>
                           {shortTime(event.createdAt)}
                         </time>
-                        <span>{event.state}</span>
-                        <small>by {event.author.kind}</small>
+                        <span>{reported[event.state]}</span>
+                        <small>by {by(event.author.kind)}</small>
                       </li>
                     ))}
                   </ol>
                 )}
-                <dl>
-                  <dt>Environment</dt>
-                  <dd>{e.correlation.reference.environmentId}</dd>
-                  <dt>T3 Thread</dt>
-                  <dd>{e.correlation.reference.threadId}</dd>
-                  <dt>T3 Run</dt>
-                  <dd>{e.correlation.reference.runId ?? 'No Run reference'}</dd>
-                </dl>
-                <p>
-                  Association by {e.correlation.author.kind}. Execution does not
-                  imply task acceptance.
-                </p>
                 <NativeStatus
                   correlation={e.correlation}
                   teamId={teamId}
@@ -272,17 +263,28 @@ function Activity({
                   onAccessLoss={loseAccess}
                   trustedOrigin={trustedOrigin}
                 />
-                {e.eventsTruncated && (
-                  <p>Showing the latest 100 recorded reports.</p>
-                )}
+                <details className="technical">
+                  <summary>Technical details</summary>
+                  <dl>
+                    <dt>Environment</dt>
+                    <dd>{e.correlation.reference.environmentId}</dd>
+                    <dt>T3 thread</dt>
+                    <dd>{e.correlation.reference.threadId}</dd>
+                    <dt>T3 run</dt>
+                    <dd>{e.correlation.reference.runId ?? 'none recorded'}</dd>
+                  </dl>
+                  <p>
+                    Linked by {e.correlation.author.kind}. Linking a run never
+                    accepts a task. Reports are AG-UI 1.0 state snapshots, read{' '}
+                    {new Date(snapshot.observedAt).toLocaleTimeString()}.
+                  </p>
+                  {e.eventsTruncated && <p>Showing the latest 100 reports.</p>}
+                </details>
               </article>
             );
           })}
           {snapshot.executionsTruncated && (
-            <p>
-              Showing the latest 20 associations. Use the authenticated
-              execution API for full history.
-            </p>
+            <p className="muted">Showing the latest 20 runs.</p>
           )}
         </>
       )}
@@ -302,7 +304,6 @@ export function AgentDrawer({
   onDone: () => void;
   onClose: () => void;
 }) {
-  const joined = data.joinedAgentIds.includes(agent.id);
   return (
     <Drawer label={agent.name} onClose={onClose} className="agent-drawer">
       <div className="drawer-body">
@@ -325,24 +326,6 @@ export function AgentDrawer({
           channelPath={channelPath}
           onDone={onDone}
         />
-        <h3>Profile</h3>
-        <dl className="profile-list">
-          <dt>Agent ID</dt>
-          <dd className="reference">{agent.id}</dd>
-          <dt>Environment preference</dt>
-          <dd>{agent.preferences.environmentId ?? 'Not configured'}</dd>
-          <dt>Provider preference</dt>
-          <dd>{agent.preferences.providerId ?? 'Not configured'}</dd>
-          <dt>Model preference</dt>
-          <dd>{agent.preferences.modelId ?? 'Not configured'}</dd>
-          <dt>Memory reference</dt>
-          <dd>{agent.memoryLocation ?? 'None'}</dd>
-          <dt>This channel</dt>
-          <dd>{joined ? 'Joined' : 'Not joined'}</dd>
-        </dl>
-        <p className="muted">
-          Preferences are configuration, not proof of execution availability.
-        </p>
         {data.deliveries.some((d) => d.agentId === agent.id) && (
           <>
             <h3>Recent requests in this channel</h3>
@@ -364,6 +347,15 @@ export function AgentDrawer({
           revision={data.observedAt}
           trustedOrigin={data.nativeT3Origin}
         />
+        <details className="technical">
+          <summary>Technical details</summary>
+          <dl className="profile-list">
+            <dt>Agent ID</dt>
+            <dd className="reference">{agent.id}</dd>
+            <dt>Memory reference</dt>
+            <dd>{agent.memoryLocation ?? 'none'}</dd>
+          </dl>
+        </details>
       </div>
     </Drawer>
   );
