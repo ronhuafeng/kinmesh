@@ -25,6 +25,7 @@ import {
   reviewProof,
   identityLinks,
 } from './proof.js';
+import { readActivity } from './activity.js';
 import { until, ready } from './processes.js';
 import { SdkWire } from '../../src/adapters/t3/sdk.js';
 import { T3Backend } from '../../src/adapters/t3/backend.js';
@@ -72,6 +73,10 @@ test('complete real two-agent workflow, Human rework/acceptance, recovery and au
   let backend: T3Backend | undefined;
   let tools: ValidatedTools | undefined;
   let stage = 'prepare';
+  const enter = (next: string) => {
+    stage = next;
+    console.info('LIVE_PHASE ' + next);
+  };
   const evidence: Record<string, unknown> = {
     sourceCommit:
       process.env.GITHUB_SHA ??
@@ -120,29 +125,12 @@ test('complete real two-agent workflow, Human rework/acceptance, recovery and au
   }
   async function activityFor(ref: Reference): Promise<Activity> {
     if (!tools) throw new Error('NATIVE_AUDIT_REQUIRED');
-    const items: Activity['items'] = [];
-    let after: number | undefined;
-    for (let page = 0; page < 8; page++) {
-      const activity = Activity.parse(
-        await tools.call('t3_thread_read', {
-          threadId: ref.threadId,
-          view: 'activity',
-          limit: 100,
-          runLimit: 50,
-          maxCharsPerItem: 50000,
-          ...(after === undefined ? {} : { afterPosition: after }),
-        }),
-      );
-      assert.equal(activity.thread.threadId, ref.threadId);
-      items.push(...activity.items);
-      if (!activity.hasMore) return { ...activity, items };
-      assert.ok(
-        activity.nextPosition !== null &&
-          (after === undefined || activity.nextPosition > after),
-      );
-      after = activity.nextPosition;
-    }
-    throw new Error('NATIVE_ACTIVITY_EVIDENCE_PAGE_BOUND');
+    const client = tools;
+    return readActivity(
+      (input) =>
+        client.call('t3_thread_read', input, AbortSignal.timeout(15000)),
+      ref.threadId,
+    );
   }
   const reviewWitnesses = new Set<string>();
   async function auditNative() {
@@ -580,15 +568,15 @@ test('complete real two-agent workflow, Human rework/acceptance, recovery and au
         process.env.GITHUB_SHA,
       );
     }
-    stage = 'native-bootstrap';
+    enter('native-bootstrap');
     await native.start();
-    stage = 'workspace-onboarding';
+    enter('workspace-onboarding');
     await hub.start();
     await hub.startTeam();
     await hub.onboard();
-    stage = 'native-provider-configuration';
+    enter('native-provider-configuration');
     await native.addProviders();
-    stage = 'native-oauth';
+    enter('native-oauth');
     const read = await native.oauth(true);
     const operate = await native.oauth(false);
     assert.ok(!read.tokens.scope?.split(' ').includes('orchestration:operate'));
@@ -601,7 +589,7 @@ test('complete real two-agent workflow, Human rework/acceptance, recovery and au
     await connectRead(read);
     assert.ok(tools);
     assert.ok(backend);
-    stage = 'native-capability-preflight';
+    enter('native-capability-preflight');
     const liveTools = tools;
     await until(
       async () => {
@@ -637,7 +625,7 @@ test('complete real two-agent workflow, Human rework/acceptance, recovery and au
     await hub.bind(read.environmentId);
     await hub.process?.stop();
     await hub.start(true);
-    stage = 'first-workflow-and-worker-crash';
+    enter('first-workflow-and-worker-crash');
     await hub.createTask();
     if (!native.page) throw new Error('NO_NATIVE_PAGE');
     await native.page.goto(native.origin);
@@ -668,7 +656,7 @@ test('complete real two-agent workflow, Human rework/acceptance, recovery and au
     evidence.recoveredOriginalRunDigest = hash(originalReference);
     checks.workerRecoveryRetainsOriginalNativeRun = true;
     checks.workerRecoveryRetainsOriginalNativeRequest = true;
-    stage = 'repeated-human-source';
+    enter('repeated-human-source');
     assert.ok(hub.createdInput);
     await hub.api(
       `/api/teams/${hub.teamId}/channels/${hub.channelId}/tasks`,
@@ -680,7 +668,7 @@ test('complete real two-agent workflow, Human rework/acceptance, recovery and au
     );
     assert.equal(rows().length, 2);
     checks.sourceReplayDoesNotDuplicateDelivery = true;
-    stage = 'agent-human-boundary';
+    enter('agent-human-boundary');
     const developer = hub.agent('developer');
     const acceptanceUrl = `${hub.origin}/api/teams/${hub.teamId}/channels/${hub.channelId}/tasks/${hub.taskId}/accept`;
     for (const spoof of [false, true]) {
@@ -701,7 +689,7 @@ test('complete real two-agent workflow, Human rework/acceptance, recovery and au
     }
     assert.equal((await hub.task()).state.status, 'awaiting-human');
     checks.agentCannotImpersonateHumanAcceptance = true;
-    stage = 't3-outage-and-human-rework';
+    enter('t3-outage-and-human-rework');
     await native.server?.stop();
     await hub.decision('rework');
     await until(() => rows().length === 3, 'REWORK_NOT_ENQUEUED');
@@ -710,10 +698,11 @@ test('complete real two-agent workflow, Human rework/acceptance, recovery and au
     native.server?.start();
     await ready(native.origin + '/.well-known/t3/environment');
     await connectRead(read);
+    enter('second-collaboration-cycle');
     await progress(6, 4);
     checks.nativeOutageRetainsAndResumesHumanRework = true;
     await auditNative();
-    stage = 'rework-artifact-and-independent-review';
+    enter('rework-artifact-and-independent-review');
     const authored = z
       .array(z.object({ author: z.string(), body: z.string() }))
       .parse(
@@ -735,14 +724,14 @@ test('complete real two-agent workflow, Human rework/acceptance, recovery and au
         artifacts.some((m) => m.body.includes('verified')),
     );
     checks.actualReworkArtifactPresent = true;
-    stage = 'hub-restart';
+    enter('hub-restart');
     const before = JSON.stringify(await hub.task());
     await hub.process?.stop();
     await hub.start(true);
     assert.equal(JSON.stringify(await hub.task()), before);
     assert.equal(rows().length, 4);
     checks.hubRestartRetainsTaskAndNativeCorrelations = true;
-    stage = 'human-acceptance';
+    enter('human-acceptance');
     await hub.decision('accept');
     await until(
       async () => (await hub.task()).state.status === 'accepted',
@@ -788,7 +777,7 @@ test('complete real two-agent workflow, Human rework/acceptance, recovery and au
       1,
     );
     checks.simulatedHumanReworkAndAcceptanceAudited = true;
-    stage = 'real-native-workspace';
+    enter('real-native-workspace');
     const page = hub.page;
     assert.ok(page);
     await page.getByRole('tab', { name: 'Agents & activity' }).click();
@@ -818,7 +807,7 @@ test('complete real two-agent workflow, Human rework/acceptance, recovery and au
       );
     }
     checks.realResponsiveWorkspace = true;
-    stage = 'cross-channel-authority';
+    enter('cross-channel-authority');
     const hidden = z.object({ id: z.string() }).parse(
       await hub.api(`/api/teams/${hub.teamId}/channels`, {
         operationKey: randomUUID(),
@@ -858,7 +847,7 @@ test('complete real two-agent workflow, Human rework/acceptance, recovery and au
       await client.close();
     }
     checks.realTeamMcpCrossChannelDenied = true;
-    stage = 'grant-revocation';
+    enter('grant-revocation');
     await hub.api(
       `/api/teams/${hub.teamId}/agents/${developer.profile.id}/grants/${developer.grant.id}/revoke`,
       {},
@@ -952,6 +941,16 @@ test('complete real two-agent workflow, Human rework/acceptance, recovery and au
     } catch {
       evidence.nativeDiagnosticRead = 'unavailable';
     }
+    console.error(
+      'LIVE_FAILURE ' +
+        JSON.stringify({
+          stage,
+          errorClass: evidence.errorClass,
+          safeErrorCode: evidence.safeErrorCode,
+          sourceFrames: evidence.sourceFrames,
+          checks,
+        }),
+    );
     // Raw errors, prompts, tool traffic and credential-bearing browser state stay private.
     throw new Error('LIVE_COLLABORATION_FAILED_AT_' + stage);
   } finally {
