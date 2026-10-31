@@ -65,7 +65,7 @@ export class Native {
     const config =
       this.executor === 'codex'
         ? `model = ${q(models.codex)}\nmodel_reasoning_effort = "low"\nmodel_provider = "ci"\n[model_providers.ci]\nname = "CI"\nbase_url = ${q(base)}\nwire_api = "responses"\nenv_key = "LLM_API_KEY"\n`
-        : `[models]\ndefault = ${q(models.grok)}\n[model.${q(models.grok)}]\nmodel = ${q(models.grok)}\nbase_url = ${q(base)}\napi_backend = "responses"\nenv_key = "LLM_API_KEY"\n[mcp]\nmax_output_bytes = 131072\n[permission]\ndeny = ["Bash(*)", "Read(**)", "Edit(**)", "Grep(**)", "WebFetch(*)", "WebSearch(*)"]\nallow = ["MCPTool(kinmesh__team_message_get)", "MCPTool(kinmesh__team_messages_read)", "MCPTool(kinmesh__team_task_get)", "MCPTool(kinmesh__team_tasks_history)"]\n`;
+        : `[models]\ndefault = ${q(models.grok)}\n[model.${q(models.grok)}]\nmodel = ${q(models.grok)}\nbase_url = ${q(base)}\napi_backend = "responses"\nenv_key = "LLM_API_KEY"\n[permission]\ndeny = ["Bash(*)", "Read(**)", "Edit(**)", "Grep(**)", "WebFetch(*)", "WebSearch(*)"]\nallow = ["MCPTool(kinmesh__team_message_get)", "MCPTool(kinmesh__team_messages_read)", "MCPTool(kinmesh__team_task_get)", "MCPTool(kinmesh__team_tasks_history)"]\n`;
     const tools = [
       'team_message_get',
       'team_messages_read',
@@ -228,6 +228,7 @@ export class Native {
         for (const [index, [name, value]] of [
           ['HOME', this.home(role)],
           ['GROK_HOME', join(this.home(role), '.grok')],
+          ['GROK_MAX_MCP_OUTPUT_BYTES', '131072'],
         ].entries()) {
           await page
             .getByRole('button', { name: 'Add variable', exact: true })
@@ -265,8 +266,15 @@ export class Native {
         const grokInput = page.getByLabel('Environment variable value 2', {
           exact: true,
         });
+        const outputLimitInput = page.getByLabel(
+          'Environment variable value 3',
+          {
+            exact: true,
+          },
+        );
         await until(
           async () =>
+            (await outputLimitInput.inputValue()) === '131072' &&
             (await homeInput.inputValue()) === this.home(role) &&
             (await grokInput.inputValue()) === join(this.home(role), '.grok'),
           'PROVIDER_HOME_NOT_PERSISTED',
