@@ -14,7 +14,7 @@ This command reads only `KINMESH_T3_ENDPOINT`; it does not load `.env` or a cred
 
 PASS requires unauthenticated `/mcp` to reject with HTTP 401 and a Bearer challenge, a public T3 environment descriptor with a nonempty identity and exact version `0.1.5`, and pinned issuer/resource/authorization/token/registration endpoints. It also checks S256 PKCE, authorization-response issuer support, authorization-code/public-client capabilities and advertised read/operate scopes. No scopes are requested. A 502, wrong version, missing capability or unavailable endpoint fails closed. Output is fixed PASS/FAIL text and never includes the host, environment ID or response/error bodies.
 
-**Preflight is public network, issuer and capability readiness, not OAuth authentication or live acceptance.** It never initializes MCP, registers a client, opens consent, exchanges a token, calls a tool or runs a model. The tests use local HTTP fixtures, not an owner T3 instance. Actual owner OAuth still requires the browser or private interactive terminal flow below. Kinmesh has no supported automatic T3 session OAuth through `app.t3.codes`; an app login does not replace native external-client approval. Never paste pairing codes, one-time callback credentials or tokens into chat, GitHub or logs. Issue #2 remains open until real approved acceptance is proven separately.
+**Preflight is public network, issuer and capability readiness, not OAuth authentication or live acceptance.** It never initializes MCP, registers a client, opens consent, exchanges a token, calls a tool or runs a model. The tests use local HTTP fixtures, not an owner T3 instance. Actual owner OAuth still requires the browser or private interactive terminal flow below. Kinmesh has no supported automatic T3 session OAuth through `app.t3.codes`; an app login does not replace native external-client approval. Never paste pairing codes, one-time callback credentials or tokens into chat, GitHub or logs. Issue #2 is Closed/Completed. The [owner OAuth evidence](acceptance/t3-owner-2026-10-30.md) and [v0.1 workflow acceptance](acceptance/v01-workflow-2026-10-31.md) record their exact historical scope; public preflight and ordinary CI do not establish a new authenticated candidate-gate pass.
 
 ## Owner sign-in: local browser or remote terminal
 
@@ -128,6 +128,8 @@ npm run test:contract  # explicitly MOCK/AUTH UNIT plus captured schemas; not a 
 npm run test:live      # requires configured grants + reachable real T3; exits 1 when missing
 npm run release:check  # candidate release is rejected unless authenticated live gate passes
 ```
+
+The aggregate now requires the [isolated release setup](release-check.md): two separately prepared disposable Team contexts and a separate SDK scratch directory, explicit per-stage grants/providers and a private release manifest. All local prerequisites and read-only native readiness probes run before any model-capable stage starts. Direct `test:live`, `test:team-live` and `test:inbox-live` retain their independent environment contracts.
 
 Normal push/PR CI has **no execution credentials**, runs local/contract/build checks only, and does not label live integration green. A separate owner-dispatched workflow uses a dedicated `kinmesh-t3-acceptance` self-hosted runner with private configuration outside the checkout. Review code before running it; never attach that runner/authority to automatic untrusted PR events. The workflow is implemented, but no self-hosted GitHub live run is claimed here.
 

@@ -15,8 +15,20 @@ try {
     .object({
       KINMESH_TEAM_LIVE_DIR: z.string().min(1),
       KINMESH_TEAM_MCP_ENDPOINT: TeamEndpoint,
+      KINMESH_TEAM_LIVE_SCENARIO: z.enum(['team', 'inbox']).default('team'),
+      KINMESH_T3_ENVIRONMENT_ID: z.string().min(1).optional(),
+      KINMESH_TEAM_T3_ISOLATED_PROVIDER: z.string().min(1).optional(),
+      KINMESH_T3_MODEL: z.string().min(1).optional(),
     })
     .parse(process.env);
+  const inbox = c.KINMESH_TEAM_LIVE_SCENARIO === 'inbox';
+  if (
+    inbox &&
+    (!c.KINMESH_T3_ENVIRONMENT_ID ||
+      !c.KINMESH_TEAM_T3_ISOLATED_PROVIDER ||
+      !c.KINMESH_T3_MODEL)
+  )
+    throw new Error('Explicit Inbox native preferences required');
   const directory = resolve(c.KINMESH_TEAM_LIVE_DIR);
   if (
     dirname(directory) !== resolve(tmpdir()) ||
@@ -42,7 +54,13 @@ try {
       name,
       role,
       capabilities: [],
-      preferences: { environmentId: null, providerId: null, modelId: null },
+      preferences: inbox
+        ? {
+            environmentId: c.KINMESH_T3_ENVIRONMENT_ID,
+            providerId: c.KINMESH_TEAM_T3_ISOLATED_PROVIDER,
+            modelId: c.KINMESH_T3_MODEL,
+          }
+        : { environmentId: null, providerId: null, modelId: null },
       memoryLocation: null,
     });
   const developer = store.agents.create(
@@ -65,7 +83,13 @@ try {
     );
   const grant = store.agents.issue(p, team.team.id, developer.id, {
     label: 'Disposable provider MCP',
-    scopes: ['channels:read', 'channels:write', 'tasks:read', 'tasks:write'],
+    scopes: [
+      'channels:read',
+      'channels:write',
+      'tasks:read',
+      'tasks:write',
+      ...(inbox ? (['executions:read', 'executions:write'] as const) : []),
+    ],
     lifetimeSeconds: 3600,
   });
   const tokenFile = join(directory, 'developer.json');
