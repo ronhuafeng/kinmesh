@@ -379,11 +379,33 @@ export function inboxRepository(
         if (p.kind !== 'agent' || frozen.grantId !== p.grantId)
           throw new IdentityError(403);
         // These links and the actual message/outbox either commit together with ACK, or all roll back.
-        const correlation = agents.correlate(p, c.teamId, c.agentId, {
-          reference: result.reference,
-          providerSessionId: null,
-          invocationId: c.id,
-        });
+        // The execution API can associate this Run before Inbox publication.
+        // Reuse only this agent's exact execution, preserving immutable provenance.
+        const correlation =
+          db
+            .select({ id: s.agentCorrelations.id })
+            .from(s.agentCorrelations)
+            .where(
+              and(
+                eq(s.agentCorrelations.teamId, c.teamId),
+                eq(s.agentCorrelations.agentId, c.agentId),
+                eq(
+                  s.agentCorrelations.referenceKey,
+                  fingerprint([
+                    result.reference.backend,
+                    result.reference.environmentId,
+                    result.reference.threadId,
+                    result.reference.runId,
+                  ]),
+                ),
+              ),
+            )
+            .get() ??
+          agents.correlate(p, c.teamId, c.agentId, {
+            reference: result.reference,
+            providerSessionId: null,
+            invocationId: c.id,
+          });
         agents.runtimeEvent(
           p,
           c.teamId,
