@@ -21,3 +21,11 @@ Agent identity and credential policy is documented in [agent identities](agent-i
 Communication authorization, channel enrollment, bounded history/mention reads, idempotent writes and sensitive DB/outbox retention are documented in [channels and messages](channels-messages.md). All channel reads recheck current team/channel membership and grant scopes; outbox facts do not confer authority or imply delivery.
 
 Team MCP runs as a separate loopback listener with bearer-only agent authentication and no human-cookie authority. Every HTTP request and backend tool operation rechecks credentials; stateless SDK transports retain no authorized sessions. Host/Origin validation, body/rate/concurrency limits and fixed errors apply. See [Team MCP security and network setup](team-mcp.md). An opaque bearer can be used by anyone possessing it until expiration/revocation; no proof-of-possession or theft detection is claimed.
+
+## Issuing agent credentials in the browser
+
+The agent panel's setup checklist can issue, rotate and revoke an agent's Kinmesh credential through the existing owner-only grants API. This changes where the token appears, not who may create it:
+
+- Only the signed-in team owner can issue; the preset is the Inbox worker's scopes (`channels:read/write`, `tasks:read/write/review`, `executions:read/write`) for 30 days.
+- The response is `Cache-Control: no-store`. The token is held only in that panel's memory, shown once, offered for copy or as a `tokenFile` download, and dropped when dismissed or closed. It is never written to browser storage, URLs or logs, and the grants list never contains it.
+- Rotation revokes the previous credential. Treat a token that was displayed on a shared screen as exposed and rotate it.

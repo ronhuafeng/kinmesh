@@ -2592,3 +2592,130 @@ button.reply-to {
 .drawer-body > .deliveries {
   margin-bottom: 0.5rem;
 }
+
+/* Agent setup checklist (#55). */
+.agent-setup {
+  display: grid;
+  gap: 0.5rem;
+  margin-bottom: 0.5rem;
+}
+.setup-steps {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 0.15rem;
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius);
+  background: var(--raised);
+}
+.setup-step {
+  display: grid;
+  grid-template-columns: 1.25rem minmax(0, 1fr);
+  gap: 0.6rem;
+  padding: 0.65rem 0.75rem;
+}
+.setup-step + .setup-step {
+  border-top: 1px solid var(--hairline);
+}
+.setup-step > div {
+  display: grid;
+  gap: 0.4rem;
+  min-width: 0;
+}
+.setup-step strong {
+  font-size: 0.9rem;
+}
+.setup-step p {
+  margin: 0;
+}
+.setup-mark {
+  width: 1.1rem;
+  height: 1.1rem;
+  margin-top: 0.1rem;
+  border-radius: 50%;
+  border: 1.5px solid var(--hairline-strong);
+  display: grid;
+  place-items: center;
+  font-size: 0.7rem;
+  color: var(--on-primary);
+}
+.setup-step[data-step='done'] .setup-mark {
+  background: var(--ok);
+  border-color: var(--ok);
+}
+.setup-step[data-step='done'] .setup-mark::before {
+  content: '✓';
+}
+.setup-step[data-step='manual'] .setup-mark {
+  border-style: dashed;
+}
+.setup-step[data-step='done'] > div > strong {
+  color: var(--ink-muted);
+}
+.setup-step .action-form h3 {
+  display: none;
+}
+.binding-snippet {
+  margin: 0;
+  padding: 0.6rem;
+  overflow-x: auto;
+  border-radius: var(--radius-sm);
+  background: var(--sunken);
+  font-size: 0.72rem;
+}
+.token-once {
+  display: grid;
+  gap: 0.5rem;
+  padding: 0.75rem;
+  border: 1.5px solid var(--decision);
+  border-radius: var(--radius);
+  background: color-mix(in srgb, var(--decision-soft) 50%, var(--surface));
+}
+.token-once code {
+  overflow-wrap: anywhere;
+  user-select: all;
+}
+.token-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  align-items: center;
+}
+a.button-link {
+  display: inline-block;
+  padding: 0.5rem 0.95rem;
+  border-radius: var(--radius);
+  border: 1px solid var(--primary);
+  background: var(--primary);
+  color: var(--on-primary);
+  font-size: 0.9rem;
+  font-weight: 600;
+  text-decoration: none;
+}
+.grant-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 0.2rem;
+  font-size: 0.82rem;
+  color: var(--ink-muted);
+}
+.grant-list li {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.5rem;
+}
+.grant-list li[data-live] {
+  color: var(--ink);
+}
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}

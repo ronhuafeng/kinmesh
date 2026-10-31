@@ -647,6 +647,66 @@ test('a mention says what happened to it and leads to the agent’s reply', asyn
   ).toBeVisible();
 });
 
+test('the agent panel walks the owner from a profile to a ready-to-run worker binding', async ({
+  page,
+  context,
+  hub,
+}) => {
+  await onboard(page, hub);
+  await register(page, 'Ada', 'developer');
+  const state = await snapshot(context.request, hub.origin);
+  const ada = state.agents[0];
+  if (!ada) throw new Error('Local fixture unavailable');
+  await page.getByRole('button', { name: 'View Ada activity' }).click();
+  const setup = page
+    .getByRole('region', { name: 'Ada', exact: true })
+    .getByRole('region', { name: 'Setup' });
+  const step = (title: string) =>
+    setup.getByRole('listitem').filter({ hasText: title });
+  await expect(step('Joined this channel')).toContainText('(done)');
+  await expect(step('Runtime preferences')).toContainText('(to do)');
+  await setup.getByLabel('T3 environment ID').fill('env-primary');
+  await setup.getByLabel('Isolated provider ID').fill('isolated-ada');
+  await setup.getByLabel('Model ID').fill('model-x');
+  await setup.getByRole('button', { name: 'Save preferences' }).click();
+  await expect(step('Runtime preferences')).toContainText(
+    'env-primary · isolated-ada/model-x',
+  );
+  await expect(step('Runtime preferences')).toContainText('(done)');
+  await setup
+    .getByRole('button', { name: 'Issue worker credential', exact: true })
+    .click();
+  const shown = step('Worker credential').locator('.token-once code.reference');
+  await expect(shown).toHaveText(/^kma_/);
+  const token = await shown.innerText();
+  await expect(step('Worker credential')).toContainText('(done)');
+  // The credential is shown once: neither the API nor the page can repeat it.
+  await setup.getByRole('button', { name: 'I saved it' }).click();
+  await expect(shown).toHaveCount(0);
+  const grantsUrl = `${hub.origin}/api/teams/${state.team.id}/agents/${ada.id}/grants`;
+  const listed = await (await context.request.get(grantsUrl)).text();
+  expect(listed).not.toContain(token);
+  expect(listed).not.toContain('"token"');
+  expect(await page.content()).not.toContain(token);
+  const credentials = setup.getByRole('list', { name: 'Credentials' });
+  await credentials.getByRole('button', { name: 'Rotate' }).click();
+  await expect(shown).toHaveText(/^kma_/);
+  await expect(shown).not.toHaveText(token);
+  await setup.getByRole('button', { name: 'I saved it' }).click();
+  await expect(credentials).toContainText('revoked');
+  await credentials.getByRole('button', { name: 'Revoke' }).click();
+  await expect(step('Worker credential')).toContainText('(to do)');
+  await expect(
+    setup.getByRole('button', { name: 'Issue worker credential' }),
+  ).toBeVisible();
+  // The binding is generated for this agent and carries no secret.
+  const snippet = step('Inbox worker binding').locator('pre');
+  await expect(snippet).toContainText(ada.id);
+  await expect(snippet).toContainText('"isolatedProviderId": "isolated-ada"');
+  await expect(snippet).not.toContainText('kma_');
+  await expect(step('Can be woken')).toContainText('(to do)');
+});
+
 test('lost message response retries the same committed operation; real conflict stays visible', async ({
   page,
   context,

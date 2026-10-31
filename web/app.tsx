@@ -716,6 +716,8 @@ export function App() {
               key={focusedAgent.id}
               agent={focusedAgent}
               data={data}
+              channelPath={channelPath}
+              onDone={refresh}
               onClose={closeFocus}
             />
           )}
