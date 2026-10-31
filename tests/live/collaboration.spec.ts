@@ -21,7 +21,7 @@ import { Hub } from './hub.js';
 import { until, ready } from './processes.js';
 import { SdkWire } from '../../src/adapters/t3/sdk.js';
 import { T3Backend } from '../../src/adapters/t3/backend.js';
-import { authority } from '../../src/adapters/t3/oauth.js';
+import { authority, type Credential } from '../../src/adapters/t3/oauth.js';
 import {
   ValidatedTools,
   Capabilities,
@@ -100,6 +100,18 @@ test('complete real two-agent workflow, Human rework/acceptance, recovery and au
           .all(hub.taskId),
       );
   };
+  async function connectRead(credential: Credential) {
+    if (!store) throw new Error('STORE_REQUIRED');
+    await wire?.close();
+    wire = new SdkWire(credential);
+    backend = await T3Backend.connect(wire, store.operations, {
+      endpoint: native.endpoint,
+      expectedEnvironmentId: credential.environmentId,
+      authority: authority(credential),
+      scopes: credential.tokens.scope?.split(' ') ?? [],
+    });
+    tools = new ValidatedTools(wire, await wire.list());
+  }
   async function activityFor(ref: Reference): Promise<z.infer<typeof Read>> {
     if (!tools) throw new Error('NATIVE_AUDIT_REQUIRED');
     const items: z.infer<typeof Read>['items'] = [];
@@ -347,7 +359,7 @@ test('complete real two-agent workflow, Human rework/acceptance, recovery and au
     assert.equal(activity.thread.latestRunId, ref.runId);
     const approval = activity.items.at(-1);
     assert.equal(approval?.type, 'approval_request');
-    assert.equal(approval?.runId, ref.runId);
+    assert.equal(approval.runId, ref.runId);
     const role = roles.find((r) => hub.agent(r).profile.id === row.agent_id);
     assert.ok(role);
     const calls = activity.items.filter(
@@ -365,7 +377,7 @@ test('complete real two-agent workflow, Human rework/acceptance, recovery and au
     assert.equal(input.output, undefined);
     const tool = input.toolName.replace(/^kinmesh\./, '');
     assert.equal(
-      approval?.text,
+      approval.text,
       `Allow the kinmesh MCP server to run tool \"${tool}\"?`,
     );
     assert.equal(activity.items.at(-2)?.itemId, call.itemId);
@@ -394,10 +406,7 @@ test('complete real two-agent workflow, Human rework/acceptance, recovery and au
     const target = new URL(activity.thread.link);
     assert.equal(target.origin, native.origin);
     if (page.url() !== target.href) await page.goto(target.href);
-    await page
-      .getByText(approval.text ?? '', { exact: true })
-      .first()
-      .waitFor();
+    await page.getByText(approval.text, { exact: true }).first().waitFor();
     const button = page.getByRole('button', { name: 'Approve', exact: true });
     await button.waitFor();
     assert.equal(await button.count(), 1);
@@ -538,14 +547,9 @@ test('complete real two-agent workflow, Human rework/acceptance, recovery and au
     checks.separateNativeOAuthScopes = true;
     store = openStore(hub.database);
     db = new Database(hub.database, { readonly: true });
-    wire = new SdkWire(read);
-    backend = await T3Backend.connect(wire, store.operations, {
-      endpoint: native.endpoint,
-      expectedEnvironmentId: read.environmentId,
-      authority: authority(read),
-      scopes: read.tokens.scope?.split(' ') ?? [],
-    });
-    tools = new ValidatedTools(wire, await wire.list());
+    await connectRead(read);
+    assert.ok(tools);
+    assert.ok(backend);
     stage = 'native-capability-preflight';
     const liveTools = tools;
     await until(
@@ -654,6 +658,7 @@ test('complete real two-agent workflow, Human rework/acceptance, recovery and au
     assert.equal(rows()[2]?.result_message_id, null);
     native.server?.start();
     await ready(native.origin + '/.well-known/t3/environment');
+    await connectRead(read);
     await progress(6, 4);
     checks.nativeOutageRetainsAndResumesHumanRework = true;
     await auditNative();
@@ -858,7 +863,7 @@ test('complete real two-agent workflow, Human rework/acceptance, recovery and au
     }
     const [hubOutcome] = await Promise.allSettled([hub.close()]);
     const hubCleanup =
-      hubOutcome?.status === 'fulfilled'
+      hubOutcome.status === 'fulfilled'
         ? hubOutcome.value
         : { grantsRevoked: false, servicesStopped: false };
     const nativeClosed = await Promise.allSettled([
@@ -874,7 +879,7 @@ test('complete real two-agent workflow, Human rework/acceptance, recovery and au
       ...hubCleanup,
       nativeErrors: native.cleanupErrors,
       issues: cleanupIssues,
-      nativeStopped: nativeClosed[0]?.status === 'fulfilled',
+      nativeStopped: nativeClosed[0].status === 'fulfilled',
       privateStateUploaded: false,
     };
     if (!cleanupPassed) evidence.result = 'FAIL';
