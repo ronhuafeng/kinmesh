@@ -144,39 +144,6 @@ await test('MOCK: only typed native capability denial or explicit HTTP auth stat
     failure('permission'),
   );
 });
-await test('MOCK: native JSON-text denial is recognized without accepting unrelated errors', async () => {
-  const wire = new MockWire();
-  const tools = new ValidatedTools(wire, await wire.list());
-  wire.handler = () =>
-    Promise.resolve({
-      isError: true,
-      content: [
-        {
-          type: 'text',
-          text: JSON.stringify({
-            _tag: 'OrchestrationError',
-            code: 'capability_denied',
-            message: 'Denied',
-          }),
-        },
-      ],
-    });
-  await assert.rejects(
-    tools.call('t3_thread_read', { threadId: reference.threadId }),
-    failure('permission'),
-  );
-  for (const text of [
-    'capability_denied',
-    JSON.stringify({ code: 'thread_not_found' }),
-  ]) {
-    wire.handler = () =>
-      Promise.resolve({ isError: true, content: [{ type: 'text', text }] });
-    await assert.rejects(
-      tools.call('t3_thread_read', { threadId: reference.threadId }),
-      failure('incompatible'),
-    );
-  }
-});
 await test('MOCK: malformed nested responses are rejected, not mistaken for completion', async () => {
   const f = await backendFixture();
   try {

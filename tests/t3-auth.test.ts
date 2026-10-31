@@ -2,6 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { writeFileSync, chmodSync, readFileSync, symlinkSync } from 'node:fs';
 import { join } from 'node:path';
+import { spawnSync } from 'node:child_process';
 import {
   Endpoint,
   Credential,
@@ -81,4 +82,18 @@ await test('AUTH UNIT: noninteractive SDK auth never silently opens consent or s
   );
   assert.throws(() => provider.saveTokens(credential.tokens));
   assert.throws(() => provider.codeVerifier());
+});
+await test('LIVE GATE NEGATIVE: missing credentials fail closed, never skipped or green', () => {
+  const result = spawnSync(
+    process.execPath,
+    ['--import', 'tsx', 'scripts/t3-live.ts'],
+    {
+      cwd: new URL('..', import.meta.url),
+      env: { PATH: process.env.PATH ?? '', KINMESH_T3_LIVE: '1' },
+      encoding: 'utf8',
+    },
+  );
+  assert.equal(result.status, 1);
+  assert.match(result.stderr, /T3_LIVE_GATE FAIL/);
+  assert.doesNotMatch(result.stdout, /T3_LIVE_GATE PASS/);
 });
