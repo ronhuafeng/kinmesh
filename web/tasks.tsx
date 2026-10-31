@@ -1,5 +1,5 @@
 import { authorName } from './names.js';
-import { useEffect, useState } from 'react';
+import { useContext, useEffect, useState } from 'react';
 import type { z } from 'zod';
 import {
   TaskCommand,
@@ -9,9 +9,12 @@ import {
 } from '../src/domain/tasks.js';
 import type { Task } from '../src/domain/tasks.js';
 import { Member, memberKey, pageOf } from '../src/domain/communication.js';
+import type { Message } from '../src/domain/communication.js';
 import type { WorkspaceSnapshot } from '../src/workspace/contracts.js';
-import { api, value } from './api.js';
+import { api, MutationPermission, value } from './api.js';
 import { ActionForm, Field, Notice } from './forms.js';
+import { Avatar, Drawer, shortTime, StatusChip, statuses } from './ui.js';
+import type { Status } from './ui.js';
 
 export function memberFrom(value: string): Member | null {
   if (!value) return null;
@@ -34,11 +37,11 @@ export function humanAsk(task: Task, data: WorkspaceSnapshot): string | null {
   const me = memberKey({ kind: 'human', id: data.human.id });
   const { status, owner, reviewer } = task.state;
   if (status === 'awaiting-human' && task.acceptorHumanId === data.human.id)
-    return 'Accept or send back';
+    return 'Your sign-off';
   if (status === 'review-requested' && memberKey(reviewer) === me)
-    return 'Review requested';
+    return 'Your review';
   if (status === 'rework-requested' && memberKey(owner) === me)
-    return 'Rework requested';
+    return 'Your rework';
   return null;
 }
 const stages = [
@@ -48,11 +51,21 @@ const stages = [
   { label: 'Human sign-off', statuses: ['awaiting-human'] },
   { label: 'Done', statuses: ['accepted'] },
 ];
-function Lifecycle({ status }: { status: Task['state']['status'] }) {
+function Lifecycle({
+  status,
+  compact = false,
+}: {
+  status: Status;
+  compact?: boolean;
+}) {
   const current = stages.findIndex((s) => s.statuses.includes(status));
   if (current < 0) return null;
   return (
-    <ol className="lifecycle" aria-label="Task progress">
+    <ol
+      className={'lifecycle' + (compact ? ' compact' : '')}
+      aria-label={compact ? undefined : 'Task progress'}
+      aria-hidden={compact ? 'true' : undefined}
+    >
       {stages.map((stage, index) => (
         <li
           key={stage.label}
@@ -77,15 +90,17 @@ export function MemberSelect({
   data,
   required = false,
   empty = 'Unassigned',
+  defaultValue = '',
 }: {
   name: string;
   id?: string;
   data: WorkspaceSnapshot;
   required?: boolean;
   empty?: string;
+  defaultValue?: string;
 }) {
   return (
-    <select id={id} name={name} required={required} defaultValue="">
+    <select id={id} name={name} required={required} defaultValue={defaultValue}>
       <option value="">{empty}</option>
       <option value={'human:' + data.human.id}>
         {data.human.username} (human)
@@ -98,6 +113,33 @@ export function MemberSelect({
           </option>
         ))}
     </select>
+  );
+}
+function MemberAvatar({
+  member,
+  data,
+}: {
+  member: Member | null;
+  data: WorkspaceSnapshot;
+}) {
+  if (!member) return null;
+  return (
+    <Avatar kind={member.kind} name={memberName(member, data)} size="sm" />
+  );
+}
+function MemberChip({
+  member,
+  data,
+}: {
+  member: Member | null;
+  data: WorkspaceSnapshot;
+}) {
+  const name = memberName(member, data);
+  return (
+    <span className="member-chip" data-kind={member?.kind ?? 'none'}>
+      {member && <Avatar kind={member.kind} name={name} size="sm" />}
+      {name}
+    </span>
   );
 }
 function TaskHistory({
@@ -122,10 +164,11 @@ function TaskHistory({
       .then(([events, refs]) => {
         setHistory(pageOf(TaskEvent).parse(events).items);
         setLinks(pageOf(TaskExecution).parse(refs).items);
+        setError('');
       })
       .catch(() => {
         if (!controller.signal.aborted)
-          setError('Activity unavailable. Reopen to retry.');
+          setError('Activity unavailable. Refresh activity to retry.');
       });
     return () => {
       controller.abort();
@@ -133,44 +176,77 @@ function TaskHistory({
   }, [path, task.version, refresh]);
   return (
     <div className="task-history">
-      <button
-        type="button"
-        className="quiet"
-        onClick={() => {
-          setRefresh((value) => value + 1);
-        }}
-      >
-        Refresh activity
-      </button>
+      <div className="drawer-heading">
+        <h3>Decision history</h3>
+        <button
+          type="button"
+          className="quiet"
+          onClick={() => {
+            setRefresh((value) => value + 1);
+          }}
+        >
+          Refresh activity
+        </button>
+      </div>
       {error && <Notice>{error}</Notice>}
-      <h4>Decision history</h4>
-      <ol>
+      <ol className="timeline">
         {history.map((e) => (
           <li key={e.id}>
-            <strong>{e.action}</strong> · {authorName(e.author, data)} · version{' '}
-            {e.version}
-            <small>{new Date(e.createdAt).toLocaleString()}</small>
+            <time dateTime={e.createdAt}>{shortTime(e.createdAt)}</time>
+            <span>
+              <strong>{e.action}</strong> · {authorName(e.author, data)}
+            </span>
+            <small>v{e.version}</small>
           </li>
         ))}
       </ol>
-      <h4>Execution references</h4>
+      <h3>Execution references</h3>
       {links.length === 0 ? (
-        <p>No executions linked.</p>
+        <p className="muted">No executions linked.</p>
       ) : (
         links.map((link) => (
-          <p className="reference" key={link.id}>
-            {link.reference.environmentId}
-            <br />
-            {link.reference.threadId}
-            <br />
-            {link.reference.runId ?? 'Thread reference; no Run recorded'}
-          </p>
+          <dl className="reference-list" key={link.id}>
+            <dt>Environment</dt>
+            <dd>{link.reference.environmentId}</dd>
+            <dt>T3 Thread</dt>
+            <dd>{link.reference.threadId}</dd>
+            <dt>T3 Run</dt>
+            <dd>
+              {link.reference.runId ?? 'Thread reference; no Run recorded'}
+            </dd>
+          </dl>
         ))
       )}
     </div>
   );
 }
-function TaskCard({
+type Intent =
+  | 'claim'
+  | 'progress'
+  | 'request-review'
+  | 'approve'
+  | 'review-rework'
+  | 'accept'
+  | 'handoff'
+  | 'rework';
+const intentLabels: Record<Intent, string> = {
+  claim: 'Claim task',
+  progress: 'Post progress update',
+  'request-review': 'Request review',
+  approve: 'Approve review',
+  'review-rework': 'Request changes',
+  accept: 'Accept task',
+  handoff: 'Assign work',
+  rework: 'Request rework',
+};
+const intentTone: Partial<Record<Intent, string>> = {
+  accept: 'primary',
+  approve: 'primary',
+  rework: 'danger',
+  'review-rework': 'danger',
+};
+/** Explicit buttons per decision; the note is always written by the human. */
+function DecisionPanel({
   task,
   data,
   path,
@@ -181,8 +257,10 @@ function TaskCard({
   path: string;
   onDone: () => void;
 }) {
-  const [history, setHistory] = useState(false);
-  const [action, setAction] = useState('');
+  const permitted = useContext(MutationPermission);
+  const [routing, setRouting] = useState<'request-review' | 'handoff' | null>(
+    null,
+  );
   const human = { kind: 'human', id: data.human.id } satisfies Member;
   const owns =
     task.state.owner !== null &&
@@ -192,190 +270,442 @@ function TaskCard({
     memberKey(task.state.reviewer) === memberKey(human);
   const final = task.acceptorHumanId === data.human.id;
   const done = ['accepted', 'cancelled'].includes(task.state.status);
-  const actions: { value: string; label: string }[] = [];
-  if (task.state.status === 'proposed' && !reviews)
-    actions.push({ value: 'claim', label: 'Claim task' });
-  if (owns && ['in-progress', 'rework-requested'].includes(task.state.status))
-    actions.push({ value: 'progress', label: 'Update progress' });
-  if (owns && task.state.status === 'in-progress')
-    actions.push({ value: 'request-review', label: 'Request review' });
-  if (reviews && task.state.status === 'review-requested')
-    actions.push(
-      { value: 'approve', label: 'Approve review' },
-      { value: 'review-rework', label: 'Request changes' },
-    );
-  if (final && task.state.status === 'awaiting-human')
-    actions.push({ value: 'accept', label: 'Accept task' });
+  const status = task.state.status;
+  const intents: Intent[] = [];
+  if (final && status === 'awaiting-human') intents.push('accept');
+  if (reviews && status === 'review-requested')
+    intents.push('approve', 'review-rework');
+  if (!done && task.state.owner !== null && final) intents.push('rework');
+  if (owns && ['in-progress', 'rework-requested'].includes(status))
+    intents.push('progress');
+  const canClaim = status === 'proposed' && !reviews;
+  const routes: ('request-review' | 'handoff')[] = [];
+  if (owns && status === 'in-progress') routes.push('request-review');
   if (!done && task.state.owner !== null && (final || owns))
-    actions.push({ value: 'handoff', label: 'Assign work' });
-  if (!done && task.state.owner !== null && final)
-    actions.push({ value: 'rework', label: 'Request rework' });
-  const selected = actions.some((a) => a.value === action)
-    ? action
-    : (actions[0]?.value ?? '');
-  const route =
-    selected === 'approve' || selected === 'review-rework'
-      ? 'review'
-      : selected;
+    routes.push('handoff');
+  if (!canClaim && intents.length === 0 && routes.length === 0)
+    return (
+      <p className="muted decision-none">
+        {done
+          ? 'This task is closed.'
+          : 'Nothing is waiting on you here. Owner, reviewer and acceptor act from their own seats.'}
+      </p>
+    );
+  const ask = humanAsk(task, data);
+  return (
+    <div className="decision-panel" data-ask={ask ? 'true' : undefined}>
+      <ActionForm
+        key={task.id}
+        title={ask ? 'Your decision' : 'Task actions'}
+        path={(f) => {
+          const intent = value(f, 'intent');
+          return (
+            path +
+            '/' +
+            (intent === 'approve' || intent === 'review-rework'
+              ? 'review'
+              : intent)
+          );
+        }}
+        onDone={() => {
+          setRouting(null);
+          onDone();
+        }}
+        build={(f) => {
+          const intent = value(f, 'intent');
+          const base = {
+            operationKey: crypto.randomUUID(),
+            expectedVersion: task.version,
+          };
+          const command = TaskCommand.parse(
+            intent === 'claim'
+              ? { ...base, type: 'claim' }
+              : intent === 'request-review'
+                ? {
+                    ...base,
+                    type: intent,
+                    note: value(f, 'note'),
+                    reviewer: memberFrom(value(f, 'recipient')),
+                  }
+                : intent === 'handoff'
+                  ? {
+                      ...base,
+                      type: intent,
+                      note: value(f, 'note'),
+                      mode: 'work',
+                      recipient: memberFrom(value(f, 'recipient')),
+                    }
+                  : intent === 'approve' || intent === 'review-rework'
+                    ? {
+                        ...base,
+                        type: 'review',
+                        decision: intent === 'approve' ? 'approve' : 'rework',
+                        note: value(f, 'note'),
+                      }
+                    : { ...base, type: intent, note: value(f, 'note') },
+          );
+          return Object.fromEntries(
+            Object.entries(command).filter(
+              ([key]) => key !== 'type' && key !== 'operationKey',
+            ),
+          );
+        }}
+      >
+        {canClaim && !routing && (
+          <div className="decision-buttons">
+            <button
+              type="submit"
+              name="intent"
+              value="claim"
+              formNoValidate
+              className="primary"
+            >
+              {intentLabels.claim}
+            </button>
+          </div>
+        )}
+        {routing && (
+          <Field label="Recipient">
+            <MemberSelect
+              name="recipient"
+              data={data}
+              required
+              empty="Choose a joined member"
+            />
+          </Field>
+        )}
+        {(routing !== null || intents.length > 0) && (
+          <Field
+            label={
+              <>
+                Decision note <span className="required">(required)</span>
+              </>
+            }
+          >
+            <textarea
+              name="note"
+              required
+              maxLength={2000}
+              rows={3}
+              placeholder="Explain your decision"
+            />
+          </Field>
+        )}
+        {routing ? (
+          <div className="decision-buttons">
+            <button
+              type="submit"
+              name="intent"
+              value={routing}
+              className="primary"
+            >
+              {intentLabels[routing]}
+            </button>
+            <button
+              type="button"
+              className="secondary"
+              onClick={() => {
+                setRouting(null);
+              }}
+            >
+              Cancel
+            </button>
+          </div>
+        ) : (
+          <>
+            {intents.length > 0 && (
+              <div className="decision-buttons">
+                {intents.map((intent) => (
+                  <button
+                    key={intent}
+                    type="submit"
+                    name="intent"
+                    value={intent}
+                    className={intentTone[intent] ?? 'secondary'}
+                  >
+                    {intentLabels[intent]}
+                  </button>
+                ))}
+              </div>
+            )}
+            {routes.length > 0 && (
+              <div className="route-buttons">
+                {routes.map((route) => (
+                  <button
+                    key={route}
+                    type="button"
+                    className="quiet"
+                    onClick={() => {
+                      setRouting(route);
+                    }}
+                  >
+                    {intentLabels[route]}…
+                  </button>
+                ))}
+              </div>
+            )}
+          </>
+        )}
+        {permitted ? (
+          final &&
+          status === 'awaiting-human' && (
+            <p className="decision-help">
+              Only you can accept this task. Acceptance is recorded with your
+              note.
+            </p>
+          )
+        ) : (
+          <p className="decision-help">
+            Actions are paused until the workspace reconnects.
+          </p>
+        )}
+      </ActionForm>
+    </div>
+  );
+}
+export function TaskDrawer({
+  task,
+  data,
+  path,
+  onDone,
+  onClose,
+  disabled,
+}: {
+  task: Task;
+  data: WorkspaceSnapshot;
+  path: string;
+  onDone: () => void;
+  onClose: () => void;
+  disabled: boolean;
+}) {
+  const topic = task.topicId
+    ? data.topics.items.find((t) => t.id === task.topicId)
+    : undefined;
+  const acceptor = { kind: 'human', id: task.acceptorHumanId } satisfies Member;
+  return (
+    <Drawer
+      label={task.title}
+      onClose={onClose}
+      className="task-drawer"
+      disabled={disabled}
+    >
+      <div className="drawer-body" data-status={task.state.status}>
+        <header className="drawer-header">
+          <span className="task-number">#{task.position}</span>
+          <StatusChip status={task.state.status} />
+          <small>v{task.version}</small>
+        </header>
+        <h2>{task.title}</h2>
+        {task.description && (
+          <p className="task-description">{task.description}</p>
+        )}
+        {topic && <span className="topic-pill static">{topic.title}</span>}
+        <Lifecycle status={task.state.status} />
+        <dl className="people-list">
+          <dt>Owner</dt>
+          <dd>
+            <MemberChip member={task.state.owner} data={data} />
+          </dd>
+          <dt>Reviewer</dt>
+          <dd>
+            <MemberChip member={task.state.reviewer} data={data} />
+          </dd>
+          <dt>Acceptor</dt>
+          <dd>
+            <MemberChip member={acceptor} data={data} />
+          </dd>
+        </dl>
+        <h3>Acceptance criteria</h3>
+        <ol className="criteria">
+          {task.criteria.map((c) => (
+            <li key={c}>{c}</li>
+          ))}
+        </ol>
+        {task.state.note && (
+          <figure className="task-note">
+            <figcaption>Latest note</figcaption>
+            <blockquote>{task.state.note}</blockquote>
+          </figure>
+        )}
+        <DecisionPanel task={task} data={data} path={path} onDone={onDone} />
+        <TaskHistory task={task} path={path} data={data} />
+      </div>
+    </Drawer>
+  );
+}
+function TaskCard({
+  task,
+  data,
+  selected,
+  onOpen,
+}: {
+  task: Task;
+  data: WorkspaceSnapshot;
+  selected: boolean;
+  onOpen: () => void;
+}) {
+  const ask = humanAsk(task, data);
   return (
     <article
       className="task-card"
       data-status={task.state.status}
-      data-ask={humanAsk(task, data) ? 'true' : undefined}
+      data-ask={ask ? 'true' : undefined}
+      data-selected={selected ? 'true' : undefined}
       aria-label={task.title}
+      ref={(el) => {
+        // Lets a status change travel between columns as one element.
+        el?.style.setProperty('view-transition-name', 'task-' + task.id);
+      }}
     >
       <header>
-        <span className={'badge ' + task.state.status}>
-          {task.state.status}
-        </span>
-        <small>v{task.version}</small>
+        <span className="task-number">#{task.position}</span>
+        <StatusChip status={task.state.status} />
       </header>
-      <h3>{task.title}</h3>
-      <Lifecycle status={task.state.status} />
-      {task.description && <p>{task.description}</p>}
-      <ul className="criteria">
-        {task.criteria.map((c) => (
-          <li key={c}>{c}</li>
-        ))}
-      </ul>
-      <dl>
-        <dt>Owner</dt>
-        <dd>{memberName(task.state.owner, data)}</dd>
-        <dt>Reviewer</dt>
-        <dd>{memberName(task.state.reviewer, data)}</dd>
-      </dl>
-      {task.state.note && <p className="task-note">{task.state.note}</p>}
-      {actions.length > 0 && (
-        <ActionForm
-          key={selected}
-          title="Task action"
-          path={path + '/' + route}
-          submit={
-            actions.find((a) => a.value === selected)?.label ?? 'Apply action'
-          }
-          onDone={onDone}
-          build={(f) => {
-            const base = {
-              operationKey: crypto.randomUUID(),
-              expectedVersion: task.version,
-            };
-            const command = TaskCommand.parse(
-              selected === 'claim'
-                ? { ...base, type: 'claim' }
-                : selected === 'request-review'
-                  ? {
-                      ...base,
-                      type: selected,
-                      note: value(f, 'note'),
-                      reviewer: memberFrom(value(f, 'recipient')),
-                    }
-                  : selected === 'handoff'
-                    ? {
-                        ...base,
-                        type: selected,
-                        note: value(f, 'note'),
-                        mode: 'work',
-                        recipient: memberFrom(value(f, 'recipient')),
-                      }
-                    : selected === 'approve' || selected === 'review-rework'
-                      ? {
-                          ...base,
-                          type: 'review',
-                          decision:
-                            selected === 'approve' ? 'approve' : 'rework',
-                          note: value(f, 'note'),
-                        }
-                      : { ...base, type: selected, note: value(f, 'note') },
-            );
-            return Object.fromEntries(
-              Object.entries(command).filter(
-                ([key]) => key !== 'type' && key !== 'operationKey',
-              ),
-            );
-          }}
+      <h3>
+        <button
+          type="button"
+          className="card-link"
+          aria-expanded={selected}
+          onClick={onOpen}
         >
-          <Field label="Action">
-            <select
-              value={selected}
-              onChange={(e) => {
-                setAction(e.target.value);
-              }}
-            >
-              {actions.map((a) => (
-                <option key={a.value} value={a.value}>
-                  {a.label}
-                </option>
-              ))}
-            </select>
-          </Field>
-          {['request-review', 'handoff'].includes(selected) && (
-            <Field label="Recipient">
-              <MemberSelect
-                name="recipient"
-                data={data}
-                required
-                empty="Choose a joined member"
-              />
-            </Field>
-          )}
-          {selected !== 'claim' && (
-            <Field label="Decision note">
-              <textarea name="note" required maxLength={2000} rows={2} />
-            </Field>
-          )}
-        </ActionForm>
-      )}
-      <button
-        className="quiet"
-        type="button"
-        aria-expanded={history}
-        onClick={() => {
-          setHistory(!history);
-        }}
-      >
-        {history ? 'Hide activity' : 'Show activity'}
-      </button>
-      {history && <TaskHistory task={task} path={path} data={data} />}
+          {task.title}
+        </button>
+      </h3>
+      {ask && <p className="ask-label">{ask}</p>}
+      <Lifecycle status={task.state.status} compact />
+      <footer>
+        <span className="card-people">
+          <MemberAvatar member={task.state.owner} data={data} />
+          <MemberAvatar member={task.state.reviewer} data={data} />
+        </span>
+        <small>
+          {task.criteria.length === 1
+            ? '1 criterion'
+            : `${String(task.criteria.length)} criteria`}
+        </small>
+      </footer>
     </article>
   );
 }
-export function Tasks({
+export interface TaskDraft {
+  id: string;
+  title: string;
+  description: string;
+  topicId: string | null;
+  sourceMessageId: string | null;
+  from: string | null;
+}
+export function draftFromMessage(
+  message: z.infer<typeof Message>,
+  data: WorkspaceSnapshot,
+): TaskDraft {
+  const firstLine = message.body.trim().split('\n')[0] ?? '';
+  return {
+    id: message.id,
+    title: firstLine.slice(0, 160),
+    description: message.body.slice(0, 4000),
+    topicId: message.topicId,
+    sourceMessageId: message.id,
+    from: authorName(message.author, data),
+  };
+}
+export type BoardFilter = 'all' | 'mine' | 'needs';
+const filters: { id: BoardFilter; label: string }[] = [
+  { id: 'all', label: 'All' },
+  { id: 'mine', label: 'Mine' },
+  { id: 'needs', label: 'Needs me' },
+];
+export function Board({
   data,
   channelPath,
   onDone,
   next,
+  openTask,
+  selected,
+  filter,
+  onFilter,
+  draft,
+  onDraft,
 }: {
   data: WorkspaceSnapshot;
   channelPath: string;
   onDone: () => void;
   next: () => void;
+  openTask: (id: string) => void;
+  selected: string | null;
+  filter: BoardFilter;
+  onFilter: (filter: BoardFilter) => void;
+  draft: TaskDraft | null;
+  onDraft: (draft: TaskDraft | null) => void;
 }) {
-  const items = data.tasks.items;
-  const isClosed = (t: Task) =>
-    t.state.status === 'accepted' || t.state.status === 'cancelled';
-  const needs = items.filter((t) => humanAsk(t, data) !== null);
-  const closed = items.filter(isClosed);
-  const moving = items.filter((t) => !isClosed(t) && !needs.includes(t));
-  const open = items.length - closed.length;
-  const lanes = [
-    { id: 'needs', title: 'Needs you', tasks: needs },
-    { id: 'moving', title: 'In motion', tasks: moving },
-    { id: 'closed', title: 'Closed', tasks: closed },
-  ];
+  const [creating, setCreating] = useState(false);
+  const me = memberKey({ kind: 'human', id: data.human.id });
+  const items = data.tasks.items.filter((t) =>
+    filter === 'needs'
+      ? humanAsk(t, data) !== null
+      : filter === 'mine'
+        ? [t.state.owner, t.state.reviewer].some(
+            (m) => m !== null && memberKey(m) === me,
+          ) || t.acceptorHumanId === data.human.id
+        : true,
+  );
+  const byStatus = new Map<Status, Task[]>(statuses.map((s) => [s.id, []]));
+  for (const task of items) byStatus.get(task.state.status)?.push(task);
+  const firstAsk = statuses.find((s) =>
+    byStatus.get(s.id)?.some((t) => humanAsk(t, data)),
+  );
+  const [column, setColumn] = useState<Status>(firstAsk?.id ?? 'proposed');
+  const closed = data.tasks.items.filter(
+    (t) => t.state.status === 'accepted' || t.state.status === 'cancelled',
+  ).length;
+  const open = creating || draft !== null;
   return (
-    <section className="tasks-view">
+    <section className="board-view" aria-label="Task board">
       <div className="section-heading">
-        <h2>Tasks</h2>
-        <span>
-          {open} open · {closed.length} closed
-        </span>
+        <div>
+          <h2>Board</h2>
+          <span>
+            {data.tasks.items.length - closed} open · {closed} closed
+          </span>
+        </div>
+        <div className="filter-pills" role="group" aria-label="Task filter">
+          {filters.map((f) => (
+            <button
+              key={f.id}
+              type="button"
+              aria-pressed={filter === f.id}
+              onClick={() => {
+                onFilter(f.id);
+              }}
+            >
+              {f.label}
+            </button>
+          ))}
+        </div>
       </div>
-      <details className="create-panel">
+      <details
+        className="create-panel"
+        open={open}
+        onToggle={(e) => {
+          const isOpen = e.currentTarget.open;
+          setCreating(isOpen);
+          if (!isOpen) onDraft(null);
+        }}
+      >
         <summary>Create task</summary>
+        {draft?.from && (
+          <p className="draft-source">
+            From a message by {draft.from}. The task links back to it.
+          </p>
+        )}
         <ActionForm
+          key={draft?.id ?? 'blank'}
           title="New task"
           path={channelPath + '/tasks'}
-          onDone={onDone}
+          onDone={() => {
+            onDraft(null);
+            onDone();
+          }}
           submit="Create task"
           build={(f) => {
             const input = TaskCreate.parse({
@@ -388,8 +718,8 @@ export function Tasks({
                 .filter(Boolean),
               owner: memberFrom(value(f, 'owner')),
               reviewer: memberFrom(value(f, 'reviewer')),
-              topicId: null,
-              sourceMessageId: null,
+              topicId: draft?.topicId ?? null,
+              sourceMessageId: draft?.sourceMessageId ?? null,
               sourceEventId: null,
             });
             return Object.fromEntries(
@@ -398,58 +728,95 @@ export function Tasks({
           }}
         >
           <Field label="Task title">
-            <input name="title" required maxLength={160} />
+            <input
+              name="title"
+              required
+              maxLength={160}
+              defaultValue={draft?.title}
+            />
           </Field>
           <Field label="Description">
-            <textarea name="description" maxLength={4000} />
+            <textarea
+              name="description"
+              maxLength={4000}
+              defaultValue={draft?.description}
+            />
           </Field>
           <Field label="Acceptance criteria (one per line)">
             <textarea name="criteria" required />
           </Field>
-          <Field label="Owner">
-            <MemberSelect name="owner" data={data} />
-          </Field>
-          <Field label="Reviewer">
-            <MemberSelect name="reviewer" data={data} />
-          </Field>
+          <div className="field-row">
+            <Field label="Owner">
+              <MemberSelect name="owner" data={data} />
+            </Field>
+            <Field label="Reviewer">
+              <MemberSelect name="reviewer" data={data} />
+            </Field>
+          </div>
         </ActionForm>
       </details>
-      {lanes.map(
-        (lane) =>
-          lane.tasks.length > 0 && (
+      <div className="column-switcher" role="group" aria-label="Status columns">
+        {statuses.map((s) => (
+          <button
+            key={s.id}
+            type="button"
+            data-status={s.id}
+            aria-pressed={column === s.id}
+            onClick={() => {
+              setColumn(s.id);
+            }}
+          >
+            {s.label}
+            <span className="count">{byStatus.get(s.id)?.length ?? 0}</span>
+          </button>
+        ))}
+      </div>
+      <div className="board">
+        {statuses.map((s) => {
+          const tasks = byStatus.get(s.id) ?? [];
+          return (
             <section
-              className="task-lane"
-              data-lane={lane.id}
-              key={lane.id}
-              aria-label={lane.title}
+              key={s.id}
+              className="board-column"
+              data-status={s.id}
+              data-current={column === s.id ? 'true' : undefined}
+              aria-label={s.label}
             >
-              <h3 className="lane-heading">
-                {lane.title} <span>{lane.tasks.length}</span>
+              <h3 className="column-heading">
+                <span className="dot" aria-hidden="true" />
+                {s.label}
+                <span className="count">{tasks.length}</span>
               </h3>
-              <div className="task-grid">
-                {lane.tasks.map((task) => (
-                  <TaskCard
-                    key={task.id}
-                    task={task}
-                    data={data}
-                    path={channelPath + '/tasks/' + task.id}
-                    onDone={onDone}
-                  />
-                ))}
-              </div>
+              {tasks.map((task) => (
+                <TaskCard
+                  key={task.id}
+                  task={task}
+                  data={data}
+                  selected={selected === task.id}
+                  onOpen={() => {
+                    openTask(task.id);
+                  }}
+                />
+              ))}
+              {tasks.length === 0 && <p className="column-empty">Empty</p>}
             </section>
-          ),
-      )}
+          );
+        })}
+      </div>
       {data.tasks.items.length === 0 && (
         <div className="empty">
           <h3>No promises yet</h3>
           <p>
             A task turns a conversation into a clear next step, with a human
-            sign-off at the end.
+            sign-off at the end. Create one here or from any message.
           </p>
         </div>
       )}
-      {data.tasks.nextCursor && <button onClick={next}>Next tasks page</button>}
+      {data.tasks.nextCursor && (
+        <button className="quiet page-control" onClick={next}>
+          Next tasks page
+        </button>
+      )}
     </section>
   );
 }

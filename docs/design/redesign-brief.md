@@ -1,7 +1,11 @@
 # Workspace redesign brief
 
-Status: draft for review (reference images pending). Scope: `web/` only. Backend
-contracts, security rules and the explicit human-acceptance model do not change.
+Status: references complete (see [references/](references/README.md)); first
+implementation in `web/`. Scope: `web/` only. Backend contracts, security rules and the
+explicit human-acceptance model do not change.
+
+Not implemented yet from this brief: the ⌘K palette, and a separate P7 inbox page (the
+"Needs you" entry and the board's "Needs me" filter cover it for now).
 
 ## 1. Target
 

@@ -3,18 +3,30 @@ import type { ReactNode } from 'react';
 import { useAction } from './api.js';
 export function Field({
   label,
+  hint,
   children,
 }: {
-  label: string;
+  label: ReactNode;
+  hint?: string;
   children: ReactNode;
 }) {
   const id = useId();
-  if (!isValidElement<{ id?: string }>(children))
+  if (!isValidElement<{ id?: string; 'aria-describedby'?: string }>(children))
     throw new Error('Field requires one input');
   return (
     <div className="field">
-      <label htmlFor={id}>{label}</label>
-      {cloneElement(children, { id })}
+      <div className="field-label">
+        <label htmlFor={id}>{label}</label>
+        {hint && (
+          <small className="hint" id={id + '-hint'}>
+            {hint}
+          </small>
+        )}
+      </div>
+      {cloneElement(children, {
+        id,
+        ...(hint ? { 'aria-describedby': id + '-hint' } : {}),
+      })}
     </div>
   );
 }
@@ -35,11 +47,13 @@ export function ActionForm({
   keyed = true,
 }: {
   title: string;
-  path: string;
+  /** A function path lets one form route each submit button to its own endpoint. */
+  path: string | ((form: FormData) => string);
   build: (form: FormData) => Record<string, unknown>;
   onDone: () => void;
   children?: ReactNode;
-  submit: string;
+  /** Omit when the children supply their own submit buttons. */
+  submit?: string;
   keyed?: boolean;
 }) {
   const action = useAction();
@@ -55,8 +69,15 @@ export function ActionForm({
         if (action.disabled) return;
         const form = event.currentTarget;
         try {
-          const body = build(new FormData(form));
-          void action.send(path, body, keyed).then((ok) => {
+          // Include the clicked button so one form can carry several decisions.
+          const submitter =
+            event.nativeEvent instanceof SubmitEvent
+              ? event.nativeEvent.submitter
+              : null;
+          const data = new FormData(form, submitter);
+          const body = build(data);
+          const target = typeof path === 'string' ? path : path(data);
+          void action.send(target, body, keyed).then((ok) => {
             if (ok) {
               form.reset();
               onDone();
@@ -70,7 +91,9 @@ export function ActionForm({
       <h3 id={id}>{title}</h3>
       <fieldset disabled={action.disabled || action.busy || action.uncertain}>
         {children}
-        <button type="submit">{action.busy ? 'Saving…' : submit}</button>
+        {submit && (
+          <button type="submit">{action.busy ? 'Saving…' : submit}</button>
+        )}
       </fieldset>
       {action.error && <Notice>{action.error}</Notice>}
       {action.uncertain && (

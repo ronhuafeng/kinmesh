@@ -12,6 +12,7 @@ import type {
 } from '../src/workspace/contracts.js';
 import { api, HttpError, value } from './api.js';
 import { ActionForm, Field, Notice } from './forms.js';
+import { Avatar, Drawer, shortTime } from './ui.js';
 function NativeStatus({
   correlation,
   teamId,
@@ -160,10 +161,6 @@ function Activity({
   const [snapshot, setSnapshot] = useState<ExecutionSnapshot | null>(null);
   const [error, setError] = useState('');
   const snapshotRequest = useRef<AbortController | null>(null);
-  const panel = useRef<HTMLElement>(null);
-  useEffect(() => {
-    panel.current?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
-  }, []);
   function loseAccess() {
     snapshotRequest.current?.abort();
     setSnapshot(null);
@@ -203,14 +200,12 @@ function Activity({
     };
   }, [agent.id, teamId, revision]);
   return (
-    <section
-      ref={panel}
-      className="activity"
-      aria-label={agent.name + ' activity'}
-    >
-      <h3>{agent.name} · Execution activity</h3>
-      <p className="eyebrow">AG-UI 1.0 · refreshed snapshot</p>
-      <p>
+    <section className="activity" aria-label={agent.name + ' activity'}>
+      <div className="drawer-heading">
+        <h3>Execution activity</h3>
+        <span className="eyebrow">AG-UI 1.0 · refreshed snapshot</span>
+      </div>
+      <p className="muted">
         Stored reports may be stale. Last recorded status is an AG-UI snapshot.
         Check native status explicitly for a separate, fresh read from T3.
       </p>
@@ -226,8 +221,12 @@ function Activity({
           {snapshot.executions.map((e) => {
             const latest = e.events.at(-1);
             return (
-              <article className="execution" key={e.correlation.id}>
-                <span className="badge">
+              <article
+                className="execution"
+                key={e.correlation.id}
+                data-state={latest?.state ?? 'unknown'}
+              >
+                <span className="recorded-chip">
                   Last recorded: {latest?.state ?? 'unknown'}
                 </span>
                 <p>
@@ -238,6 +237,19 @@ function Activity({
                       latest.author.kind
                     : 'No runtime observation recorded.'}
                 </p>
+                {e.events.length > 1 && (
+                  <ol className="timeline" aria-label="Recorded states">
+                    {e.events.slice(-6).map((event) => (
+                      <li key={event.id} data-state={event.state}>
+                        <time dateTime={event.createdAt}>
+                          {shortTime(event.createdAt)}
+                        </time>
+                        <span>{event.state}</span>
+                        <small>by {event.author.kind}</small>
+                      </li>
+                    ))}
+                  </ol>
+                )}
                 <dl>
                   <dt>Environment</dt>
                   <dd>{e.correlation.reference.environmentId}</dd>
@@ -274,28 +286,90 @@ function Activity({
     </section>
   );
 }
-export function Agents({
+export function AgentDrawer({
+  agent,
+  data,
+  onClose,
+  disabled,
+}: {
+  agent: Agent;
+  data: WorkspaceSnapshot;
+  onClose: () => void;
+  disabled: boolean;
+}) {
+  const joined = data.joinedAgentIds.includes(agent.id);
+  return (
+    <Drawer
+      label={agent.name}
+      onClose={onClose}
+      className="agent-drawer"
+      disabled={disabled}
+    >
+      <div className="drawer-body">
+        <header className="identity">
+          <Avatar kind="agent" name={agent.name} size="lg" />
+          <div>
+            <h2>{agent.name}</h2>
+            <p>
+              <span className="role-pill">{agent.role}</span>
+              <span className="lifecycle-tag" data-lifecycle={agent.lifecycle}>
+                {agent.lifecycle}
+              </span>
+            </p>
+          </div>
+        </header>
+        <h3>Profile</h3>
+        <dl className="profile-list">
+          <dt>Agent ID</dt>
+          <dd className="reference">{agent.id}</dd>
+          <dt>Environment preference</dt>
+          <dd>{agent.preferences.environmentId ?? 'Not configured'}</dd>
+          <dt>Provider preference</dt>
+          <dd>{agent.preferences.providerId ?? 'Not configured'}</dd>
+          <dt>Model preference</dt>
+          <dd>{agent.preferences.modelId ?? 'Not configured'}</dd>
+          <dt>Memory reference</dt>
+          <dd>{agent.memoryLocation ?? 'None'}</dd>
+          <dt>This channel</dt>
+          <dd>{joined ? 'Joined' : 'Not joined'}</dd>
+        </dl>
+        <p className="muted">
+          Preferences are configuration, not proof of execution availability.
+        </p>
+        <Activity
+          key={agent.id + (data.nativeT3Origin ?? '')}
+          agent={agent}
+          teamId={data.team.id}
+          revision={data.observedAt}
+          trustedOrigin={data.nativeT3Origin}
+        />
+      </div>
+    </Drawer>
+  );
+}
+export function Team({
   data,
   channelPath,
   onDone,
+  openAgent,
   selected,
-  onSelect,
 }: {
   data: WorkspaceSnapshot;
   channelPath: string | null;
   onDone: () => void;
+  openAgent: (id: string) => void;
   selected: string | null;
-  onSelect: (id: string) => void;
 }) {
-  const current = data.agents.find((a) => a.id === selected);
   return (
-    <section>
+    <section className="team-view" aria-label="Team">
       <div className="section-heading">
-        <h2>Agents</h2>
-        <span>
-          {data.joinedAgentIds.length} in this channel · {data.agents.length} on
-          the team
-        </span>
+        <div>
+          <h2>Team</h2>
+          <span>
+            1 human · {data.agents.length} agents · {data.joinedAgentIds.length}{' '}
+            in this channel
+          </span>
+        </div>
       </div>
       <details className="create-panel">
         <summary>Register agent</summary>
@@ -335,86 +409,74 @@ export function Agents({
           </p>
         </ActionForm>
       </details>
-      <div className="agent-grid">
+      <ul className="roster">
+        <li className="roster-row" data-kind="human">
+          <Avatar kind="human" name={data.human.username} />
+          <div className="roster-identity">
+            <h3>{data.human.username}</h3>
+            <p>Human owner · you · final acceptance</p>
+          </div>
+          <span className="member-state">Joined</span>
+        </li>
         {data.agents.map((agent) => (
-          <article
-            className="agent-card"
+          <li
             key={agent.id}
+            className="roster-row"
+            data-kind="agent"
             data-selected={agent.id === selected ? 'true' : undefined}
             data-lifecycle={agent.lifecycle}
           >
-            <div className="agent-identity">
-              <div className="avatar" aria-hidden="true">
-                {agent.name.slice(0, 1).toUpperCase()}
-              </div>
-              <div>
-                <h3>{agent.name}</h3>
-                <p>
-                  {agent.role} · {agent.lifecycle}
-                </p>
-              </div>
-            </div>
-            <details>
-              <summary>Profile details</summary>
-              <small className="reference">{agent.id}</small>
-              <dl>
-                <dt>Environment preference</dt>
-                <dd>{agent.preferences.environmentId ?? 'Not configured'}</dd>
-                <dt>Provider preference</dt>
-                <dd>{agent.preferences.providerId ?? 'Not configured'}</dd>
-                <dt>Model preference</dt>
-                <dd>{agent.preferences.modelId ?? 'Not configured'}</dd>
-                <dt>Memory reference</dt>
-                <dd>{agent.memoryLocation ?? 'None'}</dd>
-              </dl>
+            <Avatar kind="agent" name={agent.name} />
+            <div className="roster-identity">
+              <h3>{agent.name}</h3>
               <p>
-                Preferences are configuration, not proof of execution
-                availability.
+                {agent.role} · {agent.lifecycle}
+                {agent.preferences.modelId && (
+                  <span className="reference">
+                    {' '}
+                    · {agent.preferences.providerId ?? 'provider'}/
+                    {agent.preferences.modelId}
+                  </span>
+                )}
               </p>
-            </details>
-            <button
-              className="quiet"
-              onClick={() => {
-                onSelect(agent.id);
-              }}
-            >
-              View {agent.name} activity
-            </button>
-            {channelPath &&
-              agent.lifecycle === 'active' &&
-              (data.joinedAgentIds.includes(agent.id) ? (
-                <span className="badge">Joined this channel</span>
-              ) : (
-                <ActionForm
-                  title={'Enroll ' + agent.name}
-                  path={channelPath + '/participants/invite'}
-                  build={() => ({ member: { kind: 'agent', id: agent.id } })}
-                  onDone={onDone}
-                  submit={'Add ' + agent.name + ' to channel'}
-                />
-              ))}
-          </article>
+            </div>
+            <div className="roster-actions">
+              {channelPath &&
+                agent.lifecycle === 'active' &&
+                (data.joinedAgentIds.includes(agent.id) ? (
+                  <span className="member-state">Joined this channel</span>
+                ) : (
+                  <ActionForm
+                    title={'Enroll ' + agent.name}
+                    path={channelPath + '/participants/invite'}
+                    build={() => ({ member: { kind: 'agent', id: agent.id } })}
+                    onDone={onDone}
+                    submit={'Add ' + agent.name + ' to channel'}
+                  />
+                ))}
+              <button
+                className="secondary"
+                onClick={() => {
+                  openAgent(agent.id);
+                }}
+              >
+                View {agent.name} activity
+              </button>
+            </div>
+          </li>
         ))}
-      </div>
+      </ul>
       {data.agents.length === 0 && (
-        <p className="empty">
-          Register a durable teammate, then enroll them in a channel.
-        </p>
+        <div className="empty">
+          <h3>No agents yet</h3>
+          <p>Register a durable teammate, then enroll them in a channel.</p>
+        </div>
       )}
       {data.agentsTruncated && (
-        <p>
+        <p className="muted">
           Showing the first 100 agents. Use the owner agent API for additional
           profiles.
         </p>
-      )}
-      {current && (
-        <Activity
-          key={current.id + (data.nativeT3Origin ?? '')}
-          agent={current}
-          teamId={data.team.id}
-          revision={data.observedAt}
-          trustedOrigin={data.nativeT3Origin}
-        />
       )}
     </section>
   );
