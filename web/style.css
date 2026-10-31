@@ -2453,6 +2453,14 @@ dialog.palette::backdrop {
   font-size: 0.85rem;
   color: var(--danger);
 }
+.view-content[data-switching] [role='tabpanel'] {
+  display: none;
+}
+.view-skeleton {
+  display: grid;
+  gap: 0.6rem;
+  max-width: 640px;
+}
 button.quiet.subtle-danger {
   color: var(--danger);
 }

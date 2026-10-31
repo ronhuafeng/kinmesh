@@ -52,8 +52,10 @@ Non-negotiables carried into every screen:
   No provider result, review or poll implies acceptance.
 - **Recorded is not verified.** AG-UI reports show "Last recorded …" with time and
   provenance. Native T3 status is a separate, explicit read.
-- **Offline disables actions.** A failed refresh keeps the last snapshot, labels it
-  stale, and disables mutations until reconnect.
+- **Only a stale snapshot pauses sending.** A failed refresh keeps the last snapshot,
+  labels it stale, and blocks every submission until a reconnect succeeds; so does a
+  channel switch still in flight. The routine 15 s refresh of a confirmed snapshot is
+  invisible and never pauses anything, and typing is never blocked by connection state.
 - **Text is text.** Message bodies are never rendered as HTML.
 
 ## 3. Information architecture

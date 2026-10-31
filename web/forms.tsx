@@ -34,13 +34,16 @@ export function Field({
 export function SubmitGroup({
   className,
   children,
+  held = false,
 }: {
   className?: string;
   children: ReactNode;
+  /** Keeps buttons down while the caller waits for its own result to arrive. */
+  held?: boolean;
 }) {
   const permitted = useContext(MutationPermission);
   return (
-    <fieldset className={className} disabled={!permitted}>
+    <fieldset className={className} disabled={!permitted || held}>
       {children}
     </fieldset>
   );

@@ -105,7 +105,7 @@ export function useAction() {
     paused() {
       pausedNotice.current = true;
       setError(
-        'Sending is paused while the workspace refreshes or reconnects. Nothing was sent.',
+        'Not sent: the workspace is reconnecting. Your text is still here.',
       );
     },
     async send(

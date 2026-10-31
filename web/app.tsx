@@ -58,7 +58,14 @@ export function App() {
     'loading' | 'ready' | 'offline' | 'signedout'
   >('loading');
   const [error, setError] = useState('');
+  // Which channel selection the snapshot on screen was loaded for, and whether
+  // the most recent refresh succeeded. Sending depends on these two facts,
+  // never on whether a background request happens to be running.
+  const [loadedFor, setLoadedFor] = useState<string | null>(null);
+  const [lastOk, setLastOk] = useState(false);
   const [revision, setRevision] = useState(0);
+  const [manual, setManual] = useState(false);
+  const [slow, setSlow] = useState(false);
   const [view, setView] = useState<View>('chat');
   const [cursors, setCursors] = useState<Record<string, string>>({});
   const [focus, setFocus] = useState<Focus>(null);
@@ -84,6 +91,24 @@ export function App() {
   const refresh = useCallback(() => {
     setRevision((n) => n + 1);
   }, []);
+  /** A refresh the person asked for is shown; the 15 s heartbeat is not. */
+  const refreshNow = useCallback(() => {
+    setManual(true);
+    setRevision((n) => n + 1);
+  }, []);
+  useEffect(() => {
+    if (status !== 'loading') {
+      setManual(false);
+      setSlow(false);
+      return;
+    }
+    const timer = setTimeout(() => {
+      setSlow(true);
+    }, 800);
+    return () => {
+      clearTimeout(timer);
+    };
+  }, [status, revision]);
   useEffect(() => {
     const controller = new AbortController();
     const query = new URLSearchParams(cursors);
@@ -107,6 +132,8 @@ export function App() {
           shown.current = next;
           setData(next);
           setStatus('ready');
+          setLoadedFor(selection.channel);
+          setLastOk(true);
           setError('');
         };
         // Cards travel to their new column; other refreshes stay instant.
@@ -135,6 +162,7 @@ export function App() {
             return {};
           });
           setError(cause.status === 403 ? cause.message : '');
+          setLastOk(false);
           setStatus('signedout');
         } else {
           setError(
@@ -142,6 +170,7 @@ export function App() {
               ? cause.message
               : 'Disconnected. Showing the last snapshot; actions are paused.',
           );
+          setLastOk(false);
           setStatus('offline');
         }
       });
@@ -195,18 +224,29 @@ export function App() {
             ))}
           </div>
         )}
-        <button onClick={refresh}>Reconnect / refresh</button>
+        <button onClick={refreshNow}>Reconnect / refresh</button>
       </main>
     );
   const channel = data.channel;
   const channelPath = channel
     ? `/api/teams/${data.team.id}/channels/${channel.id}`
     : null;
-  const canAct =
-    status === 'ready' &&
-    (!selection.channel || selection.channel === channel?.id);
-  // A background refresh pauses sending, but typing only stops when offline.
-  const editable = status !== 'offline';
+  // The snapshot on screen belongs to the selected channel (an empty selection
+  // means the server's default, which is whatever arrived).
+  const onScreen =
+    loadedFor === selection.channel ||
+    (channel !== null && selection.channel === channel.id);
+  // Switching channels: the screen still holds the previous one.
+  const switching = status === 'loading' && !onScreen;
+  // Act on a confirmed snapshot of the channel in view. A background refresh
+  // changes neither, so it never interrupts typing or sending.
+  const canAct = lastOk && onScreen && status !== 'offline';
+  // The heartbeat refresh stays silent unless asked for, failing, or slow.
+  const connection =
+    status === 'loading' && !manual && !slow && lastOk ? 'ready' : status;
+  const shownChannelName = switching
+    ? data.channels.items.find((c) => c.id === selection.channel)?.name
+    : channel?.name;
   const notify = (message: string) => {
     setToast({ id: Date.now(), message });
   };
@@ -321,7 +361,7 @@ export function App() {
   ];
   return (
     <MutationPermission value={canAct}>
-      <Offline value={status === 'offline'}>
+      <Offline value={!canAct && !switching}>
         <div
           className="workspace-shell"
           data-drawer={focusedTask || focusedAgent ? 'open' : undefined}
@@ -398,11 +438,7 @@ export function App() {
               </details>
               <details>
                 <summary>Rejoin a channel</summary>
-                <JoinChannel
-                  teamId={data.team.id}
-                  onDone={selectChannel}
-                  disabled={!editable}
-                />
+                <JoinChannel teamId={data.team.id} onDone={selectChannel} />
               </details>
             </div>
             {channel && (
@@ -487,7 +523,11 @@ export function App() {
             <header className="workspace-header">
               <div className="title-block">
                 <h1>
-                  {channel ? '# ' + channel.name : 'Welcome to your team'}
+                  {shownChannelName
+                    ? '# ' + shownChannelName
+                    : switching
+                      ? 'Opening channel…'
+                      : 'Welcome to your team'}
                 </h1>
                 <p>
                   {channel
@@ -496,12 +536,12 @@ export function App() {
                 </p>
               </div>
               <CommandPalette commands={commands} />
-              <div className="connection" data-state={status}>
+              <div className="connection" data-state={connection}>
                 <span className="connection-dot" aria-hidden="true" />
                 <span role="status">
-                  {status === 'ready'
+                  {connection === 'ready'
                     ? 'Snapshot connected'
-                    : status === 'loading'
+                    : connection === 'loading'
                       ? 'Refreshing…'
                       : 'Disconnected'}
                 </span>
@@ -509,7 +549,7 @@ export function App() {
                   Read {new Date(data.observedAt).toLocaleTimeString()} · polls
                   every 15s
                 </small>
-                <button className="secondary" onClick={refresh}>
+                <button className="secondary" onClick={refreshNow}>
                   Reconnect / refresh
                 </button>
               </div>
@@ -573,7 +613,17 @@ export function App() {
                 </Tabs.Trigger>
                 <Tabs.Trigger value="team">Team</Tabs.Trigger>
               </Tabs.List>
-              <fieldset className="view-content" disabled={!editable}>
+              <fieldset
+                className="view-content"
+                data-switching={switching ? 'true' : undefined}
+              >
+                {switching && (
+                  <div className="view-skeleton" aria-hidden="true">
+                    <span className="skeleton-card" />
+                    <span className="skeleton-card" />
+                    <span className="skeleton-card" />
+                  </div>
+                )}
                 <Tabs.Content value="chat" key={channel?.id ?? 'no-channel'}>
                   {channel && channelPath ? (
                     <Chat
@@ -651,7 +701,6 @@ export function App() {
               onDone={refresh}
               onClose={closeFocus}
               onDecided={notify}
-              disabled={!editable}
             />
           )}
           {focusedAgent && (
@@ -660,7 +709,6 @@ export function App() {
               agent={focusedAgent}
               data={data}
               onClose={closeFocus}
-              disabled={!editable}
             />
           )}
           {toast && (
@@ -676,11 +724,9 @@ export function App() {
 function JoinChannel({
   teamId,
   onDone,
-  disabled,
 }: {
   teamId: string;
   onDone: (id: string) => void;
-  disabled: boolean;
 }) {
   const [id, setId] = useState('');
   const parsed = ChannelId.safeParse(id);
@@ -689,7 +735,6 @@ function JoinChannel({
       <Field label="Known channel ID">
         <input
           value={id}
-          disabled={disabled}
           onChange={(e) => {
             setId(e.target.value);
           }}

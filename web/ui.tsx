@@ -76,13 +76,11 @@ export function Drawer({
   onClose,
   children,
   className,
-  disabled = false,
 }: {
   label: string;
   onClose: () => void;
   children: ReactNode;
   className?: string;
-  disabled?: boolean;
 }) {
   const panel = useRef<HTMLElement>(null);
   useEffect(() => {
@@ -134,9 +132,7 @@ export function Drawer({
           <span aria-hidden="true">×</span>
           <kbd aria-hidden="true">esc</kbd>
         </button>
-        <fieldset className="drawer-content" disabled={disabled}>
-          {children}
-        </fieldset>
+        <div className="drawer-content">{children}</div>
       </section>
     </>
   );

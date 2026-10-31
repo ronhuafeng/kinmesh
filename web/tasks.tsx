@@ -288,6 +288,10 @@ function DecisionPanel({
   const offline = useContext(Offline);
   const [routing, setRouting] = useState<Route | null>(null);
   const chosen = useRef<Intent | null>(null);
+  // After a decision lands, buttons wait for the new task version so a second
+  // click can never re-send against the old one.
+  const [decidedAt, setDecidedAt] = useState<number | null>(null);
+  const held = decidedAt === task.version;
   const human = { kind: 'human', id: data.human.id } satisfies Member;
   const owns =
     task.state.owner !== null &&
@@ -348,6 +352,7 @@ function DecisionPanel({
         }}
         onDone={() => {
           setRouting(null);
+          setDecidedAt(task.version);
           if (chosen.current) onDecided(intentDone[chosen.current]);
           onDone();
         }}
@@ -392,7 +397,7 @@ function DecisionPanel({
         }}
       >
         {canClaim && !routing && (
-          <SubmitGroup className="decision-buttons">
+          <SubmitGroup className="decision-buttons" held={held}>
             <button
               type="submit"
               name="intent"
@@ -442,7 +447,7 @@ function DecisionPanel({
           </Field>
         )}
         {routing ? (
-          <SubmitGroup className="decision-buttons">
+          <SubmitGroup className="decision-buttons" held={held}>
             <button
               type="submit"
               name="intent"
@@ -467,7 +472,7 @@ function DecisionPanel({
         ) : (
           <>
             {intents.length > 0 && (
-              <SubmitGroup className="decision-buttons">
+              <SubmitGroup className="decision-buttons" held={held}>
                 {intents.map((intent) => (
                   <button
                     key={intent}
@@ -528,7 +533,6 @@ export function TaskDrawer({
   onDone,
   onClose,
   onDecided,
-  disabled,
 }: {
   task: Task;
   data: WorkspaceSnapshot;
@@ -536,19 +540,13 @@ export function TaskDrawer({
   onDone: () => void;
   onClose: () => void;
   onDecided: (message: string) => void;
-  disabled: boolean;
 }) {
   const topic = task.topicId
     ? data.topics.items.find((t) => t.id === task.topicId)
     : undefined;
   const acceptor = { kind: 'human', id: task.acceptorHumanId } satisfies Member;
   return (
-    <Drawer
-      label={task.title}
-      onClose={onClose}
-      className="task-drawer"
-      disabled={disabled}
-    >
+    <Drawer label={task.title} onClose={onClose} className="task-drawer">
       <div className="drawer-body" data-status={task.state.status}>
         <header className="drawer-header">
           <span className="task-number">#{task.position}</span>

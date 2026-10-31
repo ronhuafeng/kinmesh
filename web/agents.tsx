@@ -291,21 +291,14 @@ export function AgentDrawer({
   agent,
   data,
   onClose,
-  disabled,
 }: {
   agent: Agent;
   data: WorkspaceSnapshot;
   onClose: () => void;
-  disabled: boolean;
 }) {
   const joined = data.joinedAgentIds.includes(agent.id);
   return (
-    <Drawer
-      label={agent.name}
-      onClose={onClose}
-      className="agent-drawer"
-      disabled={disabled}
-    >
+    <Drawer label={agent.name} onClose={onClose} className="agent-drawer">
       <div className="drawer-body">
         <header className="identity">
           <Avatar kind="agent" name={agent.name} size="lg" />

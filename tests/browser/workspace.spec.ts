@@ -451,9 +451,7 @@ test('keyboard mention, message becomes a task in its topic, and the needs-me fi
   await expect(
     composer.getByRole('list', { name: 'Mentions' }).getByText('@Ada'),
   ).toBeVisible();
-  await expect(
-    composer.getByRole('button', { name: 'Send message' }),
-  ).toBeEnabled();
+  // Sent while the topic switch may still be refreshing: it must go through.
   await message.press('ControlOrMeta+Enter');
   const posted = page
     .getByRole('list', { name: 'Channel messages' })
@@ -644,7 +642,7 @@ test('human claim and request-review controls, plus leave/rejoin of known member
   ).toBeVisible();
 });
 
-test('sidebar mutations block submission while workspace GET is loading or failing, then reconnect', async ({
+test('a heartbeat refresh never interrupts work; after a failure nothing submits until a reconnect succeeds', async ({
   page,
   context,
   hub,
@@ -658,77 +656,92 @@ test('sidebar mutations block submission while workspace GET is loading or faili
   await page.getByText('Rejoin a channel', { exact: true }).click();
   await page.getByLabel('Known channel ID').fill(state.channel.id);
   const join = page.getByRole('form', { name: 'Rejoin membership' });
+  const composer = page.getByRole('form', { name: 'Message your team' });
   let posts = 0;
   page.on('request', (request) => {
     if (request.method() === 'POST') posts++;
   });
-  let release: () => void = () => {
-    throw new Error('Workspace request not intercepted');
-  };
-  const held = new Promise<void>((resolve) => {
-    release = resolve;
-  });
-  await page.route('**/api/workspace?*', async (route) => {
-    await held;
-    await route.fulfill({
-      status: 503,
-      contentType: 'application/json',
-      body: '{}',
+  /** Holds every workspace GET until released, then answers with `status`. */
+  async function holdWorkspace(status: number) {
+    let release: () => void = () => {
+      throw new Error('Workspace request not intercepted');
+    };
+    const held = new Promise<void>((resolve) => {
+      release = resolve;
     });
-  });
+    await page.unroute('**/api/workspace?*');
+    await page.route('**/api/workspace?*', async (route) => {
+      await held;
+      if (status === 200) await route.continue();
+      else
+        await route.fulfill({
+          status,
+          contentType: 'application/json',
+          body: '{}',
+        });
+    });
+    return () => {
+      release();
+    };
+  }
+  async function expectNothingSubmits() {
+    for (const form of [create, join]) {
+      await expect(
+        form.getByRole('button', { name: /Create channel|Join channel/ }),
+      ).toBeDisabled();
+      // Bypass native disabled controls to verify the submit handler also fails closed.
+      await form.evaluate((node) =>
+        node.dispatchEvent(
+          new Event('submit', { bubbles: true, cancelable: true }),
+        ),
+      );
+    }
+    await expect(
+      composer.getByRole('button', { name: 'Send message' }),
+    ).toBeDisabled();
+    await expect(
+      page.getByRole('button', { name: 'Sign out', exact: true }),
+    ).toBeDisabled();
+    expect(posts).toBe(0);
+  }
+  // A: refreshing a confirmed snapshot changes nothing the person can do.
+  const failRefresh = await holdWorkspace(503);
   await page.getByRole('button', { name: 'Reconnect / refresh' }).click();
   await expect(page.getByText('Refreshing…', { exact: true })).toBeVisible();
-  // A background refresh pauses sending only; typing is never interrupted.
-  await expect(create.getByLabel('Channel name')).toBeEditable();
+  await expect(composer.getByLabel('Message', { exact: true })).toBeEditable();
   await expect(
-    page
-      .getByRole('form', { name: 'Message your team' })
-      .getByLabel('Message', { exact: true }),
-  ).toBeEditable();
+    composer.getByRole('button', { name: 'Send message' }),
+  ).toBeEnabled();
   await expect(
-    page
-      .getByRole('form', { name: 'Message your team' })
-      .getByRole('button', { name: 'Send message' }),
-  ).toBeDisabled();
-  for (const form of [create, join]) {
-    await expect(
-      form.getByRole('button', { name: /Create channel|Join channel/ }),
-    ).toBeDisabled();
-    // Bypass native disabled controls to verify the submit handler also fails closed.
-    await form.evaluate((node) =>
-      node.dispatchEvent(
-        new Event('submit', { bubbles: true, cancelable: true }),
-      ),
-    );
-  }
-  await expect(
-    page.getByRole('button', { name: 'Sign out', exact: true }),
-  ).toBeDisabled();
-  expect(posts).toBe(0);
-  release();
+    create.getByRole('button', { name: 'Create channel', exact: true }),
+  ).toBeEnabled();
+  // B: once a refresh fails, the snapshot is stale and every submission stops.
+  failRefresh();
   await expect(page.getByText('Disconnected', { exact: true })).toBeVisible();
-  for (const form of [create, join]) {
-    await expect(
-      form.getByRole('button', { name: /Create channel|Join channel/ }),
-    ).toBeDisabled();
-    await form.evaluate((node) =>
-      node.dispatchEvent(
-        new Event('submit', { bubbles: true, cancelable: true }),
-      ),
-    );
-  }
-  expect(posts).toBe(0);
+  // Typing goes on (nothing is lost); only sending waits for a confirmed snapshot.
+  await expect(create.getByLabel('Channel name')).toBeEditable();
+  await expect(composer.getByLabel('Message', { exact: true })).toBeEditable();
+  await expectNothingSubmits();
+  // B': a reconnect still in flight has not confirmed anything yet.
+  const succeed = await holdWorkspace(200);
+  await page.getByRole('button', { name: 'Reconnect / refresh' }).click();
+  await expect(page.getByText('Refreshing…', { exact: true })).toBeVisible();
+  await expect(create.getByLabel('Channel name')).toBeEditable();
+  await expectNothingSubmits();
+  await expect(
+    composer.getByRole('alert').or(page.getByRole('alert')).first(),
+  ).toBeVisible();
   // Only GET is broken: real server POST remains reachable to the authenticated owner.
   const probe = await context.request.post(
     `${hub.origin}/api/teams/${state.team.id}/channels`,
     { data: { name: 'reachable-post', operationKey: randomUUID() } },
   );
   expect(probe.status()).toBe(201);
-  await page.unroute('**/api/workspace?*');
-  await page.getByRole('button', { name: 'Reconnect / refresh' }).click();
+  succeed();
   await expect(
     page.getByText('Snapshot connected', { exact: true }),
   ).toBeVisible();
+  await page.unroute('**/api/workspace?*');
   await join.getByRole('button', { name: 'Join channel', exact: true }).click();
   await expect(
     create.getByRole('button', { name: 'Create channel', exact: true }),
