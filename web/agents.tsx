@@ -160,6 +160,10 @@ function Activity({
   const [snapshot, setSnapshot] = useState<ExecutionSnapshot | null>(null);
   const [error, setError] = useState('');
   const snapshotRequest = useRef<AbortController | null>(null);
+  const panel = useRef<HTMLElement>(null);
+  useEffect(() => {
+    panel.current?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+  }, []);
   function loseAccess() {
     snapshotRequest.current?.abort();
     setSnapshot(null);
@@ -199,7 +203,11 @@ function Activity({
     };
   }, [agent.id, teamId, revision]);
   return (
-    <section className="activity" aria-label={agent.name + ' activity'}>
+    <section
+      ref={panel}
+      className="activity"
+      aria-label={agent.name + ' activity'}
+    >
       <h3>{agent.name} · Execution activity</h3>
       <p className="eyebrow">AG-UI 1.0 · refreshed snapshot</p>
       <p>
@@ -270,20 +278,24 @@ export function Agents({
   data,
   channelPath,
   onDone,
+  selected,
+  onSelect,
 }: {
   data: WorkspaceSnapshot;
   channelPath: string | null;
   onDone: () => void;
+  selected: string | null;
+  onSelect: (id: string) => void;
 }) {
-  const [selected, setSelected] = useState<string | null>(null);
   const current = data.agents.find((a) => a.id === selected);
   return (
     <section>
       <div className="section-heading">
-        <div>
-          <p className="eyebrow">People’s partners, persistent by design</p>
-          <h2>Team agents</h2>
-        </div>
+        <h2>Agents</h2>
+        <span>
+          {data.joinedAgentIds.length} in this channel · {data.agents.length} on
+          the team
+        </span>
       </div>
       <details className="create-panel">
         <summary>Register agent</summary>
@@ -325,15 +337,26 @@ export function Agents({
       </details>
       <div className="agent-grid">
         {data.agents.map((agent) => (
-          <article className="agent-card" key={agent.id}>
-            <div className="avatar">{agent.name.slice(0, 1).toUpperCase()}</div>
-            <h3>{agent.name}</h3>
-            <p>
-              {agent.role} · {agent.lifecycle}
-            </p>
-            <small className="reference">{agent.id}</small>
+          <article
+            className="agent-card"
+            key={agent.id}
+            data-selected={agent.id === selected ? 'true' : undefined}
+            data-lifecycle={agent.lifecycle}
+          >
+            <div className="agent-identity">
+              <div className="avatar" aria-hidden="true">
+                {agent.name.slice(0, 1).toUpperCase()}
+              </div>
+              <div>
+                <h3>{agent.name}</h3>
+                <p>
+                  {agent.role} · {agent.lifecycle}
+                </p>
+              </div>
+            </div>
             <details>
               <summary>Profile details</summary>
+              <small className="reference">{agent.id}</small>
               <dl>
                 <dt>Environment preference</dt>
                 <dd>{agent.preferences.environmentId ?? 'Not configured'}</dd>
@@ -352,7 +375,7 @@ export function Agents({
             <button
               className="quiet"
               onClick={() => {
-                setSelected(agent.id);
+                onSelect(agent.id);
               }}
             >
               View {agent.name} activity

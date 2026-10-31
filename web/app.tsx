@@ -9,7 +9,7 @@ import { Auth } from './auth.js';
 import { api, HttpError, MutationPermission, value } from './api.js';
 import { ActionForm, Field, Notice } from './forms.js';
 import { Agents } from './agents.js';
-import { Tasks } from './tasks.js';
+import { humanAsk, Tasks } from './tasks.js';
 function initialSelection() {
   const query = new URLSearchParams(window.location.search);
   return {
@@ -31,6 +31,7 @@ export function App() {
   const [revision, setRevision] = useState(0);
   const [tab, setTab] = useState('conversation');
   const [cursors, setCursors] = useState<Record<string, string>>({});
+  const [agentFocus, setAgentFocus] = useState<string | null>(null);
   const refresh = useCallback(() => {
     setRevision((n) => n + 1);
   }, []);
@@ -129,20 +130,38 @@ export function App() {
   const canAct =
     status === 'ready' &&
     (!selection.channel || selection.channel === channel?.id);
+  const joinedAgents = data.agents.filter((a) =>
+    data.joinedAgentIds.includes(a.id),
+  );
+  const openTasks = data.tasks.items.filter(
+    (t) => t.state.status !== 'accepted' && t.state.status !== 'cancelled',
+  ).length;
+  const asks = channel
+    ? data.tasks.items.flatMap((task) => {
+        const ask = humanAsk(task, data);
+        return ask ? [{ task, ask }] : [];
+      })
+    : [];
+  const openAgent = (id: string) => {
+    setAgentFocus(id);
+    setTab('agents');
+  };
   return (
     <MutationPermission value={canAct}>
       <div className="workspace-shell">
         <aside className="sidebar">
-          <a className="brand" href="/">
-            k<span>kinmesh</span>
-          </a>
-          <div className="team-name">
-            <span className="team-icon">
-              {data.team.name.slice(0, 1).toUpperCase()}
-            </span>
-            <div>
-              <strong>{data.team.name}</strong>
-              <small>Team workspace</small>
+          <div className="sidebar-top">
+            <a className="brand" href="/" aria-label="Kinmesh home">
+              k<span>kinmesh</span>
+            </a>
+            <div className="team-name">
+              <span className="team-icon" aria-hidden="true">
+                {data.team.name.slice(0, 1).toUpperCase()}
+              </span>
+              <div>
+                <strong>{data.team.name}</strong>
+                <small>Team workspace</small>
+              </div>
             </div>
           </div>
           <nav aria-label="Channels">
@@ -172,34 +191,77 @@ export function App() {
               More channels
             </button>
           )}
-          <details>
-            <summary>New channel</summary>
-            <ActionForm
-              title="Create a channel"
-              path={`/api/teams/${data.team.id}/channels`}
-              build={(f) => ({ name: value(f, 'name') })}
-              submit="Create channel"
-              onDone={refresh}
-            >
-              <Field label="Channel name">
-                <input name="name" required maxLength={80} />
-              </Field>
-            </ActionForm>
-          </details>
-          <details>
-            <summary>Rejoin a channel</summary>
-            <JoinChannel
-              teamId={data.team.id}
-              onDone={selectChannel}
-              disabled={!canAct}
-            />
-          </details>
-          <p className="sidebar-note">
-            A channel holds your shared history.
-            <br />A task holds a clear promise.
-          </p>
+          <div className="sidebar-actions">
+            <details>
+              <summary>New channel</summary>
+              <ActionForm
+                title="Create a channel"
+                path={`/api/teams/${data.team.id}/channels`}
+                build={(f) => ({ name: value(f, 'name') })}
+                submit="Create channel"
+                onDone={refresh}
+              >
+                <Field label="Channel name">
+                  <input name="name" required maxLength={80} />
+                </Field>
+              </ActionForm>
+            </details>
+            <details>
+              <summary>Rejoin a channel</summary>
+              <JoinChannel
+                teamId={data.team.id}
+                onDone={selectChannel}
+                disabled={!canAct}
+              />
+            </details>
+          </div>
+          {channel && (
+            <section className="people" aria-label="People in this channel">
+              <div className="nav-heading">
+                <h2>In this channel</h2>
+                <span>{joinedAgents.length + 1}</span>
+              </div>
+              <ul>
+                <li>
+                  <span className="person">
+                    <span className="mini-avatar human" aria-hidden="true">
+                      {data.human.username.slice(0, 1).toUpperCase()}
+                    </span>
+                    <span className="person-name">{data.human.username}</span>
+                    <small>you</small>
+                  </span>
+                </li>
+                {joinedAgents.map((agent) => (
+                  <li key={agent.id}>
+                    <button
+                      className="person"
+                      onClick={() => {
+                        openAgent(agent.id);
+                      }}
+                    >
+                      <span className="mini-avatar agent" aria-hidden="true">
+                        {agent.name.slice(0, 1).toUpperCase()}
+                      </span>
+                      <span className="person-name">{agent.name}</span>
+                      <small>{agent.role}</small>
+                    </button>
+                  </li>
+                ))}
+              </ul>
+              {joinedAgents.length === 0 && (
+                <button
+                  className="link-button"
+                  onClick={() => {
+                    setTab('agents');
+                  }}
+                >
+                  Invite an agent
+                </button>
+              )}
+            </section>
+          )}
           <div className="account">
-            <span className="avatar">
+            <span className="avatar" aria-hidden="true">
               {data.human.username.slice(0, 1).toUpperCase()}
             </span>
             <span>
@@ -229,12 +291,11 @@ export function App() {
         </aside>
         <main className="workspace-main">
           <header className="workspace-header">
-            <div>
-              <p className="eyebrow">Your shared workspace</p>
+            <div className="title-block">
               <h1>{channel ? '# ' + channel.name : 'Welcome to your team'}</h1>
               <p>
                 {channel
-                  ? 'Conversations, teammates, and decisions in one place.'
+                  ? `${plural(joinedAgents.length + 1, 'member')} · ${plural(openTasks, 'open task')}`
                   : 'Create or rejoin a channel to begin.'}
               </p>
             </div>
@@ -246,13 +307,13 @@ export function App() {
                     ? 'Refreshing…'
                     : 'Disconnected'}
               </span>
-              <button className="secondary" onClick={refresh}>
-                Reconnect / refresh
-              </button>
               <small>
                 Read {new Date(data.observedAt).toLocaleTimeString()} · polls
                 every 15s
               </small>
+              <button className="secondary" onClick={refresh}>
+                Reconnect / refresh
+              </button>
             </div>
           </header>
           {error && (
@@ -268,10 +329,43 @@ export function App() {
               </button>
             </Notice>
           )}
+          {asks.length > 0 && tab !== 'tasks' && (
+            <section className="decision-strip" aria-label="Waiting for you">
+              <p>
+                <strong>
+                  {asks.length === 1
+                    ? '1 task is waiting for you'
+                    : `${String(asks.length)} tasks are waiting for you`}
+                </strong>
+              </p>
+              <ul>
+                {asks.map(({ task, ask }) => (
+                  <li key={task.id}>
+                    <button
+                      className="ask"
+                      onClick={() => {
+                        setTab('tasks');
+                      }}
+                    >
+                      <span className="ask-title">{task.title}</span>
+                      <small>{ask}</small>
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            </section>
+          )}
           <Tabs.Root value={tab} onValueChange={setTab}>
             <Tabs.List aria-label="Workspace views">
               <Tabs.Trigger value="conversation">Conversation</Tabs.Trigger>
-              <Tabs.Trigger value="tasks">Tasks</Tabs.Trigger>
+              <Tabs.Trigger value="tasks">
+                Tasks
+                {asks.length > 0 && (
+                  <span className="tab-count" aria-hidden="true">
+                    {asks.length}
+                  </span>
+                )}
+              </Tabs.Trigger>
               <Tabs.Trigger value="agents">Agents & activity</Tabs.Trigger>
             </Tabs.List>
             <fieldset className="view-content" disabled={!canAct}>
@@ -280,9 +374,8 @@ export function App() {
                 key={channel?.id ?? 'no-channel'}
               >
                 {channel && channelPath ? (
-                  <>
-                    <div className="conversation-heading">
-                      <h2>Channel conversation</h2>
+                  <div className="conversation">
+                    <div className="conversation-toolbar">
                       <Field label="Topic">
                         <select
                           aria-label="Topic"
@@ -303,77 +396,110 @@ export function App() {
                           ))}
                         </select>
                       </Field>
+                      {data.topics.nextCursor && (
+                        <button
+                          className="quiet"
+                          onClick={() => {
+                            next('topicsCursor', data.topics.nextCursor);
+                          }}
+                        >
+                          More topics
+                        </button>
+                      )}
+                      <details className="create-panel">
+                        <summary>Start a topic</summary>
+                        <ActionForm
+                          title="New topic"
+                          path={channelPath + '/topics'}
+                          submit="Create topic"
+                          build={(f) => ({ title: value(f, 'title') })}
+                          onDone={refresh}
+                        >
+                          <Field label="Topic title">
+                            <input name="title" required maxLength={160} />
+                          </Field>
+                        </ActionForm>
+                      </details>
                     </div>
-                    <details className="create-panel">
-                      <summary>Start a topic</summary>
-                      <ActionForm
-                        title="New topic"
-                        path={channelPath + '/topics'}
-                        submit="Create topic"
-                        build={(f) => ({ title: value(f, 'title') })}
-                        onDone={refresh}
-                      >
-                        <Field label="Topic title">
-                          <input name="title" required maxLength={160} />
-                        </Field>
-                      </ActionForm>
-                    </details>
-                    {data.topics.nextCursor && (
+                    {cursors.messagesCursor && (
                       <button
+                        className="quiet page-control"
                         onClick={() => {
-                          next('topicsCursor', data.topics.nextCursor);
+                          setCursors({});
                         }}
                       >
-                        More topics
+                        First messages page
                       </button>
                     )}
                     <ol className="messages" aria-label="Channel messages">
-                      {data.messages.items.map((m) => (
-                        <li key={m.id}>
-                          <div
-                            className={'message-avatar ' + m.author.kind}
-                            aria-hidden="true"
+                      {data.messages.items.map((m, index) => {
+                        const previous = data.messages.items[index - 1];
+                        const sameAuthor =
+                          previous !== undefined &&
+                          JSON.stringify(previous.author) ===
+                            JSON.stringify(m.author) &&
+                          previous.topicId === m.topicId &&
+                          Date.parse(m.createdAt) -
+                            Date.parse(previous.createdAt) <
+                            5 * 60_000;
+                        const name = authorName(m.author, data);
+                        return (
+                          <li
+                            key={m.id}
+                            data-kind={m.author.kind}
+                            data-continued={sameAuthor ? 'true' : undefined}
                           >
-                            {authorName(m.author, data)
-                              .slice(0, 1)
-                              .toUpperCase()}
-                          </div>
-                          <div>
-                            <header>
-                              <strong>{authorName(m.author, data)}</strong>
-                              <span className="author-kind">
-                                {m.author.kind}
-                              </span>
-                              <time dateTime={m.createdAt}>
-                                {new Date(m.createdAt).toLocaleString()}
-                              </time>
-                            </header>
-                            {m.topicId && (
-                              <small className="topic-tag">
-                                Topic:{' '}
-                                {data.topics.items.find(
-                                  (t) => t.id === m.topicId,
-                                )?.title ?? m.topicId}
-                              </small>
-                            )}
-                            <p>{m.body}</p>
-                            {m.mentions.length > 0 && (
-                              <p className="mentions">
-                                Mentions:{' '}
-                                {m.mentions
-                                  .map((member) =>
-                                    member.kind === 'agent'
-                                      ? (data.agents.find(
-                                          (a) => a.id === member.id,
-                                        )?.name ?? 'Agent')
-                                      : 'Human member',
-                                  )
-                                  .join(', ')}
-                              </p>
-                            )}
-                          </div>
-                        </li>
-                      ))}
+                            <div
+                              className={'message-avatar ' + m.author.kind}
+                              aria-hidden="true"
+                            >
+                              {name.slice(0, 1).toUpperCase()}
+                            </div>
+                            <div>
+                              <header>
+                                <strong>{name}</strong>
+                                <span className="author-kind">
+                                  {m.author.kind}
+                                </span>
+                                <time dateTime={m.createdAt}>
+                                  {new Date(m.createdAt).toLocaleString(
+                                    undefined,
+                                    {
+                                      month: 'short',
+                                      day: 'numeric',
+                                      hour: 'numeric',
+                                      minute: '2-digit',
+                                    },
+                                  )}
+                                </time>
+                                {m.topicId && (
+                                  <small className="topic-tag">
+                                    Topic:{' '}
+                                    {data.topics.items.find(
+                                      (t) => t.id === m.topicId,
+                                    )?.title ?? m.topicId}
+                                  </small>
+                                )}
+                              </header>
+                              <p>{m.body}</p>
+                              {m.mentions.length > 0 && (
+                                <p className="mentions">
+                                  Mentions:{' '}
+                                  {m.mentions
+                                    .map((member) =>
+                                      member.kind === 'agent'
+                                        ? (data.agents.find(
+                                            (a) => a.id === member.id,
+                                          )?.name ?? 'Agent')
+                                        : 'Human member',
+                                    )
+                                    .join(', ')}
+                                </p>
+                              )}
+                            </div>
+                          </li>
+                        );
+                      })}
                     </ol>
                     {data.messages.items.length === 0 && (
                       <div className="empty">
@@ -386,21 +512,12 @@ export function App() {
                     )}
                     {data.messages.nextCursor && (
                       <button
+                        className="quiet page-control"
                         onClick={() => {
                           next('messagesCursor', data.messages.nextCursor);
                         }}
                       >
                         Next messages page
-                      </button>
-                    )}
-                    {cursors.messagesCursor && (
-                      <button
-                        className="quiet"
-                        onClick={() => {
-                          setCursors({});
-                        }}
-                      >
-                        First messages page
                       </button>
                     )}
                     <div className="composer">
@@ -425,22 +542,24 @@ export function App() {
                         <Field label="Message">
                           <textarea
                             name="body"
-                            rows={3}
+                            rows={2}
                             required
                             maxLength={8000}
-                            placeholder="Share context, ask a question, or leave a decision…"
+                            placeholder={
+                              'Message #' +
+                              channel.name +
+                              ' — share context, ask, or decide…'
+                            }
                           />
                         </Field>
                         <Field label="Mention an agent">
                           <select name="mention">
                             <option value="">No mention</option>
-                            {data.agents
-                              .filter((a) => data.joinedAgentIds.includes(a.id))
-                              .map((a) => (
-                                <option value={a.id} key={a.id}>
-                                  {a.name}
-                                </option>
-                              ))}
+                            {joinedAgents.map((a) => (
+                              <option value={a.id} key={a.id}>
+                                {a.name}
+                              </option>
+                            ))}
                           </select>
                         </Field>
                       </ActionForm>
@@ -458,11 +577,12 @@ export function App() {
                         }}
                       />
                     </details>
-                  </>
+                  </div>
                 ) : (
-                  <p className="empty">
-                    Choose a joined channel to read and post.
-                  </p>
+                  <div className="empty">
+                    <h3>No channel open</h3>
+                    <p>Choose a joined channel to read and post.</p>
+                  </div>
                 )}
               </Tabs.Content>
               <Tabs.Content value="tasks">
@@ -476,7 +596,9 @@ export function App() {
                     }}
                   />
                 ) : (
-                  <p>Create a channel before creating tasks.</p>
+                  <div className="empty">
+                    <p>Create a channel before creating tasks.</p>
+                  </div>
                 )}
               </Tabs.Content>
               <Tabs.Content value="agents">
@@ -484,18 +606,19 @@ export function App() {
                   data={data}
                   channelPath={channelPath}
                   onDone={refresh}
+                  selected={agentFocus}
+                  onSelect={setAgentFocus}
                 />
               </Tabs.Content>
             </fieldset>
           </Tabs.Root>
-          <footer className="workspace-footer">
-            Kinmesh owns team state. T3 owns execution. Human acceptance is
-            always explicit.
-          </footer>
         </main>
       </div>
     </MutationPermission>
   );
+}
+function plural(count: number, noun: string) {
+  return `${String(count)} ${noun}${count === 1 ? '' : 's'}`;
 }
 function JoinChannel({
   teamId,
