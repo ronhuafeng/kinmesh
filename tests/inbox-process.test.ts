@@ -165,11 +165,16 @@ await test(
         postInput({ mentions: [{ kind: 'agent', id: f.agent.id }] }),
       );
       for (let attempt = 0; attempt < 2; attempt++) {
-        const child = spawn('npm', ['run', 'inbox:worker'], {
-          env: { ...process.env, KINMESH_INBOX_CONFIG: path },
-          stdio: ['ignore', 'pipe', 'pipe'],
-          detached: true,
-        });
+        // Signal the worker itself: npm/shell process-group forwarding differs on macOS.
+        const child = spawn(
+          process.execPath,
+          ['--env-file-if-exists=.env', '--import', 'tsx', 'src/inbox/main.ts'],
+          {
+            env: { ...process.env, KINMESH_INBOX_CONFIG: path },
+            stdio: ['ignore', 'pipe', 'pipe'],
+            detached: true,
+          },
+        );
         children.push(child);
         let output = '';
         child.stdout.on('data', (chunk: Buffer) => {
@@ -180,7 +185,7 @@ await test(
           signal: AbortSignal.timeout(10000),
         });
         assert.ok(child.pid);
-        process.kill(-child.pid, 'SIGTERM');
+        child.kill('SIGTERM');
         await exited;
         assert.ok(output.includes('Kinmesh Inbox worker stopped.'));
         assert.equal(f.rows()[0]?.state, 'ready');

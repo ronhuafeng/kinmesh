@@ -34,6 +34,27 @@ await test('FIXTURE: transport exceptions and local scope errors are not native-
   await assert.rejects(nativeReadOnlyDenial(wire), /local permission denied/);
 });
 
+await test('FIXTURE: native capability_denied in JSON text proves Read only write rejection', async () => {
+  const wire: Pick<Wire, 'call'> = {
+    call() {
+      return Promise.resolve({
+        isError: true,
+        content: [
+          {
+            type: 'text',
+            text: JSON.stringify({
+              _tag: 'OrchestrationError',
+              code: 'capability_denied',
+              message: 'Denied',
+            }),
+          },
+        ],
+      });
+    },
+  };
+  assert.equal(await nativeReadOnlyDenial(wire), true);
+});
+
 await test('FIXTURE: success, missing isError, and unrelated native errors fail closed', async () => {
   const cases: unknown[] = [
     { isError: false, structuredContent: { code: 'capability_denied' } },
@@ -41,6 +62,15 @@ await test('FIXTURE: success, missing isError, and unrelated native errors fail 
     { isError: true, structuredContent: { code: 'thread_not_found' } },
     { isError: true, content: [{ type: 'text', text: 'capability_denied' }] },
     { isError: true, structuredContent: null },
+    {
+      isError: false,
+      content: [{ type: 'text', text: '{"code":"capability_denied"}' }],
+    },
+    {
+      isError: true,
+      structuredContent: { code: 'thread_not_found' },
+      content: [{ type: 'text', text: '{"code":"capability_denied"}' }],
+    },
     {},
   ];
   for (const value of cases) {

@@ -10,6 +10,11 @@ const NativeCapabilityDenial = z.object({
     code: z.literal('capability_denied'),
   }),
 });
+const TextErrorEnvelope = z.object({
+  isError: z.literal(true),
+  structuredContent: z.undefined().optional(),
+  content: z.array(z.object({ type: z.string(), text: z.string().optional() })),
+});
 
 /** Test-only, harmless denial probe for an explicitly approved Read only grant.
  * This intentionally bypasses Kinmesh's local T3Backend scope guard and
@@ -22,5 +27,17 @@ export async function nativeReadOnlyDenial(
     threadId: randomUUID(),
     action: 'archive',
   });
-  return NativeCapabilityDenial.safeParse(response).success;
+  if (NativeCapabilityDenial.safeParse(response).success) return true;
+  const envelope = TextErrorEnvelope.safeParse(response);
+  if (!envelope.success) return false;
+  const text = envelope.data.content.find((item) => item.type === 'text')?.text;
+  try {
+    const structuredContent: unknown = JSON.parse(text ?? '');
+    return NativeCapabilityDenial.safeParse({
+      isError: true,
+      structuredContent,
+    }).success;
+  } catch {
+    return false;
+  }
 }

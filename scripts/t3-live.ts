@@ -133,9 +133,9 @@ try {
   const follow = known(
     await backend.send(
       reference,
-      'Do not use tools or files. Output 1000 numbered lines, each containing ' +
+      'Do not use tools or files. Reply in at most 200 characters, including spaces and punctuation. Include this text: ' +
         nonce +
-        '. Do not summarize.',
+        '.',
       { actor: intent.actor, operationKey: randomUUID() },
     ),
   );
@@ -215,7 +215,8 @@ try {
     JSON.stringify({
       version: '0.1.5',
       transport: 'official-sdk-streamable-http-oauth',
-      approval: 'headless-native-pairing-code; not browser-consent evidence',
+      approval:
+        'owner-approved-external-oauth; consent UX not inferred by this gate',
       passed,
       model: config.KINMESH_T3_MODEL,
       provider: config.KINMESH_T3_PROVIDER,

@@ -56,6 +56,21 @@ async function freePort() {
 // Only descendants of our disposable test process are inspected; no production PID claims.
 function descendants(pid: number): number[] {
   try {
+    if (process.platform === 'darwin') {
+      const rows = execFileSync('ps', ['-axo', 'pid=,ppid='], {
+        encoding: 'utf8',
+      })
+        .trim()
+        .split('\n')
+        .map((line) => line.trim().split(/\s+/).map(Number));
+      const collect = (parent: number): number[] =>
+        rows.flatMap(([child, owner]) =>
+          child !== undefined && owner === parent
+            ? [child, ...collect(child)]
+            : [],
+        );
+      return collect(pid);
+    }
     const children = readFileSync(
       `/proc/${String(pid)}/task/${String(pid)}/children`,
       'utf8',
@@ -71,6 +86,12 @@ function descendants(pid: number): number[] {
 }
 function command(pid: number) {
   try {
+    if (process.platform === 'darwin')
+      return execFileSync('ps', ['-p', String(pid), '-o', 'command='], {
+        encoding: 'utf8',
+      })
+        .trim()
+        .split(/\s+/);
     return readFileSync(`/proc/${String(pid)}/cmdline`, 'utf8').split('\0');
   } catch {
     return [];
@@ -78,6 +99,12 @@ function command(pid: number) {
 }
 function alive(pid: number) {
   try {
+    if (process.platform === 'darwin')
+      return !execFileSync('ps', ['-p', String(pid), '-o', 'stat='], {
+        encoding: 'utf8',
+      })
+        .trim()
+        .startsWith('Z');
     // A zombie has already exited and cannot hold a database or launch work.
     return !/^\d+ \(.*\) Z /.test(
       readFileSync(`/proc/${String(pid)}/stat`, 'utf8'),
