@@ -64,6 +64,6 @@ Dispatch real integration for reviewed `main`:
 gh workflow run live.yml --ref main
 ```
 
-For a trusted local runner, use Node 24, the same three secret environment variables, `KINMESH_LIVE_EXECUTOR=codex` or `grok`, and absolute `KINMESH_T3_BINARY`, `KINMESH_CODEX_BINARY`, `KINMESH_GROK_BINARY` paths. After installing Chromium and building, run `npm run test:live`. The OAuth callback port `127.0.0.1:49871` must be free. Do not run jobs concurrently on the same machine, reuse another gate's consumed fixture, or run the test inside a directory with an unrelated `.env` file.
+For a trusted local runner, use Node 24, the same three secret environment variables, `KINMESH_LIVE_EXECUTOR=codex` or `grok`, and absolute `KINMESH_T3_BINARY`, `KINMESH_CODEX_BINARY`, `KINMESH_GROK_BINARY` paths. After installing Chromium and building, run `npm run test:collaboration-live`. The OAuth callback port `127.0.0.1:49871` must be free. Do not run jobs concurrently on the same machine, reuse another gate's consumed fixture, or run the test inside a directory with an unrelated `.env` file.
 
 On failure, inspect the redacted artifact and exact source revision first. Use the private native state through official MCP/UI to identify the real cause. Do not delete journals, change operation keys, weaken assertions or repeatedly dispatch merely to obtain green output. Fix the responsible layer, review the change, and execute a new gate for that revision. A failed job and its partial native executions remain part of the acceptance record.

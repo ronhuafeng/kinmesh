@@ -35,7 +35,7 @@ jobs:
           LLM_API_KEY: ${{ secrets.LLM_API_KEY }}
           CODEX_BASE_URL: ${{ secrets.CODEX_BASE_URL }}
           GROK_BASE_URL: ${{ secrets.GROK_BASE_URL }}
-        run: npm run test:live
+        run: npm run test:collaboration-live
       - name: Bounded redacted evidence, including failures
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4

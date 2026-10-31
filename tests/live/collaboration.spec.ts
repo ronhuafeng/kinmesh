@@ -100,6 +100,32 @@ test('complete real two-agent workflow, Human rework/acceptance, recovery and au
           .all(hub.taskId),
       );
   };
+  async function activityFor(ref: Reference): Promise<z.infer<typeof Read>> {
+    if (!tools) throw new Error('NATIVE_AUDIT_REQUIRED');
+    const items: z.infer<typeof Read>['items'] = [];
+    let after: number | undefined;
+    for (let page = 0; page < 8; page++) {
+      const activity = Read.parse(
+        await tools.call('t3_thread_read', {
+          threadId: ref.threadId,
+          view: 'activity',
+          limit: 100,
+          runLimit: 50,
+          maxCharsPerItem: 50000,
+          ...(after === undefined ? {} : { afterPosition: after }),
+        }),
+      );
+      assert.equal(activity.thread.threadId, ref.threadId);
+      items.push(...activity.items);
+      if (!activity.hasMore) return { ...activity, items };
+      assert.ok(
+        activity.nextPosition !== null &&
+          (after === undefined || activity.nextPosition > after),
+      );
+      after = activity.nextPosition;
+    }
+    throw new Error('NATIVE_ACTIVITY_EVIDENCE_PAGE_BOUND');
+  }
   async function auditNative() {
     if (!backend || !db) throw new Error('AUDIT_NOT_READY');
     const results = [];
@@ -115,17 +141,7 @@ test('complete real two-agent workflow, Human rework/acceptance, recovery and au
       assert.ok(ref.runId);
       assert.ok(!runIds.has(ref.runId));
       runIds.add(ref.runId);
-      if (!tools) throw new Error('NATIVE_AUDIT_REQUIRED');
-      const activity = Read.parse(
-        await tools.call('t3_thread_read', {
-          threadId: ref.threadId,
-          view: 'activity',
-          limit: 100,
-          runLimit: 50,
-          maxCharsPerItem: 50000,
-        }),
-      );
-      assert.equal(activity.hasMore, false);
+      const activity = await activityFor(ref);
       const successfulCalls = activity.items
         .filter(
           (item) => item.type === 'dynamic_tool' && item.runId === ref.runId,
@@ -324,15 +340,7 @@ test('complete real two-agent workflow, Human rework/acceptance, recovery and au
   async function approve(row: z.infer<typeof rowSchema>) {
     if (!tools || !row.reference || !native.page) return;
     const ref = Reference.parse(JSON.parse(row.reference) as unknown);
-    const activity = Read.parse(
-      await tools.call('t3_thread_read', {
-        threadId: ref.threadId,
-        view: 'activity',
-        limit: 100,
-        runLimit: 50,
-        maxCharsPerItem: 20_000,
-      }),
-    );
+    const activity = await activityFor(ref);
     if (!activity.thread.pendingRequestCount) return;
     assert.equal(activity.thread.pendingRequestCount, 1);
     assert.equal(activity.thread.activeRunId, ref.runId);
@@ -398,6 +406,8 @@ test('complete real two-agent workflow, Human rework/acceptance, recovery and au
   let crashed = false;
   let originalRequest = '';
   let originalLease = 0;
+  let originalReference = '';
+  let originalGeneration = 0;
   async function progress(
     targetVersion: number,
     deliveries: number,
@@ -463,6 +473,9 @@ test('complete real two-agent workflow, Human rework/acceptance, recovery and au
               );
               if ((paused?.lease_until ?? 0) > Date.now()) {
                 originalLease = paused?.lease_until ?? 0;
+                originalReference = paused?.reference ?? '';
+                originalGeneration = paused?.generation ?? 0;
+                assert.ok(originalReference);
                 process.kill(worker.pid, 'SIGKILL');
                 crashed = true;
                 assert.equal(
@@ -588,6 +601,17 @@ test('complete real two-agent workflow, Human rework/acceptance, recovery and au
         ).request_id,
       originalRequest,
     );
+    assert.deepEqual(
+      JSON.parse(first.reference ?? 'null') as unknown,
+      JSON.parse(originalReference) as unknown,
+    );
+    assert.ok(first.generation > originalGeneration);
+    const recoveredReference = Reference.parse(
+      JSON.parse(originalReference) as unknown,
+    );
+    assert.equal((await backend.read(recoveredReference)).state, 'succeeded');
+    evidence.recoveredOriginalRunDigest = hash(originalReference);
+    checks.workerRecoveryRetainsOriginalNativeRun = true;
     checks.workerRecoveryRetainsOriginalNativeRequest = true;
     stage = 'repeated-human-source';
     assert.ok(hub.createdInput);

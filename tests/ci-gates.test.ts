@@ -54,14 +54,24 @@ await test('CI: no private OAuth or paid model runner in routine checks', () => 
       /(?:test:live|test:team-live|test:inbox-live|release:check)/,
     );
   }
-  for (const removed of [
+  for (const required of [
+    'test:live',
     'test:team-live',
     'test:inbox-live',
     'team:live:prepare',
     'release:check',
   ]) {
-    assert.equal(Object.hasOwn(scripts, removed), false);
+    assert.equal(typeof scripts[required], 'string');
   }
+  const workflow = source('../.github/workflows/t3-live.yml');
+  assert.match(workflow, /^on:\n  workflow_dispatch:\npermissions:/m);
+  assert.ok(workflow.includes('runs-on: [self-hosted, kinmesh-t3-acceptance]'));
+  const mainGuard = workflow.indexOf('test "$GITHUB_REF" = "refs/heads/main"');
+  assert.ok(
+    mainGuard > 0 && workflow.indexOf('uses: actions/checkout@v4') > mainGuard,
+  );
+  assert.ok(workflow.includes('npm run release:check'));
+  assert.doesNotMatch(workflow, /continue-on-error\s*:/);
 });
 
 await test('CI: paid integration is explicit, isolated, complete and does not retry models', () => {
@@ -79,7 +89,7 @@ await test('CI: paid integration is explicit, isolated, complete and does not re
     /continue-on-error:|pull_request_target|self-hosted/,
   );
   assert.equal(
-    scripts['test:live'],
+    scripts['test:collaboration-live'],
     'playwright test --config playwright.live.config.ts',
   );
   assert.match(source('../playwright.live.config.ts'), /retries: 0/);

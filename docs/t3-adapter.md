@@ -14,7 +14,7 @@ This command reads only `KINMESH_T3_ENDPOINT`; it does not load `.env` or a cred
 
 PASS requires unauthenticated `/mcp` to reject with HTTP 401 and a Bearer challenge, a public T3 environment descriptor with a nonempty identity and exact version `0.1.5`, and pinned issuer/resource/authorization/token/registration endpoints. It also checks S256 PKCE, authorization-response issuer support, authorization-code/public-client capabilities and advertised read/operate scopes. No scopes are requested. A 502, wrong version, missing capability or unavailable endpoint fails closed. Output is fixed PASS/FAIL text and never includes the host, environment ID or response/error bodies.
 
-**Preflight is public network, issuer and capability readiness, not OAuth authentication or live acceptance.** It never initializes MCP, registers a client, opens consent, exchanges a token, calls a tool or runs a model. The tests use local HTTP fixtures, not an owner T3 instance. Actual owner OAuth still requires the browser or private interactive terminal flow below. Kinmesh has no supported automatic T3 session OAuth through `app.t3.codes`; an app login does not replace native external-client approval. Never paste pairing codes, one-time callback credentials or tokens into chat, GitHub or logs. Issue #2 has been accepted with real owner-approved OAuth/MCP evidence; see [the owner report](acceptance/t3-owner-2026-10-30.md).
+**Preflight is public network, issuer and capability readiness, not OAuth authentication or live acceptance.** It never initializes MCP, registers a client, opens consent, exchanges a token, calls a tool or runs a model. The tests use local HTTP fixtures, not an owner T3 instance. Actual owner OAuth still requires the browser or private interactive terminal flow below. Kinmesh has no supported automatic T3 session OAuth through `app.t3.codes`; an app login does not replace native external-client approval. Never paste pairing codes, one-time callback credentials or tokens into chat, GitHub or logs. Issue #2 remains open until real approved acceptance is proven separately.
 
 ## Owner sign-in: local browser or remote terminal
 
@@ -122,19 +122,22 @@ Push/pull-request CI is the ongoing quality gate. It runs strict TypeScript, typ
 
 ```sh
 npm ci
-npm run check          # typed contracts, real SQLite and process tests
+npm run check          # all first-party types, type-aware lint, local tests, architecture
 npm run format:check
-npm run build
+npm run build          # emitted JS is ignored build output; stages committed migrations
 npm audit --omit=dev
-npm run test:browser   # genuine Chromium; install Playwright browser first
-npm run test:contract  # optional targeted fixture subset, not a live test
+npm run test:contract  # explicitly MOCK/AUTH UNIT plus captured schemas; not a live pass
+npm run test:live      # requires configured grants + reachable real T3; exits 1 when missing
+npm run release:check  # candidate release is rejected unless authenticated live gate passes
 ```
 
-The one-off authenticated acceptance CLIs and their private self-hosted workflow have been retired. The maintained live gate uses independent disposable fixtures and complete two-cycle collaboration; it is separate from routine CI. Previously witnessed owner OAuth, native executions and compatibility scenarios are preserved in [the T3 owner report](acceptance/t3-owner-2026-10-30.md) and [v0.1 workflow report](acceptance/v01-workflow-2026-10-31.md), with exact tested revisions and limits. A future T3 release or changed MCP contract still calls for targeted real compatibility verification before adoption. Operator commands `t3:preflight`, `t3:auth` and `t3:smoke` remain available to establish and diagnose a real connection.
+The existing `test:live`, `test:team-live`, `test:inbox-live` and dedicated owner-runner `release:check` path remain available for configured remote T3 deployments. The new Actions Secrets gate uses `test:collaboration-live` with independent disposable state and complete two-cycle collaboration; it is separate from routine CI and the owner-runner gate. Previously witnessed owner OAuth, native executions and compatibility scenarios are preserved in [the T3 owner report](acceptance/t3-owner-2026-10-30.md) and [v0.1 workflow report](acceptance/v01-workflow-2026-10-31.md), with exact tested revisions and limits. A future T3 release or changed MCP contract still calls for targeted real compatibility verification before adoption. Operator commands `t3:preflight`, `t3:auth` and `t3:smoke` remain available to establish and diagnose a real connection.
 
-On macOS, Node 24, canonical temporary directories, BSD PTY and process observation are covered by credential-free fixtures; Linux retains its own process/terminal paths. Fixtures cannot substitute for human OAuth consent.
+The live gate spends two model turns on disposable scratch threads: exact no-tools nonce completion, then a follow-up requesting at most 200 characters, interrupted while active. The character limit is a prompt instruction, not a token or cost cap. If the short follow-up finishes before the active observation or interrupt, the gate fails rather than claiming interruption; do not automatically rerun it. It also loses an actual idle-launch reply, closes SDK/reopens the Kinmesh DB, replays the same native key and proves the original thread identity. A separate real read-only grant must return native `capability_denied` for a valid mutation. This can be structured content or JSON text in an `isError: true` MCP envelope; plain error prose, unrelated errors and transport failures do not establish denial. Cleanup archives its own threads; cleanup failure makes the gate fail. Output contains fixed pass/fail labels, never model text or credentials. Its private report is evidence only with that invocation's successful exit, not a reusable stale credential/CI pass. The report does not infer whether the OAuth approval used a human browser.
 
-The scoped `@fastify/static` override currently selects patched glob/minimatch dependencies; review it when the plugin updates. Audit against a registry with a working security API (some mirrors return `NOT_IMPLEMENTED`).
+On macOS, use Node 24 and a canonical temporary-directory path for credential fixtures (`/var` can resolve through `/private/var`). Process supervision fixtures use macOS `ps` for their own child processes and BSD `script` for the mock private terminal; Linux keeps its `/proc` and util-linux paths. These fixtures do not exercise an owner grant.
+
+The `@fastify/static` dependency currently requires glob 13, which has no patched release for GHSA-3g3m-2fjr-6pw4. The scoped npm override selects glob 14.0.3 with minimatch 11.0.3, covering that advisory and GHSA-g3hv-75wg-m249 without downgrading Fastify's static plugin. Node 24 is supported by those dependencies; actual asset-serving/browser tests accompany the override. Remove the override when the plugin supports a patched dependency itself. Audit against a registry with the security API, for example `npm audit --omit=dev --registry=https://registry.npmjs.org`; some mirrors return `NOT_IMPLEMENTED`.
 
 ### Compatibility matrix
 
@@ -149,8 +152,8 @@ The scoped `@fastify/static` override currently selects patched glob/minimatch d
 | Browser OAuth consent UX                                                                                      | Owner completed Read only and Supervised browser flows on Mac; both official remote MCP smoke probes passed (2026-10-30)                   |
 | T3 server process restart / upgrade                                                                           | Isolated 0.1.4 → 0.1.5 identity preservation, stopped-peer failure, real restart/read and same-key native replay live; real 0.1.4 rejected |
 
-Compatibility observations are explicitly scoped to owner-approved, isolated official-binary and labeled fixture evidence. Full Team MCP, Inbox and Human/Developer/Reviewer acceptance is recorded in the [v0.1 report](acceptance/v01-workflow-2026-10-31.md). Future T3 versions require their own real compatibility verification; fix Kinmesh's adapter if necessary, never T3 internals.
+Actual Kinmesh evidence is separate from historical Runner G0–G5. It does not establish full team task acceptance or multi-user authorization. [Owner acceptance evidence](acceptance/t3-owner-2026-10-30.md) separates the Mac/remote owner OAuth path from isolated compatibility probes and records their limits. A dedicated authenticated CI runner and broader Team MCP/Inbox acceptance remain separate work. Adopt a new T3 version only after reviewing its public versioned schemas and running compatibility + authenticated live gates against that independently installed version; repair the adapter, never T3 internals.
 
-### Historical Runner verification
+### Witnessed Runner verification (2026-10-30)
 
-The earlier isolated runner and owner acceptance sessions are recorded in the linked historical reports. Their one-off commands were intentionally removed after v0.1 acceptance; ordinary CI now covers repeatable code and browser checks without any private OAuth grant or model spending.
+Final `npm ci` and `npm run release:check` succeeded with 45 local tests, strict typecheck, type-aware lint, architecture, formatting, build and zero runtime audit vulnerabilities. The authenticated live gate passed all nine fixed checks: launch, persisted-key reuse, exact completion, active follow-up, interrupt acknowledgement, terminal interrupt reconciliation, lost-reply uncertainty, database-reopen/same-key reconciliation and native read-only denial. Both test grants were subsequently revoked; each old bearer returned explicit HTTP 401 with a Bearer challenge. Disposable threads were archived; T3 and its tunnel were left running. The browser OAuth CLI and GitHub manual live workflow were not exercised. No provider response text or credential material is retained in this report.
