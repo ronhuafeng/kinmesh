@@ -81,6 +81,7 @@ function NativeStatus({
     <div className="native-status">
       <button
         type="button"
+        className="secondary"
         disabled={busy}
         aria-busy={busy}
         onClick={() => {

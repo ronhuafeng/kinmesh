@@ -437,8 +437,7 @@ test('keyboard mention, message becomes a task in its topic, and the needs-me fi
     .getByRole('group', { name: 'Topics' })
     .getByRole('button', { name: 'Billing', exact: true })
     .click();
-  // Typing waits for the topic refresh: loading pauses every mutation control.
-  await page.waitForLoadState('networkidle');
+  // No wait for the topic refresh: typing must survive a background reload.
   const composer = page.getByRole('form', { name: 'Message your team' });
   const message = composer.getByLabel('Message', { exact: true });
   await message.fill('Validate postal codes per country');
@@ -452,7 +451,10 @@ test('keyboard mention, message becomes a task in its topic, and the needs-me fi
   await expect(
     composer.getByRole('list', { name: 'Mentions' }).getByText('@Ada'),
   ).toBeVisible();
-  await composer.getByRole('button', { name: 'Send message' }).click();
+  await expect(
+    composer.getByRole('button', { name: 'Send message' }),
+  ).toBeEnabled();
+  await message.press('ControlOrMeta+Enter');
   const posted = page
     .getByRole('list', { name: 'Channel messages' })
     .getByRole('listitem')
@@ -499,6 +501,37 @@ test('keyboard mention, message becomes a task in its topic, and the needs-me fi
   await expect(card).toBeVisible();
   await filter.getByRole('button', { name: 'All', exact: true }).click();
   await expect(card).toBeVisible();
+  // ⌘K jumps straight to the task; only its acceptor may cancel it, with a note.
+  await page.getByRole('tab', { name: 'Chat', exact: true }).click();
+  await page.keyboard.press('ControlOrMeta+k');
+  const palette = page.getByRole('dialog', { name: 'Command palette' });
+  await palette
+    .getByRole('combobox', { name: /Search/ })
+    .fill('postal in progress');
+  await expect(
+    palette.getByRole('option', { name: /Validate postal codes/ }),
+  ).toHaveAttribute('aria-selected', 'true');
+  await page.keyboard.press('Enter');
+  await expect(palette).toBeHidden();
+  const drawer = page.getByRole('region', {
+    name: 'Validate postal codes per country @Ada',
+  });
+  await expect(drawer).toBeVisible();
+  await drawer
+    .getByRole('button', { name: 'Cancel task…', exact: true })
+    .click();
+  await expect(
+    drawer.getByText(/closes the task without acceptance/),
+  ).toBeVisible();
+  await drawer.getByLabel('Decision note').fill('Superseded by the new form');
+  await drawer
+    .getByRole('button', { name: 'Cancel task', exact: true })
+    .click();
+  await expect(card.getByText('Cancelled', { exact: true })).toBeVisible();
+  await expect(
+    page.getByRole('status').filter({ hasText: 'Task cancelled.' }),
+  ).toBeVisible();
+  await expect(drawer.getByText('This task is closed.')).toBeVisible();
 });
 
 test('lost message response retries the same committed operation; real conflict stays visible', async ({
@@ -645,6 +678,18 @@ test('sidebar mutations block submission while workspace GET is loading or faili
   });
   await page.getByRole('button', { name: 'Reconnect / refresh' }).click();
   await expect(page.getByText('Refreshing…', { exact: true })).toBeVisible();
+  // A background refresh pauses sending only; typing is never interrupted.
+  await expect(create.getByLabel('Channel name')).toBeEditable();
+  await expect(
+    page
+      .getByRole('form', { name: 'Message your team' })
+      .getByLabel('Message', { exact: true }),
+  ).toBeEditable();
+  await expect(
+    page
+      .getByRole('form', { name: 'Message your team' })
+      .getByRole('button', { name: 'Send message' }),
+  ).toBeDisabled();
   for (const form of [create, join]) {
     await expect(
       form.getByRole('button', { name: /Create channel|Join channel/ }),

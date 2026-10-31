@@ -1,11 +1,12 @@
 # Workspace redesign brief
 
-Status: references complete (see [references/](references/README.md)); first
-implementation in `web/`. Scope: `web/` only. Backend contracts, security rules and the
+Status: references complete (see [references/](references/README.md)) and
+implemented in `web/`. Scope: `web/` only. Backend contracts, security rules and the
 explicit human-acceptance model do not change.
 
-Not implemented yet from this brief: the ⌘K palette, and a separate P7 inbox page (the
-"Needs you" entry and the board's "Needs me" filter cover it for now).
+Decision on P7: there is no separate inbox page. The sidebar "Needs you" entry opens the
+board with the "Needs me" filter, chat shows a "Waiting for you" strip, and ⌘K lists
+the same items first. One list in three places beats a fourth view to keep in sync.
 
 ## 1. Target
 

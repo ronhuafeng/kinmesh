@@ -54,6 +54,16 @@ export function shortTime(iso: string) {
       : { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' },
   );
 }
+/** Compact age for cards: "now", "5m", "3h", "2d". */
+export function age(iso: string, now = Date.now()) {
+  const minutes = Math.max(0, Math.round((now - Date.parse(iso)) / 60_000));
+  if (minutes < 1) return 'now';
+  if (minutes < 60) return `${String(minutes)}m`;
+  const hours = Math.round(minutes / 60);
+  return hours < 24
+    ? `${String(hours)}h`
+    : `${String(Math.round(hours / 24))}d`;
+}
 export function plural(count: number, noun: string) {
   return `${String(count)} ${noun}${count === 1 ? '' : 's'}`;
 }
@@ -85,6 +95,27 @@ export function Drawer({
       if (opener?.isConnected) opener.focus({ preventScroll: true });
     };
   }, []);
+  // Esc closes the drawer even after focus fell back to the page (for example
+  // when the button just used disappears), unless a popover or dialog took it.
+  const close = useRef(onClose);
+  useEffect(() => {
+    close.current = onClose;
+  }, [onClose]);
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (
+        e.key !== 'Escape' ||
+        e.defaultPrevented ||
+        document.querySelector('dialog[open]')
+      )
+        return;
+      close.current();
+    };
+    document.addEventListener('keydown', onKey);
+    return () => {
+      document.removeEventListener('keydown', onKey);
+    };
+  }, []);
   return (
     <>
       <div className="drawer-backdrop" aria-hidden="true" onClick={onClose} />
@@ -93,12 +124,6 @@ export function Drawer({
         className={'drawer' + (className ? ' ' + className : '')}
         aria-label={label}
         tabIndex={-1}
-        onKeyDown={(e) => {
-          if (e.key === 'Escape') {
-            e.stopPropagation();
-            onClose();
-          }
-        }}
       >
         <button
           type="button"

@@ -5,13 +5,15 @@ import { ChannelId } from '../src/domain/contracts.js';
 import { TopicId } from '../src/domain/communication.js';
 import { WorkspaceSnapshot } from '../src/workspace/contracts.js';
 import { Auth } from './auth.js';
-import { api, HttpError, MutationPermission, value } from './api.js';
+import { api, HttpError, MutationPermission, Offline, value } from './api.js';
 import { ActionForm, Field, Notice } from './forms.js';
 import { AgentDrawer, Team } from './agents.js';
 import { Chat } from './chat.js';
 import { Board, draftFromMessage, humanAsk, TaskDrawer } from './tasks.js';
 import type { BoardFilter, TaskDraft } from './tasks.js';
-import { Avatar, plural } from './ui.js';
+import { Avatar, plural, statusLabel } from './ui.js';
+import { CommandPalette } from './palette.js';
+import type { Command } from './palette.js';
 type View = 'chat' | 'board' | 'team';
 type Focus = { kind: 'task' | 'agent'; id: string } | null;
 /** True when a refresh moved at least one visible task to another status. */
@@ -62,6 +64,18 @@ export function App() {
   const [focus, setFocus] = useState<Focus>(null);
   const [filter, setFilter] = useState<BoardFilter>('all');
   const [draft, setDraft] = useState<TaskDraft | null>(null);
+  const [toast, setToast] = useState<{ id: number; message: string } | null>(
+    null,
+  );
+  useEffect(() => {
+    if (!toast) return;
+    const timer = setTimeout(() => {
+      setToast(null);
+    }, 4000);
+    return () => {
+      clearTimeout(timer);
+    };
+  }, [toast]);
   const shown = useRef<WorkspaceSnapshot | null>(null);
   const viewRef = useRef(view);
   useEffect(() => {
@@ -191,6 +205,11 @@ export function App() {
   const canAct =
     status === 'ready' &&
     (!selection.channel || selection.channel === channel?.id);
+  // A background refresh pauses sending, but typing only stops when offline.
+  const editable = status !== 'offline';
+  const notify = (message: string) => {
+    setToast({ id: Date.now(), message });
+  };
   const joinedAgents = data.agents.filter((a) =>
     data.joinedAgentIds.includes(a.id),
   );
@@ -225,341 +244,432 @@ export function App() {
     setFilter('needs');
     setView('board');
   };
+  const commands: Command[] = [
+    ...asks.map(({ task, ask }) => ({
+      id: 'ask-' + task.id,
+      group: 'Needs you',
+      label: task.title,
+      hint: ask,
+      run: () => {
+        openTask(task.id);
+      },
+    })),
+    ...(['chat', 'board', 'team'] as const).map((v) => ({
+      id: 'view-' + v,
+      group: 'Views',
+      label: v === 'chat' ? 'Chat' : v === 'board' ? 'Board' : 'Team',
+      hint: 'view',
+      run: () => {
+        setView(v);
+      },
+    })),
+    ...(channelPath
+      ? [
+          {
+            id: 'action-new-task',
+            group: 'Actions',
+            label: 'New task',
+            hint: channel ? '#' + channel.name : undefined,
+            run: () => {
+              setDraft({
+                id: 'new-' + String(Date.now()),
+                title: '',
+                description: '',
+                topicId: selection.topic || null,
+                sourceMessageId: null,
+                from: null,
+              });
+              setFocus(null);
+              setView('board');
+            },
+          },
+        ]
+      : []),
+    {
+      id: 'action-refresh',
+      group: 'Actions',
+      label: 'Reconnect / refresh',
+      run: refresh,
+    },
+    ...data.tasks.items.map((task) => ({
+      id: 'task-' + task.id,
+      group: 'Tasks',
+      label: task.title,
+      hint:
+        '#' + String(task.position) + ' · ' + statusLabel(task.state.status),
+      run: () => {
+        openTask(task.id);
+      },
+    })),
+    ...data.channels.items.map((c) => ({
+      id: 'channel-' + c.id,
+      group: 'Channels',
+      label: '# ' + c.name,
+      run: () => {
+        selectChannel(c.id);
+      },
+    })),
+    ...data.agents.map((agent) => ({
+      id: 'agent-' + agent.id,
+      group: 'People',
+      label: agent.name,
+      hint: 'agent · ' + agent.role,
+      run: () => {
+        openAgent(agent.id);
+      },
+    })),
+  ];
   return (
     <MutationPermission value={canAct}>
-      <div
-        className="workspace-shell"
-        data-drawer={focusedTask || focusedAgent ? 'open' : undefined}
-      >
-        <aside className="sidebar">
-          <div className="sidebar-top">
-            <a className="brand" href="/" aria-label="Kinmesh home">
-              <span className="brand-mark" aria-hidden="true">
-                k
-              </span>
-              <span>kinmesh</span>
-            </a>
-            <div className="team-name">
-              <span className="team-icon" aria-hidden="true">
-                {data.team.name.slice(0, 1).toUpperCase()}
-              </span>
-              <div>
-                <strong>{data.team.name}</strong>
-                <small>Team workspace</small>
+      <Offline value={status === 'offline'}>
+        <div
+          className="workspace-shell"
+          data-drawer={focusedTask || focusedAgent ? 'open' : undefined}
+        >
+          <aside className="sidebar">
+            <div className="sidebar-top">
+              <a className="brand" href="/" aria-label="Kinmesh home">
+                <span className="brand-mark" aria-hidden="true">
+                  k
+                </span>
+                <span>kinmesh</span>
+              </a>
+              <div className="team-name">
+                <span className="team-icon" aria-hidden="true">
+                  {data.team.name.slice(0, 1).toUpperCase()}
+                </span>
+                <div>
+                  <strong>{data.team.name}</strong>
+                  <small>Team workspace</small>
+                </div>
               </div>
             </div>
-          </div>
-          {channel && (
-            <button
-              className="needs-you"
-              data-count={asks.length > 0 ? 'true' : undefined}
-              onClick={showNeeds}
-            >
-              <span>Needs you</span>
-              <span className="count">{asks.length}</span>
-            </button>
-          )}
-          <nav aria-label="Channels">
-            <div className="nav-heading">
-              <h2>Channels</h2>
-              <span>{data.channels.items.length}</span>
-            </div>
-            {data.channels.items.map((c) => (
+            {channel && (
               <button
-                key={c.id}
-                aria-current={channel?.id === c.id ? 'page' : undefined}
+                className="needs-you"
+                data-count={asks.length > 0 ? 'true' : undefined}
+                onClick={showNeeds}
+              >
+                <span>Needs you</span>
+                <span className="count">{asks.length}</span>
+              </button>
+            )}
+            <nav aria-label="Channels">
+              <div className="nav-heading">
+                <h2>Channels</h2>
+                <span>{data.channels.items.length}</span>
+              </div>
+              {data.channels.items.map((c) => (
+                <button
+                  key={c.id}
+                  aria-current={channel?.id === c.id ? 'page' : undefined}
+                  onClick={() => {
+                    selectChannel(c.id);
+                  }}
+                >
+                  <span aria-hidden="true">#</span> {c.name}
+                </button>
+              ))}
+            </nav>
+            {data.channels.nextCursor && (
+              <button
+                className="quiet"
                 onClick={() => {
-                  selectChannel(c.id);
+                  next('channelsCursor', data.channels.nextCursor);
                 }}
               >
-                <span aria-hidden="true">#</span> {c.name}
+                More channels
               </button>
-            ))}
-          </nav>
-          {data.channels.nextCursor && (
-            <button
-              className="quiet"
-              onClick={() => {
-                next('channelsCursor', data.channels.nextCursor);
-              }}
-            >
-              More channels
-            </button>
-          )}
-          <div className="sidebar-actions">
-            <details>
-              <summary>New channel</summary>
-              <ActionForm
-                title="Create a channel"
-                path={`/api/teams/${data.team.id}/channels`}
-                build={(f) => ({ name: value(f, 'name') })}
-                submit="Create channel"
-                onDone={refresh}
-              >
-                <Field label="Channel name">
-                  <input name="name" required maxLength={80} />
-                </Field>
-              </ActionForm>
-            </details>
-            <details>
-              <summary>Rejoin a channel</summary>
-              <JoinChannel
-                teamId={data.team.id}
-                onDone={selectChannel}
-                disabled={!canAct}
-              />
-            </details>
-          </div>
-          {channel && (
-            <section className="people" aria-label="People in this channel">
-              <div className="nav-heading">
-                <h2>In this channel</h2>
-                <span>{joinedAgents.length + 1}</span>
-              </div>
-              <ul>
-                <li>
-                  <span className="person">
-                    <Avatar kind="human" name={data.human.username} size="sm" />
-                    <span className="person-name">{data.human.username}</span>
-                    <small>you</small>
-                  </span>
-                </li>
-                {joinedAgents.map((agent) => (
-                  <li key={agent.id}>
-                    <button
-                      className="person"
-                      aria-pressed={
-                        focus?.kind === 'agent' && focus.id === agent.id
-                      }
-                      onClick={() => {
-                        openAgent(agent.id);
-                      }}
-                    >
-                      <Avatar kind="agent" name={agent.name} size="sm" />
-                      <span className="person-name">{agent.name}</span>
-                      <small>{agent.role}</small>
-                    </button>
-                  </li>
-                ))}
-              </ul>
-              {joinedAgents.length === 0 && (
-                <button
-                  className="link-button"
-                  onClick={() => {
-                    setView('team');
-                  }}
-                >
-                  Invite an agent
-                </button>
-              )}
-            </section>
-          )}
-          <div className="account">
-            <Avatar kind="human" name={data.human.username} />
-            <span>
-              {data.human.username}
-              <small>Human owner</small>
-            </span>
-            <button
-              className="quiet"
-              disabled={!canAct}
-              onClick={() => {
-                if (!canAct) return;
-                void api('/api/logout', { method: 'POST' })
-                  .then(() => {
-                    shown.current = null;
-                    setData(null);
-                    setFocus(null);
-                    setDraft(null);
-                    setSelection({ channel: '', topic: '' });
-                    setCursors({});
-                    setStatus('signedout');
-                  })
-                  .catch(() => {
-                    setError('Sign out failed. Reconnect and try again.');
-                  });
-              }}
-            >
-              Sign out
-            </button>
-          </div>
-        </aside>
-        <main className="workspace-main">
-          <header className="workspace-header">
-            <div className="title-block">
-              <h1>{channel ? '# ' + channel.name : 'Welcome to your team'}</h1>
-              <p>
-                {channel
-                  ? `${plural(joinedAgents.length + 1, 'member')} · ${plural(openTasks, 'open task')}`
-                  : 'Create or rejoin a channel to begin.'}
-              </p>
-            </div>
-            <div className="connection" data-state={status}>
-              <span className="connection-dot" aria-hidden="true" />
-              <span role="status">
-                {status === 'ready'
-                  ? 'Snapshot connected'
-                  : status === 'loading'
-                    ? 'Refreshing…'
-                    : 'Disconnected'}
-              </span>
-              <small>
-                Read {new Date(data.observedAt).toLocaleTimeString()} · polls
-                every 15s
-              </small>
-              <button className="secondary" onClick={refresh}>
-                Reconnect / refresh
-              </button>
-            </div>
-          </header>
-          {error && (
-            <div className="stale-banner" data-state={status}>
-              <Notice>
-                {error}{' '}
-                <button
-                  onClick={() => {
-                    selectChannel('');
-                    setError('');
-                  }}
-                >
-                  Return to joined channels
-                </button>
-              </Notice>
-            </div>
-          )}
-          {asks.length > 0 && view !== 'board' && (
-            <section className="decision-strip" aria-label="Waiting for you">
-              <p>
-                <strong>
-                  {asks.length === 1
-                    ? '1 task is waiting for you'
-                    : `${String(asks.length)} tasks are waiting for you`}
-                </strong>
-              </p>
-              <ul>
-                {asks.map(({ task, ask }) => (
-                  <li key={task.id}>
-                    <button
-                      className="ask"
-                      onClick={() => {
-                        openTask(task.id);
-                      }}
-                    >
-                      <span className="ask-title">{task.title}</span>
-                      <small>{ask}</small>
-                    </button>
-                  </li>
-                ))}
-              </ul>
-            </section>
-          )}
-          <Tabs.Root
-            value={view}
-            onValueChange={(v) => {
-              setView(v === 'board' || v === 'team' ? v : 'chat');
-            }}
-          >
-            <Tabs.List aria-label="Workspace views" className="view-switch">
-              <Tabs.Trigger value="chat">Chat</Tabs.Trigger>
-              <Tabs.Trigger value="board">
-                Board
-                {asks.length > 0 && (
-                  <span className="tab-count" aria-hidden="true">
-                    {asks.length}
-                  </span>
-                )}
-              </Tabs.Trigger>
-              <Tabs.Trigger value="team">Team</Tabs.Trigger>
-            </Tabs.List>
-            <fieldset className="view-content" disabled={!canAct}>
-              <Tabs.Content value="chat" key={channel?.id ?? 'no-channel'}>
-                {channel && channelPath ? (
-                  <Chat
-                    data={data}
-                    channelPath={channelPath}
-                    topic={selection.topic}
-                    onTopic={(topic) => {
-                      setSelection((old) => ({ ...old, topic }));
-                      setCursors({});
-                    }}
-                    onDone={refresh}
-                    next={next}
-                    firstPage={() => {
-                      setCursors({});
-                    }}
-                    pagedBack={Boolean(cursors.messagesCursor)}
-                    onMakeTask={(message) => {
-                      setDraft(draftFromMessage(message, data));
-                      setFocus(null);
-                      setView('board');
-                    }}
-                    openAgent={openAgent}
-                    onLeave={() => {
-                      selectChannel('');
-                    }}
-                  />
-                ) : (
-                  <div className="empty">
-                    <h3>No channel open</h3>
-                    <p>Choose a joined channel to read and post.</p>
-                  </div>
-                )}
-              </Tabs.Content>
-              <Tabs.Content value="board">
-                {channelPath ? (
-                  <Board
-                    data={data}
-                    channelPath={channelPath}
-                    onDone={refresh}
-                    next={() => {
-                      next('tasksCursor', data.tasks.nextCursor);
-                    }}
-                    openTask={openTask}
-                    selected={focusedTask?.id ?? null}
-                    filter={filter}
-                    onFilter={setFilter}
-                    draft={draft}
-                    onDraft={setDraft}
-                  />
-                ) : (
-                  <div className="empty">
-                    <p>Create a channel before creating tasks.</p>
-                  </div>
-                )}
-              </Tabs.Content>
-              <Tabs.Content value="team">
-                <Team
-                  data={data}
-                  channelPath={channelPath}
+            )}
+            <div className="sidebar-actions">
+              <details>
+                <summary>New channel</summary>
+                <ActionForm
+                  title="Create a channel"
+                  path={`/api/teams/${data.team.id}/channels`}
+                  build={(f) => ({ name: value(f, 'name') })}
+                  submit="Create channel"
                   onDone={refresh}
-                  openAgent={openAgent}
-                  selected={focusedAgent?.id ?? null}
+                >
+                  <Field label="Channel name">
+                    <input name="name" required maxLength={80} />
+                  </Field>
+                </ActionForm>
+              </details>
+              <details>
+                <summary>Rejoin a channel</summary>
+                <JoinChannel
+                  teamId={data.team.id}
+                  onDone={selectChannel}
+                  disabled={!editable}
                 />
-              </Tabs.Content>
-            </fieldset>
-          </Tabs.Root>
-        </main>
-        {focusedTask && channelPath && (
-          <TaskDrawer
-            key={focusedTask.id}
-            task={focusedTask}
-            data={data}
-            path={channelPath + '/tasks/' + focusedTask.id}
-            onDone={refresh}
-            onClose={closeFocus}
-            disabled={!canAct}
-          />
-        )}
-        {focusedAgent && (
-          <AgentDrawer
-            key={focusedAgent.id}
-            agent={focusedAgent}
-            data={data}
-            onClose={closeFocus}
-            disabled={!canAct}
-          />
-        )}
-      </div>
+              </details>
+            </div>
+            {channel && (
+              <section className="people" aria-label="People in this channel">
+                <div className="nav-heading">
+                  <h2>In this channel</h2>
+                  <span>{joinedAgents.length + 1}</span>
+                </div>
+                <ul>
+                  <li>
+                    <span className="person">
+                      <Avatar
+                        kind="human"
+                        name={data.human.username}
+                        size="sm"
+                      />
+                      <span className="person-name">{data.human.username}</span>
+                      <small>you</small>
+                    </span>
+                  </li>
+                  {joinedAgents.map((agent) => (
+                    <li key={agent.id}>
+                      <button
+                        className="person"
+                        aria-pressed={
+                          focus?.kind === 'agent' && focus.id === agent.id
+                        }
+                        onClick={() => {
+                          openAgent(agent.id);
+                        }}
+                      >
+                        <Avatar kind="agent" name={agent.name} size="sm" />
+                        <span className="person-name">{agent.name}</span>
+                        <small>{agent.role}</small>
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+                {joinedAgents.length === 0 && (
+                  <button
+                    className="link-button"
+                    onClick={() => {
+                      setView('team');
+                    }}
+                  >
+                    Invite an agent
+                  </button>
+                )}
+              </section>
+            )}
+            <div className="account">
+              <Avatar kind="human" name={data.human.username} />
+              <span>
+                {data.human.username}
+                <small>Human owner</small>
+              </span>
+              <button
+                className="quiet"
+                disabled={!canAct}
+                onClick={() => {
+                  if (!canAct) return;
+                  void api('/api/logout', { method: 'POST' })
+                    .then(() => {
+                      shown.current = null;
+                      setData(null);
+                      setFocus(null);
+                      setDraft(null);
+                      setSelection({ channel: '', topic: '' });
+                      setCursors({});
+                      setStatus('signedout');
+                    })
+                    .catch(() => {
+                      setError('Sign out failed. Reconnect and try again.');
+                    });
+                }}
+              >
+                Sign out
+              </button>
+            </div>
+          </aside>
+          <main className="workspace-main">
+            <header className="workspace-header">
+              <div className="title-block">
+                <h1>
+                  {channel ? '# ' + channel.name : 'Welcome to your team'}
+                </h1>
+                <p>
+                  {channel
+                    ? `${plural(joinedAgents.length + 1, 'member')} · ${plural(openTasks, 'open task')}`
+                    : 'Create or rejoin a channel to begin.'}
+                </p>
+              </div>
+              <CommandPalette commands={commands} />
+              <div className="connection" data-state={status}>
+                <span className="connection-dot" aria-hidden="true" />
+                <span role="status">
+                  {status === 'ready'
+                    ? 'Snapshot connected'
+                    : status === 'loading'
+                      ? 'Refreshing…'
+                      : 'Disconnected'}
+                </span>
+                <small>
+                  Read {new Date(data.observedAt).toLocaleTimeString()} · polls
+                  every 15s
+                </small>
+                <button className="secondary" onClick={refresh}>
+                  Reconnect / refresh
+                </button>
+              </div>
+            </header>
+            {error && (
+              <div className="stale-banner" data-state={status}>
+                <Notice>
+                  {error}{' '}
+                  <button
+                    onClick={() => {
+                      selectChannel('');
+                      setError('');
+                    }}
+                  >
+                    Return to joined channels
+                  </button>
+                </Notice>
+              </div>
+            )}
+            {asks.length > 0 && view !== 'board' && (
+              <section className="decision-strip" aria-label="Waiting for you">
+                <p>
+                  <strong>
+                    {asks.length === 1
+                      ? '1 task is waiting for you'
+                      : `${String(asks.length)} tasks are waiting for you`}
+                  </strong>
+                </p>
+                <ul>
+                  {asks.map(({ task, ask }) => (
+                    <li key={task.id}>
+                      <button
+                        className="ask"
+                        onClick={() => {
+                          openTask(task.id);
+                        }}
+                      >
+                        <span className="ask-title">{task.title}</span>
+                        <small>{ask}</small>
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              </section>
+            )}
+            <Tabs.Root
+              value={view}
+              onValueChange={(v) => {
+                setView(v === 'board' || v === 'team' ? v : 'chat');
+              }}
+            >
+              <Tabs.List aria-label="Workspace views" className="view-switch">
+                <Tabs.Trigger value="chat">Chat</Tabs.Trigger>
+                <Tabs.Trigger value="board">
+                  Board
+                  {asks.length > 0 && (
+                    <span className="tab-count" aria-hidden="true">
+                      {asks.length}
+                    </span>
+                  )}
+                </Tabs.Trigger>
+                <Tabs.Trigger value="team">Team</Tabs.Trigger>
+              </Tabs.List>
+              <fieldset className="view-content" disabled={!editable}>
+                <Tabs.Content value="chat" key={channel?.id ?? 'no-channel'}>
+                  {channel && channelPath ? (
+                    <Chat
+                      data={data}
+                      channelPath={channelPath}
+                      topic={selection.topic}
+                      onTopic={(topic) => {
+                        setSelection((old) => ({ ...old, topic }));
+                        setCursors({});
+                      }}
+                      onDone={refresh}
+                      next={next}
+                      firstPage={() => {
+                        setCursors({});
+                      }}
+                      pagedBack={Boolean(cursors.messagesCursor)}
+                      onMakeTask={(message) => {
+                        setDraft(draftFromMessage(message, data));
+                        setFocus(null);
+                        setView('board');
+                      }}
+                      openAgent={openAgent}
+                      onLeave={() => {
+                        selectChannel('');
+                      }}
+                    />
+                  ) : (
+                    <div className="empty">
+                      <h3>No channel open</h3>
+                      <p>Choose a joined channel to read and post.</p>
+                    </div>
+                  )}
+                </Tabs.Content>
+                <Tabs.Content value="board">
+                  {channelPath ? (
+                    <Board
+                      data={data}
+                      channelPath={channelPath}
+                      onDone={refresh}
+                      next={() => {
+                        next('tasksCursor', data.tasks.nextCursor);
+                      }}
+                      openTask={openTask}
+                      selected={focusedTask?.id ?? null}
+                      filter={filter}
+                      onFilter={setFilter}
+                      draft={draft}
+                      onDraft={setDraft}
+                      onNotify={notify}
+                    />
+                  ) : (
+                    <div className="empty">
+                      <p>Create a channel before creating tasks.</p>
+                    </div>
+                  )}
+                </Tabs.Content>
+                <Tabs.Content value="team">
+                  <Team
+                    data={data}
+                    channelPath={channelPath}
+                    onDone={refresh}
+                    openAgent={openAgent}
+                    selected={focusedAgent?.id ?? null}
+                  />
+                </Tabs.Content>
+              </fieldset>
+            </Tabs.Root>
+          </main>
+          {focusedTask && channelPath && (
+            <TaskDrawer
+              key={focusedTask.id}
+              task={focusedTask}
+              data={data}
+              path={channelPath + '/tasks/' + focusedTask.id}
+              onDone={refresh}
+              onClose={closeFocus}
+              onDecided={notify}
+              disabled={!editable}
+            />
+          )}
+          {focusedAgent && (
+            <AgentDrawer
+              key={focusedAgent.id}
+              agent={focusedAgent}
+              data={data}
+              onClose={closeFocus}
+              disabled={!editable}
+            />
+          )}
+          {toast && (
+            <div className="toast" key={toast.id} role="status">
+              {toast.message}
+            </div>
+          )}
+        </div>
+      </Offline>
     </MutationPermission>
   );
 }

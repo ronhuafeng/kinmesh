@@ -158,13 +158,23 @@ function Composer({
                   ? listId + '-' + candidates[active].id
                   : undefined
               }
-              placeholder={'Message #' + channelName + ' — type @ to mention'}
+              placeholder={
+                'Message #' +
+                channelName +
+                ' — @ to mention, ⌘/Ctrl+Enter to send'
+              }
               onInput={track}
               onClick={track}
               onBlur={() => {
                 setQuery(null);
               }}
               onKeyDown={(e) => {
+                if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') {
+                  // The submit handler still refuses while sending is paused.
+                  e.preventDefault();
+                  e.currentTarget.form?.requestSubmit();
+                  return;
+                }
                 if (!open) return;
                 if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
                   e.preventDefault();

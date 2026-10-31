@@ -1,5 +1,5 @@
 import { authorName } from './names.js';
-import { useContext, useEffect, useState } from 'react';
+import { useContext, useEffect, useRef, useState } from 'react';
 import type { z } from 'zod';
 import {
   TaskCommand,
@@ -11,9 +11,9 @@ import type { Task } from '../src/domain/tasks.js';
 import { Member, memberKey, pageOf } from '../src/domain/communication.js';
 import type { Message } from '../src/domain/communication.js';
 import type { WorkspaceSnapshot } from '../src/workspace/contracts.js';
-import { api, MutationPermission, value } from './api.js';
-import { ActionForm, Field, Notice } from './forms.js';
-import { Avatar, Drawer, shortTime, StatusChip, statuses } from './ui.js';
+import { api, Offline, value } from './api.js';
+import { ActionForm, Field, Notice, SubmitGroup } from './forms.js';
+import { age, Avatar, Drawer, shortTime, StatusChip, statuses } from './ui.js';
 import type { Status } from './ui.js';
 
 export function memberFrom(value: string): Member | null {
@@ -91,6 +91,7 @@ export function MemberSelect({
   required = false,
   empty = 'Unassigned',
   defaultValue = '',
+  exclude = null,
 }: {
   name: string;
   id?: string;
@@ -98,15 +99,24 @@ export function MemberSelect({
   required?: boolean;
   empty?: string;
   defaultValue?: string;
+  exclude?: Member | null;
 }) {
+  const shown = (member: Member) =>
+    exclude === null || memberKey(member) !== memberKey(exclude);
   return (
     <select id={id} name={name} required={required} defaultValue={defaultValue}>
       <option value="">{empty}</option>
-      <option value={'human:' + data.human.id}>
-        {data.human.username} (human)
-      </option>
+      {shown({ kind: 'human', id: data.human.id }) && (
+        <option value={'human:' + data.human.id}>
+          {data.human.username} (human)
+        </option>
+      )}
       {data.agents
-        .filter((a) => data.joinedAgentIds.includes(a.id))
+        .filter(
+          (a) =>
+            data.joinedAgentIds.includes(a.id) &&
+            shown({ kind: 'agent', id: a.id }),
+        )
         .map((a) => (
           <option value={'agent:' + a.id} key={a.id}>
             {a.name} (agent)
@@ -228,7 +238,9 @@ type Intent =
   | 'review-rework'
   | 'accept'
   | 'handoff'
-  | 'rework';
+  | 'rework'
+  | 'cancel';
+type Route = 'request-review' | 'handoff' | 'cancel';
 const intentLabels: Record<Intent, string> = {
   claim: 'Claim task',
   progress: 'Post progress update',
@@ -238,12 +250,26 @@ const intentLabels: Record<Intent, string> = {
   accept: 'Accept task',
   handoff: 'Assign work',
   rework: 'Request rework',
+  cancel: 'Cancel task',
+};
+/** What the person sees after the server confirms the decision. */
+const intentDone: Record<Intent, string> = {
+  claim: 'Claimed. The task is in progress with you.',
+  progress: 'Progress note recorded.',
+  'request-review': 'Review requested.',
+  approve: 'Review approved. It now waits for human sign-off.',
+  'review-rework': 'Changes requested. The owner has it back.',
+  accept: 'Accepted. Recorded with your note.',
+  handoff: 'Work reassigned. Review restarts.',
+  rework: 'Sent back for rework.',
+  cancel: 'Task cancelled.',
 };
 const intentTone: Partial<Record<Intent, string>> = {
   accept: 'primary',
   approve: 'primary',
   rework: 'danger',
   'review-rework': 'danger',
+  cancel: 'danger',
 };
 /** Explicit buttons per decision; the note is always written by the human. */
 function DecisionPanel({
@@ -251,16 +277,17 @@ function DecisionPanel({
   data,
   path,
   onDone,
+  onDecided,
 }: {
   task: Task;
   data: WorkspaceSnapshot;
   path: string;
   onDone: () => void;
+  onDecided: (message: string) => void;
 }) {
-  const permitted = useContext(MutationPermission);
-  const [routing, setRouting] = useState<'request-review' | 'handoff' | null>(
-    null,
-  );
+  const offline = useContext(Offline);
+  const [routing, setRouting] = useState<Route | null>(null);
+  const chosen = useRef<Intent | null>(null);
   const human = { kind: 'human', id: data.human.id } satisfies Member;
   const owns =
     task.state.owner !== null &&
@@ -269,20 +296,25 @@ function DecisionPanel({
     task.state.reviewer !== null &&
     memberKey(task.state.reviewer) === memberKey(human);
   const final = task.acceptorHumanId === data.human.id;
-  const done = ['accepted', 'cancelled'].includes(task.state.status);
   const status = task.state.status;
+  const done = status === 'accepted' || status === 'cancelled';
+  const working = status === 'in-progress' || status === 'rework-requested';
+  // Mirrors the server's task rules so no button leads to a certain 409/403.
   const intents: Intent[] = [];
   if (final && status === 'awaiting-human') intents.push('accept');
   if (reviews && status === 'review-requested')
     intents.push('approve', 'review-rework');
   if (!done && task.state.owner !== null && final) intents.push('rework');
-  if (owns && ['in-progress', 'rework-requested'].includes(status))
-    intents.push('progress');
-  const canClaim = status === 'proposed' && !reviews;
-  const routes: ('request-review' | 'handoff')[] = [];
+  if (owns && working) intents.push('progress');
+  const canClaim =
+    status === 'proposed' &&
+    (task.state.reviewer === null ||
+      memberKey(task.state.reviewer) !== memberKey(human));
+  const routes: Route[] = [];
   if (owns && status === 'in-progress') routes.push('request-review');
-  if (!done && task.state.owner !== null && (final || owns))
+  if ((final && !done && task.state.owner !== null) || (owns && working))
     routes.push('handoff');
+  if (final && !done) routes.push('cancel');
   if (!canClaim && intents.length === 0 && routes.length === 0)
     return (
       <p className="muted decision-none">
@@ -292,6 +324,13 @@ function DecisionPanel({
       </p>
     );
   const ask = humanAsk(task, data);
+  // A recipient must differ from the current owner (work) or from you (review).
+  const exclude =
+    routing === 'handoff'
+      ? task.state.owner
+      : routing === 'request-review'
+        ? human
+        : null;
   return (
     <div className="decision-panel" data-ask={ask ? 'true' : undefined}>
       <ActionForm
@@ -309,6 +348,7 @@ function DecisionPanel({
         }}
         onDone={() => {
           setRouting(null);
+          if (chosen.current) onDecided(intentDone[chosen.current]);
           onDone();
         }}
         build={(f) => {
@@ -352,27 +392,37 @@ function DecisionPanel({
         }}
       >
         {canClaim && !routing && (
-          <div className="decision-buttons">
+          <SubmitGroup className="decision-buttons">
             <button
               type="submit"
               name="intent"
               value="claim"
               formNoValidate
               className="primary"
+              onClick={() => {
+                chosen.current = 'claim';
+              }}
             >
               {intentLabels.claim}
             </button>
-          </div>
+          </SubmitGroup>
         )}
-        {routing && (
+        {(routing === 'handoff' || routing === 'request-review') && (
           <Field label="Recipient">
             <MemberSelect
               name="recipient"
               data={data}
               required
               empty="Choose a joined member"
+              exclude={exclude}
             />
           </Field>
+        )}
+        {routing === 'cancel' && (
+          <p className="decision-warning">
+            Cancelling closes the task without acceptance. It cannot be
+            reopened.
+          </p>
         )}
         {(routing !== null || intents.length > 0) && (
           <Field
@@ -392,12 +442,15 @@ function DecisionPanel({
           </Field>
         )}
         {routing ? (
-          <div className="decision-buttons">
+          <SubmitGroup className="decision-buttons">
             <button
               type="submit"
               name="intent"
               value={routing}
-              className="primary"
+              className={intentTone[routing] ?? 'primary'}
+              onClick={() => {
+                chosen.current = routing;
+              }}
             >
               {intentLabels[routing]}
             </button>
@@ -408,13 +461,13 @@ function DecisionPanel({
                 setRouting(null);
               }}
             >
-              Cancel
+              Back
             </button>
-          </div>
+          </SubmitGroup>
         ) : (
           <>
             {intents.length > 0 && (
-              <div className="decision-buttons">
+              <SubmitGroup className="decision-buttons">
                 {intents.map((intent) => (
                   <button
                     key={intent}
@@ -422,11 +475,14 @@ function DecisionPanel({
                     name="intent"
                     value={intent}
                     className={intentTone[intent] ?? 'secondary'}
+                    onClick={() => {
+                      chosen.current = intent;
+                    }}
                   >
                     {intentLabels[intent]}
                   </button>
                 ))}
-              </div>
+              </SubmitGroup>
             )}
             {routes.length > 0 && (
               <div className="route-buttons">
@@ -434,7 +490,9 @@ function DecisionPanel({
                   <button
                     key={route}
                     type="button"
-                    className="quiet"
+                    className={
+                      route === 'cancel' ? 'quiet subtle-danger' : 'quiet'
+                    }
                     onClick={() => {
                       setRouting(route);
                     }}
@@ -446,7 +504,11 @@ function DecisionPanel({
             )}
           </>
         )}
-        {permitted ? (
+        {offline ? (
+          <p className="decision-help">
+            Actions are paused until the workspace reconnects.
+          </p>
+        ) : (
           final &&
           status === 'awaiting-human' && (
             <p className="decision-help">
@@ -454,10 +516,6 @@ function DecisionPanel({
               note.
             </p>
           )
-        ) : (
-          <p className="decision-help">
-            Actions are paused until the workspace reconnects.
-          </p>
         )}
       </ActionForm>
     </div>
@@ -469,6 +527,7 @@ export function TaskDrawer({
   path,
   onDone,
   onClose,
+  onDecided,
   disabled,
 }: {
   task: Task;
@@ -476,6 +535,7 @@ export function TaskDrawer({
   path: string;
   onDone: () => void;
   onClose: () => void;
+  onDecided: (message: string) => void;
   disabled: boolean;
 }) {
   const topic = task.topicId
@@ -527,7 +587,13 @@ export function TaskDrawer({
             <blockquote>{task.state.note}</blockquote>
           </figure>
         )}
-        <DecisionPanel task={task} data={data} path={path} onDone={onDone} />
+        <DecisionPanel
+          task={task}
+          data={data}
+          path={path}
+          onDone={onDone}
+          onDecided={onDecided}
+        />
         <TaskHistory task={task} path={path} data={data} />
       </div>
     </Drawer>
@@ -582,6 +648,10 @@ function TaskCard({
           {task.criteria.length === 1
             ? '1 criterion'
             : `${String(task.criteria.length)} criteria`}
+          {' · '}
+          <time dateTime={task.updatedAt} title="Last change">
+            {age(task.updatedAt)}
+          </time>
         </small>
       </footer>
     </article>
@@ -626,6 +696,7 @@ export function Board({
   onFilter,
   draft,
   onDraft,
+  onNotify,
 }: {
   data: WorkspaceSnapshot;
   channelPath: string;
@@ -637,6 +708,7 @@ export function Board({
   onFilter: (filter: BoardFilter) => void;
   draft: TaskDraft | null;
   onDraft: (draft: TaskDraft | null) => void;
+  onNotify: (message: string) => void;
 }) {
   const [creating, setCreating] = useState(false);
   const me = memberKey({ kind: 'human', id: data.human.id });
@@ -703,6 +775,9 @@ export function Board({
           title="New task"
           path={channelPath + '/tasks'}
           onDone={() => {
+            onNotify(
+              draft ? 'Task created from the message.' : 'Task created.',
+            );
             onDraft(null);
             onDone();
           }}

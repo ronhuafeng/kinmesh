@@ -1,6 +1,8 @@
-import { createContext, useContext, useRef, useState } from 'react';
+import { createContext, useContext, useEffect, useRef, useState } from 'react';
 
 export const MutationPermission = createContext(true);
+/** True only while disconnected, as opposed to a brief background refresh. */
+export const Offline = createContext(false);
 export class HttpError extends Error {
   constructor(readonly status: number) {
     super(
@@ -47,6 +49,14 @@ export function useAction() {
   const [uncertain, setUncertain] = useState(false);
   const pending = useRef<Pending | null>(null);
   const running = useRef(false);
+  const pausedNotice = useRef(false);
+  // The "paused" explanation is only true until sending is allowed again.
+  useEffect(() => {
+    if (permitted && pausedNotice.current) {
+      pausedNotice.current = false;
+      setError('');
+    }
+  }, [permitted]);
   async function perform(command: Pending): Promise<boolean> {
     if (!permitted || running.current) return false;
     running.current = true;
@@ -91,6 +101,12 @@ export function useAction() {
     uncertain,
     invalid() {
       setError('Check the form fields and try again.');
+    },
+    paused() {
+      pausedNotice.current = true;
+      setError(
+        'Sending is paused while the workspace refreshes or reconnects. Nothing was sent.',
+      );
     },
     async send(
       path: string,

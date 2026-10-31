@@ -1,6 +1,6 @@
-import { useId, useRef, isValidElement, cloneElement } from 'react';
+import { useContext, useId, useRef, isValidElement, cloneElement } from 'react';
 import type { ReactNode } from 'react';
-import { useAction } from './api.js';
+import { MutationPermission, useAction } from './api.js';
 export function Field({
   label,
   hint,
@@ -28,6 +28,21 @@ export function Field({
         ...(hint ? { 'aria-describedby': id + '-hint' } : {}),
       })}
     </div>
+  );
+}
+/** Groups submit buttons supplied by a caller so they pause with the workspace. */
+export function SubmitGroup({
+  className,
+  children,
+}: {
+  className?: string;
+  children: ReactNode;
+}) {
+  const permitted = useContext(MutationPermission);
+  return (
+    <fieldset className={className} disabled={!permitted}>
+      {children}
+    </fieldset>
   );
 }
 export function Notice({ children }: { children: ReactNode }) {
@@ -66,7 +81,10 @@ export function ActionForm({
       className="action-form"
       onSubmit={(event) => {
         event.preventDefault();
-        if (action.disabled) return;
+        if (action.disabled) {
+          action.paused();
+          return;
+        }
         const form = event.currentTarget;
         try {
           // Include the clicked button so one form can carry several decisions.
@@ -89,10 +107,13 @@ export function ActionForm({
       }}
     >
       <h3 id={id}>{title}</h3>
-      <fieldset disabled={action.disabled || action.busy || action.uncertain}>
+      {/* Inputs stay editable during a background refresh; only sending is paused. */}
+      <fieldset disabled={action.busy || action.uncertain}>
         {children}
         {submit && (
-          <button type="submit">{action.busy ? 'Saving…' : submit}</button>
+          <button type="submit" disabled={action.disabled}>
+            {action.busy ? 'Saving…' : submit}
+          </button>
         )}
       </fieldset>
       {action.error && <Notice>{action.error}</Notice>}
