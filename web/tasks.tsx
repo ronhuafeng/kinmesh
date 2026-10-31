@@ -87,7 +87,7 @@ function TaskHistory({
     return () => {
       controller.abort();
     };
-  }, [path, task.version]);
+  }, [path, task.version, data.observedAt]);
   return (
     <div className="task-history">
       {error && <Notice>{error}</Notice>}

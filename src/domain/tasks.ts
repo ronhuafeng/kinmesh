@@ -1,5 +1,11 @@
 import { z } from 'zod';
-import { TaskId, HumanId, TeamId, ChannelId } from './contracts.js';
+import {
+  TaskId,
+  HumanId,
+  TeamId,
+  ChannelId,
+  type AgentId,
+} from './contracts.js';
 import {
   Author,
   IdentityError,
@@ -95,6 +101,19 @@ export const Task = z
       v.state.status !== 'accepted' || v.state.acceptedBy === v.acceptorHumanId,
   );
 export type Task = z.infer<typeof Task>;
+/** Completion evidence can outlive active work, but cannot survive removal of responsibility. */
+export function retainsExecutionResponsibility(task: Task, agentId: AgentId) {
+  const state = task.state;
+  return (
+    state.status !== 'cancelled' &&
+    ((state.owner?.kind === 'agent' && state.owner.id === agentId) ||
+      (['review-requested', 'awaiting-human', 'accepted'].includes(
+        state.status,
+      ) &&
+        state.reviewer?.kind === 'agent' &&
+        state.reviewer.id === agentId))
+  );
+}
 const CommandBase = Mutation.extend({
   expectedVersion: z.number().int().positive(),
 });

@@ -304,7 +304,7 @@ await test('MOCK SQLite publication reuses only the same task and exact Run, not
     assert.deepEqual(published.reference, reference);
     assert.equal(
       f.tasks.get(f.principal, f.teamId, f.channelId, task.id).version,
-      otherRun.task.version + 1,
+      otherRun.task.version,
     );
   } finally {
     await f.dispose();
@@ -459,6 +459,12 @@ for (const { failedTable, prelinked } of [
             reference,
             note: 'MOCK existing link survives failed ACK',
           });
+        const beforeTask = f.tasks.get(
+          f.principal,
+          f.teamId,
+          f.channelId,
+          task.id,
+        );
         const tables = [
           'messages',
           'communication_outbox',
@@ -505,8 +511,7 @@ for (const { failedTable, prelinked } of [
           f.channelId,
           task.id,
         );
-        assert.equal(current.state.status, 'in-progress');
-        assert.equal(current.version, 2);
+        assert.deepEqual(current, beforeTask);
         assert.equal(
           f.tasks.executions(f.principal, f.teamId, f.channelId, task.id).items
             .length,
