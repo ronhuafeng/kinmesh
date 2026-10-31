@@ -1,0 +1,25 @@
+name: Authenticated T3 acceptance
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  authenticated-live:
+    # Dedicated trusted runner configured by owner with private OAuth files outside the checkout.
+    # Never expose its credentials to automatic PR events or unreviewed code.
+    runs-on: [self-hosted, kinmesh-t3-acceptance]
+    steps:
+      # Check the requested ref before checking out or executing repository code.
+      # This is defense in depth; the owner must still restrict who may dispatch.
+      - name: Reject any non-main manual dispatch
+        run: test "$GITHUB_REF" = "refs/heads/main"
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      # Download only the browser binary; do not change system packages on the trusted runner.
+      # The release check fails closed if Chromium or its runtime dependencies are unavailable.
+      - run: npx playwright install chromium
+      - run: npm run release:check

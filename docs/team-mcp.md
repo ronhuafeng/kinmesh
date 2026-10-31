@@ -75,16 +75,45 @@ Expected tool failures use `isError:true`, with fixed `invalid_input`, `unauthen
 
 Message posting and task commands reuse the same principal/action/target-scoped durable receipts and atomic outbox/audit as HTTP. Retry the exact same operationKey/payload/expectedVersion after an ambiguous response; changed input under that key conflicts 409. A replay returns the original authorized snapshot, not a promise it is the newest task revision; read again for current state. Human/agent author provenance is derived server-side. Reviewer approval reaches awaiting-human only; no provider result or MCP tool accepts a task.
 
-## Provider configuration
+## Provider configuration and genuine T3 gate
 
-A compatible Provider client needs an owner-configured Team MCP URL plus a dedicated, narrowly scoped Agent Bearer credential. For Codex, use its supported `mcp_servers.<name>` HTTP configuration with `url` and `bearer_token_env_var` (or equivalent protected environment headers); never put the token in prompts, launch arguments or shared global configuration.
+A generic compatible SDK/provider client configures the Team MCP URL and a dedicated agent's bearer credential. For Codex, use its documented `mcp_servers.<name>` HTTP configuration with `url` and `bearer_token_env_var` (or an environment header), keeping the actual token in a protected process environment/file. Check the installed provider's supported options. Do not copy a token into launch arguments or a prompt, or run an untrusted wrapper.
 
-T3's own orchestration MCP is **not** Kinmesh Team MCP. The pinned [T3 v0.1.5 Codex guide](https://github.com/pingdotgg/t3code/blob/v0.1.5/docs/user/providers-codex.md) describes independent Provider setup. T3's `t3_thread_launch` does not expose a supported per-run credential injection field: choose a Provider already explicitly configured to reach the Team MCP endpoint. Keep Provider homes/credentials isolated; a claimed external Team MCP configuration flag alone is not proof of network connectivity.
+The pinned upstream T3 Code v0.1.5 [Codex guide](https://github.com/pingdotgg/t3code/blob/v0.1.5/docs/user/providers-codex.md) and [provider setup](https://github.com/pingdotgg/t3code/blob/v0.1.5/docs/user/install.md#providers) describe provider-instance configuration. In the pinned [Codex adapter](https://github.com/pingdotgg/t3code/blob/v0.1.5/apps/server/src/orchestration-v2/Adapters/CodexAdapterV2.ts), `codexThreadConfig` overrides only `mcp_servers.t3-code` and preserves external launch-argument servers. **T3's own MCP is not Team MCP.** The [outside-agents guide](https://github.com/pingdotgg/t3code/blob/v0.1.5/docs/user/outside-agents.md) describes external orchestration callers, not automatic outbound Kinmesh configuration.
 
-## CI tests and evidence
+On this version, the advertised `t3_thread_launch` schema offers project/scratch/model selection and runtime mode, but no dedicated per-run Team MCP endpoint/credential configuration field. A generic `modelSelection.options` object is not evidence of supported credential injection. A provider selected for the live test must already be securely configured to reach the temporary Team endpoint with that disposable grant. Do not change shared provider homes, global credentials or T3 internals to manufacture acceptance. If an isolated configuration cannot be supplied through supported owner-managed settings, the provider gate remains blocked.
 
-`npm run check` includes `npm run test:team-mcp`'s official SDK child-process/client cases alongside HTTP/domain/SQLite authorization, atomic task operations, idempotency and recovery fixtures. Push/PR Foundation and Chromium workflows run automatically without private Agent/T3 credentials or any Provider/model calls. `npm run team:smoke` remains an optional read-only operator diagnostic with a private token, not a CI requirement.
+The reproducible live runner is separate from the credential-free SDK process tests. Prepare a disposable fixture (no provider calls):
 
-The real Provider read/post/claim/reviewer-handoff and Inbox results were accepted separately in the [v0.1 human/agent workflow report](acceptance/v01-workflow-2026-10-31.md). One-off paid native-test scripts were retired instead of adding a separate release orchestration layer. The historical report preserves the actual run/version/provenance and limitations. CI green alone must not be described as a new native T3 observation.
+```sh
+export KINMESH_TEAM_LIVE_DIR=/tmp/kinmesh-team-live-owner  # NEW directory; preparation refuses overwrite
+export KINMESH_TEAM_MCP_ENDPOINT=http://127.0.0.1:3001/mcp
+npm run team:live:prepare
+# Start Team MCP in another terminal using this database:
+KINMESH_DATABASE="$KINMESH_TEAM_LIVE_DIR/team.sqlite" npm run team:mcp
+```
 
-Team MCP supplies no worker, native OAuth server or human acceptance tool; optional wake/delivery is owned by [Agent Inbox](agent-inbox.md). Respect native approvals, role membership and scoped grants independently.
+Preparation creates a private disposable human/team/channel, Developer and Reviewer identities, one-hour Developer credential (`developer.json`), source message, unclaimed task and `context.json`. It prints no credentials or team contents. Configure a **dedicated isolated T3 provider instance** through supported operator settings for that exact endpoint and grant. It must load the credential privately; this repository never edits the shared provider's configuration. Use the existing [secure T3 OAuth flow](t3-adapter.md) to provide an approved operate-scoped external grant. Set:
+
+```dotenv
+KINMESH_TEAM_T3_LIVE=1
+KINMESH_TEAM_LIVE_DIR=/tmp/kinmesh-team-live-owner
+KINMESH_TEAM_T3_ISOLATED_PROVIDER=your-isolated-provider-instance-id
+KINMESH_T3_ENDPOINT=https://your-owner-private-t3-origin.example/mcp
+KINMESH_T3_AUTH_FILE=.store/t3-owner-oauth.json
+KINMESH_T3_MODEL=your-advertised-model-id
+```
+
+```sh
+npm run test:team-live
+```
+
+This gate launches exactly one scratch provider turn through the existing external T3 OAuth SDK adapter. Only the provider is instructed to mutate Team MCP: read the seeded message, post a nonce plus the unprompted read proof, claim the disposable task and hand off to Reviewer. The gate itself performs Team reads only, then verifies native runId/terminal completion/no pending requests and persisted attributed message/task audit through independent authorized reads. It neither edits files nor accepts tasks; it attempts stop/archive cleanup through existing external tools and reports cleanup failure privately with fixed text. Inspect disposable resources through the owner interface after failures; preparation must not overwrite/reuse a partly consumed task.
+
+Missing opt-in, configuration, OAuth, provider capability, read proof, persisted effects or real completion makes the gate exit 1. It never silently skips/green-lights a missing provider. Current implementation review must distinguish the witnessed independent SDK process tests from an unwitnessed configured-provider gate. Neither credential-free CI nor Runner gates prove a T3-launched agent used Team MCP. The gate's fully configured provider path still requires actual operator validation; no native provider success is inferred from fixture or mock tests.
+
+## Validation and limits
+
+`npm run test:team-mcp` runs actual child-server and independent official SDK client tests, including separate client-process claims. `npm run check` includes them alongside all existing domain/HTTP/adapter tests; CI runs that suite on clean checkout with no private credentials. `npm run team:smoke` is a read-only operator check. `npm run test:team-live` is the explicit paid/provider gate; `npm run release:check` requires it in addition to the existing T3 execution gate.
+
+Team MCP itself provides no worker or execution interface; optional wake/delivery is provided by the [Agent Inbox worker](agent-inbox.md). No UI, Team OAuth authorization server, AG-UI streaming, PR automation or remote multi-node database is supplied. Native provider configuration and permission ceilings remain authoritative; do not silently approve tools or treat reviewer/model feedback as human acceptance. The database remains the local single-node WAL system, with its documented operational limits.
