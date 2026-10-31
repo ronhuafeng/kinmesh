@@ -68,9 +68,16 @@ await test('CI: no private OAuth or paid model runner in routine checks', () => 
   assert.match(workflow, /^on:\n  workflow_dispatch:\npermissions:/m);
   assert.ok(workflow.includes('runs-on: [self-hosted, kinmesh-t3-acceptance]'));
   const mainGuard = workflow.indexOf('test "$GITHUB_REF" = "refs/heads/main"');
-  assert.ok(
-    mainGuard > 0 && workflow.indexOf('uses: actions/checkout@v4') > mainGuard,
-  );
+  const checkout =
+    'uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262';
+  const setupNode =
+    'uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020';
+  assert.ok(mainGuard > 0 && workflow.indexOf(checkout) > mainGuard);
+  assert.ok(workflow.includes(setupNode));
+  assert.ok(workflow.includes('persist-credentials: false'));
+  assert.ok(workflow.includes('group: kinmesh-native-owner-release'));
+  assert.ok(workflow.includes('cancel-in-progress: false'));
+  assert.doesNotMatch(workflow, /actions\/(?:checkout|setup-node)@v\d+/);
   assert.ok(workflow.includes('npm run release:check'));
   assert.doesNotMatch(workflow, /continue-on-error\s*:/);
 });
