@@ -20,6 +20,8 @@ export RELEASE_INBOX_PROVIDER=dedicated-inbox-provider-id
 
 umask 077
 RELEASE_TMP=$(node -e 'console.log(require("node:fs").realpathSync(require("node:os").tmpdir()))')
+# Keep the preparer and native child path checks canonical on macOS as well.
+export TMPDIR="$RELEASE_TMP"
 RELEASE_SUFFIX=$(node -e 'console.log(require("node:crypto").randomUUID())')
 export RELEASE_SDK_DIR="$RELEASE_TMP/kinmesh-t3-live-$RELEASE_SUFFIX"
 export RELEASE_TEAM_DIR="$RELEASE_TMP/kinmesh-team-live-team-$RELEASE_SUFFIX"

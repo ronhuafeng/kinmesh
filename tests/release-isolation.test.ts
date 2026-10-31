@@ -45,6 +45,7 @@ function prepare(directory: string, inbox: boolean, endpoint: string) {
     {
       env: {
         PATH: process.env.PATH,
+        TMPDIR: realpathSync(tmpdir()),
         KINMESH_TEAM_LIVE_DIR: directory,
         KINMESH_TEAM_MCP_ENDPOINT: endpoint,
         ...(inbox
@@ -163,6 +164,7 @@ await test('aggregate executes all preflights before isolated credential-free st
         },
         run: async (s, env) => {
           calls.push('run:' + s.name);
+          assert.equal(env.TMPDIR, realpathSync(tmpdir()));
           await runStage(
             { ...s, script: 'tests/fixtures/release-stage.ts' },
             { ...env, FIXTURE_STAGE: s.name },
@@ -172,6 +174,7 @@ await test('aggregate executes all preflights before isolated credential-free st
       {
         PATH: process.env.PATH,
         HOME: '/shared/provider',
+        TMPDIR: '/untrusted/inherited-temp-root',
         KINMESH_TEAM_LIVE_DIR: f.teamDir,
         KINMESH_SHARED_SECRET: 'fixture-secret',
         KINMESH_T3_PROVIDER_HOME: '/shared/provider',

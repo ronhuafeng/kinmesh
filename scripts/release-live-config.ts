@@ -282,16 +282,12 @@ export function stageEnvironment(
   stage: ReleaseStage,
   inherited: NodeJS.ProcessEnv,
 ) {
-  const env: NodeJS.ProcessEnv = { HOME: stage.directory, ...stage.env };
-  for (const name of [
-    'PATH',
-    'TMPDIR',
-    'TMP',
-    'TEMP',
-    'LANG',
-    'LC_ALL',
-    'SystemRoot',
-  ])
+  const env: NodeJS.ProcessEnv = {
+    HOME: stage.directory,
+    TMPDIR: realpathSync(tmpdir()),
+    ...stage.env,
+  };
+  for (const name of ['PATH', 'TMP', 'TEMP', 'LANG', 'LC_ALL', 'SystemRoot'])
     if (inherited[name] !== undefined) env[name] = inherited[name];
   return env;
 }
