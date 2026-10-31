@@ -14,7 +14,7 @@ import {
   callbackReceiver,
 } from '../../src/adapters/t3/authorization.js';
 import { saveCredential } from '../../src/adapters/t3/oauth.js';
-import { Process, port, ready } from './processes.js';
+import { Process, port, ready, until } from './processes.js';
 
 export const Executor = z.enum(['codex', 'grok']);
 export type Executor = z.infer<typeof Executor>;
@@ -237,7 +237,7 @@ export class Native {
             { exact: true },
           );
           await field.fill(name ?? '');
-          await field.press('Tab');
+          await field.press('Enter');
           const sensitive = page.getByRole('button', {
             name: `Mark environment variable ${name ?? ''} as sensitive`,
             exact: true,
@@ -249,7 +249,10 @@ export class Native {
             { exact: true },
           );
           await input.fill(value ?? '');
-          await input.press('Tab');
+          await input.press('Enter');
+          await page
+            .getByRole('button', { name: 'Select CI ' + role, exact: true })
+            .click();
         }
         await page.reload();
         await page.getByText('Providers', { exact: true }).first().click();
@@ -262,12 +265,13 @@ export class Native {
         const grokInput = page.getByLabel('Environment variable value 2', {
           exact: true,
         });
-        await homeInput.waitFor();
-        if (
-          (await homeInput.inputValue()) !== this.home(role) ||
-          (await grokInput.inputValue()) !== join(this.home(role), '.grok')
-        )
-          throw new Error('PROVIDER_HOME_NOT_PERSISTED');
+        await until(
+          async () =>
+            (await homeInput.inputValue()) === this.home(role) &&
+            (await grokInput.inputValue()) === join(this.home(role), '.grok'),
+          'PROVIDER_HOME_NOT_PERSISTED',
+          10_000,
+        );
       }
     }
   }
