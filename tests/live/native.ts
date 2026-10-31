@@ -1,6 +1,8 @@
 import { execFileSync } from 'node:child_process';
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { once } from 'node:events';
+import { requireLiveDispatch, requireDisposableRoot } from './safety.js';
 import { z } from 'zod';
 import {
   chromium,
@@ -8,8 +10,11 @@ import {
   type BrowserContext,
   type Page,
 } from '@playwright/test';
-import type { Credential } from '../../src/adapters/t3/oauth.js';
-import { requireOwnerNativeApproval } from './safety.js';
+import {
+  authorize,
+  callbackReceiver,
+} from '../../src/adapters/t3/authorization.js';
+import { saveCredential } from '../../src/adapters/t3/oauth.js';
 import { Process, port, ready, until } from './processes.js';
 
 export const Executor = z.enum(['codex', 'grok']);
@@ -20,6 +25,7 @@ export type Role = (typeof roles)[number];
 
 export class Native {
   origin = '';
+  private ownedOrigin: string | undefined;
   endpoint = '';
   browser: Browser | undefined;
   context: BrowserContext | undefined;
@@ -32,6 +38,19 @@ export class Native {
     readonly root: string,
     readonly executor: Executor,
   ) {}
+  assertOwnedServer() {
+    requireLiveDispatch();
+    requireDisposableRoot(this.root);
+    if (
+      this.origin !== this.ownedOrigin ||
+      !this.server?.child?.pid ||
+      this.server.child.exitCode !== null ||
+      this.server.child.signalCode !== null ||
+      this.endpoint !== this.origin + '/mcp' ||
+      !/^http:\/\/127\.0\.0\.1:\d+$/.test(this.origin)
+    )
+      throw new Error('DISPOSABLE_SERVER_REQUIRED');
+  }
   home(role: Role) {
     return join(this.root, role);
   }
@@ -44,7 +63,7 @@ export class Native {
     token: string,
     availableTools: string[],
   ) {
-    if (process.env.GITHUB_ACTIONS) requireOwnerNativeApproval();
+    this.assertOwnedServer();
     const home = this.home(role);
     const directory = join(
       home,
@@ -84,7 +103,8 @@ export class Native {
     );
   }
   async start() {
-    if (process.env.GITHUB_ACTIONS) requireOwnerNativeApproval();
+    requireLiveDispatch();
+    requireDisposableRoot(this.root);
     if (
       execFileSync(this.binary, ['--version'], {
         encoding: 'utf8',
@@ -111,6 +131,7 @@ export class Native {
       throw new Error('PROVIDER_VERSION_MISMATCH');
     this.origin = `http://127.0.0.1:${String(await port())}`;
     this.endpoint = this.origin + '/mcp';
+    this.ownedOrigin = this.origin;
     const home = join(this.root, 't3-home');
     mkdirSync(home, { recursive: true, mode: 0o700 });
     const env = {
@@ -176,7 +197,7 @@ export class Native {
     await this.page.getByText('Providers', { exact: true }).click();
   }
   async addProviders() {
-    if (process.env.GITHUB_ACTIONS) requireOwnerNativeApproval();
+    this.assertOwnedServer();
     const page = this.page;
     if (!page) throw new Error('NO_NATIVE_PAGE');
     for (const role of roles) {
@@ -282,10 +303,45 @@ export class Native {
       }
     }
   }
-  oauth(readOnly: boolean): Promise<Credential> {
+  async oauth(readOnly: boolean) {
+    this.assertOwnedServer();
+    const page = this.page;
+    if (!page) throw new Error('NO_NATIVE_PAGE');
     this.stage = readOnly ? 'native-oauth-read' : 'native-oauth-supervised';
-    // Automation cannot grant owner-native consent, including on local machines.
-    return Promise.reject(new Error('approval-required'));
+    const signal = AbortSignal.timeout(60_000);
+    let receiver: ReturnType<typeof callbackReceiver> | undefined;
+    try {
+      const credential = await authorize(
+        this.endpoint,
+        {
+          async prepare(state, issuer, signal) {
+            receiver = callbackReceiver(state, issuer, signal);
+            receiver.server.listen(49871, '127.0.0.1');
+            await once(receiver.server, 'listening');
+            return { code: receiver.code };
+          },
+          async redirect(url) {
+            await page.goto(url.href);
+            await page
+              .getByText(readOnly ? 'Read only' : 'Supervised', { exact: true })
+              .click();
+            await page
+              .getByRole('button', { name: /authorize|allow|approve/i })
+              .click();
+          },
+        },
+        signal,
+      );
+      const file = join(
+        this.root,
+        readOnly ? 'read-only.json' : 'supervised.json',
+      );
+      saveCredential(file, credential, { replace: false });
+      return credential;
+    } finally {
+      receiver?.server.closeAllConnections();
+      receiver?.server.close();
+    }
   }
   async close() {
     const stopped = await Promise.allSettled([

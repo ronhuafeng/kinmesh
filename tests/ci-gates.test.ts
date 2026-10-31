@@ -107,16 +107,26 @@ await test('CI: no private OAuth or paid model runner in routine checks', () => 
   assert.doesNotMatch(workflow, /continue-on-error\s*:/);
 });
 
-await test('CI: unattended native integration stays approval-required without secrets or model retries', () => {
+await test('CI: paid integration is manual, owner-scoped, isolated and never retries models', () => {
   const workflow = source('../.github/workflows/live.yml');
   assert.match(workflow, /workflow_dispatch:/);
   assert.doesNotMatch(workflow, /pull_request(?:_target)?:|push:/);
   assert.match(workflow, /environment: live/);
   assert.match(workflow, /cancel-in-progress: false/);
   assert.match(workflow, /executor: \[codex, grok\]/);
-  assert.match(workflow, /approval-required/);
-  assert.doesNotMatch(workflow, /secrets\.|npm |actions\/checkout/);
-  assert.match(workflow, /steps\.owner-approval\.outcome == 'success'/);
+  const checkout = workflow.indexOf('uses: actions/checkout@');
+  for (const condition of [
+    'test "$GITHUB_EVENT_NAME" = "workflow_dispatch"',
+    'test "$GITHUB_REF" = "refs/heads/main"',
+    'test "$GITHUB_ACTOR" = "$GITHUB_REPOSITORY_OWNER"',
+    'test "$GITHUB_TRIGGERING_ACTOR" = "$GITHUB_REPOSITORY_OWNER"',
+    'test "$RUNNER_ENVIRONMENT" = "github-hosted"',
+  ])
+    assert.ok(
+      workflow.indexOf(condition) > 0 && workflow.indexOf(condition) < checkout,
+    );
+  for (const secret of ['LLM_API_KEY', 'CODEX_BASE_URL', 'GROK_BASE_URL'])
+    assert.ok(workflow.includes('secrets.' + secret));
   assert.match(workflow, /path: \.live-evidence\/\*\.json/);
   assert.match(workflow, /include-hidden-files: true/);
   assert.doesNotMatch(
