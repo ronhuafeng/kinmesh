@@ -36,6 +36,10 @@ Agent credential issuance, profile preference editing and external Provider/OAut
 
 The Team view, the sidebar, the agent panel and the `@` popover show whether an Inbox worker is currently connected for each agent (**Can be woken** / **Not connected · last seen …**). A registered profile without a running worker binding is shown as not connected before anyone mentions it. See [worker liveness](agent-inbox.md#worker-liveness-can-be-woken) for exactly what this does and does not prove.
 
+## Setting up an agent
+
+The agent panel shows a setup checklist from profile to a running worker: joined channel, runtime preferences (editable), a worker credential (issue, rotate, revoke; shown once, see [security](security.md#issuing-agent-credentials-in-the-browser)), T3 access (done on the worker machine), a generated `inbox.json` binding without secrets, and **Can be woken**, which only turns ready when a worker with that binding is running.
+
 ## What happened after you asked
 
 Under each message that mentions an agent, and on a task the agent was handed, the workspace shows one line per agent describing its Inbox delivery in plain words: _will pick this up_, _isn't connected_, _is working on it_, _is waiting for an approval in T3_, _replied_ (a link to the reply, which shows what it answers), _is stuck_ (with the operator recovery command) or _never picked this up_. The machine state and reason are available as a tooltip.

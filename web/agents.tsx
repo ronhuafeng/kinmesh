@@ -14,6 +14,7 @@ import { api, HttpError, value } from './api.js';
 import { ActionForm, Field, Notice } from './forms.js';
 import { Avatar, Drawer, shortTime, WakeLabel, wakeOf } from './ui.js';
 import { DeliveryLine } from './deliveries.js';
+import { AgentSetup } from './setup.js';
 function NativeStatus({
   correlation,
   teamId,
@@ -291,10 +292,14 @@ function Activity({
 export function AgentDrawer({
   agent,
   data,
+  channelPath,
+  onDone,
   onClose,
 }: {
   agent: Agent;
   data: WorkspaceSnapshot;
+  channelPath: string | null;
+  onDone: () => void;
   onClose: () => void;
 }) {
   const joined = data.joinedAgentIds.includes(agent.id);
@@ -314,6 +319,12 @@ export function AgentDrawer({
             <WakeLabel wake={data.wake} agentId={agent.id} />
           </div>
         </header>
+        <AgentSetup
+          agent={agent}
+          data={data}
+          channelPath={channelPath}
+          onDone={onDone}
+        />
         <h3>Profile</h3>
         <dl className="profile-list">
           <dt>Agent ID</dt>
@@ -414,8 +425,8 @@ export function Team({
             </select>
           </Field>
           <p>
-            Profiles do not launch agents or grant provider access. Configure
-            execution separately.
+            After registering, open the agent to finish its setup: a worker
+            credential and an Inbox worker binding, so mentions can wake it.
           </p>
         </ActionForm>
       </details>

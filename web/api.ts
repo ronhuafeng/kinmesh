@@ -39,6 +39,7 @@ interface Pending {
   path: string;
   body: string;
   headers: Record<string, string>;
+  method: 'POST' | 'PUT';
   onSuccess?: () => void;
 }
 /** A lost response keeps the exact command/key in memory for an explicit retry. Never auto-resend. */
@@ -64,7 +65,7 @@ export function useAction() {
     setError('');
     try {
       await api(command.path, {
-        method: 'POST',
+        method: command.method,
         body: command.body,
         headers: command.headers,
       });
@@ -114,10 +115,12 @@ export function useAction() {
       keyed = true,
       extraHeaders: Record<string, string> = {},
       onSuccess?: () => void,
+      method: 'POST' | 'PUT' = 'POST',
     ) {
       if (pending.current) return false;
       return perform({
         path,
+        method,
         body: JSON.stringify(
           keyed ? { ...body, operationKey: crypto.randomUUID() } : body,
         ),

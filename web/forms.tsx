@@ -63,6 +63,7 @@ export function ActionForm({
   children,
   submit,
   keyed = true,
+  method = 'POST',
 }: {
   title: string;
   /** A function path lets one form route each submit button to its own endpoint. */
@@ -73,6 +74,8 @@ export function ActionForm({
   /** Omit when the children supply their own submit buttons. */
   submit?: string;
   keyed?: boolean;
+  /** PUT replaces a whole resource, such as an agent profile. */
+  method?: 'POST' | 'PUT';
 }) {
   const action = useAction();
   const id = useId();
@@ -98,12 +101,14 @@ export function ActionForm({
           const data = new FormData(form, submitter);
           const body = build(data);
           const target = typeof path === 'string' ? path : path(data);
-          void action.send(target, body, keyed).then((ok) => {
-            if (ok) {
-              form.reset();
-              onDone();
-            }
-          });
+          void action
+            .send(target, body, keyed, {}, undefined, method)
+            .then((ok) => {
+              if (ok) {
+                form.reset();
+                onDone();
+              }
+            });
         } catch {
           action.invalid();
         }
