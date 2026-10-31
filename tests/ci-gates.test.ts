@@ -12,6 +12,7 @@ const scripts = z
 await test('CI: Foundation enforces typed, SQLite/process, architecture and audit checks', () => {
   const workflow = source('../.github/workflows/ci.yml');
   assert.match(workflow, /pull_request:/);
+  assert.match(workflow, /push:\n    branches: \['\*\*'\]/);
   assert.match(workflow, /branches: \[main\]/);
   for (const command of [
     'npm ci',
@@ -51,7 +52,7 @@ await test('CI: no private OAuth or paid model runner in routine checks', () => 
     );
     assert.doesNotMatch(
       workflow,
-      /(?:test:live|test:team-live|test:inbox-live|release:check)/,
+      /(?:test:live|test:team-live|test:inbox-live|test:collaboration-live|t3:auth|release:check)|secrets\.|LLM_API_KEY/,
     );
   }
   for (const required of [
@@ -74,15 +75,16 @@ await test('CI: no private OAuth or paid model runner in routine checks', () => 
   assert.doesNotMatch(workflow, /continue-on-error\s*:/);
 });
 
-await test('CI: paid integration is explicit, isolated, complete and does not retry models', () => {
+await test('CI: unattended native integration stays approval-required without secrets or model retries', () => {
   const workflow = source('../.github/workflows/live.yml');
   assert.match(workflow, /workflow_dispatch:/);
   assert.doesNotMatch(workflow, /pull_request(?:_target)?:|push:/);
   assert.match(workflow, /environment: live/);
   assert.match(workflow, /cancel-in-progress: false/);
   assert.match(workflow, /executor: \[codex, grok\]/);
-  for (const secret of ['LLM_API_KEY', 'CODEX_BASE_URL', 'GROK_BASE_URL'])
-    assert.ok(workflow.includes('secrets.' + secret));
+  assert.match(workflow, /approval-required/);
+  assert.doesNotMatch(workflow, /secrets\.|npm |actions\/checkout/);
+  assert.match(workflow, /steps\.owner-approval\.outcome == 'success'/);
   assert.match(workflow, /path: \.live-evidence\/\*\.json/);
   assert.match(workflow, /include-hidden-files: true/);
   assert.doesNotMatch(
