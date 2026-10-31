@@ -73,6 +73,31 @@ await test('CI: no private OAuth or paid model runner in routine checks', () => 
   const setupNode =
     'uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020';
   assert.ok(mainGuard > 0 && workflow.indexOf(checkout) > mainGuard);
+  const untrusted = workflow.slice(
+    workflow.indexOf('  authorize-dispatch:\n'),
+    workflow.indexOf('  authenticated-live:\n'),
+  );
+  const trusted = workflow.slice(workflow.indexOf('  authenticated-live:\n'));
+  assert.match(untrusted, /runs-on: ubuntu-24\\.04/);
+  assert.match(trusted, /needs: authorize-dispatch/);
+  const trustedCheckout = trusted.indexOf(checkout);
+  assert.ok(trustedCheckout > 0);
+  for (const condition of [
+    'test "$GITHUB_EVENT_NAME" = "workflow_dispatch"',
+    'test "$GITHUB_REF" = "refs/heads/main"',
+    'test "$GITHUB_ACTOR" = "$GITHUB_REPOSITORY_OWNER"',
+    'test "$GITHUB_TRIGGERING_ACTOR" = "$GITHUB_REPOSITORY_OWNER"',
+  ]) {
+    assert.ok(
+      untrusted.includes(condition),
+      'Missing GitHub-hosted owner dispatch check: ' + condition,
+    );
+    assert.ok(
+      trusted.indexOf(condition) >= 0 &&
+        trusted.indexOf(condition) < trustedCheckout,
+      'Missing trusted runner recheck before checkout: ' + condition,
+    );
+  }
   assert.ok(workflow.includes(setupNode));
   assert.ok(workflow.includes('persist-credentials: false'));
   assert.ok(workflow.includes('group: kinmesh-native-owner-release'));
