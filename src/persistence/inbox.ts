@@ -23,6 +23,7 @@ import {
   InboxState,
 } from '../domain/inbox.js';
 import { Reference } from '../domain/execution.js';
+import { retainsExecutionResponsibility } from '../domain/tasks.js';
 
 const decode = (value: string): unknown => JSON.parse(value);
 export function inboxRepository(
@@ -92,8 +93,62 @@ export function inboxRepository(
           : ['in-progress', 'rework-requested'].includes(state.status)
             ? state.owner
             : null;
-      if (assigned?.kind !== 'agent' || assigned.id !== c.agentId)
-        throw new IdentityError(403);
+      if (assigned?.kind !== 'agent' || assigned.id !== c.agentId) {
+        const row = get(c.id);
+        const frozen =
+          row.launch === null ? null : FrozenLaunch.parse(decode(row.launch));
+        const fact = OutboxFact.parse(
+          decode(
+            db
+              .select()
+              .from(s.communicationOutbox)
+              .where(eq(s.communicationOutbox.id, c.eventId))
+              .get()?.fact ?? '',
+          ),
+        );
+        const recipient =
+          fact.kind !== 'task.changed'
+            ? null
+            : fact.taskStatus === 'review-requested'
+              ? fact.reviewer
+              : ['in-progress', 'rework-requested'].includes(fact.taskStatus)
+                ? fact.owner
+                : null;
+        const dispatched =
+          frozen !== null &&
+          db
+            .select({ id: s.executionOperations.id })
+            .from(s.executionOperations)
+            .where(
+              and(
+                eq(
+                  s.executionOperations.scope,
+                  fingerprint([
+                    frozen.execution.endpoint,
+                    frozen.execution.environmentId,
+                  ]),
+                ),
+                eq(s.executionOperations.actor, 'inbox-agent:' + c.agentId),
+                eq(s.executionOperations.operationKey, 'inbox:' + c.id),
+                eq(s.executionOperations.tool, 't3_thread_launch'),
+                inArray(s.executionOperations.phase, [
+                  'dispatching',
+                  'uncertain',
+                  'known',
+                ]),
+              ),
+            )
+            .get() !== undefined;
+        if (
+          fact.kind !== 'task.changed' ||
+          fact.taskId !== task.id ||
+          recipient?.kind !== 'agent' ||
+          recipient.id !== c.agentId ||
+          !dispatched ||
+          !retainsExecutionResponsibility(task, c.agentId)
+        )
+          throw new IdentityError(403);
+      }
     }
     return { profile, channel, task, principal: p };
   }
@@ -381,16 +436,13 @@ export function inboxRepository(
                   ),
                 )
                 .get() ??
-              tasks.command(p, c.teamId, c.channelId, task.id, {
-                type: 'link-execution',
-                expectedVersion: task.version,
-                operationKey: 'inbox-link:' + c.id,
-                reference: result.reference,
-                note:
-                  'kind' in result
-                    ? 'Inbox native terminal status; human acceptance remains separate.'
-                    : 'Inbox execution result; human acceptance remains separate.',
-              }).executionLink);
+              tasks.recordInboxExecution(
+                p,
+                c.teamId,
+                c.channelId,
+                task.id,
+                result.reference,
+              ));
         const body =
           'kind' in result
             ? `[T3 ${result.state}; native status notice only; no assistant message observed in bounded read; environment ${result.reference.environmentId}; thread ${result.reference.threadId}; run ${result.reference.runId}; inbox ${c.id}; source event ${c.eventId}]`
