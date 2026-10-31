@@ -107,7 +107,7 @@ export function retainsExecutionResponsibility(task: Task, agentId: AgentId) {
   return (
     state.status !== 'cancelled' &&
     state.status !== 'proposed' &&
-    ((state.owner?.kind === 'agent' && state.owner.id === agentId) ||
+    ((state.owner.kind === 'agent' && state.owner.id === agentId) ||
       (state.reviewer?.kind === 'agent' && state.reviewer.id === agentId))
   );
 }
