@@ -167,6 +167,7 @@ export function registerWorkspace(
       team: membership.team,
       channels,
       channel,
+      leftChannels: store.communication.leftChannels(principal, teamId),
       agents,
       agentsTruncated: profiles.truncated,
       joinedAgentIds,

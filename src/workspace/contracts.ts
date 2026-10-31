@@ -25,6 +25,8 @@ export const WorkspaceSnapshot = z.strictObject({
   team: Team,
   channels: pageOf(ChannelView),
   channel: ChannelView.nullable(),
+  /** Channels the human left and may rejoin (never removed ones). */
+  leftChannels: z.array(ChannelView).max(100),
   agents: z.array(Agent).max(100),
   agentsTruncated: z.boolean(),
   joinedAgentIds: z.array(AgentId).max(100),

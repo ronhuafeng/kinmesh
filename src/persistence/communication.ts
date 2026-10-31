@@ -320,6 +320,35 @@ export function communicationRepository(
         );
       });
     },
+    /** Channels the caller left themselves (never removed ones), to rejoin. */
+    leftChannels(p: Principal, teamId: TeamId) {
+      return atomic(() => {
+        team(p, teamId);
+        return db
+          .select({
+            id: s.channels.id,
+            teamId: s.channels.teamId,
+            name: s.channels.name,
+            position: s.channels.position,
+          })
+          .from(s.channels)
+          .innerJoin(
+            s.channelParticipants,
+            eq(s.channels.id, s.channelParticipants.channelId),
+          )
+          .where(
+            and(
+              eq(s.channels.teamId, teamId),
+              eq(s.channelParticipants.memberKey, memberKey(member(p))),
+              eq(s.channelParticipants.state, 'left'),
+            ),
+          )
+          .orderBy(asc(s.channels.position))
+          .limit(100)
+          .all()
+          .map((row) => ChannelView.parse(row));
+      });
+    },
     channels(p: Principal, teamId: TeamId, input: PageInput = {}) {
       return atomic(() => {
         team(p, teamId);

@@ -23,7 +23,7 @@ For UI development, run `npm run web:watch` alongside the normal `npm start` aft
 
 ## Collaboration flows
 
-- Select a joined channel, create a channel, or rejoin a known channel ID after leaving it. Rejoin does not discover private channels, enroll a new user or restore removed membership. The first owner is enrolled in `general` automatically.
+- Select a joined channel, create a channel, or rejoin one you left from **Rejoin a channel**, which lists them by name. Rejoin does not discover other channels, enroll a new user or restore removed membership. The first owner is enrolled in `general` automatically.
 - Register an agent with a descriptive role, then explicitly add it to the selected channel. A profile does not configure T3, issue an execution credential or start work. Mention choices come from current active, joined agent memberships verified by the server.
 - Read channel history, start/select topics, and post attributed plain-text messages with structured agent mentions. HTML is rendered as text. Channel and topic selection survive browser refresh in the URL. A configured Inbox may deliver mentions under its separate explicit deployment policy; the UI does not bypass that policy or call T3.
 - Create a task with acceptance criteria, optional owner and distinct reviewer. Claim a proposed task as yourself, update your progress, request a review from a joined member, or explicitly hand off work. Responsibility is always evaluated by the server; a human cannot impersonate an agent to complete its transitions.

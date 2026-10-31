@@ -35,13 +35,19 @@ export function registerCommunication(app: FastifyInstance, store: Store) {
         ),
       ),
   );
-  app.get(base, (request) =>
-    store.communication.channels(
-      principal(request),
-      TeamPath.parse(request.params).teamId,
-      PageInput.parse(request.query),
-    ),
-  );
+  app.get(base, (request) => {
+    const { teamId } = TeamPath.parse(request.params);
+    const { membership, ...page } = PageInput.extend({
+      membership: z.enum(['joined', 'left']).optional(),
+    }).parse(request.query);
+    // "left" lists only the caller's own left memberships; removed never return.
+    return membership === 'left'
+      ? {
+          items: store.communication.leftChannels(principal(request), teamId),
+          nextCursor: null,
+        }
+      : store.communication.channels(principal(request), teamId, page);
+  });
   app.get(channel, (request) => {
     const { teamId, channelId } = ChannelPath.parse(request.params);
     return store.communication.channel(principal(request), teamId, channelId);

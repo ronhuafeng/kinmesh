@@ -515,7 +515,10 @@ export function Chat({
       />
       <details className="channel-details">
         <summary>Channel details</summary>
-        <p className="reference">Channel ID: {channel.id}</p>
+        <details className="technical">
+          <summary>Technical details</summary>
+          <p className="reference">Channel ID: {channel.id}</p>
+        </details>
         <ActionForm
           title="Channel membership"
           path={channelPath + '/leave'}
