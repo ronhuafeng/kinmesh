@@ -557,6 +557,96 @@ test('keyboard mention, message becomes a task in its topic, and the needs-me fi
   await expect(drawer.getByText('This task is closed.')).toBeVisible();
 });
 
+test('a mention says what happened to it and leads to the agent’s reply', async ({
+  page,
+  context,
+  playwright,
+  hub,
+}) => {
+  await onboard(page, hub);
+  await register(page, 'Ada', 'developer');
+  const state = await snapshot(context.request, hub.origin);
+  const ada = state.agents[0];
+  if (!ada || !state.channel) throw new Error('Local fixture unavailable');
+  await page.getByRole('tab', { name: 'Chat', exact: true }).click();
+  const composer = page.getByRole('form', { name: 'Message your team' });
+  await composer
+    .getByLabel('Message', { exact: true })
+    .fill('@Ada please check the release notes');
+  await composer.getByRole('button', { name: 'Send message' }).click();
+  const asked = page
+    .getByRole('list', { name: 'Channel messages' })
+    .getByRole('listitem')
+    .filter({ hasText: 'please check the release notes' })
+    .first();
+  const responses = asked.getByRole('list', { name: 'Agent responses' });
+  // No worker yet: the person learns it now, not after a week of silence.
+  await expect(responses).toContainText('Ada isn’t connected');
+  const sql = new Database(hub.database);
+  try {
+    sql
+      .prepare(
+        'INSERT INTO inbox_bindings (agent_id, team_id, last_seen_at) VALUES (?, ?, ?)',
+      )
+      .run(ada.id, ada.teamId, Date.now());
+  } finally {
+    sql.close();
+  }
+  await page.getByRole('button', { name: 'Reconnect / refresh' }).click();
+  await expect(responses).toContainText('Ada will pick this up');
+  // Simulate what the worker does on success: the agent replies and the
+  // delivery is acknowledged with that reply.
+  const source = (await snapshot(context.request, hub.origin)).messages
+    .items[0];
+  if (!source) throw new Error('Mention not persisted');
+  const token = await agentGrant(
+    context.request,
+    hub.origin,
+    state.team.id,
+    ada.id,
+  );
+  const agent = await playwright.request.newContext({
+    extraHTTPHeaders: { authorization: 'Bearer ' + token },
+  });
+  try {
+    const posted = await agent.post(
+      `${hub.origin}/api/teams/${state.team.id}/channels/${state.channel.id}/messages`,
+      {
+        data: {
+          operationKey: randomUUID(),
+          body: 'Release notes checked; two links were broken and are fixed.',
+          topicId: null,
+          mentions: [],
+          sourceMessageId: source.id,
+          sourceEventId: null,
+        },
+      },
+    );
+    expect(posted.status()).toBe(201);
+    const reply = z.object({ id: z.uuid() }).parse(await posted.json());
+    const db = new Database(hub.database);
+    try {
+      db.prepare(
+        "UPDATE agent_inbox SET state = 'acked', reason = 'assistant-result-published', result_message_id = ? WHERE message_id = ?",
+      ).run(reply.id, source.id);
+    } finally {
+      db.close();
+    }
+  } finally {
+    await agent.dispose();
+  }
+  await page.getByRole('button', { name: 'Reconnect / refresh' }).click();
+  await responses.getByRole('button', { name: /Ada replied/ }).click();
+  const answer = page
+    .getByRole('list', { name: 'Channel messages' })
+    .getByRole('listitem')
+    .filter({ hasText: 'two links were broken' });
+  await expect(answer).toBeInViewport();
+  await expect(
+    answer.getByRole('button', { name: /In reply to browser_owner/ }),
+  ).toBeVisible();
+});
+
 test('lost message response retries the same committed operation; real conflict stays visible', async ({
   page,
   context,

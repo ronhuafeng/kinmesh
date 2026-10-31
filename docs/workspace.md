@@ -36,6 +36,12 @@ Agent credential issuance, profile preference editing and external Provider/OAut
 
 The Team view, the sidebar, the agent panel and the `@` popover show whether an Inbox worker is currently connected for each agent (**Can be woken** / **Not connected · last seen …**). A registered profile without a running worker binding is shown as not connected before anyone mentions it. See [worker liveness](agent-inbox.md#worker-liveness-can-be-woken) for exactly what this does and does not prove.
 
+## What happened after you asked
+
+Under each message that mentions an agent, and on a task the agent was handed, the workspace shows one line per agent describing its Inbox delivery in plain words: _will pick this up_, _isn't connected_, _is working on it_, _is waiting for an approval in T3_, _replied_ (a link to the reply, which shows what it answers), _is stuck_ (with the operator recovery command) or _never picked this up_. The machine state and reason are available as a tooltip.
+
+`GET /api/workspace` includes these as `deliveries` for the visible messages and tasks of a channel the caller can read. Only identifiers, state, reason, timestamps and the reply message are exposed; claims, frozen launches, operation IDs, native references and counters stay in the worker. Blocked deliveries are still resumed only by an operator (see [Agent Inbox](agent-inbox.md)).
+
 ## AG-UI and refresh semantics
 
 `GET /api/workspace` reconstructs the signed-in owner's team, joined channels, selected channel/topic message history, tasks and agent enrollment from Kinmesh-owned repositories. It accepts only bounded validated paging/filter parameters and never accepts an actor selector. Responses are `Cache-Control: no-store` and authorized through the existing server-derived principal.

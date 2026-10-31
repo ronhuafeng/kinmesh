@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { and, asc, eq, gt, inArray, lte, sql, type SQL } from 'drizzle-orm';
+import { and, asc, eq, gt, inArray, lte, or, sql, type SQL } from 'drizzle-orm';
 import type { BetterSQLite3Database } from 'drizzle-orm/better-sqlite3';
 import { z } from 'zod';
 import * as s from './schema.js';
@@ -533,6 +533,72 @@ export function inboxRepository(
       db.delete(s.inboxBindings)
         .where(inArray(s.inboxBindings.agentId, ids))
         .run();
+    },
+    /**
+     * Read-only delivery view for a channel page: mention deliveries of the
+     * given messages, deliveries answered by them, and task wakes. Callers
+     * must already have authorized channel access. Worker internals (claim,
+     * launch, operation, reference, counters) never leave this method.
+     */
+    deliveriesFor(
+      teamId: string,
+      channelId: string,
+      messageIds: string[],
+      taskIds: string[],
+    ) {
+      const ids = z.array(z.uuid()).max(100).parse(messageIds);
+      const tasks = z.array(z.uuid()).max(100).parse(taskIds);
+      if (ids.length === 0 && tasks.length === 0) return [];
+      const rows = db
+        .select({
+          id: t.id,
+          position: t.position,
+          agentId: t.agentId,
+          messageId: t.messageId,
+          taskId: t.taskId,
+          state: t.state,
+          reason: t.reason,
+          resultMessageId: t.resultMessageId,
+        })
+        .from(t)
+        .where(
+          and(
+            eq(t.teamId, teamId),
+            eq(t.channelId, channelId),
+            or(
+              ids.length ? inArray(t.messageId, ids) : undefined,
+              ids.length ? inArray(t.resultMessageId, ids) : undefined,
+              tasks.length ? inArray(t.taskId, tasks) : undefined,
+            ),
+          ),
+        )
+        .orderBy(asc(t.position))
+        .all();
+      if (rows.length === 0) return [];
+      const times = new Map(
+        db
+          .select({
+            id: s.inboxHistory.deliveryId,
+            first: sql<number>`min(${s.inboxHistory.createdAt})`,
+            last: sql<number>`max(${s.inboxHistory.createdAt})`,
+          })
+          .from(s.inboxHistory)
+          .where(
+            inArray(
+              s.inboxHistory.deliveryId,
+              rows.map((r) => r.id),
+            ),
+          )
+          .groupBy(s.inboxHistory.deliveryId)
+          .all()
+          .map((r) => [r.id, r]),
+      );
+      return rows.map((r) => ({
+        ...r,
+        state: InboxState.parse(r.state),
+        queuedAt: times.get(r.id)?.first ?? null,
+        updatedAt: times.get(r.id)?.last ?? null,
+      }));
     },
     /** Last worker heartbeat per agent of one team (milliseconds since epoch). */
     liveness(teamId: string) {

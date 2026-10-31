@@ -88,10 +88,15 @@ export function WakeLabel({
       {state.connected
         ? 'Can be woken'
         : state.lastSeenAt
-          ? `Not connected · last seen ${age(state.lastSeenAt)} ago`
+          ? `Not connected · last seen ${ago(state.lastSeenAt)}`
           : 'Not connected'}
     </span>
   );
+}
+/** "just now" or "5m ago", for sentences. */
+export function ago(iso: string) {
+  const value = age(iso);
+  return value === 'now' ? 'just now' : `${value} ago`;
 }
 export function plural(count: number, noun: string) {
   return `${String(count)} ${noun}${count === 1 ? '' : 's'}`;

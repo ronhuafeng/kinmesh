@@ -119,6 +119,45 @@ export function registerWorkspace(
         connected: now - row.lastSeenAt <= INBOX_LIVENESS_MS,
         lastSeenAt: new Date(row.lastSeenAt).toISOString(),
       }));
+    const messages = channel
+      ? store.communication.history(
+          principal,
+          teamId,
+          channel.id,
+          {
+            ...(query.messagesCursor ? { cursor: query.messagesCursor } : {}),
+          },
+          query.topicId,
+        )
+      : { items: [], nextCursor: null };
+    const tasks = channel
+      ? store.tasks.list(principal, teamId, channel.id, {
+          ...(query.tasksCursor ? { cursor: query.tasksCursor } : {}),
+        })
+      : { items: [], nextCursor: null };
+    // Channel access was authorized above; the projection is allow-listed.
+    const iso = (ms: number | null) =>
+      ms === null ? null : new Date(ms).toISOString();
+    const deliveries = channel
+      ? store.inbox
+          .deliveriesFor(
+            teamId,
+            channel.id,
+            messages.items.map((m) => m.id),
+            tasks.items.map((t) => t.id),
+          )
+          .map((d) => ({
+            id: d.id,
+            agentId: d.agentId,
+            messageId: d.messageId,
+            taskId: d.taskId,
+            state: d.state,
+            reason: d.reason,
+            queuedAt: iso(d.queuedAt),
+            updatedAt: iso(d.updatedAt),
+            resultMessageId: d.resultMessageId,
+          }))
+      : [];
     return WorkspaceSnapshot.parse({
       observedAt: new Date(now).toISOString(),
       nativeT3Origin: config.nativeT3
@@ -131,28 +170,15 @@ export function registerWorkspace(
       agents,
       agentsTruncated: profiles.truncated,
       joinedAgentIds,
+      deliveries,
       wake,
-      messages: channel
-        ? store.communication.history(
-            principal,
-            teamId,
-            channel.id,
-            {
-              ...(query.messagesCursor ? { cursor: query.messagesCursor } : {}),
-            },
-            query.topicId,
-          )
-        : { items: [], nextCursor: null },
+      messages,
       topics: channel
         ? store.communication.topics(principal, teamId, channel.id, {
             ...(query.topicsCursor ? { cursor: query.topicsCursor } : {}),
           })
         : { items: [], nextCursor: null },
-      tasks: channel
-        ? store.tasks.list(principal, teamId, channel.id, {
-            ...(query.tasksCursor ? { cursor: query.tasksCursor } : {}),
-          })
-        : { items: [], nextCursor: null },
+      tasks,
     });
   });
   app.get('/api/agui/:teamId/:memberId', (request, reply) => {
