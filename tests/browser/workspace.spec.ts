@@ -850,10 +850,13 @@ test('human claim and request-review controls, plus leave/rejoin of known member
   await expect(
     page.getByText('Welcome to your team', { exact: true }),
   ).toBeVisible();
+  // A channel you left is offered back by name; no IDs to copy.
   await page.getByText('Rejoin a channel', { exact: true }).click();
-  await page.getByLabel('Known channel ID').fill(state.channel.id);
-  await page.getByRole('button', { name: 'Join channel', exact: true }).click();
+  const left = page.getByRole('list', { name: 'Channels you left' });
+  await expect(left.getByRole('listitem')).toHaveText([/general/]);
+  await left.getByRole('button', { name: 'Rejoin', exact: true }).click();
   await expect(page.getByRole('heading', { name: '# general' })).toBeVisible();
+  await expect(page.getByText('You haven’t left any channels.')).toBeVisible();
   await page.getByRole('tab', { name: 'Board', exact: true }).click();
   await expect(inStage(page, 'Review', 'Human owned task')).toBeVisible();
 });
@@ -869,10 +872,10 @@ test('a heartbeat refresh never interrupts work; after a failure nothing submits
   await page.getByText('New channel', { exact: true }).click();
   const create = page.getByRole('form', { name: 'Create a channel' });
   await create.getByLabel('Channel name').fill('after-reconnect');
-  await page.getByText('Rejoin a channel', { exact: true }).click();
-  await page.getByLabel('Known channel ID').fill(state.channel.id);
-  const join = page.getByRole('form', { name: 'Rejoin membership' });
   const composer = page.getByRole('form', { name: 'Message your team' });
+  await composer
+    .getByLabel('Message', { exact: true })
+    .fill('Sent once the workspace is back');
   let posts = 0;
   page.on('request', (request) => {
     if (request.method() === 'POST') posts++;
@@ -901,9 +904,9 @@ test('a heartbeat refresh never interrupts work; after a failure nothing submits
     };
   }
   async function expectNothingSubmits() {
-    for (const form of [create, join]) {
+    for (const form of [create, composer]) {
       await expect(
-        form.getByRole('button', { name: /Create channel|Join channel/ }),
+        form.getByRole('button', { name: /Create channel|Send message/ }),
       ).toBeDisabled();
       // Bypass native disabled controls to verify the submit handler also fails closed.
       await form.evaluate((node) =>
@@ -912,9 +915,6 @@ test('a heartbeat refresh never interrupts work; after a failure nothing submits
         ),
       );
     }
-    await expect(
-      composer.getByRole('button', { name: 'Send message' }),
-    ).toBeDisabled();
     await expect(
       page.getByRole('button', { name: 'Sign out', exact: true }),
     ).toBeDisabled();
@@ -956,7 +956,10 @@ test('a heartbeat refresh never interrupts work; after a failure nothing submits
   succeed();
   await expectHealthy(page);
   await page.unroute('**/api/workspace?*');
-  await join.getByRole('button', { name: 'Join channel', exact: true }).click();
+  await composer.getByRole('button', { name: 'Send message' }).click();
+  await expect(
+    page.getByText('Sent once the workspace is back', { exact: true }),
+  ).toBeVisible();
   await expect(
     create.getByRole('button', { name: 'Create channel', exact: true }),
   ).toBeEnabled();

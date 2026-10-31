@@ -438,7 +438,11 @@ export function App() {
               </details>
               <details>
                 <summary>Rejoin a channel</summary>
-                <JoinChannel teamId={data.team.id} onDone={selectChannel} />
+                <LeftChannels
+                  teamId={data.team.id}
+                  channels={data.leftChannels}
+                  onDone={selectChannel}
+                />
               </details>
             </div>
             {channel && (
@@ -736,40 +740,36 @@ export function App() {
     </MutationPermission>
   );
 }
-function JoinChannel({
+/** Channels you left, each one click from rejoining. Removed ones never appear. */
+function LeftChannels({
   teamId,
+  channels,
   onDone,
 }: {
   teamId: string;
+  channels: WorkspaceSnapshot['leftChannels'];
   onDone: (id: string) => void;
 }) {
-  const [id, setId] = useState('');
-  const parsed = ChannelId.safeParse(id);
+  if (channels.length === 0)
+    return <small>You haven’t left any channels.</small>;
   return (
-    <>
-      <Field label="Known channel ID">
-        <input
-          value={id}
-          onChange={(e) => {
-            setId(e.target.value);
-          }}
-        />
-      </Field>
-      {parsed.success && (
-        <ActionForm
-          title="Rejoin membership"
-          path={`/api/teams/${teamId}/channels/${parsed.data}/subscribe`}
-          build={() => ({})}
-          submit="Join channel"
-          onDone={() => {
-            onDone(parsed.data);
-          }}
-        />
-      )}
-      <small>
-        Only previously enrolled members may rejoin. Removed membership cannot
-        be restored here.
-      </small>
-    </>
+    <ul className="left-channels" aria-label="Channels you left">
+      {channels.map((c) => (
+        <li key={c.id}>
+          <span>
+            <span aria-hidden="true">#</span> {c.name}
+          </span>
+          <ActionForm
+            title={'Rejoin ' + c.name}
+            path={`/api/teams/${teamId}/channels/${c.id}/subscribe`}
+            build={() => ({})}
+            submit="Rejoin"
+            onDone={() => {
+              onDone(c.id);
+            }}
+          />
+        </li>
+      ))}
+    </ul>
   );
 }

@@ -2752,3 +2752,26 @@ details.technical dl {
 details.technical p {
   margin: 0;
 }
+
+/* Rejoin from a list (#58). */
+.left-channels {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 0.35rem;
+}
+.left-channels li {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.88rem;
+}
+.left-channels .action-form h3 {
+  display: none;
+}
+.left-channels button[type='submit'] {
+  padding: 0.25rem 0.6rem;
+  font-size: 0.8rem;
+}

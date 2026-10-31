@@ -23,6 +23,7 @@ Let `C = /api/teams/:teamId/channels` and `P = C/:channelId`. UUIDs are stable r
 | ------------------------------------ | ------------------------------------------------------------------------------------- |
 | `POST C`                             | `{operationKey,name}`; human team owner; 201, creator enrolled                        |
 | `GET C`                              | Bounded page of joined channels only, including for owners                            |
+| `GET C?membership=left`              | The caller's own left channels (up to 100) to rejoin; removed ones are never listed   |
 | `GET P`                              | Channel metadata; current joined membership required                                  |
 | `GET P/membership`                   | Caller's own membership; no actor selector                                            |
 | `POST P/subscribe`                   | `{operationKey}`; rejoin a previously left enrollment only                            |
