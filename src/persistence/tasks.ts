@@ -27,6 +27,7 @@ import {
   transition,
   principalMember,
   principalAuthor,
+  retainsExecutionResponsibility,
 } from '../domain/tasks.js';
 type ChannelId = z.infer<typeof ChannelId>;
 const decode = (value: string): unknown => JSON.parse(value);
@@ -87,6 +88,38 @@ export function taskRepository(
   ) {
     if (member !== null)
       communication.validateParticipant(p, teamId, channelId, member);
+  }
+  function insertExecution(
+    p: Principal,
+    taskId: TaskId,
+    reference: z.infer<typeof TaskExecution>['reference'],
+    time: string,
+  ) {
+    const inserted = db
+      .insert(s.taskExecutions)
+      .values({
+        id: randomUUID(),
+        taskId,
+        referenceKey: fingerprint([
+          reference.backend,
+          reference.environmentId,
+          reference.threadId,
+          reference.runId ?? null,
+        ]),
+        reference: JSON.stringify(reference),
+        author: JSON.stringify(principalAuthor(p)),
+        createdAt: time,
+      })
+      .returning()
+      .get();
+    return TaskExecution.parse({
+      id: inserted.id,
+      position: inserted.position,
+      taskId: inserted.taskId,
+      createdAt: inserted.createdAt,
+      reference: decode(inserted.reference),
+      author: decode(inserted.author),
+    });
   }
   function record(
     p: Principal,
@@ -306,6 +339,31 @@ export function taskRepository(
         );
       });
     },
+    /** Trusted Inbox ACK only; the enclosing transaction binds the exact native result and source. */
+    recordInboxExecution(
+      p: Principal,
+      teamId: TeamId,
+      channelId: ChannelId,
+      id: TaskId,
+      reference: z.infer<typeof TaskExecution>['reference'],
+    ) {
+      return atomic(() => {
+        access(p, teamId, channelId, 'tasks:write');
+        const current = view(row(teamId, channelId, id));
+        if (
+          p.kind !== 'agent' ||
+          !retainsExecutionResponsibility(current, p.agentId)
+        )
+          throw new IdentityError(403);
+        // Recording execution evidence does not create a workflow decision or change its version.
+        return insertExecution(
+          p,
+          id,
+          TaskExecution.shape.reference.parse(reference),
+          new Date().toISOString(),
+        );
+      });
+    },
     command(
       p: Principal,
       teamId: TeamId,
@@ -373,33 +431,8 @@ export function taskRepository(
               .run();
             if (changed.changes !== 1) throw new IdentityError(409);
             let executionLink: z.infer<typeof TaskExecution> | null = null;
-            if (data.type === 'link-execution') {
-              const inserted = db
-                .insert(s.taskExecutions)
-                .values({
-                  id: randomUUID(),
-                  taskId: id,
-                  referenceKey: fingerprint([
-                    data.reference.backend,
-                    data.reference.environmentId,
-                    data.reference.threadId,
-                    data.reference.runId ?? null,
-                  ]),
-                  reference: JSON.stringify(data.reference),
-                  author: JSON.stringify(principalAuthor(p)),
-                  createdAt: time,
-                })
-                .returning()
-                .get();
-              executionLink = TaskExecution.parse({
-                id: inserted.id,
-                position: inserted.position,
-                taskId: inserted.taskId,
-                createdAt: inserted.createdAt,
-                reference: decode(inserted.reference),
-                author: decode(inserted.author),
-              });
-            }
+            if (data.type === 'link-execution')
+              executionLink = insertExecution(p, id, data.reference, time);
             const previous = db
               .select()
               .from(s.taskEvents)
