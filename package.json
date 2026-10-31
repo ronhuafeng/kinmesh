@@ -31,6 +31,7 @@
     "inbox:worker": "node --env-file-if-exists=.env --import tsx src/inbox/main.ts",
     "inbox:status": "node --env-file-if-exists=.env --import tsx src/inbox/main.ts status",
     "test:browser": "playwright test",
+    "test:live": "playwright test --config playwright.live.config.ts",
     "web:watch": "vite build --watch"
   },
   "dependencies": {

@@ -118,7 +118,7 @@ Reconciliation may safely replay exactly the old command/key if no reference was
 
 ## CI verification and accepted native evidence
 
-Push/pull-request CI is the ongoing quality gate. It runs strict TypeScript, type-aware lint, formatting, architecture and migration checks, Node/SQLite/worker/official-SDK fixture tests, a production dependency audit and real Chromium browser tests. CI has **no T3 OAuth credentials**, makes no paid Provider/model calls and does not represent mocked transport as live native acceptance.
+Push/pull-request CI is the ongoing quality gate. It runs strict TypeScript, type-aware lint, formatting, architecture and migration checks, Node/SQLite/worker/official-SDK fixture tests, a production dependency audit and real Chromium browser tests. Routine CI has **no T3 OAuth credentials**, makes no paid Provider/model calls and does not represent mocked transport as live native acceptance. A separate, explicitly dispatched [complete native collaboration gate](ci.md) creates its own disposable T3/OAuth state and uses Environment Secrets for real Codex/Grok calls.
 
 ```sh
 npm ci
@@ -130,7 +130,7 @@ npm run test:browser   # genuine Chromium; install Playwright browser first
 npm run test:contract  # optional targeted fixture subset, not a live test
 ```
 
-The one-off authenticated acceptance CLIs and their private self-hosted workflow have been retired. They are not required for routine CI. Previously witnessed owner OAuth, native executions and compatibility scenarios are preserved in [the T3 owner report](acceptance/t3-owner-2026-10-30.md) and [v0.1 workflow report](acceptance/v01-workflow-2026-10-31.md), with exact tested revisions and limits. A future T3 release or changed MCP contract still calls for targeted real compatibility verification before adoption. Operator commands `t3:preflight`, `t3:auth` and `t3:smoke` remain available to establish and diagnose a real connection.
+The one-off authenticated acceptance CLIs and their private self-hosted workflow have been retired. The maintained live gate uses independent disposable fixtures and complete two-cycle collaboration; it is separate from routine CI. Previously witnessed owner OAuth, native executions and compatibility scenarios are preserved in [the T3 owner report](acceptance/t3-owner-2026-10-30.md) and [v0.1 workflow report](acceptance/v01-workflow-2026-10-31.md), with exact tested revisions and limits. A future T3 release or changed MCP contract still calls for targeted real compatibility verification before adoption. Operator commands `t3:preflight`, `t3:auth` and `t3:smoke` remain available to establish and diagnose a real connection.
 
 On macOS, Node 24, canonical temporary directories, BSD PTY and process observation are covered by credential-free fixtures; Linux retains its own process/terminal paths. Fixtures cannot substitute for human OAuth consent.
 

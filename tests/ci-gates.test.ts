@@ -11,11 +11,11 @@ const scripts = z
 
 await test('CI: Foundation enforces typed, SQLite/process, architecture and audit checks', () => {
   const workflow = source('../.github/workflows/ci.yml');
-  assert.match(workflow, /^on: \[push, pull_request\]$/m);
+  assert.match(workflow, /pull_request:/);
+  assert.match(workflow, /branches: \[main\]/);
   for (const command of [
     'npm ci',
     'npm run build',
-    'npm run typecheck',
     'npm run lint',
     'npm run format:check',
     'npm test',
@@ -25,6 +25,7 @@ await test('CI: Foundation enforces typed, SQLite/process, architecture and audi
   ]) {
     assert.ok(workflow.includes(command), 'Missing CI check: ' + command);
   }
+  assert.ok(scripts.build?.includes('npm run typecheck'));
   assert.ok(
     workflow.includes('test -z "$(git status --porcelain -- drizzle)"'),
   );
@@ -32,8 +33,9 @@ await test('CI: Foundation enforces typed, SQLite/process, architecture and audi
 });
 
 await test('CI: genuine Chromium must run without a silent fallback', () => {
-  const workflow = source('../.github/workflows/browser.yml');
-  assert.match(workflow, /^on: \[push, pull_request\]$/m);
+  const workflow = source('../.github/workflows/ci.yml');
+  assert.match(workflow, /pull_request:/);
+  assert.match(workflow, /branches: \[main\]/);
   assert.equal(scripts['test:browser'], 'playwright test');
   assert.ok(workflow.includes('npx playwright install --with-deps chromium'));
   assert.ok(workflow.includes('npm run test:browser'));
@@ -41,7 +43,7 @@ await test('CI: genuine Chromium must run without a silent fallback', () => {
 });
 
 await test('CI: no private OAuth or paid model runner in routine checks', () => {
-  for (const path of ['ci.yml', 'browser.yml']) {
+  for (const path of ['ci.yml']) {
     const workflow = source('../.github/workflows/' + path);
     assert.doesNotMatch(
       workflow,
@@ -53,7 +55,6 @@ await test('CI: no private OAuth or paid model runner in routine checks', () => 
     );
   }
   for (const removed of [
-    'test:live',
     'test:team-live',
     'test:inbox-live',
     'team:live:prepare',
@@ -61,4 +62,25 @@ await test('CI: no private OAuth or paid model runner in routine checks', () => 
   ]) {
     assert.equal(Object.hasOwn(scripts, removed), false);
   }
+});
+
+await test('CI: paid integration is explicit, isolated, complete and does not retry models', () => {
+  const workflow = source('../.github/workflows/live.yml');
+  assert.match(workflow, /workflow_dispatch:/);
+  assert.doesNotMatch(workflow, /pull_request(?:_target)?:|push:/);
+  assert.match(workflow, /environment: live/);
+  assert.match(workflow, /cancel-in-progress: false/);
+  assert.match(workflow, /executor: \[codex, grok\]/);
+  for (const secret of ['LLM_API_KEY', 'CODEX_BASE_URL', 'GROK_BASE_URL'])
+    assert.ok(workflow.includes('secrets.' + secret));
+  assert.match(workflow, /path: \.live-evidence\/\*\.json/);
+  assert.doesNotMatch(
+    workflow,
+    /continue-on-error:|pull_request_target|self-hosted/,
+  );
+  assert.equal(
+    scripts['test:live'],
+    'playwright test --config playwright.live.config.ts',
+  );
+  assert.match(source('../playwright.live.config.ts'), /retries: 0/);
 });
