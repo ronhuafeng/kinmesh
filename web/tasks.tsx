@@ -13,6 +13,7 @@ import type { Message } from '../src/domain/communication.js';
 import type { WorkspaceSnapshot } from '../src/workspace/contracts.js';
 import { api, Offline, value } from './api.js';
 import { ActionForm, Field, Notice, SubmitGroup } from './forms.js';
+import { DeliveryLine, taskDeliveries } from './deliveries.js';
 import { age, Avatar, Drawer, shortTime, StatusChip, statuses } from './ui.js';
 import type { Status } from './ui.js';
 
@@ -573,6 +574,13 @@ export function TaskDrawer({
             <MemberChip member={acceptor} data={data} />
           </dd>
         </dl>
+        {taskDeliveries(data, task.id).length > 0 && (
+          <ul className="deliveries" aria-label="Agent responses">
+            {taskDeliveries(data, task.id).map((d) => (
+              <DeliveryLine key={d.id} delivery={d} data={data} />
+            ))}
+          </ul>
+        )}
         <h3>Acceptance criteria</h3>
         <ol className="criteria">
           {task.criteria.map((c) => (

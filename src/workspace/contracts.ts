@@ -13,6 +13,7 @@ import {
   pageOf,
 } from '../domain/communication.js';
 import { Task } from '../domain/tasks.js';
+import { InboxState } from '../domain/inbox.js';
 
 export const WorkspaceSnapshot = z.strictObject({
   observedAt: z.iso.datetime(),
@@ -27,6 +28,22 @@ export const WorkspaceSnapshot = z.strictObject({
   agents: z.array(Agent).max(100),
   agentsTruncated: z.boolean(),
   joinedAgentIds: z.array(AgentId).max(100),
+  /** Inbox deliveries for the visible messages and tasks (allow-listed fields only). */
+  deliveries: z
+    .array(
+      z.strictObject({
+        id: z.uuid(),
+        agentId: AgentId,
+        messageId: z.uuid().nullable(),
+        taskId: z.uuid().nullable(),
+        state: InboxState,
+        reason: z.string().regex(/^[a-z][a-z-]{0,63}$/),
+        queuedAt: z.iso.datetime().nullable(),
+        updatedAt: z.iso.datetime().nullable(),
+        resultMessageId: z.uuid().nullable(),
+      }),
+    )
+    .max(1000),
   /** Inbox worker liveness per agent; absent means no worker has ever claimed it. */
   wake: z
     .array(

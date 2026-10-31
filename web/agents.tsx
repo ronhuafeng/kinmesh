@@ -13,6 +13,7 @@ import type {
 import { api, HttpError, value } from './api.js';
 import { ActionForm, Field, Notice } from './forms.js';
 import { Avatar, Drawer, shortTime, WakeLabel, wakeOf } from './ui.js';
+import { DeliveryLine } from './deliveries.js';
 function NativeStatus({
   correlation,
   teamId,
@@ -331,6 +332,20 @@ export function AgentDrawer({
         <p className="muted">
           Preferences are configuration, not proof of execution availability.
         </p>
+        {data.deliveries.some((d) => d.agentId === agent.id) && (
+          <>
+            <h3>Recent requests in this channel</h3>
+            <ul className="deliveries" aria-label="Recent requests">
+              {data.deliveries
+                .filter((d) => d.agentId === agent.id)
+                .slice(-5)
+                .reverse()
+                .map((d) => (
+                  <DeliveryLine key={d.id} delivery={d} data={data} />
+                ))}
+            </ul>
+          </>
+        )}
         <Activity
           key={agent.id + (data.nativeT3Origin ?? '')}
           agent={agent}

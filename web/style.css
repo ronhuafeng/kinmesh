@@ -2521,3 +2521,74 @@ button.quiet.subtle-danger {
   color: var(--ink-muted);
   font-size: 0.88rem;
 }
+
+/* Delivery status (#53): what happened after you asked an agent. */
+.deliveries {
+  list-style: none;
+  margin: 0.35rem 0 0;
+  padding: 0;
+  display: grid;
+  gap: 0.2rem;
+}
+.delivery {
+  --tone: var(--ink-subtle);
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.25rem 0.6rem;
+  font-size: 0.8rem;
+  color: var(--ink-muted);
+}
+.delivery::before {
+  content: '';
+  flex: none;
+  width: 0.45rem;
+  height: 0.45rem;
+  border-radius: 50%;
+  background: var(--tone);
+  transform: translateY(-0.05rem);
+}
+.delivery[data-tone='active'] {
+  --tone: var(--agent);
+}
+.delivery[data-tone='active']::before {
+  animation: pulse 2.4s ease-in-out infinite;
+}
+.delivery[data-tone='waiting'] {
+  --tone: var(--warn);
+}
+.delivery[data-tone='done'] {
+  --tone: var(--ok);
+}
+.delivery[data-tone='problem'] {
+  --tone: var(--danger);
+  color: var(--ink);
+}
+.delivery .link-button {
+  padding: 0;
+  font-size: inherit;
+}
+.delivery-recovery {
+  flex-basis: 100%;
+  font-size: 0.78rem;
+}
+.delivery-recovery code {
+  display: inline-block;
+  margin-top: 0.25rem;
+}
+button.reply-to {
+  display: block;
+  padding: 0;
+  margin-bottom: 0.15rem;
+  font-size: 0.78rem;
+  font-weight: 500;
+  color: var(--ink-muted);
+  text-align: left;
+}
+.messages > li[data-flash] {
+  background: var(--agent-soft);
+  transition: background-color 600ms ease;
+}
+.drawer-body > .deliveries {
+  margin-bottom: 0.5rem;
+}

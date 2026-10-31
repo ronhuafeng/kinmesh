@@ -7,6 +7,8 @@ import { value } from './api.js';
 import { ActionForm, Field } from './forms.js';
 import { authorName } from './names.js';
 import { Avatar, shortTime, wakeOf } from './ui.js';
+import { DeliveryLine } from './deliveries.js';
+import type { DeliveryView } from './deliveries.js';
 
 type ChatMessage = z.infer<typeof Message>;
 const mentionQuery = /(?:^|\s)@([\w.-]{0,40})$/;
@@ -290,6 +292,31 @@ export function Chat({
   const joinedAgents = data.agents.filter((a) =>
     data.joinedAgentIds.includes(a.id),
   );
+  // Mention deliveries under each asking message, and the way back from a reply.
+  const asked = new Map<string, DeliveryView[]>();
+  const replyTo = new Map<string, string>();
+  for (const d of data.deliveries) {
+    if (d.messageId && d.taskId === null)
+      asked.set(d.messageId, [...(asked.get(d.messageId) ?? []), d]);
+    if (d.resultMessageId && d.messageId)
+      replyTo.set(d.resultMessageId, d.messageId);
+  }
+  const replySource = (id: string) => {
+    const source = messages.find((m) => m.id === id);
+    if (!source) return 'an earlier message';
+    const text =
+      source.body.length > 60 ? source.body.slice(0, 57) + '…' : source.body;
+    return `${authorName(source.author, data)}: “${text}”`;
+  };
+  const jump = (id: string) => {
+    const target = document.getElementById('message-' + id);
+    if (!target) return;
+    target.scrollIntoView({ block: 'center', behavior: 'smooth' });
+    target.dataset.flash = 'true';
+    setTimeout(() => {
+      delete target.dataset.flash;
+    }, 1600);
+  };
   const topicTitle = (id: string) =>
     data.topics.items.find((t) => t.id === id)?.title ?? 'Topic';
   return (
@@ -369,6 +396,7 @@ export function Chat({
           return (
             <li
               key={m.id}
+              id={'message-' + m.id}
               data-kind={m.author.kind}
               data-continued={sameAuthor ? 'true' : undefined}
               data-new={fresh.has(m.id) ? 'true' : undefined}
@@ -402,6 +430,17 @@ export function Chat({
                     <small className="topic-tag">{topicTitle(m.topicId)}</small>
                   )}
                 </header>
+                {replyTo.get(m.id) && (
+                  <button
+                    type="button"
+                    className="reply-to link-button"
+                    onClick={() => {
+                      jump(replyTo.get(m.id) ?? '');
+                    }}
+                  >
+                    ↑ In reply to {replySource(replyTo.get(m.id) ?? '')}
+                  </button>
+                )}
                 <p>{m.body}</p>
                 {m.mentions.length > 0 && (
                   <ul className="mentions" aria-label="Mentioned">
@@ -417,6 +456,18 @@ export function Chat({
                               ?.name ?? 'Agent')
                           : 'Human member'}
                       </li>
+                    ))}
+                  </ul>
+                )}
+                {(asked.get(m.id) ?? []).length > 0 && (
+                  <ul className="deliveries" aria-label="Agent responses">
+                    {(asked.get(m.id) ?? []).map((d) => (
+                      <DeliveryLine
+                        key={d.id}
+                        delivery={d}
+                        data={data}
+                        onReply={jump}
+                      />
                     ))}
                   </ul>
                 )}
