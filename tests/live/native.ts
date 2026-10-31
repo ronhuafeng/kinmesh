@@ -117,6 +117,8 @@ export class Native {
     mkdirSync(home, { recursive: true, mode: 0o700 });
     const env = {
       HOME: home,
+      GROK_HOME: join(home, '.grok'),
+      CODEX_HOME: join(home, '.codex'),
       PATH: process.env.PATH,
       LLM_API_KEY: process.env.LLM_API_KEY,
     };
@@ -218,18 +220,54 @@ export class Native {
         .getByRole('button', { name: 'Add instance', exact: true })
         .click();
       await dialog.waitFor({ state: 'hidden' });
-      // Grok discovers its own configuration in HOME; per-instance overrides isolate credentials/sessions.
+      // Explicit selection and a fresh UI read prove the role's persisted configuration.
       if (this.executor === 'grok') {
         await page
-          .getByRole('button', { name: 'Add variable', exact: true })
+          .getByRole('button', { name: 'Select CI ' + role, exact: true })
           .click();
+        for (const [index, [name, value]] of [
+          ['HOME', this.home(role)],
+          ['GROK_HOME', join(this.home(role), '.grok')],
+        ].entries()) {
+          await page
+            .getByRole('button', { name: 'Add variable', exact: true })
+            .click();
+          const field = page.getByLabel(
+            'Environment variable name ' + String(index + 1),
+            { exact: true },
+          );
+          await field.fill(name ?? '');
+          await field.press('Tab');
+          const sensitive = page.getByRole('button', {
+            name: `Mark environment variable ${name ?? ''} as sensitive`,
+            exact: true,
+          });
+          if ((await sensitive.getAttribute('aria-pressed')) === 'true')
+            await sensitive.click();
+          const input = page.getByLabel(
+            'Environment variable value ' + String(index + 1),
+            { exact: true },
+          );
+          await input.fill(value ?? '');
+          await input.press('Tab');
+        }
+        await page.reload();
+        await page.getByText('Providers', { exact: true }).first().click();
         await page
-          .getByPlaceholder('VARIABLE_NAME', { exact: true })
-          .fill('HOME');
-        await page
-          .getByPlaceholder('value', { exact: true })
-          .fill(this.home(role));
-        await page.getByPlaceholder('value', { exact: true }).press('Tab');
+          .getByRole('button', { name: 'Select CI ' + role, exact: true })
+          .click();
+        const homeInput = page.getByLabel('Environment variable value 1', {
+          exact: true,
+        });
+        const grokInput = page.getByLabel('Environment variable value 2', {
+          exact: true,
+        });
+        await homeInput.waitFor();
+        if (
+          (await homeInput.inputValue()) !== this.home(role) ||
+          (await grokInput.inputValue()) !== join(this.home(role), '.grok')
+        )
+          throw new Error('PROVIDER_HOME_NOT_PERSISTED');
       }
     }
   }

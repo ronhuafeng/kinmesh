@@ -108,11 +108,11 @@ export class T3Backend implements ExecutionBackend {
     if (!this.options.scopes.includes('orchestration:operate'))
       throw new ExecutionFailure('permission');
   }
-  async launch(
-    input: Launch,
-    intent: Intent,
-    signal?: AbortSignal,
-  ): Promise<Dispatch> {
+  /** Validate native launch prerequisites without preparing or dispatching an operation. */
+  validateLaunch(input: Launch): void {
+    this.launchArguments(input);
+  }
+  private launchArguments(input: Launch) {
     const request = Launch.parse(input);
     this.permitted();
     const provider = this.caps.providers.find(
@@ -132,7 +132,7 @@ export class T3Backend implements ExecutionBackend {
       !provider.runtimeModes.includes(request.mode)
     )
       throw new ExecutionFailure('incompatible');
-    const args = {
+    return {
       ...this.target(),
       ...(request.target.kind === 'project'
         ? {
@@ -150,6 +150,13 @@ export class T3Backend implements ExecutionBackend {
       interactionMode: 'default',
       ...(request.message === undefined ? {} : { message: request.message }),
     };
+  }
+  async launch(
+    input: Launch,
+    intent: Intent,
+    signal?: AbortSignal,
+  ): Promise<Dispatch> {
+    const args = this.launchArguments(input);
     return this.dispatch('t3_thread_launch', args, intent, signal);
   }
   async send(

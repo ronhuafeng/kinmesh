@@ -114,6 +114,8 @@ Missing opt-in, configuration, OAuth, provider capability, read proof, persisted
 
 ## Validation and limits
 
+For aggregate `release:check`, use the [two-context setup and cleanup guide](release-check.md). The aggregate requires separate Team and Inbox fixtures, endpoints, grants and Provider instances; it never reuses the task consumed by Team-live. Direct `test:team-live` retains the environment contract above.
+
 `npm run test:team-mcp` runs actual child-server and independent official SDK client tests, including separate client-process claims. `npm run check` includes them alongside all existing domain/HTTP/adapter tests; CI runs that suite on clean checkout with no private credentials. `npm run team:smoke` is a read-only operator check. `npm run test:team-live` is the explicit paid/provider gate; `npm run release:check` requires it in addition to the existing T3 execution gate.
 
 Team MCP itself provides no worker or execution interface; optional wake/delivery is provided by the [Agent Inbox worker](agent-inbox.md). No UI, Team OAuth authorization server, AG-UI streaming, PR automation or remote multi-node database is supplied. Native provider configuration and permission ceilings remain authoritative; do not silently approve tools or treat reviewer/model feedback as human acceptance. The database remains the local single-node WAL system, with its documented operational limits.
