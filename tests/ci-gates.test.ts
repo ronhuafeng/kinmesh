@@ -77,7 +77,7 @@ await test('CI: no private OAuth or paid model runner in routine checks', () => 
   assert.ok(workflow.includes('persist-credentials: false'));
   assert.ok(workflow.includes('group: kinmesh-native-owner-release'));
   assert.ok(workflow.includes('cancel-in-progress: false'));
-  assert.doesNotMatch(workflow, /actions\\/(?:checkout|setup-node)@v\\d+/);
+  assert.doesNotMatch(workflow, /actions\/(?:checkout|setup-node)@v\d+/);
   assert.ok(workflow.includes('npm run release:check'));
   assert.doesNotMatch(workflow, /continue-on-error\s*:/);
 });
