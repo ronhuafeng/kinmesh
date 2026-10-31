@@ -25,7 +25,9 @@ await test('CI: Foundation enforces typed, SQLite/process, architecture and audi
   ]) {
     assert.ok(workflow.includes(command), 'Missing CI check: ' + command);
   }
-  assert.ok(workflow.includes('test -z "$(git status --porcelain -- drizzle)"'));
+  assert.ok(
+    workflow.includes('test -z "$(git status --porcelain -- drizzle)"'),
+  );
   assert.doesNotMatch(workflow, /continue-on-error\s*:/);
 });
 

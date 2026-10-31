@@ -2,11 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { fork, spawn } from 'node:child_process';
-import {
-  writeFileSync,
-  chmodSync,
-  symlinkSync,
-} from 'node:fs';
+import { writeFileSync, chmodSync, symlinkSync } from 'node:fs';
 import { join } from 'node:path';
 import { loadAgentToken, TeamEndpoint } from '../src/team-mcp/client.js';
 import { once } from 'node:events';
