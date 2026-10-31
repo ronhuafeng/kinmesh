@@ -7,7 +7,20 @@ concurrency:
   group: kinmesh-native-owner-release
   cancel-in-progress: false
 jobs:
+  authorize-dispatch:
+    # Never reserve the owner's credential-bearing runner for a non-owner dispatch.
+    # The trusted job checks again because job-only reruns can skip this dependency.
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Require owner dispatch on main
+        shell: bash
+        run: |
+          test "$GITHUB_EVENT_NAME" = "workflow_dispatch"
+          test "$GITHUB_REF" = "refs/heads/main"
+          test "$GITHUB_ACTOR" = "$GITHUB_REPOSITORY_OWNER"
+          test "$GITHUB_TRIGGERING_ACTOR" = "$GITHUB_REPOSITORY_OWNER"
   authenticated-live:
+    needs: authorize-dispatch
     # Dedicated trusted runner configured by owner with private OAuth files outside the checkout.
     # Never expose its credentials to automatic PR events or unreviewed code.
     # Owner must prepare KINMESH_RELEASE_LIVE=1 + KINMESH_RELEASE_CONFIG per docs/release-check.md.
@@ -15,8 +28,13 @@ jobs:
     steps:
       # Check the requested ref before checking out or executing repository code.
       # This is defense in depth; the owner must still restrict who may dispatch.
-      - name: Reject any non-main manual dispatch
-        run: test "$GITHUB_REF" = "refs/heads/main"
+      - name: Revalidate owner and main before checkout, including job-only reruns
+        shell: bash
+        run: |
+          test "$GITHUB_EVENT_NAME" = "workflow_dispatch"
+          test "$GITHUB_REF" = "refs/heads/main"
+          test "$GITHUB_ACTOR" = "$GITHUB_REPOSITORY_OWNER"
+          test "$GITHUB_TRIGGERING_ACTOR" = "$GITHUB_REPOSITORY_OWNER"
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           persist-credentials: false
