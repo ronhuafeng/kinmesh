@@ -2,18 +2,9 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { fork, spawn } from 'node:child_process';
-import {
-  writeFileSync,
-  readFileSync,
-  chmodSync,
-  symlinkSync,
-  statSync,
-  rmSync,
-} from 'node:fs';
+import { writeFileSync, chmodSync, symlinkSync } from 'node:fs';
 import { join } from 'node:path';
-import { tmpdir } from 'node:os';
 import { loadAgentToken, TeamEndpoint } from '../src/team-mcp/client.js';
-import { LiveContext } from '../src/team-mcp/live-context.js';
 import { once } from 'node:events';
 import Database from 'better-sqlite3';
 import { StreamableHTTPError } from '@modelcontextprotocol/sdk/client/streamableHttp.js';
@@ -746,7 +737,7 @@ await test('Team SDK topic/task creation, scoped request-review and external ref
   }
 });
 
-await test('private token loader and real smoke CLI protect credentials; live provider gate fails closed without approval/config', async () => {
+await test('private token loader and real smoke CLI protect credentials', async () => {
   const f = await fixture();
   try {
     const file = join(f.directory, 'agent-token.json');
@@ -799,69 +790,8 @@ await test('private token loader and real smoke CLI protect credentials; live pr
     assert.equal(smoke.code, 0);
     assert.match(smoke.log, /TEAM_MCP_SDK_READ PASS/);
     assert.equal(smoke.log.includes(f.writer.token), false);
-    const gate = await run('scripts/team-t3-live.ts', {
-      KINMESH_TEAM_T3_LIVE: '0',
-    });
-    assert.equal(gate.code, 1);
-    assert.match(gate.log, /TEAM_T3_PROVIDER_LIVE FAIL at configuration/);
   } finally {
     await f.cleanup();
-  }
-});
-
-await test('disposable provider fixture CLI prepares private state and refuses overwrite without touching shared database', async () => {
-  const directory = join(tmpdir(), 'kinmesh-team-live-' + randomUUID());
-  try {
-    const run = () =>
-      new Promise<{ code: number | null; log: string }>((resolve, reject) => {
-        const child = spawn(
-          process.execPath,
-          ['--import', 'tsx', 'scripts/team-live-prepare.ts'],
-          {
-            env: {
-              ...process.env,
-              KINMESH_TEAM_LIVE_DIR: directory,
-              KINMESH_TEAM_MCP_ENDPOINT: 'http://127.0.0.1:3001/mcp',
-            },
-            stdio: ['ignore', 'pipe', 'pipe'],
-          },
-        );
-        let log = '';
-        child.stdout.on('data', (b: Buffer) => {
-          log += b.toString();
-        });
-        child.stderr.on('data', (b: Buffer) => {
-          log += b.toString();
-        });
-        child.once('error', () => {
-          reject(new Error('Preparation failed'));
-        });
-        child.once('exit', (code) => {
-          resolve({ code, log });
-        });
-      });
-    const prepared = await run();
-    assert.equal(prepared.code, 0);
-    assert.match(prepared.log, /TEAM_PROVIDER_FIXTURE PASS/);
-    const context = LiveContext.parse(
-      JSON.parse(readFileSync(join(directory, 'context.json'), 'utf8')),
-    );
-    assert.equal(statSync(context.tokenFile).mode & 0o077, 0);
-    assert.equal(
-      prepared.log.includes(loadAgentToken(context.tokenFile)),
-      false,
-    );
-    const db = new Database(context.database, { readonly: true });
-    assert.equal(
-      z
-        .object({ n: z.number() })
-        .parse(db.prepare('SELECT COUNT(*) AS n FROM tasks').get()).n,
-      1,
-    );
-    db.close();
-    assert.equal((await run()).code, 1);
-  } finally {
-    rmSync(directory, { recursive: true, force: true });
   }
 });
 

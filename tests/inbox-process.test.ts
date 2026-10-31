@@ -415,35 +415,3 @@ await test(
     }
   },
 );
-await test(
-  'INBOX LIVE GATE NEGATIVE: missing native approval/configuration exits one without skip or provider output',
-  { timeout: 10000 },
-  async () => {
-    const child = spawn(
-      process.execPath,
-      ['--import', 'tsx', 'scripts/inbox-t3-live.ts'],
-      {
-        env: {
-          ...process.env,
-          KINMESH_INBOX_LIVE: '0',
-          KINMESH_INBOX_CONFIG: '',
-          KINMESH_TEAM_LIVE_DIR: '',
-        },
-        stdio: ['ignore', 'pipe', 'pipe'],
-      },
-    );
-    let out = '';
-    child.stdout.on('data', (c: Buffer) => {
-      out += c.toString();
-    });
-    child.stderr.on('data', (c: Buffer) => {
-      out += c.toString();
-    });
-    const exited = await once(child, 'close', {
-      signal: AbortSignal.timeout(9000),
-    });
-    assert.equal(exited[0], 1);
-    assert.ok(out.includes('INBOX_T3_NATIVE FAIL at configuration'));
-    assert.equal(out.includes('PASS'), false);
-  },
-);

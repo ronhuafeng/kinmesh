@@ -14,7 +14,7 @@ This command reads only `KINMESH_T3_ENDPOINT`; it does not load `.env` or a cred
 
 PASS requires unauthenticated `/mcp` to reject with HTTP 401 and a Bearer challenge, a public T3 environment descriptor with a nonempty identity and exact version `0.1.5`, and pinned issuer/resource/authorization/token/registration endpoints. It also checks S256 PKCE, authorization-response issuer support, authorization-code/public-client capabilities and advertised read/operate scopes. No scopes are requested. A 502, wrong version, missing capability or unavailable endpoint fails closed. Output is fixed PASS/FAIL text and never includes the host, environment ID or response/error bodies.
 
-**Preflight is public network, issuer and capability readiness, not OAuth authentication or live acceptance.** It never initializes MCP, registers a client, opens consent, exchanges a token, calls a tool or runs a model. The tests use local HTTP fixtures, not an owner T3 instance. Actual owner OAuth still requires the browser or private interactive terminal flow below. Kinmesh has no supported automatic T3 session OAuth through `app.t3.codes`; an app login does not replace native external-client approval. Never paste pairing codes, one-time callback credentials or tokens into chat, GitHub or logs. Issue #2 remains open until real approved acceptance is proven separately.
+**Preflight is public network, issuer and capability readiness, not OAuth authentication or live acceptance.** It never initializes MCP, registers a client, opens consent, exchanges a token, calls a tool or runs a model. The tests use local HTTP fixtures, not an owner T3 instance. Actual owner OAuth still requires the browser or private interactive terminal flow below. Kinmesh has no supported automatic T3 session OAuth through `app.t3.codes`; an app login does not replace native external-client approval. Never paste pairing codes, one-time callback credentials or tokens into chat, GitHub or logs. Issue #2 has been accepted with real owner-approved OAuth/MCP evidence; see [the owner report](acceptance/t3-owner-2026-10-30.md).
 
 ## Owner sign-in: local browser or remote terminal
 
@@ -116,26 +116,25 @@ An aborted client wait does **not** stop T3 work. Use an explicit authorized sto
 
 Reconciliation may safely replay exactly the old command/key if no reference was received. T3's native idempotency is the cross-system deduplication authority. The local claim lease is only Kinmesh concurrency control; no PID/title marker or JSON-file lock stands in for native idempotency. Native permission/session/runtime-mode ceilings are never bypassed. T3 v0.1.5 refuses a send to an archived thread before replay (`thread_not_sendable`); unresolved sends remain uncertain until an owner deliberately unarchives that disposable thread and reconciles the **same** key. Do not switch to CLI or synthesize a new launch. Other native orchestration errors also fail closed as incompatible/uncertain rather than pretending to be permission evidence or completion.
 
-## Verification and release policy
+## CI verification and accepted native evidence
+
+Push/pull-request CI is the ongoing quality gate. It runs strict TypeScript, type-aware lint, formatting, architecture and migration checks, Node/SQLite/worker/official-SDK fixture tests, a production dependency audit and real Chromium browser tests. CI has **no T3 OAuth credentials**, makes no paid Provider/model calls and does not represent mocked transport as live native acceptance.
 
 ```sh
 npm ci
-npm run check          # all first-party types, type-aware lint, local tests, architecture
+npm run check          # typed contracts, real SQLite and process tests
 npm run format:check
-npm run build          # emitted JS is ignored build output; stages committed migrations
+npm run build
 npm audit --omit=dev
-npm run test:contract  # explicitly MOCK/AUTH UNIT plus captured schemas; not a live pass
-npm run test:live      # requires configured grants + reachable real T3; exits 1 when missing
-npm run release:check  # candidate release is rejected unless authenticated live gate passes
+npm run test:browser   # genuine Chromium; install Playwright browser first
+npm run test:contract  # optional targeted fixture subset, not a live test
 ```
 
-Normal push/PR CI has **no execution credentials**, runs local/contract/build checks only, and does not label live integration green. A separate owner-dispatched workflow uses a dedicated `kinmesh-t3-acceptance` self-hosted runner with private configuration outside the checkout. Review code before running it; never attach that runner/authority to automatic untrusted PR events. The workflow is implemented, but no self-hosted GitHub live run is claimed here.
+The one-off authenticated acceptance CLIs and their private self-hosted workflow have been retired. They are not required for routine CI. Previously witnessed owner OAuth, native executions and compatibility scenarios are preserved in [the T3 owner report](acceptance/t3-owner-2026-10-30.md) and [v0.1 workflow report](acceptance/v01-workflow-2026-10-31.md), with exact tested revisions and limits. A future T3 release or changed MCP contract still calls for targeted real compatibility verification before adoption. Operator commands `t3:preflight`, `t3:auth` and `t3:smoke` remain available to establish and diagnose a real connection.
 
-The live gate spends two model turns on disposable scratch threads: exact no-tools nonce completion, then a follow-up requesting at most 200 characters, interrupted while active. The character limit is a prompt instruction, not a token or cost cap. If the short follow-up finishes before the active observation or interrupt, the gate fails rather than claiming interruption; do not automatically rerun it. It also loses an actual idle-launch reply, closes SDK/reopens the Kinmesh DB, replays the same native key and proves the original thread identity. A separate real read-only grant must return native `capability_denied` for a valid mutation. This can be structured content or JSON text in an `isError: true` MCP envelope; plain error prose, unrelated errors and transport failures do not establish denial. Cleanup archives its own threads; cleanup failure makes the gate fail. Output contains fixed pass/fail labels, never model text or credentials. Its private report is evidence only with that invocation's successful exit, not a reusable stale credential/CI pass. The report does not infer whether the OAuth approval used a human browser.
+On macOS, Node 24, canonical temporary directories, BSD PTY and process observation are covered by credential-free fixtures; Linux retains its own process/terminal paths. Fixtures cannot substitute for human OAuth consent.
 
-On macOS, use Node 24 and a canonical temporary-directory path for credential fixtures (`/var` can resolve through `/private/var`). Process supervision fixtures use macOS `ps` for their own child processes and BSD `script` for the mock private terminal; Linux keeps its `/proc` and util-linux paths. These fixtures do not exercise an owner grant.
-
-The `@fastify/static` dependency currently requires glob 13, which has no patched release for GHSA-3g3m-2fjr-6pw4. The scoped npm override selects glob 14.0.3 with minimatch 11.0.3, covering that advisory and GHSA-g3hv-75wg-m249 without downgrading Fastify's static plugin. Node 24 is supported by those dependencies; actual asset-serving/browser tests accompany the override. Remove the override when the plugin supports a patched dependency itself. Audit against a registry with the security API, for example `npm audit --omit=dev --registry=https://registry.npmjs.org`; some mirrors return `NOT_IMPLEMENTED`.
+The scoped `@fastify/static` override currently selects patched glob/minimatch dependencies; review it when the plugin updates. Audit against a registry with a working security API (some mirrors return `NOT_IMPLEMENTED`).
 
 ### Compatibility matrix
 
@@ -150,8 +149,8 @@ The `@fastify/static` dependency currently requires glob 13, which has no patche
 | Browser OAuth consent UX                                                                                      | Owner completed Read only and Supervised browser flows on Mac; both official remote MCP smoke probes passed (2026-10-30)                   |
 | T3 server process restart / upgrade                                                                           | Isolated 0.1.4 → 0.1.5 identity preservation, stopped-peer failure, real restart/read and same-key native replay live; real 0.1.4 rejected |
 
-Actual Kinmesh evidence is separate from historical Runner G0–G5. It does not establish full team task acceptance or multi-user authorization. [Owner acceptance evidence](acceptance/t3-owner-2026-10-30.md) separates the Mac/remote owner OAuth path from isolated compatibility probes and records their limits. A dedicated authenticated CI runner and broader Team MCP/Inbox acceptance remain separate work. Adopt a new T3 version only after reviewing its public versioned schemas and running compatibility + authenticated live gates against that independently installed version; repair the adapter, never T3 internals.
+Compatibility observations are explicitly scoped to owner-approved, isolated official-binary and labeled fixture evidence. Full Team MCP, Inbox and Human/Developer/Reviewer acceptance is recorded in the [v0.1 report](acceptance/v01-workflow-2026-10-31.md). Future T3 versions require their own real compatibility verification; fix Kinmesh's adapter if necessary, never T3 internals.
 
-### Witnessed Runner verification (2026-10-30)
+### Historical Runner verification
 
-Final `npm ci` and `npm run release:check` succeeded with 45 local tests, strict typecheck, type-aware lint, architecture, formatting, build and zero runtime audit vulnerabilities. The authenticated live gate passed all nine fixed checks: launch, persisted-key reuse, exact completion, active follow-up, interrupt acknowledgement, terminal interrupt reconciliation, lost-reply uncertainty, database-reopen/same-key reconciliation and native read-only denial. Both test grants were subsequently revoked; each old bearer returned explicit HTTP 401 with a Bearer challenge. Disposable threads were archived; T3 and its tunnel were left running. The browser OAuth CLI and GitHub manual live workflow were not exercised. No provider response text or credential material is retained in this report.
+The earlier isolated runner and owner acceptance sessions are recorded in the linked historical reports. Their one-off commands were intentionally removed after v0.1 acceptance; ordinary CI now covers repeatable code and browser checks without any private OAuth grant or model spending.
