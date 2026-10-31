@@ -1,6 +1,7 @@
 import type { Page, APIRequestContext } from '@playwright/test';
 import { z } from 'zod';
 import { randomBytes, randomUUID } from 'node:crypto';
+import Database from 'better-sqlite3';
 import { Agent, Grant } from '../../src/domain/agents.js';
 import { Task, TaskResult } from '../../src/domain/tasks.js';
 import { pageOf } from '../../src/domain/communication.js';
@@ -429,6 +430,30 @@ test('keyboard mention, message becomes a task in its topic, and the needs-me fi
 }) => {
   await onboard(page, hub);
   await register(page, 'Ada', 'developer');
+  // A profile alone cannot be woken; the roster says so before anyone waits.
+  const adaRow = page
+    .getByRole('listitem')
+    .filter({ has: page.getByRole('heading', { name: 'Ada', exact: true }) });
+  await expect(
+    adaRow.getByText('Not connected', { exact: true }),
+  ).toBeVisible();
+  await expect(page.getByText(/No agent can be woken yet/)).toBeVisible();
+  const profile = (await snapshot(context.request, hub.origin)).agents[0];
+  if (!profile) throw new Error('Local fixture unavailable');
+  const worker = new Database(hub.database);
+  try {
+    // Test boundary: what an Inbox worker writes on each loop.
+    worker
+      .prepare(
+        'INSERT INTO inbox_bindings (agent_id, team_id, last_seen_at) VALUES (?, ?, ?)',
+      )
+      .run(profile.id, profile.teamId, Date.now());
+  } finally {
+    worker.close();
+  }
+  await page.getByRole('button', { name: 'Reconnect / refresh' }).click();
+  await expect(adaRow.getByText('Can be woken', { exact: true })).toBeVisible();
+  await expect(page.getByText(/No agent can be woken yet/)).toHaveCount(0);
   await page.getByRole('tab', { name: 'Chat', exact: true }).click();
   await page.getByText('Start a topic', { exact: true }).click();
   await page.getByLabel('Topic title').fill('Billing');

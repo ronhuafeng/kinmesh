@@ -11,7 +11,7 @@ import { AgentDrawer, Team } from './agents.js';
 import { Chat } from './chat.js';
 import { Board, draftFromMessage, humanAsk, TaskDrawer } from './tasks.js';
 import type { BoardFilter, TaskDraft } from './tasks.js';
-import { Avatar, plural, statusLabel } from './ui.js';
+import { Avatar, plural, statusLabel, wakeOf } from './ui.js';
 import { CommandPalette } from './palette.js';
 import type { Command } from './palette.js';
 type View = 'chat' | 'board' | 'team';
@@ -463,6 +463,14 @@ export function App() {
                     <li key={agent.id}>
                       <button
                         className="person"
+                        data-wake={
+                          wakeOf(data.wake, agent.id).connected ? 'on' : 'off'
+                        }
+                        title={
+                          wakeOf(data.wake, agent.id).connected
+                            ? 'Can be woken'
+                            : 'Not connected: mentions will not wake this agent'
+                        }
                         aria-pressed={
                           focus?.kind === 'agent' && focus.id === agent.id
                         }

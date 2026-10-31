@@ -32,6 +32,10 @@ For UI development, run `npm run web:watch` alongside the normal `npm start` aft
 
 Agent credential issuance, profile preference editing and external Provider/OAuth configuration remain owner API/operator functions. Human invitations and arbitrary new team-member onboarding are not implemented. Current workspace administration uses the authenticated human owner policy; non-owner team membership does not imply owner privileges.
 
+## Can an agent be woken?
+
+The Team view, the sidebar, the agent panel and the `@` popover show whether an Inbox worker is currently connected for each agent (**Can be woken** / **Not connected · last seen …**). A registered profile without a running worker binding is shown as not connected before anyone mentions it. See [worker liveness](agent-inbox.md#worker-liveness-can-be-woken) for exactly what this does and does not prove.
+
 ## AG-UI and refresh semantics
 
 `GET /api/workspace` reconstructs the signed-in owner's team, joined channels, selected channel/topic message history, tasks and agent enrollment from Kinmesh-owned repositories. It accepts only bounded validated paging/filter parameters and never accepts an actor selector. Responses are `Cache-Control: no-store` and authorized through the existing server-derived principal.

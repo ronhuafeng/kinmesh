@@ -12,6 +12,7 @@ import {
   FrozenLaunch,
   INBOX_ATTEMPT_MS,
   INBOX_CAPACITY,
+  INBOX_HEARTBEAT_MS,
   Result,
   NativeTerminalNotice,
   type Claim,
@@ -262,8 +263,13 @@ export async function runWorker(
   let initialized = false;
   const running = new Set<Promise<void>>();
   const bindings = new Map(config.bindings.map((b) => [b.agentId, b]));
+  let lastBeat = 0;
   try {
     while (!stopped()) {
+      if (Date.now() - lastBeat >= INBOX_HEARTBEAT_MS) {
+        store.inbox.heartbeat([...bindings.keys()]);
+        lastBeat = Date.now();
+      }
       while (running.size < INBOX_CAPACITY && bindings.size > 0 && !stopped()) {
         const claim = store.inbox.claim([...bindings.keys()]);
         if (!claim) break;
@@ -288,5 +294,10 @@ export async function runWorker(
     }
   } finally {
     await Promise.allSettled(running);
+    try {
+      store.inbox.release([...bindings.keys()]);
+    } catch {
+      // Liveness goes stale on its own if the database is already gone.
+    }
   }
 }

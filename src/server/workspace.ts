@@ -4,6 +4,7 @@ import { PROTOCOL_VERSION } from '@ag-ui/core';
 import { AgentId, ChannelId, TeamId } from '../domain/contracts.js';
 import { IdentityError } from '../domain/agents.js';
 import { TopicId } from '../domain/communication.js';
+import { INBOX_LIVENESS_MS } from '../domain/inbox.js';
 import type { Store } from '../persistence/store.js';
 import type { Config } from './config.js';
 import { loadCredential } from '../adapters/t3/oauth.js';
@@ -108,8 +109,18 @@ export function registerWorkspace(
           })
           .map((agent) => agent.id)
       : [];
+    const now = Date.now();
+    const known = new Set(agents.map((agent) => agent.id));
+    const wake = store.inbox
+      .liveness(teamId)
+      .filter((row) => known.has(AgentId.parse(row.agentId)))
+      .map((row) => ({
+        agentId: row.agentId,
+        connected: now - row.lastSeenAt <= INBOX_LIVENESS_MS,
+        lastSeenAt: new Date(row.lastSeenAt).toISOString(),
+      }));
     return WorkspaceSnapshot.parse({
-      observedAt: new Date().toISOString(),
+      observedAt: new Date(now).toISOString(),
       nativeT3Origin: config.nativeT3
         ? new URL(config.nativeT3.endpoint).origin
         : null,
@@ -120,6 +131,7 @@ export function registerWorkspace(
       agents,
       agentsTruncated: profiles.truncated,
       joinedAgentIds,
+      wake,
       messages: channel
         ? store.communication.history(
             principal,

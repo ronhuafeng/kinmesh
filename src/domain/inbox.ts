@@ -9,6 +9,10 @@ export const INBOX_ATTEMPT_MS = 90_000;
 export const INBOX_CAPACITY = 2;
 export const CHAIN_BUDGET = 4;
 export const INBOX_TTL_MS = 7 * 86400_000;
+/** Workers record liveness at most this often per binding. */
+export const INBOX_HEARTBEAT_MS = 10_000;
+/** Three of the slowest allowed polls (30 s): older liveness means "not connected". */
+export const INBOX_LIVENESS_MS = 90_000;
 export const InboxState = z.enum([
   'ready',
   'waiting',

@@ -555,3 +555,18 @@ export const inboxResults = sqliteTable(
   },
   (t) => [check('inbox_result_json', sql`json_valid(${t.result})`)],
 );
+/** Worker liveness per configured binding: "a worker would claim this agent's wakes now". */
+export const inboxBindings = sqliteTable(
+  'inbox_bindings',
+  {
+    agentId: text('agent_id').primaryKey(),
+    teamId: text('team_id').notNull(),
+    lastSeenAt: integer('last_seen_at').notNull(),
+  },
+  (t) => [
+    foreignKey({
+      columns: [t.agentId, t.teamId],
+      foreignColumns: [agents.id, agents.teamId],
+    }),
+  ],
+);

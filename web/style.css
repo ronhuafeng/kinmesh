@@ -2480,3 +2480,44 @@ button.quiet.subtle-danger {
     flex: none;
   }
 }
+
+/* Wake readiness (#54): whether an Inbox worker would wake an agent now. */
+.wake-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-family: var(--mono);
+  font-size: 0.72rem;
+  color: var(--ok);
+}
+.wake-label::before {
+  content: '';
+  width: 0.45rem;
+  height: 0.45rem;
+  border-radius: 50%;
+  background: currentColor;
+}
+.wake-label[data-wake='off'] {
+  color: var(--ink-subtle);
+}
+.wake-label[data-wake='off']::before {
+  background: transparent;
+  box-shadow: inset 0 0 0 1.5px currentColor;
+}
+.identity .wake-label {
+  margin-top: 0.3rem;
+}
+.person[data-wake='off'] .avatar.agent::after {
+  background: var(--surface);
+  box-shadow:
+    0 0 0 2px var(--surface),
+    inset 0 0 0 1.5px var(--ink-subtle);
+}
+.roster-note {
+  margin: 0 0 0.75rem;
+  padding: 0.6rem 0.85rem;
+  border-radius: var(--radius);
+  border: 1px dashed var(--hairline-strong);
+  color: var(--ink-muted);
+  font-size: 0.88rem;
+}
