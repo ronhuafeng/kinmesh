@@ -16,3 +16,4 @@ artifacts/
 web-dist/
 test-results/
 playwright-report/
+.live-evidence/

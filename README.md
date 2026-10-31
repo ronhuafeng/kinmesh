@@ -81,7 +81,7 @@ npm run test:browser   # actual desktop/mobile Chromium against disposable local
 npm run db:generate     # review generated SQL/metadata; never rewrite applied migrations
 ```
 
-The architecture guard checks source/resource access and manifests; it is a static check, not a sandbox. `npm run test:contract` exercises labeled adapter contracts/mocks. `npm run test:live` requires real configured T3 OAuth grants and fails when they are missing; `npm run release:check` includes that live gate. Credential-free checks do not establish live T3 or browser acceptance.
+The architecture guard checks source/resource access and manifests; it is a static check, not a sandbox. Push/PR CI runs typed SDK/contract fixtures, real SQLite/worker/process tests, strict checks, a production dependency audit and genuine Chromium browser tests. `npm run test:contract` selects a fixture-only subset already included in `npm run check`. Routine CI has no model credentials and never launches Provider/model Runs. The separate manual [complete native collaboration gate](docs/ci.md) uses protected Actions Secrets, a disposable T3 instance and real Codex/Grok execution. The separately configured owner-runner `release:check` path remains available for an existing remote T3 deployment. Historical owner-witnessed acceptance remains in [the v0.1 report](docs/acceptance/v01-workflow-2026-10-31.md).
 
 Keep development status and acceptance evidence in GitHub Issues, implementation review in pull requests, and release changes in CHANGELOG/release notes when applicable. Keep this entrypoint focused on project capabilities, usage and architecture.
 

@@ -116,7 +116,9 @@ An aborted client wait does **not** stop T3 work. Use an explicit authorized sto
 
 Reconciliation may safely replay exactly the old command/key if no reference was received. T3's native idempotency is the cross-system deduplication authority. The local claim lease is only Kinmesh concurrency control; no PID/title marker or JSON-file lock stands in for native idempotency. Native permission/session/runtime-mode ceilings are never bypassed. T3 v0.1.5 refuses a send to an archived thread before replay (`thread_not_sendable`); unresolved sends remain uncertain until an owner deliberately unarchives that disposable thread and reconciles the **same** key. Do not switch to CLI or synthesize a new launch. Other native orchestration errors also fail closed as incompatible/uncertain rather than pretending to be permission evidence or completion.
 
-## Verification and release policy
+## CI verification and accepted native evidence
+
+Push/pull-request CI is the ongoing quality gate. It runs strict TypeScript, type-aware lint, formatting, architecture and migration checks, Node/SQLite/worker/official-SDK fixture tests, a production dependency audit and real Chromium browser tests. Routine CI has **no T3 OAuth credentials**, makes no paid Provider/model calls and does not represent mocked transport as live native acceptance. A separate, explicitly dispatched [complete native collaboration gate](ci.md) creates its own disposable T3/OAuth state and uses Environment Secrets for real Codex/Grok calls.
 
 ```sh
 npm ci
@@ -128,6 +130,8 @@ npm run test:contract  # explicitly MOCK/AUTH UNIT plus captured schemas; not a 
 npm run test:live      # requires configured grants + reachable real T3; exits 1 when missing
 npm run release:check  # candidate release is rejected unless authenticated live gate passes
 ```
+
+The existing `test:live`, `test:team-live`, `test:inbox-live` and dedicated owner-runner `release:check` path remain available for configured remote T3 deployments. The new Actions Secrets gate uses `test:collaboration-live` with independent disposable state and complete two-cycle collaboration; it is separate from routine CI and the owner-runner gate. Previously witnessed owner OAuth, native executions and compatibility scenarios are preserved in [the T3 owner report](acceptance/t3-owner-2026-10-30.md) and [v0.1 workflow report](acceptance/v01-workflow-2026-10-31.md), with exact tested revisions and limits. A future T3 release or changed MCP contract still calls for targeted real compatibility verification before adoption. Operator commands `t3:preflight`, `t3:auth` and `t3:smoke` remain available to establish and diagnose a real connection.
 
 The aggregate now requires the [isolated release setup](release-check.md): two separately prepared disposable Team contexts and a separate SDK scratch directory, explicit per-stage grants/providers and a private release manifest. All local prerequisites and read-only native readiness probes run before any model-capable stage starts. Direct `test:live`, `test:team-live` and `test:inbox-live` retain their independent environment contracts.
 
