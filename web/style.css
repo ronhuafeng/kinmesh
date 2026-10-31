@@ -1402,7 +1402,7 @@ li[data-kind='agent'] .author-kind {
 }
 .board {
   display: grid;
-  grid-template-columns: repeat(7, minmax(232px, 1fr));
+  grid-template-columns: repeat(5, minmax(184px, 1fr));
   gap: 0.75rem;
   overflow-x: auto;
   padding-bottom: 0.75rem;
@@ -1567,16 +1567,6 @@ button.card-link:focus-visible::after {
 .lifecycle li[data-step='current'] span {
   color: var(--ink);
   font-weight: 600;
-}
-.lifecycle.compact {
-  margin: 0;
-  gap: 3px;
-}
-.lifecycle.compact li::before {
-  height: 3px;
-}
-.lifecycle.compact span {
-  display: none;
 }
 
 /* ------------------------------------------------------------------
@@ -2718,4 +2708,22 @@ a.button-link {
   overflow: hidden;
   clip-path: inset(50%);
   white-space: nowrap;
+}
+
+/* Five-stage board (#56): the column carries the status; cards name only exceptions. */
+.card-marker {
+  font-family: var(--mono);
+  font-size: 0.7rem;
+  font-weight: 600;
+  padding: 0 0.4rem;
+  border-radius: 999px;
+  color: var(--tone);
+  background: color-mix(in srgb, var(--tone) 12%, var(--surface));
+}
+.task-card[data-status='rework-requested'] {
+  border-left: 3px solid var(--s-rework-requested);
+}
+.column-toggle {
+  justify-self: center;
+  font-size: 0.78rem;
 }

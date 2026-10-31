@@ -32,6 +32,12 @@ async function snapshot(request: APIRequestContext, origin: string) {
   expect(response.status()).toBe(200);
   return WorkspaceSnapshot.parse(await response.json());
 }
+/** Board columns are the five stages; a card's column is its status. */
+function inStage(page: Page, stage: string, title: string) {
+  return page
+    .getByRole('region', { name: stage, exact: true })
+    .getByRole('article', { name: title, exact: true });
+}
 async function register(page: Page, name: string, role: string) {
   await page.getByRole('tab', { name: 'Team', exact: true }).click();
   await page.getByText('Register agent', { exact: true }).first().click();
@@ -254,9 +260,7 @@ test('two independent task cards: real agent handoff, human review, acceptance a
       name: 'Ship beta',
       exact: true,
     });
-    await expect(
-      alpha.getByText('Review requested', { exact: true }),
-    ).toBeVisible();
+    await expect(inStage(page, 'Review', 'Ship alpha')).toBeVisible();
     await alpha.getByRole('button', { name: 'Ship alpha' }).click();
     await alphaDrawer
       .getByLabel('Decision note')
@@ -264,29 +268,25 @@ test('two independent task cards: real agent handoff, human review, acceptance a
     await alphaDrawer
       .getByRole('button', { name: 'Approve review', exact: true })
       .click();
-    await expect(
-      alpha.getByText('Awaiting human', { exact: true }),
-    ).toBeVisible();
-    await expect(
-      beta.getByText('Review requested', { exact: true }),
-    ).toBeVisible();
+    await expect(inStage(page, 'Human sign-off', 'Ship alpha')).toBeVisible();
+    await expect(inStage(page, 'Review', 'Ship beta')).toBeVisible();
     await alphaDrawer
       .getByLabel('Decision note')
       .fill('I accept the alpha outcome');
     await alphaDrawer
       .getByRole('button', { name: 'Accept task', exact: true })
       .click();
-    await expect(alpha.getByText('Accepted', { exact: true })).toBeVisible();
+    await expect(inStage(page, 'Done', 'Ship alpha')).toBeVisible();
     await beta.getByRole('button', { name: 'Ship beta' }).click();
     await expect(alphaDrawer).toHaveCount(0);
     await betaDrawer.getByLabel('Decision note').fill('Beta needs more work');
     await betaDrawer
       .getByRole('button', { name: 'Request rework', exact: true })
       .click();
-    await expect(
-      beta.getByText('Rework requested', { exact: true }),
-    ).toBeVisible();
-    await expect(alpha.getByText('Accepted', { exact: true })).toBeVisible();
+    // Sent back is still Working, and the card says so in words.
+    await expect(inStage(page, 'Working', 'Ship beta')).toBeVisible();
+    await expect(beta.getByText('Sent back', { exact: true })).toBeVisible();
+    await expect(inStage(page, 'Done', 'Ship alpha')).toBeVisible();
     await page.screenshot({
       path: 'artifacts/workspace-tasks.png',
       fullPage: true,
@@ -302,16 +302,8 @@ test('two independent task cards: real agent handoff, human review, acceptance a
     await expect(alphaDrawer).toHaveCount(0);
     await page.reload();
     await page.getByRole('tab', { name: 'Board', exact: true }).click();
-    await expect(
-      page
-        .getByRole('article', { name: 'Ship alpha' })
-        .getByText('Accepted', { exact: true }),
-    ).toBeVisible();
-    await expect(
-      page
-        .getByRole('article', { name: 'Ship beta' })
-        .getByText('Rework requested', { exact: true }),
-    ).toBeVisible();
+    await expect(inStage(page, 'Done', 'Ship alpha')).toBeVisible();
+    await expect(inStage(page, 'Working', 'Ship beta')).toBeVisible();
   } finally {
     await agent.dispose();
   }
@@ -507,7 +499,9 @@ test('keyboard mention, message becomes a task in its topic, and the needs-me fi
   const card = page.getByRole('article', {
     name: 'Validate postal codes per country @Ada',
   });
-  await expect(card.getByText('In progress', { exact: true })).toBeVisible();
+  await expect(
+    inStage(page, 'Working', 'Validate postal codes per country @Ada'),
+  ).toBeVisible();
   const base = `${hub.origin}/api/teams/${state.team.id}/channels/${state.channel.id}`;
   const tasks = pageOf(Task).parse(
     await (await context.request.get(base + '/tasks')).json(),
@@ -550,11 +544,20 @@ test('keyboard mention, message becomes a task in its topic, and the needs-me fi
   await drawer
     .getByRole('button', { name: 'Cancel task', exact: true })
     .click();
-  await expect(card.getByText('Cancelled', { exact: true })).toBeVisible();
+  // Cancelled work leaves the board quietly; it is one click away in Done.
+  await expect(drawer.getByText('This task is closed.')).toBeVisible();
+  await expect(card).toHaveCount(0);
+  await page.keyboard.press('Escape');
+  await page.getByRole('button', { name: 'Show cancelled (1)' }).click();
+  await expect(
+    inStage(page, 'Done', 'Validate postal codes per country @Ada').getByText(
+      'Cancelled',
+      { exact: true },
+    ),
+  ).toBeVisible();
   await expect(
     page.getByRole('status').filter({ hasText: 'Task cancelled.' }),
   ).toBeVisible();
-  await expect(drawer.getByText('This task is closed.')).toBeVisible();
 });
 
 test('a mention says what happened to it and leads to the agent’s reply', async ({
@@ -782,7 +785,7 @@ test('human claim and request-review controls, plus leave/rejoin of known member
   const drawer = page.getByRole('region', { name: 'Human owned task' });
   await card.getByRole('button', { name: 'Human owned task' }).click();
   await drawer.getByRole('button', { name: 'Claim task', exact: true }).click();
-  await expect(card.getByText('In progress', { exact: true })).toBeVisible();
+  await expect(inStage(page, 'Working', 'Human owned task')).toBeVisible();
   await drawer
     .getByRole('button', { name: 'Request review…', exact: true })
     .click();
@@ -793,9 +796,7 @@ test('human claim and request-review controls, plus leave/rejoin of known member
   await drawer
     .getByRole('button', { name: 'Request review', exact: true })
     .click();
-  await expect(
-    card.getByText('Review requested', { exact: true }),
-  ).toBeVisible();
+  await expect(inStage(page, 'Review', 'Human owned task')).toBeVisible();
   await expect(
     drawer.getByRole('definition').filter({ hasText: /^Reviewer$/ }),
   ).toBeVisible();
@@ -812,9 +813,7 @@ test('human claim and request-review controls, plus leave/rejoin of known member
   await page.getByRole('button', { name: 'Join channel', exact: true }).click();
   await expect(page.getByRole('heading', { name: '# general' })).toBeVisible();
   await page.getByRole('tab', { name: 'Board', exact: true }).click();
-  await expect(
-    card.getByText('Review requested', { exact: true }),
-  ).toBeVisible();
+  await expect(inStage(page, 'Review', 'Human owned task')).toBeVisible();
 });
 
 test('a heartbeat refresh never interrupts work; after a failure nothing submits until a reconnect succeeds', async ({

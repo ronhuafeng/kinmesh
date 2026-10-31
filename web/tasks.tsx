@@ -14,7 +14,7 @@ import type { WorkspaceSnapshot } from '../src/workspace/contracts.js';
 import { api, Offline, value } from './api.js';
 import { ActionForm, Field, Notice, SubmitGroup } from './forms.js';
 import { DeliveryLine, taskDeliveries } from './deliveries.js';
-import { age, Avatar, Drawer, shortTime, StatusChip, statuses } from './ui.js';
+import { age, Avatar, Drawer, shortTime, StatusChip } from './ui.js';
 import type { Status } from './ui.js';
 
 export function memberFrom(value: string): Member | null {
@@ -45,31 +45,69 @@ export function humanAsk(task: Task, data: WorkspaceSnapshot): string | null {
     return 'Your rework';
   return null;
 }
-const stages = [
-  { label: 'Proposed', statuses: ['proposed'] },
-  { label: 'Working', statuses: ['in-progress', 'rework-requested'] },
-  { label: 'Review', statuses: ['review-requested'] },
-  { label: 'Human sign-off', statuses: ['awaiting-human'] },
-  { label: 'Done', statuses: ['accepted'] },
+/**
+ * One model for the board and the lifecycle: five stages a person can follow.
+ * Rework is still Working (marked "Sent back"); cancelled work is Done
+ * (marked "Cancelled", hidden by default).
+ */
+export type StageId = 'proposed' | 'working' | 'review' | 'sign-off' | 'done';
+export const stages: readonly {
+  id: StageId;
+  label: string;
+  /** Reuses the status colour token of the stage's main status. */
+  tone: Status;
+  statuses: readonly Status[];
+}[] = [
+  {
+    id: 'proposed',
+    label: 'Proposed',
+    tone: 'proposed',
+    statuses: ['proposed'],
+  },
+  {
+    id: 'working',
+    label: 'Working',
+    tone: 'in-progress',
+    statuses: ['in-progress', 'rework-requested'],
+  },
+  {
+    id: 'review',
+    label: 'Review',
+    tone: 'review-requested',
+    statuses: ['review-requested'],
+  },
+  {
+    id: 'sign-off',
+    label: 'Human sign-off',
+    tone: 'awaiting-human',
+    statuses: ['awaiting-human'],
+  },
+  {
+    id: 'done',
+    label: 'Done',
+    tone: 'accepted',
+    statuses: ['accepted', 'cancelled'],
+  },
 ];
-function Lifecycle({
-  status,
-  compact = false,
-}: {
-  status: Status;
-  compact?: boolean;
-}) {
-  const current = stages.findIndex((s) => s.statuses.includes(status));
-  if (current < 0) return null;
+export function stageOf(status: Status): StageId {
+  return stages.find((s) => s.statuses.includes(status))?.id ?? 'proposed';
+}
+/** The one exception a card states in words; the column says the rest. */
+function cardMarker(status: Status) {
+  return status === 'rework-requested'
+    ? 'Sent back'
+    : status === 'cancelled'
+      ? 'Cancelled'
+      : null;
+}
+function Lifecycle({ status }: { status: Status }) {
+  if (status === 'cancelled') return null;
+  const current = stages.findIndex((s) => s.id === stageOf(status));
   return (
-    <ol
-      className={'lifecycle' + (compact ? ' compact' : '')}
-      aria-label={compact ? undefined : 'Task progress'}
-      aria-hidden={compact ? 'true' : undefined}
-    >
+    <ol className="lifecycle" aria-label="Task progress">
       {stages.map((stage, index) => (
         <li
-          key={stage.label}
+          key={stage.id}
           data-step={
             index < current || status === 'accepted'
               ? 'done'
@@ -631,7 +669,11 @@ function TaskCard({
     >
       <header>
         <span className="task-number">#{task.position}</span>
-        <StatusChip status={task.state.status} />
+        {cardMarker(task.state.status) && (
+          <span className="card-marker" data-status={task.state.status}>
+            {cardMarker(task.state.status)}
+          </span>
+        )}
       </header>
       <h3>
         <button
@@ -644,7 +686,6 @@ function TaskCard({
         </button>
       </h3>
       {ask && <p className="ask-label">{ask}</p>}
-      <Lifecycle status={task.state.status} compact />
       <footer>
         <span className="card-people">
           <MemberAvatar member={task.state.owner} data={data} />
@@ -727,12 +768,16 @@ export function Board({
           ) || t.acceptorHumanId === data.human.id
         : true,
   );
-  const byStatus = new Map<Status, Task[]>(statuses.map((s) => [s.id, []]));
-  for (const task of items) byStatus.get(task.state.status)?.push(task);
-  const firstAsk = statuses.find((s) =>
-    byStatus.get(s.id)?.some((t) => humanAsk(t, data)),
+  const [showCancelled, setShowCancelled] = useState(false);
+  const cancelled = items.filter((t) => t.state.status === 'cancelled');
+  const byStage = new Map<StageId, Task[]>(stages.map((s) => [s.id, []]));
+  for (const task of items)
+    if (showCancelled || task.state.status !== 'cancelled')
+      byStage.get(stageOf(task.state.status))?.push(task);
+  const firstAsk = stages.find((s) =>
+    byStage.get(s.id)?.some((t) => humanAsk(t, data)),
   );
-  const [column, setColumn] = useState<Status>(firstAsk?.id ?? 'proposed');
+  const [column, setColumn] = useState<StageId>(firstAsk?.id ?? 'proposed');
   const closed = data.tasks.items.filter(
     (t) => t.state.status === 'accepted' || t.state.status === 'cancelled',
   ).length;
@@ -836,30 +881,30 @@ export function Board({
           </div>
         </ActionForm>
       </details>
-      <div className="column-switcher" role="group" aria-label="Status columns">
-        {statuses.map((s) => (
+      <div className="column-switcher" role="group" aria-label="Stages">
+        {stages.map((s) => (
           <button
             key={s.id}
             type="button"
-            data-status={s.id}
+            data-status={s.tone}
             aria-pressed={column === s.id}
             onClick={() => {
               setColumn(s.id);
             }}
           >
             {s.label}
-            <span className="count">{byStatus.get(s.id)?.length ?? 0}</span>
+            <span className="count">{byStage.get(s.id)?.length ?? 0}</span>
           </button>
         ))}
       </div>
       <div className="board">
-        {statuses.map((s) => {
-          const tasks = byStatus.get(s.id) ?? [];
+        {stages.map((s) => {
+          const tasks = byStage.get(s.id) ?? [];
           return (
             <section
               key={s.id}
               className="board-column"
-              data-status={s.id}
+              data-status={s.tone}
               data-current={column === s.id ? 'true' : undefined}
               aria-label={s.label}
             >
@@ -880,6 +925,20 @@ export function Board({
                 />
               ))}
               {tasks.length === 0 && <p className="column-empty">Empty</p>}
+              {s.id === 'done' && cancelled.length > 0 && (
+                <button
+                  type="button"
+                  className="quiet column-toggle"
+                  aria-pressed={showCancelled}
+                  onClick={() => {
+                    setShowCancelled((v) => !v);
+                  }}
+                >
+                  {showCancelled
+                    ? 'Hide cancelled'
+                    : `Show cancelled (${String(cancelled.length)})`}
+                </button>
+              )}
             </section>
           );
         })}

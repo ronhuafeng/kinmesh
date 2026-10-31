@@ -7,18 +7,18 @@ Generated with Google Stitch from [DESIGN.md](../DESIGN.md) and the page invento
 These are **direction references**, not specs. Stitch invented some elements that
 Kinmesh does not support; do not implement them unless the backend gains the feature.
 
-| File                             | Page                             | Stitch screen id                   |
-| -------------------------------- | -------------------------------- | ---------------------------------- |
-| `p2-chat-desktop.png`            | P2 Channel chat                  | `b8844e2853154fe4810f4f853f4af3ec` |
-| `p3-board-desktop.png`           | P3 Task board (7 status columns) | `7bd08c651b2b47a390a217e6d438209f` |
-| `p4-task-drawer-desktop.png`     | P4 Task detail + human decision  | `31d7278f25094631bff869951b697d90` |
-| `p5-team-roster-desktop.png`     | P5 Team roster + register agent  | `b804cfe750f34f31bab162cc343f54f8` |
-| `p1-sign-in-setup-desktop.png`   | P1 Sign in / first-owner setup   | `5114f0c040a54ba29ef36f8a1867fe51` |
-| `p6-agent-drawer-desktop.png`    | P6 Agent detail drawer           | `0848fe6b5c454b09a8a4b341e9f7b4f7` |
-| `p8-system-states-desktop.png`   | P8 System states (2×2 sheet)     | `b101e6eed9ee47c59ac5e82e36845c23` |
-| `m-p2-chat-mobile.png`           | Mobile channel chat              | `70adc915214d486289f10a7206dc2090` |
-| `m-p3-board-mobile.png`          | Mobile board (column switcher)   | `59cdad48dfe248c8861fbe11ee3b22a8` |
-| `m-p4-decision-sheet-mobile.png` | Mobile task decision sheet       | `7565df3e2ed74bddadee14668c809de8` |
+| File                             | Page                                                                      | Stitch screen id                   |
+| -------------------------------- | ------------------------------------------------------------------------- | ---------------------------------- |
+| `p2-chat-desktop.png`            | P2 Channel chat                                                           | `b8844e2853154fe4810f4f853f4af3ec` |
+| `p3-board-desktop.png`           | P3 Task board (7 status columns; superseded by the five-stage board, #56) | `7bd08c651b2b47a390a217e6d438209f` |
+| `p4-task-drawer-desktop.png`     | P4 Task detail + human decision                                           | `31d7278f25094631bff869951b697d90` |
+| `p5-team-roster-desktop.png`     | P5 Team roster + register agent                                           | `b804cfe750f34f31bab162cc343f54f8` |
+| `p1-sign-in-setup-desktop.png`   | P1 Sign in / first-owner setup                                            | `5114f0c040a54ba29ef36f8a1867fe51` |
+| `p6-agent-drawer-desktop.png`    | P6 Agent detail drawer                                                    | `0848fe6b5c454b09a8a4b341e9f7b4f7` |
+| `p8-system-states-desktop.png`   | P8 System states (2×2 sheet)                                              | `b101e6eed9ee47c59ac5e82e36845c23` |
+| `m-p2-chat-mobile.png`           | Mobile channel chat                                                       | `70adc915214d486289f10a7206dc2090` |
+| `m-p3-board-mobile.png`          | Mobile board (column switcher)                                            | `59cdad48dfe248c8861fbe11ee3b22a8` |
+| `m-p4-decision-sheet-mobile.png` | Mobile task decision sheet                                                | `7565df3e2ed74bddadee14668c809de8` |
 
 P7 (Needs you inbox) is covered by the "Waiting for you" strip and the board's
 "Needs me" filter rather than a separate screen.
