@@ -199,188 +199,196 @@ export function AgentSetup({
         </span>
       </div>
       {error && <Notice>{error}</Notice>}
-      <ol className="setup-steps">
-        <Row step={joined ? 'done' : 'todo'} title="Joined this channel">
-          {!joined && channelPath && agent.lifecycle === 'active' && (
-            <ActionForm
-              title={'Enroll ' + agent.name}
-              path={channelPath + '/participants/invite'}
-              build={() => ({ member: { kind: 'agent', id: agent.id } })}
-              onDone={onDone}
-              submit={'Add ' + agent.name + ' to channel'}
-            />
-          )}
-        </Row>
-        <Row step={configured ? 'done' : 'todo'} title="Runtime preferences">
-          {configured && !editing ? (
-            <p className="muted">
-              {prefs.environmentId} · {prefs.providerId}/{prefs.modelId}{' '}
-              <button
-                type="button"
-                className="link-button"
-                onClick={() => {
-                  setEditing(true);
-                }}
-              >
-                Edit
-              </button>
-            </p>
-          ) : (
-            <ActionForm
-              title="Runtime preferences"
-              method="PUT"
-              keyed={false}
-              path={base}
-              submit="Save preferences"
-              onDone={() => {
-                setEditing(false);
-                onDone();
-              }}
-              build={(f) => {
-                const read = (key: string) => {
-                  const v = f.get(key);
-                  return typeof v === 'string' && v.trim() ? v.trim() : null;
-                };
-                return ProfileInput.parse({
-                  name: agent.name,
-                  role: agent.role,
-                  capabilities: agent.capabilities,
-                  memoryLocation: agent.memoryLocation,
-                  preferences: {
-                    environmentId: read('environmentId'),
-                    providerId: read('providerId'),
-                    modelId: read('modelId'),
-                  },
-                });
-              }}
-            >
-              <Field label="T3 environment ID">
-                <input
-                  name="environmentId"
-                  required
-                  defaultValue={prefs.environmentId ?? ''}
-                />
-              </Field>
-              <div className="field-row">
-                <Field label="Isolated provider ID">
-                  <input
-                    name="providerId"
-                    required
-                    defaultValue={prefs.providerId ?? ''}
-                  />
-                </Field>
-                <Field label="Model ID">
-                  <input
-                    name="modelId"
-                    required
-                    defaultValue={prefs.modelId ?? ''}
-                  />
-                </Field>
-              </div>
-            </ActionForm>
-          )}
-        </Row>
-        <Row step={credential ? 'done' : 'todo'} title="Worker credential">
-          {token && (
-            <TokenOnce
-              token={token}
-              agent={agent}
-              onDismiss={() => {
-                setToken(null);
-              }}
-            />
-          )}
-          {!credential && !token && (
-            <>
+      {/* A working agent needs no checklist in front; it stays one click away. */}
+      <details className="setup-details" open={!connected}>
+        <summary>{connected ? 'Show setup' : 'Setup steps'}</summary>
+        <ol className="setup-steps">
+          <Row step={joined ? 'done' : 'todo'} title="Joined this channel">
+            {!joined && channelPath && agent.lifecycle === 'active' && (
+              <ActionForm
+                title={'Enroll ' + agent.name}
+                path={channelPath + '/participants/invite'}
+                build={() => ({ member: { kind: 'agent', id: agent.id } })}
+                onDone={onDone}
+                submit={'Add ' + agent.name + ' to channel'}
+              />
+            )}
+          </Row>
+          <Row step={configured ? 'done' : 'todo'} title="Runtime preferences">
+            {configured && !editing ? (
               <p className="muted">
-                A {LIFETIME_DAYS}-day credential with exactly the scopes the
-                Inbox worker uses.
+                {prefs.environmentId} · {prefs.providerId}/{prefs.modelId}{' '}
+                <button
+                  type="button"
+                  className="link-button"
+                  onClick={() => {
+                    setEditing(true);
+                  }}
+                >
+                  Edit
+                </button>
               </p>
-              <button
-                type="button"
-                disabled={!permitted || busy || agent.lifecycle !== 'active'}
-                onClick={() => {
-                  void mutate(base + '/grants', issueInput);
+            ) : (
+              <ActionForm
+                title="Runtime preferences"
+                method="PUT"
+                keyed={false}
+                path={base}
+                submit="Save preferences"
+                onDone={() => {
+                  setEditing(false);
+                  onDone();
+                }}
+                build={(f) => {
+                  const read = (key: string) => {
+                    const v = f.get(key);
+                    return typeof v === 'string' && v.trim() ? v.trim() : null;
+                  };
+                  return ProfileInput.parse({
+                    name: agent.name,
+                    role: agent.role,
+                    capabilities: agent.capabilities,
+                    memoryLocation: agent.memoryLocation,
+                    preferences: {
+                      environmentId: read('environmentId'),
+                      providerId: read('providerId'),
+                      modelId: read('modelId'),
+                    },
+                  });
                 }}
               >
-                Issue worker credential
-              </button>
-            </>
-          )}
-          {grants && grants.length > 0 && (
-            <ul className="grant-list" aria-label="Credentials">
-              {grants.map((g) => {
-                const live =
-                  g.revokedAt === null && Date.parse(g.expiresAt) > Date.now();
-                return (
-                  <li key={g.id} data-live={live ? 'true' : undefined}>
-                    <span>
-                      {g.label} ·{' '}
-                      {g.revokedAt
-                        ? 'revoked'
-                        : live
-                          ? 'expires ' +
-                            new Date(g.expiresAt).toLocaleDateString()
-                          : 'expired'}
-                    </span>
-                    {live && (
-                      <span className="grant-actions">
-                        <button
-                          type="button"
-                          className="quiet"
-                          disabled={!permitted || busy}
-                          onClick={() => {
-                            void mutate(
-                              `${base}/grants/${g.id}/rotate`,
-                              issueInput,
-                            );
-                          }}
-                        >
-                          Rotate
-                        </button>
-                        <button
-                          type="button"
-                          className="quiet subtle-danger"
-                          disabled={!permitted || busy}
-                          onClick={() => {
-                            void mutate(`${base}/grants/${g.id}/revoke`);
-                          }}
-                        >
-                          Revoke
-                        </button>
+                <Field label="T3 environment ID">
+                  <input
+                    name="environmentId"
+                    required
+                    defaultValue={prefs.environmentId ?? ''}
+                  />
+                </Field>
+                <div className="field-row">
+                  <Field label="Isolated provider ID">
+                    <input
+                      name="providerId"
+                      required
+                      defaultValue={prefs.providerId ?? ''}
+                    />
+                  </Field>
+                  <Field label="Model ID">
+                    <input
+                      name="modelId"
+                      required
+                      defaultValue={prefs.modelId ?? ''}
+                    />
+                  </Field>
+                </div>
+              </ActionForm>
+            )}
+          </Row>
+          <Row step={credential ? 'done' : 'todo'} title="Worker credential">
+            {token && (
+              <TokenOnce
+                token={token}
+                agent={agent}
+                onDismiss={() => {
+                  setToken(null);
+                }}
+              />
+            )}
+            {!credential && !token && (
+              <>
+                <p className="muted">
+                  A {LIFETIME_DAYS}-day credential with exactly the scopes the
+                  Inbox worker uses.
+                </p>
+                <button
+                  type="button"
+                  disabled={!permitted || busy || agent.lifecycle !== 'active'}
+                  onClick={() => {
+                    void mutate(base + '/grants', issueInput);
+                  }}
+                >
+                  Issue worker credential
+                </button>
+              </>
+            )}
+            {grants && grants.length > 0 && (
+              <ul className="grant-list" aria-label="Credentials">
+                {grants.map((g) => {
+                  const live =
+                    g.revokedAt === null &&
+                    Date.parse(g.expiresAt) > Date.now();
+                  return (
+                    <li key={g.id} data-live={live ? 'true' : undefined}>
+                      <span>
+                        {g.label} ·{' '}
+                        {g.revokedAt
+                          ? 'revoked'
+                          : live
+                            ? 'expires ' +
+                              new Date(g.expiresAt).toLocaleDateString()
+                            : 'expired'}
                       </span>
-                    )}
-                  </li>
-                );
-              })}
-            </ul>
-          )}
-        </Row>
-        <Row step="manual" title="T3 access (on the worker machine)">
-          <p className="muted">
-            Approve the worker’s T3 OAuth access in a browser on that machine:{' '}
-            <code>npm run t3:auth</code>. Kinmesh cannot see this step; the last
-            check below confirms the whole chain.
-          </p>
-        </Row>
-        <Row step={connected ? 'done' : 'manual'} title="Inbox worker binding">
-          <p className="muted">
-            Add this to the worker’s private <code>inbox.json</code> bindings,
-            replacing the placeholders, then start the worker.
-          </p>
-          <pre className="binding-snippet">
-            <code>{binding}</code>
-          </pre>
-          <CopyButton text={binding} label="Copy binding" />
-        </Row>
-        <Row step={connected ? 'done' : 'todo'} title="Can be woken">
-          <p className="muted">
-            {connected
-              ? `A worker is ready to wake ${agent.name}.`
-              : `Turns ready once a worker with this binding is running.`}
-          </p>
-        </Row>
-      </ol>
+                      {live && (
+                        <span className="grant-actions">
+                          <button
+                            type="button"
+                            className="quiet"
+                            disabled={!permitted || busy}
+                            onClick={() => {
+                              void mutate(
+                                `${base}/grants/${g.id}/rotate`,
+                                issueInput,
+                              );
+                            }}
+                          >
+                            Rotate
+                          </button>
+                          <button
+                            type="button"
+                            className="quiet subtle-danger"
+                            disabled={!permitted || busy}
+                            onClick={() => {
+                              void mutate(`${base}/grants/${g.id}/revoke`);
+                            }}
+                          >
+                            Revoke
+                          </button>
+                        </span>
+                      )}
+                    </li>
+                  );
+                })}
+              </ul>
+            )}
+          </Row>
+          <Row step="manual" title="T3 access (on the worker machine)">
+            <p className="muted">
+              Approve the worker’s T3 OAuth access in a browser on that machine:{' '}
+              <code>npm run t3:auth</code>. Kinmesh cannot see this step; the
+              last check below confirms the whole chain.
+            </p>
+          </Row>
+          <Row
+            step={connected ? 'done' : 'manual'}
+            title="Inbox worker binding"
+          >
+            <p className="muted">
+              Add this to the worker’s private <code>inbox.json</code> bindings,
+              replacing the placeholders, then start the worker.
+            </p>
+            <pre className="binding-snippet">
+              <code>{binding}</code>
+            </pre>
+            <CopyButton text={binding} label="Copy binding" />
+          </Row>
+          <Row step={connected ? 'done' : 'todo'} title="Can be woken">
+            <p className="muted">
+              {connected
+                ? `A worker is ready to wake ${agent.name}.`
+                : `Turns ready once a worker with this binding is running.`}
+            </p>
+          </Row>
+        </ol>
+      </details>
     </section>
   );
 }
