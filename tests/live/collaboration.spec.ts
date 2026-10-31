@@ -18,6 +18,7 @@ import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js';
 import { Native, Executor, models, roles } from './native.js';
 import { Hub } from './hub.js';
+import { Activity, parseCall, completedCalls, reviewProof } from './proof.js';
 import { until, ready } from './processes.js';
 import { SdkWire } from '../../src/adapters/t3/sdk.js';
 import { T3Backend } from '../../src/adapters/t3/backend.js';
@@ -25,7 +26,6 @@ import { authority, type Credential } from '../../src/adapters/t3/oauth.js';
 import {
   ValidatedTools,
   Capabilities,
-  Read,
 } from '../../src/adapters/t3/contracts.js';
 import {
   Reference,
@@ -47,7 +47,6 @@ const rowSchema = z.object({
 });
 const hash = (value: string) =>
   createHash('sha256').update(value).digest('hex');
-const record = z.record(z.string(), z.unknown());
 const grants = z.object({
   result: z.object({
     ok: z.boolean(),
@@ -78,6 +77,7 @@ test('complete real two-agent workflow, Human rework/acceptance, recovery and au
     releaseEvidence: process.env.GITHUB_ACTIONS === 'true',
     executor,
     t3Version: '0.1.5',
+    providerVersion: executor === 'codex' ? '0.166.0' : '1.0.70',
     model: models[executor],
     scenario: 'complete-two-cycle-collaboration',
     simulatedHuman: true,
@@ -112,12 +112,12 @@ test('complete real two-agent workflow, Human rework/acceptance, recovery and au
     });
     tools = new ValidatedTools(wire, await wire.list());
   }
-  async function activityFor(ref: Reference): Promise<z.infer<typeof Read>> {
+  async function activityFor(ref: Reference): Promise<Activity> {
     if (!tools) throw new Error('NATIVE_AUDIT_REQUIRED');
-    const items: z.infer<typeof Read>['items'] = [];
+    const items: Activity['items'] = [];
     let after: number | undefined;
     for (let page = 0; page < 8; page++) {
-      const activity = Read.parse(
+      const activity = Activity.parse(
         await tools.call('t3_thread_read', {
           threadId: ref.threadId,
           view: 'activity',
@@ -138,6 +138,7 @@ test('complete real two-agent workflow, Human rework/acceptance, recovery and au
     }
     throw new Error('NATIVE_ACTIVITY_EVIDENCE_PAGE_BOUND');
   }
+  const reviewWitnesses = new Set<string>();
   async function auditNative() {
     if (!backend || !db) throw new Error('AUDIT_NOT_READY');
     const results = [];
@@ -154,36 +155,7 @@ test('complete real two-agent workflow, Human rework/acceptance, recovery and au
       assert.ok(!runIds.has(ref.runId));
       runIds.add(ref.runId);
       const activity = await activityFor(ref);
-      const successfulCalls = activity.items
-        .filter(
-          (item) => item.type === 'dynamic_tool' && item.runId === ref.runId,
-        )
-        .flatMap((item) => {
-          assert.equal(item.textTruncated, false);
-          const call = z
-            .object({
-              toolName: z.string(),
-              input: record,
-              output: z
-                .object({
-                  result: z.object({
-                    ok: z.boolean(),
-                    data: z.unknown().optional(),
-                  }),
-                })
-                .optional(),
-            })
-            .parse(JSON.parse(item.text ?? 'null') as unknown);
-          return call.output?.result.ok
-            ? [
-                {
-                  name: call.toolName.replace(/^kinmesh\./, ''),
-                  input: call.input,
-                  data: call.output.result.data,
-                },
-              ]
-            : [];
-        });
+      const successfulCalls = completedCalls(activity, ref.runId);
       for (const name of [
         'team_task_get',
         'team_tasks_history',
@@ -216,42 +188,46 @@ test('complete real two-agent workflow, Human rework/acceptance, recovery and au
               call.input.channelId === hub.channelId,
           ),
         );
-      if (role === 'reviewer') {
-        const artifacts = beforeDecision
-          .filter(
-            (call) =>
-              call.name === 'team_messages_read' &&
-              call.input.channelId === hub.channelId,
-          )
-          .flatMap(
-            (call) =>
-              z
-                .object({
-                  items: z.array(
-                    z.object({
-                      body: z.string(),
-                      sourceEventId: z.string().nullable(),
-                      author: z.object({
-                        kind: z.string(),
-                        agentId: z.string().optional(),
-                      }),
-                    }),
-                  ),
-                })
-                .parse(call.data).items,
-          );
-        const developerEvent = rows()[results.length - 1]?.event_id;
+      if (role === 'reviewer')
         assert.ok(
-          artifacts.some(
-            (message) =>
-              message.author.agentId === hub.agent('developer').profile.id &&
-              message.sourceEventId === developerEvent &&
-              message.body.includes(hub.marker) &&
-              message.body.includes('7 x 8 = 56') &&
-              (results.length < 2 || message.body.includes('verified')),
-          ),
+          reviewWitnesses.has(ref.runId),
+          'REVIEW_PREAPPROVAL_WITNESS_MISSING',
         );
+      const publications = successfulCalls.filter(
+        (call) => call.name === 'team_messages_send',
+      );
+      const actionIds = new Map<string, string>();
+      const publishedIds = new Set<string>();
+      for (const publication of publications) {
+        const id = z.object({ id: z.string() }).parse(publication.data).id;
+        const action = JSON.stringify({
+          channelId: publication.input.channelId,
+          body: publication.input.body,
+          mentions: publication.input.mentions,
+          topicId: publication.input.topicId,
+          sourceMessageId: publication.input.sourceMessageId,
+          sourceEventId: publication.input.sourceEventId,
+        });
+        assert.ok(
+          !actionIds.has(action) || actionIds.get(action) === id,
+          'DUPLICATE_NATIVE_PUBLICATION',
+        );
+        actionIds.set(action, id);
+        publishedIds.add(id);
       }
+      const storedPublications = z
+        .array(z.object({ id: z.string() }))
+        .parse(
+          db
+            .prepare(
+              "select id from messages where source_event_id=? and json_extract(author,'$.agentId')=? and id<>?",
+            )
+            .all(row.event_id, row.agent_id, row.result_message_id),
+        );
+      assert.deepEqual(
+        new Set(storedPublications.map((message) => message.id)),
+        publishedIds,
+      );
       const observed: Observation = await backend.read(ref);
       assert.equal(observed.state, 'succeeded');
       assert.equal(observed.model.providerId, native.provider(role));
@@ -352,62 +328,153 @@ test('complete real two-agent workflow, Human rework/acceptance, recovery and au
   async function approve(row: z.infer<typeof rowSchema>) {
     if (!tools || !row.reference || !native.page) return;
     const ref = Reference.parse(JSON.parse(row.reference) as unknown);
+    assert.ok(ref.runId);
     const activity = await activityFor(ref);
     if (!activity.thread.pendingRequestCount) return;
-    assert.equal(activity.thread.pendingRequestCount, 1);
     assert.equal(activity.thread.activeRunId, ref.runId);
     assert.equal(activity.thread.latestRunId, ref.runId);
-    const approval = activity.items.at(-1);
-    assert.equal(approval?.type, 'approval_request');
-    assert.equal(approval.runId, ref.runId);
-    const role = roles.find((r) => hub.agent(r).profile.id === row.agent_id);
+    const role = roles.find(
+      (role) => hub.agent(role).profile.id === row.agent_id,
+    );
     assert.ok(role);
-    const calls = activity.items.filter(
-      (i) => i.type === 'dynamic_tool' && i.runId === ref.runId,
+    const unresolved = (status: string) =>
+      ['pending', 'waiting', 'running'].includes(status);
+    const pending = activity.items.filter(
+      (item) =>
+        item.runId === ref.runId &&
+        item.type === 'approval_request' &&
+        unresolved(item.status),
     );
-    const call = calls.at(-1);
-    if (!call?.text) throw new Error('NATIVE_APPROVAL_NOT_INSPECTABLE');
-    const input = z
-      .object({
-        toolName: z.string(),
-        input: record,
-        output: z.unknown().optional(),
+    const mutations = [
+      'team_message_get',
+      'team_messages_read',
+      'team_task_get',
+      'team_tasks_history',
+      'team_messages_send',
+      'team_task_handoff',
+      'team_task_review',
+    ];
+    const matches = (text: string | null, tool: string) =>
+      text?.includes('kinmesh') &&
+      (text.includes('\"' + tool + '\"') || text.trim() === 'kinmesh__' + tool);
+    const calls = activity.items
+      .filter(
+        (item) =>
+          item.runId === ref.runId &&
+          item.type === 'dynamic_tool' &&
+          unresolved(item.status),
+      )
+      .flatMap((item) => {
+        assert.equal(item.textTruncated, false);
+        const call = parseCall(JSON.parse(item.text ?? 'null') as unknown);
+        if (!call) return [];
+        assert.equal(call.output, undefined);
+        return [call];
       })
-      .parse(JSON.parse(call.text) as unknown);
-    assert.equal(input.output, undefined);
-    const tool = input.toolName.replace(/^kinmesh\./, '');
-    assert.equal(
-      approval.text,
-      `Allow the kinmesh MCP server to run tool \"${tool}\"?`,
-    );
-    assert.equal(activity.items.at(-2)?.itemId, call.itemId);
-    assert.equal(input.input.channelId, hub.channelId);
-    if (tool === 'team_messages_send') {
-      assert.equal(input.input.sourceEventId, row.event_id);
-      assert.deepEqual(input.input.mentions, []);
-      assert.equal(typeof input.input.body, 'string');
-    } else {
-      assert.equal(input.input.taskId, hub.taskId);
-      const task = await hub.task();
-      assert.equal(input.input.expectedVersion, task.version);
-      if (role === 'developer' && tool === 'team_task_handoff') {
-        assert.equal(input.input.mode, 'review');
-        assert.deepEqual(input.input.recipient, {
-          kind: 'agent',
-          id: hub.agent('reviewer').profile.id,
+      .filter(
+        (call) =>
+          mutations.includes(call.name) &&
+          pending.some((request) => matches(request.text, call.name)),
+      );
+    assert.equal(pending.length, activity.thread.pendingRequestCount);
+    assert.equal(calls.length, pending.length);
+    // Validate all pending inputs before approving even one concurrent request.
+    for (const call of calls) {
+      const tool = call.name;
+      assert.equal(call.input.channelId, hub.channelId);
+      if (
+        role === 'reviewer' &&
+        ['team_messages_send', 'team_task_review'].includes(tool)
+      ) {
+        const index = rows().findIndex((candidate) => candidate.id === row.id);
+        reviewProof(activity, ref.runId, {
+          channelId: hub.channelId,
+          taskId: hub.taskId,
+          developerId: hub.agent('developer').profile.id,
+          developerEventId: rows()[index - 1]?.event_id ?? '',
+          humanId: hub.humanId,
+          marker: hub.marker,
+          rework: index >= 2,
+          reworkNote: hub.reworkNote,
         });
-      } else if (role === 'reviewer' && tool === 'team_task_review')
-        assert.equal(input.input.decision, 'approve');
-      else throw new Error('UNEXPECTED_NATIVE_WRITE');
+      }
+      if (
+        [
+          'team_message_get',
+          'team_messages_read',
+          'team_task_get',
+          'team_tasks_history',
+        ].includes(tool)
+      ) {
+        if (tool.startsWith('team_task'))
+          assert.equal(call.input.taskId, hub.taskId);
+      } else if (tool === 'team_messages_send') {
+        assert.equal(call.input.sourceEventId, row.event_id);
+        assert.deepEqual(call.input.mentions, []);
+        assert.equal(typeof call.input.body, 'string');
+      } else {
+        assert.equal(call.input.taskId, hub.taskId);
+        assert.equal(call.input.expectedVersion, (await hub.task()).version);
+        if (role === 'developer' && tool === 'team_task_handoff') {
+          assert.equal(call.input.mode, 'review');
+          assert.deepEqual(call.input.recipient, {
+            kind: 'agent',
+            id: hub.agent('reviewer').profile.id,
+          });
+        } else if (role === 'reviewer' && tool === 'team_task_review') {
+          assert.equal(call.input.decision, 'approve');
+          reviewWitnesses.add(ref.runId);
+          evidence.readWitnesses = [...reviewWitnesses].map((runId) =>
+            hash(runId),
+          );
+        } else throw new Error('UNEXPECTED_NATIVE_WRITE');
+      }
+      if (
+        [
+          'team_messages_send',
+          'team_task_handoff',
+          'team_task_review',
+        ].includes(tool)
+      )
+        assert.equal(typeof call.input.operationKey, 'string');
     }
-    assert.equal(typeof input.input.operationKey, 'string');
     const page = native.page;
     assert.ok(activity.thread.link);
     const target = new URL(activity.thread.link);
     assert.equal(target.origin, native.origin);
     if (page.url() !== target.href) await page.goto(target.href);
-    await page.getByText(approval.text, { exact: true }).first().waitFor();
-    const button = page.getByRole('button', { name: 'Approve', exact: true });
+    // These are public T3 0.1.5 UI attributes. Each card closes over its own runtime request ID.
+    const cards = page.locator('[data-v2-item-type="approval_request"]');
+    await until(
+      async () => (await cards.count()) === pending.length,
+      'NATIVE_APPROVAL_CARDS_NOT_SYNCHRONIZED',
+      10_000,
+    );
+    for (const card of await cards.all()) {
+      assert.ok(
+        ['App access approval', 'App permission approval'].includes(
+          (await card.getAttribute('aria-label')) ?? '',
+        ),
+      );
+      const detail = await card
+        .locator('[data-approval-detail="complete"]')
+        .innerText();
+      assert.ok(
+        pending.some(
+          (request) =>
+            request.text === detail || request.text?.startsWith(detail + '\n'),
+        ),
+      );
+    }
+    const detail = await cards
+      .first()
+      .locator('[data-approval-detail="complete"]')
+      .innerText();
+    const checked = cards.filter({ hasText: detail }).first();
+    const button = checked.getByRole('button', {
+      name: 'Approve',
+      exact: true,
+    });
     await button.waitFor();
     assert.equal(await button.count(), 1);
     await button.click();
@@ -529,6 +596,13 @@ test('complete real two-agent workflow, Human rework/acceptance, recovery and au
     throw new Error('COLLABORATION_NOT_TERMINAL');
   }
   try {
+    if (process.env.GITHUB_ACTIONS === 'true') {
+      assert.equal(evidence.workingTreeDirty, false);
+      assert.equal(
+        execFileSync('git', ['rev-parse', 'HEAD'], { encoding: 'utf8' }).trim(),
+        process.env.GITHUB_SHA,
+      );
+    }
     stage = 'native-bootstrap';
     await native.start();
     stage = 'workspace-onboarding';
@@ -802,7 +876,7 @@ test('complete real two-agent workflow, Human rework/acceptance, recovery and au
         ) as unknown);
       const outcome = grants.parse(raw);
       assert.equal(outcome.result.ok, false);
-      assert.equal(outcome.result.error?.code, 'forbidden');
+      assert.equal(outcome.result.error?.code, 'not_found');
     } finally {
       await client.close();
     }
@@ -836,6 +910,57 @@ test('complete real two-agent workflow, Human rework/acceptance, recovery and au
       ].map((m) => m[0]);
       if (/^[A-Z][A-Z0-9_]{1,100}$/.test(error.message))
         evidence.safeErrorCode = error.message;
+    }
+    if (error instanceof ExecutionFailure) evidence.failureKind = error.kind;
+    try {
+      if (tools && db) {
+        const inspector = tools;
+        evidence.nativeDiagnostics = await Promise.all(
+          rows()
+            .filter((row) => row.reference)
+            .map(async (row) => {
+              const ref = Reference.parse(
+                JSON.parse(row.reference ?? 'null') as unknown,
+              );
+              try {
+                const snapshot = Activity.parse(
+                  await inspector.call(
+                    't3_thread_read',
+                    {
+                      threadId: ref.threadId,
+                      view: 'activity',
+                      limit: 100,
+                      maxCharsPerItem: 512,
+                    },
+                    AbortSignal.timeout(5000),
+                  ),
+                );
+                return {
+                  runDigest: hash(JSON.stringify(ref)),
+                  deliveryState: row.state,
+                  nativeState: snapshot.thread.status,
+                  pendingRequests: snapshot.thread.pendingRequestCount,
+                  items: snapshot.items.slice(-15).map((item) => ({
+                    type: item.type,
+                    status: item.status,
+                    truncated: item.textTruncated,
+                    teamTool:
+                      /"toolName"\s*:\s*"(?:kinmesh\.|kinmesh__)(team_[a-z_]+)"/.exec(
+                        item.text ?? '',
+                      )?.[1] ?? null,
+                  })),
+                };
+              } catch {
+                return {
+                  runDigest: hash(JSON.stringify(ref)),
+                  inspection: 'unavailable',
+                };
+              }
+            }),
+        );
+      }
+    } catch {
+      evidence.nativeDiagnosticRead = 'unavailable';
     }
     // Raw errors, prompts, tool traffic and credential-bearing browser state stay private.
     throw new Error('LIVE_COLLABORATION_FAILED_AT_' + stage);

@@ -50,31 +50,33 @@ export class Process {
     if (!child?.pid) return;
     const pid = child.pid;
     const alive = () => {
-      try {
-        process.kill(-pid, 0);
-        // Reaped children can briefly remain as zombies; they cannot execute or use credentials.
-        return execFileSync('ps', ['-axo', 'pgid=,stat='], { encoding: 'utf8' })
-          .split('\n')
-          .some((line) => {
-            const fields = line.trim().split(/\s+/);
-            return Number(fields[0]) === pid && !fields[1]?.startsWith('Z');
-          });
-      } catch (error) {
-        if (error instanceof Error && 'code' in error && error.code === 'ESRCH')
-          return false;
-        throw new Error('OWNED_PROCESS_STATE_UNAVAILABLE');
-      }
+      // Darwin can return EPERM for signal 0 while a group is exiting.
+      // A process table also lets us exclude zombies, which cannot execute.
+      const members = execFileSync('ps', ['-axo', 'pgid=,uid=,stat='], {
+        encoding: 'utf8',
+      })
+        .split('\n')
+        .map((line) => line.trim().split(/\s+/))
+        .filter(
+          (fields) => Number(fields[0]) === pid && !fields[2]?.startsWith('Z'),
+        );
+      if (members.some((fields) => Number(fields[1]) !== process.getuid?.()))
+        throw new Error('OWNED_PROCESS_GROUP_OWNER_CHANGED');
+      return members.length > 0;
     };
     const kill = (requested: NodeJS.Signals) => {
+      if (!alive()) return;
       try {
         process.kill(-pid, requested);
       } catch (error) {
-        if (!(
+        if (
           error instanceof Error &&
           'code' in error &&
-          error.code === 'ESRCH'
-        ))
-          throw new Error('OWNED_PROCESS_SIGNAL_FAILED');
+          ['ESRCH', 'EPERM'].includes(String(error.code)) &&
+          !alive()
+        )
+          return;
+        throw new Error('OWNED_PROCESS_SIGNAL_FAILED');
       }
     };
     kill(signal);

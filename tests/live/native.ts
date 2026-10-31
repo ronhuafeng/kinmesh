@@ -42,7 +42,12 @@ export class Native {
   provider(role: Role) {
     return `ci_${role}`;
   }
-  configure(role: Role, endpoint: string, token: string) {
+  configure(
+    role: Role,
+    endpoint: string,
+    token: string,
+    availableTools: string[],
+  ) {
     const home = this.home(role);
     const directory = join(
       home,
@@ -60,7 +65,7 @@ export class Native {
     const config =
       this.executor === 'codex'
         ? `model = ${q(models.codex)}\nmodel_reasoning_effort = "low"\nmodel_provider = "ci"\n[model_providers.ci]\nname = "CI"\nbase_url = ${q(base)}\nwire_api = "responses"\nenv_key = "LLM_API_KEY"\n`
-        : `[models]\ndefault = ${q(models.grok)}\n[endpoints]\nmodels_base_url = ${q(base)}\n[model.${q(models.grok)}]\nenv_key = "LLM_API_KEY"\n`;
+        : `[models]\ndefault = ${q(models.grok)}\n[model.${q(models.grok)}]\nmodel = ${q(models.grok)}\nbase_url = ${q(base)}\napi_backend = "responses"\nenv_key = "LLM_API_KEY"\n[permission]\ndeny = ["Bash(*)", "Read(**)", "Edit(**)", "Grep(**)", "WebFetch(*)", "WebSearch(*)"]\nallow = ["MCPTool(kinmesh__team_message_get)", "MCPTool(kinmesh__team_messages_read)", "MCPTool(kinmesh__team_task_get)", "MCPTool(kinmesh__team_tasks_history)"]\n`;
     const tools = [
       'team_message_get',
       'team_messages_read',
@@ -69,14 +74,43 @@ export class Native {
       'team_messages_send',
       role === 'developer' ? 'team_task_handoff' : 'team_task_review',
     ];
+    if (!tools.every((name) => availableTools.includes(name)))
+      throw new Error('TEAM_MCP_CATALOG_INCOMPLETE');
+    const mcp =
+      this.executor === 'codex'
+        ? `enabled_tools = ${q(tools)}\nhttp_headers = { Authorization = ${q('Bearer ' + token)} }`
+        : `headers = { Authorization = ${q('Bearer ' + token)} }\n[disabled_mcp_tools]\nkinmesh = ${q(availableTools.filter((name) => !tools.includes(name)))}`;
     writeFileSync(
       join(directory, 'config.toml'),
-      config +
-        `\n[mcp_servers.kinmesh]\nurl = ${q(endpoint)}\nenabled_tools = ${q(tools)}\nhttp_headers = { Authorization = ${q('Bearer ' + token)} }\n`,
+      config + `\n[mcp_servers.kinmesh]\nurl = ${q(endpoint)}\n${mcp}\n`,
       { mode: 0o600 },
     );
   }
   async start() {
+    if (
+      execFileSync(this.binary, ['--version'], {
+        encoding: 'utf8',
+        stdio: ['ignore', 'pipe', 'pipe'],
+      }).trim() !== 't3 v0.1.5'
+    )
+      throw new Error('T3_VERSION_MISMATCH');
+    const providerBinary =
+      process.env[
+        this.executor === 'codex'
+          ? 'KINMESH_CODEX_BINARY'
+          : 'KINMESH_GROK_BINARY'
+      ];
+    if (!providerBinary) throw new Error('NATIVE_BINARY_REQUIRED');
+    const version = execFileSync(providerBinary, ['--version'], {
+      encoding: 'utf8',
+      stdio: ['ignore', 'pipe', 'pipe'],
+    }).trim();
+    if (
+      !(this.executor === 'codex'
+        ? version === 'codex-cli 0.166.0'
+        : /^grok 1\.0\.70(?: |$)/.test(version))
+    )
+      throw new Error('PROVIDER_VERSION_MISMATCH');
     this.origin = `http://127.0.0.1:${String(await port())}`;
     this.endpoint = this.origin + '/mcp';
     const home = join(this.root, 't3-home');
@@ -85,9 +119,6 @@ export class Native {
       HOME: home,
       PATH: process.env.PATH,
       LLM_API_KEY: process.env.LLM_API_KEY,
-      ...(this.executor === 'grok'
-        ? { XAI_API_KEY: process.env.LLM_API_KEY }
-        : {}),
     };
     this.server = new Process(
       this.binary,

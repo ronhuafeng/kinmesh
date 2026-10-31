@@ -2,6 +2,8 @@ import { randomBytes } from 'node:crypto';
 import { writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { z } from 'zod';
+import { Client } from '@modelcontextprotocol/sdk/client/index.js';
+import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js';
 import type { Page } from '@playwright/test';
 import { Agent, Grant } from '../../src/domain/agents.js';
 import { Task } from '../../src/domain/tasks.js';
@@ -26,6 +28,8 @@ export class Hub {
   createdInput: unknown;
   readonly title = 'CI collaboration ' + randomBytes(8).toString('hex');
   readonly marker = randomBytes(12).toString('hex');
+  readonly reworkNote =
+    'Produce a second version. Keep the marker and arithmetic, add verified, and obtain independent review again.';
   readonly agents = new Map<
     Role,
     {
@@ -179,7 +183,28 @@ export class Hub {
         ),
       );
       this.agents.set(role, { profile, ...issued });
-      this.native.configure(role, this.teamOrigin + '/mcp', issued.token);
+      const client = new Client({
+        name: 'kinmesh-live-preflight',
+        version: '1',
+      });
+      try {
+        await client.connect(
+          new StreamableHTTPClientTransport(new URL(this.teamOrigin + '/mcp'), {
+            requestInit: {
+              headers: { authorization: 'Bearer ' + issued.token },
+            },
+          }),
+        );
+        const catalog = await client.listTools();
+        this.native.configure(
+          role,
+          this.teamOrigin + '/mcp',
+          issued.token,
+          catalog.tools.map((tool) => tool.name),
+        );
+      } finally {
+        await client.close();
+      }
     }
   }
   agent(role: Role) {
@@ -273,7 +298,7 @@ export class Hub {
     await form
       .getByLabel('Description', { exact: true })
       .fill(
-        `Use only Team MCP; no shell or file operations. Read the task and decision history. Compare Inbox agentId with the current owner/reviewer to identify your role. Developer: publish one artifact containing ${this.marker} and 7 x 8 = 56. Follow the latest Human rework note; version the artifact. Use team_messages_send with mentions [], topicId null, sourceMessageId null and sourceEventId from this Inbox event. Use stable operation keys derived from task ID and version. Read the task again, then team_task_handoff in mode review to the assigned reviewer with current expectedVersion and the actual artifact message reference. Reviewer: independently read actual channel artifacts and task history, check criteria and latest Human rework note, publish an evidence-based review, read current task, then team_task_review approve or rework with current expectedVersion. Never accept a task. Return a concise actual assistant response.`,
+        `Use only Team MCP; no shell or file operations. Read the task, channel messages, and decision history through Team MCP before publishing. Compare Inbox agentId with the current owner/reviewer to identify your role. Developer: publish one artifact containing ${this.marker} and 7 x 8 = 56. Follow the latest Human rework note; version the artifact. Use team_messages_send with mentions [], topicId null, sourceMessageId null and sourceEventId from this Inbox event. Use stable operation keys derived from task ID and version. Read the task again, then team_task_handoff in mode review to the assigned reviewer with current expectedVersion and the actual artifact message reference. Reviewer: independently read actual channel artifacts and task history, check criteria and latest Human rework note, publish an evidence-based review, read current task, then team_task_review approve or rework with current expectedVersion. Never accept a task. Return a concise actual assistant response.`,
       );
     await form
       .getByLabel('Acceptance criteria (one per line)')
@@ -320,7 +345,7 @@ export class Hub {
       .getByLabel('Decision note')
       .fill(
         action === 'rework'
-          ? 'Produce a second version. Keep the marker and arithmetic, add verified, and obtain independent review again.'
+          ? this.reworkNote
           : 'Test Human accepts the actual verified second artifact after independent review.',
       );
     await card
