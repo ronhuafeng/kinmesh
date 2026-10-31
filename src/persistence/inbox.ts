@@ -160,6 +160,9 @@ export function inboxRepository(
               inArray(t.state, ['ready', 'waiting', 'uncertain']),
               lte(t.nextAttempt, sqliteNow),
               lte(t.leaseUntil, sqliteNow),
+              // An operator can resume an older blocked row while a newer row is leased.
+              // Oldest-outstanding order alone does not exclude that live same-agent owner.
+              sql`NOT EXISTS (SELECT 1 FROM agent_inbox active WHERE active.agent_id = ${t.agentId} AND active.lease_until > ${sqliteNow})`,
               sql`NOT EXISTS (SELECT 1 FROM agent_inbox older WHERE older.agent_id = ${t.agentId} AND older.position < ${t.position} AND older.state IN ('ready','waiting','uncertain'))`,
             ),
           )

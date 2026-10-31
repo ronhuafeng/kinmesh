@@ -46,7 +46,11 @@ function claim(f: Awaited<ReturnType<typeof inboxFixture>>) {
   assert.ok(c);
   return c;
 }
-function freeze(f: Awaited<ReturnType<typeof inboxFixture>>, c: Claim) {
+function freeze(
+  f: Awaited<ReturnType<typeof inboxFixture>>,
+  c: Claim,
+  executionReference = reference,
+) {
   assert.equal(f.workerPrincipal.kind, 'agent');
   const p = f.workerPrincipal;
   assert.equal(p.kind, 'agent');
@@ -63,7 +67,7 @@ function freeze(f: Awaited<ReturnType<typeof inboxFixture>>, c: Claim) {
       input: { ...launch, message: 'Frozen fixture input' },
     }),
   );
-  f.inbox.remember(c, reference);
+  f.inbox.remember(c, executionReference);
 }
 await test('inbox enqueue and outbox/receipt are atomic; exact replay is once and collision fails', async () => {
   const f = await inboxFixture();
@@ -650,6 +654,90 @@ await test('leases fence every stale write and ACK; global capacity and per-agen
     await f.dispose();
   }
 });
+for (const recovery of ['release', 'expired-lease'] as const)
+  await test(`MOCK SQLite recovery: resumed older delivery waits for a newer same-agent lease (${recovery})`, async () => {
+    const f = await inboxFixture();
+    const other = f.open();
+    const raw = new Database(f.dbPath);
+    try {
+      mention(f, 'Older request to recover');
+      const older = claim(f);
+      freeze(f, older);
+      f.inbox.defer(older, 'blocked', 'fixture-blocked');
+      const frozen = f.inbox.get(older.id);
+
+      mention(f, 'Newer request already being processed');
+      const newer = other.inbox.claim([f.agent.id]);
+      assert.ok(newer);
+      assert.notEqual(newer.id, older.id);
+      const newerReference = {
+        ...reference,
+        threadId: 'fixture-newer-thread',
+        runId: 'fixture-newer-run',
+      };
+      const newerResult = { ...fixtureResult(), reference: newerReference };
+      freeze(f, newer, newerReference);
+      f.inbox.resume(older.id);
+
+      assert.equal(
+        f.inbox.claim([f.agent.id]),
+        undefined,
+        'Resuming an older row must not overlap a live newer same-agent lease',
+      );
+      assert.equal(other.inbox.claim([f.agent.id]), undefined);
+      assert.equal(f.inbox.get(newer.id).claimToken, newer.claimToken);
+
+      // The exclusion is per agent: another agent can use the remaining slot.
+      f.comm.post(
+        f.principal,
+        f.teamId,
+        f.channelId,
+        postInput({ mentions: [{ kind: 'agent', id: f.reviewer.id }] }),
+      );
+      const independent = other.inbox.claim([f.reviewer.id]);
+      assert.ok(independent);
+      other.inbox.defer(independent, 'blocked', 'fixture-blocked');
+
+      if (recovery === 'release')
+        other.inbox.defer(newer, 'waiting', 'fixture-waiting');
+      else {
+        // Deterministic crash/clock fixture; no native T3 service or timers.
+        raw
+          .prepare('UPDATE agent_inbox SET lease_until=1 WHERE id=?')
+          .run(newer.id);
+        assert.throws(
+          () => other.inbox.ack(newer, f.workerPrincipal, newerResult),
+          IdentityError,
+        );
+      }
+      const recovered = other.inbox.claim([f.agent.id]);
+      assert.ok(recovered);
+      assert.equal(recovered.id, older.id);
+      assert.equal(recovered.generation, older.generation + 1);
+      assert.equal(recovered.launch, frozen.launch);
+      assert.equal(recovered.reference, frozen.reference);
+      assert.equal(f.inbox.claim([f.agent.id]), undefined);
+      other.inbox.ack(recovered, f.workerPrincipal, fixtureResult());
+
+      due(f.dbPath);
+      const following = claim(f);
+      assert.equal(following.id, newer.id);
+      assert.equal(following.generation, newer.generation + 1);
+      assert.equal(following.reference, JSON.stringify(newerReference));
+      f.inbox.ack(following, f.workerPrincipal, newerResult);
+      assert.equal(f.inbox.get(older.id).state, 'acked');
+      assert.equal(f.inbox.get(newer.id).state, 'acked');
+      assert.equal(
+        raw.prepare('SELECT count(*) FROM inbox_results').pluck().get(),
+        2,
+      );
+      assert.equal(f.wire.calls.length, 0, 'Persistence-only MOCK evidence');
+    } finally {
+      raw.close();
+      other.close();
+      await f.dispose();
+    }
+  });
 await test('agent handoffs follow trusted audit chain, one target per chain, finite budget; human intervention resets it', async () => {
   const f = await inboxFixture();
   const raw = new Database(f.dbPath);
