@@ -6,7 +6,7 @@ import * as s from './schema.js';
 import type { agentRepository } from './agents.js';
 import type { communicationRepository } from './communication.js';
 import type { taskRepository } from './tasks.js';
-import { transactional } from './transactional.js';
+import { fingerprint, transactional } from './transactional.js';
 import { sqliteNow } from './inbox-enqueue.js';
 import { IdentityError, type Principal } from '../domain/agents.js';
 import { AgentId } from '../domain/contracts.js';
@@ -336,10 +336,30 @@ export function inboxRepository(
           correlation.id,
           result.state,
         );
+        // Team MCP may already have linked this exact Run. Reuse that
+        // immutable evidence under the same authorization and ACK fence.
         const taskLink =
           task === null
             ? null
-            : tasks.command(p, c.teamId, c.channelId, task.id, {
+            : (db
+                .select({ id: s.taskExecutions.id })
+                .from(s.taskExecutions)
+                .where(
+                  and(
+                    eq(s.taskExecutions.taskId, task.id),
+                    eq(
+                      s.taskExecutions.referenceKey,
+                      fingerprint([
+                        result.reference.backend,
+                        result.reference.environmentId,
+                        result.reference.threadId,
+                        result.reference.runId,
+                      ]),
+                    ),
+                  ),
+                )
+                .get() ??
+              tasks.command(p, c.teamId, c.channelId, task.id, {
                 type: 'link-execution',
                 expectedVersion: task.version,
                 operationKey: 'inbox-link:' + c.id,
@@ -348,7 +368,7 @@ export function inboxRepository(
                   'kind' in result
                     ? 'Inbox native terminal status; human acceptance remains separate.'
                     : 'Inbox execution result; human acceptance remains separate.',
-              }).executionLink;
+              }).executionLink);
         const body =
           'kind' in result
             ? `[T3 ${result.state}; native status notice only; no assistant message observed in bounded read; environment ${result.reference.environmentId}; thread ${result.reference.threadId}; run ${result.reference.runId}; inbox ${c.id}; source event ${c.eventId}]`

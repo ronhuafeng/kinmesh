@@ -165,6 +165,151 @@ await test('MOCK external adapter: exact-run actual assistant is attributed and 
     await f.dispose();
   }
 });
+for (const status of ['completed', 'failed'] as const)
+  await test(`MOCK SQLite recovery: an agent-prelinked exact Run publishes once after restart (${status})`, async () => {
+    const f = await inboxFixture();
+    const raw = new Database(f.dbPath);
+    try {
+      const task = f.create({ owner: { kind: 'agent', id: f.agent.id } }).task;
+      f.wire.values.t3_thread_read = assistantRead('MOCK pending', 'waiting');
+      const first = claim(f);
+      await deliver(f.store, first, f.binding, f.factory, signal());
+      const frozen = f.inbox.get(first.id);
+      assert.equal(frozen.state, 'waiting');
+      assert.equal(frozen.reference, JSON.stringify(reference));
+      // This is the same authorized command exposed by team_task_link_execution.
+      // A provider may record its execution evidence before returning its result.
+      const linked = f.act(f.developer, task, {
+        type: 'link-execution',
+        reference,
+        note: 'MOCK provider recorded its current Run before completion',
+      });
+      assert.ok(linked.executionLink);
+      mention(f, 'A later request must not be blocked by existing evidence');
+      assert.equal(f.inbox.claim([f.agent.id]), undefined);
+      const terminal = assistantRead('MOCK exact-run recovered result', status);
+      if (status === 'failed') terminal.items = [];
+      f.wire.values.t3_thread_read = terminal;
+      due(f.dbPath);
+      const reopened = f.open();
+      try {
+        const recovered = reopened.inbox.claim([f.agent.id]);
+        assert.ok(recovered);
+        assert.equal(recovered.id, first.id);
+        await deliver(reopened, recovered, f.binding, f.factory, signal());
+        const row = reopened.inbox.get(first.id);
+        assert.equal(
+          row.state,
+          'acked',
+          'Existing task evidence must not strand Inbox publication',
+        );
+        assert.ok(row.resultMessageId);
+        const message = reopened.communication.message(
+          f.principal,
+          f.teamId,
+          f.channelId,
+          row.resultMessageId,
+        );
+        assert.equal(message.sourceEventId, first.eventId);
+        assert.equal(message.author.kind, 'agent');
+        assert.equal(message.author.agentId, f.agent.id);
+        assert.ok(
+          message.body.startsWith(
+            status === 'failed'
+              ? '[T3 failed; native status notice only'
+              : 'MOCK exact-run recovered result',
+          ),
+        );
+        assert.equal(row.launch, frozen.launch);
+        assert.equal(row.reference, frozen.reference);
+        assert.equal(
+          raw.prepare('SELECT count(*) FROM inbox_results').pluck().get(),
+          1,
+        );
+        assert.equal(
+          raw.prepare('SELECT task_link_id FROM inbox_results').pluck().get(),
+          linked.executionLink.id,
+        );
+        assert.equal(
+          raw.prepare('SELECT count(*) FROM agent_correlations').pluck().get(),
+          1,
+        );
+        assert.deepEqual(
+          reopened.tasks.executions(f.principal, f.teamId, f.channelId, task.id)
+            .items,
+          [linked.executionLink],
+          'Reuse immutable evidence without changing its original author or duplicating it',
+        );
+        const current = reopened.tasks.get(
+          f.principal,
+          f.teamId,
+          f.channelId,
+          task.id,
+        );
+        assert.equal(current.version, linked.task.version);
+        assert.equal(current.state.status, 'in-progress');
+        assert.throws(
+          () =>
+            reopened.inbox.ack(recovered, f.workerPrincipal, fixtureResult()),
+          IdentityError,
+        );
+        const following = reopened.inbox.claim([f.agent.id]);
+        assert.ok(following);
+        assert.notEqual(following.id, first.id);
+        assert.equal(
+          f.wire.calls.filter((c) => c.name === 't3_thread_launch').length,
+          1,
+        );
+      } finally {
+        reopened.close();
+      }
+    } finally {
+      raw.close();
+      await f.dispose();
+    }
+  });
+await test('MOCK SQLite publication reuses only the same task and exact Run, not nearby execution evidence', async () => {
+  const f = await inboxFixture();
+  try {
+    const task = f.create({ owner: { kind: 'agent', id: f.agent.id } }).task;
+    const otherRun = f.act(f.developer, task, {
+      type: 'link-execution',
+      reference: { ...reference, runId: 'different-mock-run' },
+      note: 'MOCK other Run on the same task',
+    });
+    const otherTask = f.create({
+      owner: { kind: 'agent', id: f.agent.id },
+    }).task;
+    const otherLink = f.act(f.developer, otherTask, {
+      type: 'link-execution',
+      reference,
+      note: 'MOCK matching Run on a different task',
+    });
+    const c = claim(f);
+    await deliver(f.store, c, f.binding, f.factory, signal());
+    assert.equal(f.inbox.get(c.id).state, 'acked');
+    const links = f.tasks.executions(
+      f.principal,
+      f.teamId,
+      f.channelId,
+      task.id,
+    ).items;
+    assert.equal(links.length, 2);
+    const published = links.find(
+      (link) => link.reference.runId === reference.runId,
+    );
+    assert.ok(published);
+    assert.notEqual(published.id, otherRun.executionLink?.id);
+    assert.notEqual(published.id, otherLink.executionLink?.id);
+    assert.deepEqual(published.reference, reference);
+    assert.equal(
+      f.tasks.get(f.principal, f.teamId, f.channelId, task.id).version,
+      otherRun.task.version + 1,
+    );
+  } finally {
+    await f.dispose();
+  }
+});
 await test('MOCK native terminal failure without assistant posts truthful notice and releases the same-agent queue', async () => {
   const f = await inboxFixture();
   try {
@@ -286,15 +431,19 @@ await test('MOCK native terminal failure without assistant posts truthful notice
     await f.dispose();
   }
 });
-for (const failedTable of [
+for (const { failedTable, prelinked } of [
   'communication_outbox',
   'inbox_results',
   'inbox_history',
-])
+].flatMap((failedTable) => [
+  { failedTable, prelinked: false },
+  { failedTable, prelinked: true },
+]))
   await test(
     'ACK rollback at ' +
       failedTable +
-      ' leaves no partial result/link/audit/receipt',
+      ' leaves no partial result/link/audit/receipt' +
+      (prelinked ? ' with prelinked Run' : ''),
     async () => {
       const f = await inboxFixture();
       const raw = new Database(f.dbPath);
@@ -304,6 +453,12 @@ for (const failedTable of [
         }).task;
         const c = claim(f);
         freeze(f, c);
+        if (prelinked)
+          f.act(f.developer, task, {
+            type: 'link-execution',
+            reference,
+            note: 'MOCK existing link survives failed ACK',
+          });
         const tables = [
           'messages',
           'communication_outbox',
@@ -339,7 +494,7 @@ for (const failedTable of [
         assert.equal(f.inbox.get(c.id).state, 'ready');
         assert.equal(
           f.tasks.get(f.principal, f.teamId, f.channelId, task.id).version,
-          1,
+          prelinked ? 2 : 1,
         );
         raw.exec('DROP TRIGGER reject_ack');
         const result = f.inbox.ack(c, f.workerPrincipal, fixtureResult());
