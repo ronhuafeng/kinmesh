@@ -78,7 +78,7 @@ await test('CI: no private OAuth or paid model runner in routine checks', () => 
     workflow.indexOf('  authenticated-live:\n'),
   );
   const trusted = workflow.slice(workflow.indexOf('  authenticated-live:\n'));
-  assert.match(untrusted, /runs-on: ubuntu-24\\.04/);
+  assert.ok(untrusted.includes('runs-on: ubuntu-24.04'));
   assert.match(trusted, /needs: authorize-dispatch/);
   const trustedCheckout = trusted.indexOf(checkout);
   assert.ok(trustedCheckout > 0);
