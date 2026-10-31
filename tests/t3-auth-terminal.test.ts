@@ -110,16 +110,27 @@ await test(
       assert.ok(address && typeof address !== 'string');
       origin = 'http://127.0.0.1:' + String(address.port);
       const output = join(f.directory, 'new-oauth.json');
-      // util-linux script allocates an actual controlling terminal. It writes no transcript file.
+      // BSD script needs a pipe, not Node's socket-backed stdin. cat supplies that pipe.
+      // Both variants allocate a real terminal without a transcript file.
       child = spawn(
-        'script',
-        [
-          '--quiet',
-          '--return',
-          '--command',
-          'node --import tsx scripts/t3-auth.ts',
-          '/dev/null',
-        ],
+        process.platform === 'darwin' ? 'sh' : 'script',
+        process.platform === 'darwin'
+          ? [
+              '-c',
+              'cat | script -q /dev/null "$@"',
+              'kinmesh-pty',
+              process.execPath,
+              '--import',
+              'tsx',
+              'scripts/t3-auth.ts',
+            ]
+          : [
+              '--quiet',
+              '--return',
+              '--command',
+              'node --import tsx scripts/t3-auth.ts',
+              '/dev/null',
+            ],
         {
           env: {
             PATH: process.env.PATH ?? '',
@@ -162,6 +173,7 @@ await test(
         '?' +
         new URLSearchParams({ state, code, iss: origin }).toString();
       child.stdin?.write('\x14' + redirect + '\r'); // Ctrl+T must never reveal pasted input.
+      if (process.platform === 'darwin') child.stdin?.end();
       const result = await closed;
       assert.equal(result[0], 0);
       assert.equal(exchanges, 1);
