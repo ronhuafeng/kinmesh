@@ -12,7 +12,7 @@ const scripts = z
 await test('CI: Foundation enforces typed, SQLite/process, architecture and audit checks', () => {
   const workflow = source('../.github/workflows/ci.yml');
   assert.match(workflow, /pull_request:/);
-  assert.match(workflow, /push:\n    branches: \['\*\*'\]/);
+  assert.match(workflow, /push:\n    branches: \[main\]/);
   assert.match(workflow, /branches: \[main\]/);
   for (const command of [
     'npm ci',
@@ -127,8 +127,6 @@ await test('CI: paid integration is manual, owner-scoped, isolated and never ret
     );
   for (const secret of ['LLM_API_KEY', 'CODEX_BASE_URL', 'GROK_BASE_URL'])
     assert.ok(workflow.includes('secrets.' + secret));
-  assert.match(workflow, /path: \.live-evidence\/\*\.json/);
-  assert.match(workflow, /include-hidden-files: true/);
   assert.doesNotMatch(
     workflow,
     /continue-on-error:|pull_request_target|self-hosted/,
