@@ -3,6 +3,9 @@ on:
   workflow_dispatch:
 permissions:
   contents: read
+concurrency:
+  group: kinmesh-native-owner-release
+  cancel-in-progress: false
 jobs:
   authenticated-live:
     # Dedicated trusted runner configured by owner with private OAuth files outside the checkout.
@@ -14,8 +17,10 @@ jobs:
       # This is defense in depth; the owner must still restrict who may dispatch.
       - name: Reject any non-main manual dispatch
         run: test "$GITHUB_REF" = "refs/heads/main"
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: 24
           cache: npm
