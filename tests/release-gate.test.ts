@@ -33,15 +33,22 @@ await test('release check runs an actual Chromium browser gate before every nati
     build < audit && audit < browser,
     'Build and audit must precede the real browser gate',
   );
-  for (const native of [
-    'npm run test:live',
-    'npm run test:team-live',
-    'npm run test:inbox-live',
-  ])
-    assert.ok(
-      browser < index(native),
-      'Browser failures must block native model Runs',
-    );
+  const native = index(
+    'node --env-file-if-exists=.env --import tsx scripts/release-live.ts',
+  );
+  assert.ok(browser < native, 'Browser failures must block native model Runs');
+  assert.deepEqual(
+    commands,
+    [
+      'npm run check',
+      'npm run format:check',
+      'npm run build',
+      'npm audit --omit=dev',
+      'npm run test:browser',
+      'node --env-file-if-exists=.env --import tsx scripts/release-live.ts',
+    ],
+    'The aggregate must use the preflight/isolation runner for every native stage',
+  );
 });
 
 await test('trusted T3 release workflow provisions Chromium without privileged package installation', () => {
