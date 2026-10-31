@@ -605,6 +605,8 @@ export function App() {
             )}
             <Tabs.Root
               value={view}
+              // Focus returning from a drawer or the palette must not switch views.
+              activationMode="manual"
               onValueChange={(v) => {
                 setView(v === 'board' || v === 'team' ? v : 'chat');
               }}

@@ -25,7 +25,9 @@ Words: trustworthy, legible, alive, unhurried, honest about what is verified.
 | agent             | `#3F5BA9` | `#93A9EC` | Agent identity accent (avatars, author tags)     |
 | decision          | `#C2410C` | `#F28A5B` | "Needs you" — the human decision; used sparingly |
 
-Task status colours (dot + label, also column header):
+The board has **five stage columns**, the same stages as the lifecycle: Proposed → Working → Review → Human sign-off → Done. Rework stays in Working (marked "Sent back"); cancelled work goes to Done (marked "Cancelled", hidden until asked for). A card names only these exceptions; its column is its status.
+
+Task status colours (dot + label, also the colour of the stage column):
 
 | Status           | Colour    | Meaning                      |
 | ---------------- | --------- | ---------------------------- |
@@ -60,8 +62,9 @@ Task status colours (dot + label, also column header):
   from the same author are grouped. Mentions render as identity-coloured chips.
 - **Composer**: multi-line input, `@` mention popover, topic pill, send button; docked
   at the bottom of the chat.
-- **Task card (board)**: mono task number, title, owner identity chip, reviewer avatar,
-  criteria progress (e.g. 2/3), age. "Needs you" cards carry a decision-orange left edge.
+- **Task card (board)**: mono task number, title, owner and reviewer avatars, criteria
+  count, age; a marker only for exceptions (Sent back, Cancelled). "Needs you" cards carry
+  a decision-orange left edge.
 - **Task drawer**: title, status dot, lifecycle stepper (Proposed → Working → Review →
   Human sign-off → Done), criteria checklist, owner/reviewer, decision buttons with a
   required note, history timeline, execution references.

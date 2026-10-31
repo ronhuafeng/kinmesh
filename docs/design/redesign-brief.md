@@ -37,7 +37,7 @@ roadmap).
 | Files tab                                        | Not supported                                            | B   | Not drawn                                                                       |
 | @mentions in the composer                        | One agent picked from a select box                       | D   | Inline `@` autocomplete, multiple mentions (API allows 20)                      |
 | Turn conversation into work                      | Task form has no message link                            | D   | "Make task from message" action; task records `sourceMessageId` / `topicId`     |
-| Task board by status with counts                 | Cards grouped in three lanes                             | F   | Board with **7 columns**, one per real status, with counts                      |
+| Task board by status with counts                 | Cards grouped in three lanes                             | F   | Board with **5 stage columns** (same stages as the lifecycle), with counts      |
 | Numbered, scannable task cards                   | Large cards with embedded forms                          | F   | Compact cards; detail opens in a side drawer                                    |
 | Clear human approval moment                      | "Action" select + note + submit                          | F   | Explicit decision buttons (Accept / Request rework …) with a required note      |
 | Work keeps moving while you are away             | 15 s snapshot polling                                    | F   | "Since you were away" markers; status changes animate in on refresh             |
@@ -76,7 +76,7 @@ Non-negotiables carried into every screen:
 | ------------------------ | -------------------------------------------------------- | --------------------------------------------------------------------------- |
 | P1 Sign in / first owner | Get in, or claim a new install safely                    | Two modes, setup-secret guidance, privacy note                              |
 | P2 Channel chat          | Talk with people and agents; hand work to an agent       | Messages by person/agent, topics, mentions, composer with `@`, message→task |
-| P3 Task board            | See every promise and where it is stuck                  | 7 status columns, counts, compact cards, filters (mine / needs me)          |
+| P3 Task board            | See every promise and where it is stuck                  | 5 stage columns, counts, compact cards, filters (mine / needs me)           |
 | P4 Task detail (drawer)  | Decide: claim, hand off, review, **accept or send back** | Criteria checklist, lifecycle, owner/reviewer, decision buttons, history    |
 | P5 Team roster           | Know who is on the team and in which channel             | Humans and agents, role, runtime/model preference, join state, invite       |
 | P6 Agent detail (drawer) | Check what an agent last did, verify natively if needed  | Identity, AG-UI recorded state timeline, executions, native T3 check        |
