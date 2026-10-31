@@ -8,6 +8,8 @@ import { join } from 'node:path';
 import Database from 'better-sqlite3';
 import { z } from 'zod';
 import { Claim } from '../src/domain/inbox.js';
+import { Correlation } from '../src/domain/agents.js';
+import { reference } from './t3-helpers.js';
 import { inboxFixture, due, fixtureResult } from './inbox-helpers.js';
 import { postInput } from './communication-helpers.js';
 async function stop(child: ChildProcess, signal: NodeJS.Signals = 'SIGTERM') {
@@ -250,6 +252,98 @@ await test(
 function randomOperation() {
   return 'stale-operation';
 }
+await test(
+  'MOCK SQLite: SIGKILL after the execution API correlates a Run recovers one ACK without relaunch',
+  { timeout: 30000 },
+  async () => {
+    const f = await inboxFixture();
+    const children: ChildProcess[] = [];
+    const raw = new Database(f.dbPath);
+    raw.pragma('busy_timeout=5000');
+    try {
+      f.create({ owner: { kind: 'agent', id: f.agent.id } });
+      const originalWorker = worker(f.configPath, 'publication-hold');
+      children.push(originalWorker);
+      await until(() => f.rows()[0]?.reference !== null);
+      const original = f.rows()[0];
+      assert.ok(original?.reference);
+      const stale = Claim.parse(original);
+      const response = await f.app.inject({
+        method: 'POST',
+        url: `/api/teams/${f.teamId}/agents/${f.agent.id}/executions`,
+        cookies: f.cookies,
+        payload: {
+          reference,
+          providerSessionId: 'mock-pre-crash-session',
+          invocationId: 'mock-pre-crash-invocation',
+        },
+      });
+      assert.equal(response.statusCode, 201);
+      const existing = Correlation.parse(response.json<unknown>());
+      const journalBefore: unknown = raw
+        .prepare('SELECT * FROM execution_operations')
+        .get();
+      await stop(originalWorker, 'SIGKILL');
+      assert.equal(f.inbox.claim([f.agent.id]), undefined);
+      due(f.dbPath, true);
+      const recovery = worker(f.configPath);
+      children.push(recovery);
+      await until(() => {
+        const row = f.inbox.get(original.id);
+        return row.generation > original.generation && row.claimToken === null;
+      });
+      await stop(recovery);
+      const result = f.inbox.get(original.id);
+      assert.equal(
+        result.state,
+        'acked',
+        'A preexisting correlation must not strand crash recovery',
+      );
+      assert.equal(result.generation, original.generation + 1);
+      assert.equal(result.launch, original.launch);
+      assert.equal(result.reference, original.reference);
+      assert.deepEqual(
+        f.store.agents.correlations(f.principal, f.teamId, f.agent.id),
+        [existing],
+      );
+      assert.deepEqual(
+        raw.prepare('SELECT * FROM execution_operations').get(),
+        journalBefore,
+      );
+      assert.equal(
+        raw.prepare('SELECT correlation_id FROM inbox_results').pluck().get(),
+        existing.id,
+      );
+      for (const table of [
+        'agent_runtime_events',
+        'inbox_results',
+        'task_executions',
+        'fixture_native_launches',
+      ])
+        assert.equal(
+          raw
+            .prepare('SELECT count(*) FROM ' + table)
+            .pluck()
+            .get(),
+          1,
+        );
+      assert.equal(
+        raw
+          .prepare('SELECT transmissions FROM fixture_native_launches')
+          .pluck()
+          .get(),
+        1,
+      );
+      assert.throws(() =>
+        f.inbox.ack(stale, f.workerPrincipal, fixtureResult()),
+      );
+    } finally {
+      for (const child of children) await stop(child, 'SIGKILL');
+      raw.close();
+      await f.dispose();
+    }
+  },
+);
 await test(
   'ordinary independently supervised CLI starts, stops gracefully and restarts without live T3',
   { timeout: 30000 },

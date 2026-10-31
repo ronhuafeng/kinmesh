@@ -42,6 +42,16 @@ try {
               /* Simulate native accepted effect with lost response. SIGKILL ends this process. */
             });
         }
+        if (
+          name === 't3_thread_read' &&
+          process.argv[3] === 'publication-hold' &&
+          counter
+            .prepare('SELECT id FROM agent_inbox WHERE reference IS NOT NULL')
+            .get() !== undefined
+        )
+          await new Promise<never>(() => {
+            /* Parent records the Run through the execution API, then SIGKILLs this worker before ACK. */
+          });
         if (name === 't3_thread_read' && process.argv[3] === 'prelinked-hold') {
           const id: unknown = counter
             .prepare(
