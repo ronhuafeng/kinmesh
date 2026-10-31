@@ -2,10 +2,10 @@
 
 Kinmesh has two different gates. A green code gate alone is not evidence of real model integration.
 
-| Gate                 | Trigger                                        | Authority and execution                                                                                         | Required result                                                                   |
-| -------------------- | ---------------------------------------------- | --------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------- |
-| `CI`                 | Pull requests to `main`, and all branch pushes | No model credentials; strict checks, real SQLite/process tests, genuine Chromium; native DTO cases use fixtures | `foundation` and `chromium` pass on the reviewed revision                         |
-| `Live collaboration` | Explicit dispatch on `main`                    | GitHub-hosted disposable Linux VM per executor, Environment `live`, real T3/Codex or T3/Grok                    | Both executor jobs pass, including cleanup; evidence identifies the tested commit |
+| Gate                 | Trigger                                       | Authority and execution                                                                                         | Required result                                                                   |
+| -------------------- | --------------------------------------------- | --------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------- |
+| `CI`                 | Pull requests to `main`, and pushes to `main` | No model credentials; strict checks, real SQLite/process tests, genuine Chromium; native DTO cases use fixtures | `foundation` and `chromium` pass on the reviewed revision                         |
+| `Live collaboration` | Explicit dispatch on `main`                   | GitHub-hosted disposable Linux VM per executor, Environment `live`, real T3/Codex or T3/Grok                    | Both executor jobs pass, including cleanup; evidence identifies the tested commit |
 
 ## Authorized disposable CI and separate owner release
 
@@ -16,6 +16,8 @@ Native setup/configuration/consent require a canonical, current-user-owned, priv
 The separate `t3-live.yml` owner-manual release workflow retains PR #48's pinned Actions, disabled checkout credentials and serialization, and PR #49's owner/original/rerun guards in both hosted and trusted jobs. It is not invoked by the disposable integration lane. CI simulated Human and native tool approvals are test operations, not a person's product acceptance, independent review or release signoff. Issue #9 is not automatically closed by this workflow.
 
 The live workflow uses Actions Environment Secrets `LLM_API_KEY`, `CODEX_BASE_URL` and `GROK_BASE_URL`. The Environment allows only the `main` branch. Secrets are supplied only to the integration step, not dependency installation or ordinary PR jobs. Endpoint settings are generated at runtime. Base64 is not encryption and is not required. Neither provider configuration files nor private OAuth credentials belong in Git or artifacts.
+
+Topic branches run quality checks through their pull requests; pushes to `main` verify the integrated commit. A branch without a pull request has no automatic quality run.
 
 `main` requires current `foundation` and `chromium` checks through pull requests. The manual live gate is a release requirement, rather than a required PR status that cannot run on an unmerged fork. A release must use successful native evidence for its exact source commit; a previous green run does not approve later changes.
 
