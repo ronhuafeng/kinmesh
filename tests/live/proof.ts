@@ -4,7 +4,13 @@ import { Read } from '../../src/adapters/t3/contracts.js';
 
 // Public T3 0.1.5 MCP item lifecycle fields; no private runtime projection.
 export const Activity = Read.extend({
-  items: z.array(Read.shape.items.element.extend({ status: z.string() })),
+  items: z.array(
+    Read.shape.items.element.extend({
+      status: z.string(),
+      updatedAt: z.string().optional(),
+      nextTextOffset: z.number().int().nonnegative().nullable().optional(),
+    }),
+  ),
 });
 export type Activity = z.infer<typeof Activity>;
 const Result = z.object({

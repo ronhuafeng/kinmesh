@@ -84,6 +84,7 @@ await test('CI: paid integration is explicit, isolated, complete and does not re
   for (const secret of ['LLM_API_KEY', 'CODEX_BASE_URL', 'GROK_BASE_URL'])
     assert.ok(workflow.includes('secrets.' + secret));
   assert.match(workflow, /path: \.live-evidence\/\*\.json/);
+  assert.match(workflow, /include-hidden-files: true/);
   assert.doesNotMatch(
     workflow,
     /continue-on-error:|pull_request_target|self-hosted/,
