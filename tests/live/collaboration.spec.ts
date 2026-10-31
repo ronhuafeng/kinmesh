@@ -17,14 +17,9 @@ import { z } from 'zod';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js';
 import { Native, Executor, models, roles } from './native.js';
+import { requireOwnerNativeApproval } from './safety.js';
 import { Hub } from './hub.js';
-import {
-  Activity,
-  approvalCandidates,
-  completedCalls,
-  reviewProof,
-  identityLinks,
-} from './proof.js';
+import { Activity, completedCalls, identityLinks } from './proof.js';
 import { readActivity } from './activity.js';
 import { until, ready } from './processes.js';
 import { SdkWire } from '../../src/adapters/t3/sdk.js';
@@ -62,6 +57,7 @@ const grants = z.object({
 });
 
 test('complete real two-agent workflow, Human rework/acceptance, recovery and authority', async () => {
+  requireOwnerNativeApproval();
   process.umask(0o077);
   const executor = Executor.parse(process.env.KINMESH_LIVE_EXECUTOR);
   const root = realpathSync(mkdtempSync(join(tmpdir(), 'kinmesh-live-')));
@@ -85,7 +81,8 @@ test('complete real two-agent workflow, Human rework/acceptance, recovery and au
       execFileSync('git', ['status', '--porcelain'], {
         encoding: 'utf8',
       }).trim().length > 0,
-    releaseEvidence: process.env.GITHUB_ACTIONS === 'true',
+    releaseEvidence: false,
+    ownerNativeConsent: 'approval-required',
     executor,
     t3Version: '0.1.5',
     providerVersion: executor === 'codex' ? '0.166.0' : '1.0.70',
@@ -323,126 +320,9 @@ test('complete real two-agent workflow, Human rework/acceptance, recovery and au
     checks.nativeItemJournalAuthorSourceAndTaskMatch = true;
     checks.actualRoleToolCallsAndReviewerArtifactReads = true;
   }
-  async function approve(row: z.infer<typeof rowSchema>) {
-    if (!tools || !row.reference || !native.page) return;
-    const ref = Reference.parse(JSON.parse(row.reference) as unknown);
-    assert.ok(ref.runId);
-    const activity = await activityFor(ref);
-    if (!activity.thread.pendingRequestCount) return;
-    assert.equal(activity.thread.activeRunId, ref.runId);
-    assert.equal(activity.thread.latestRunId, ref.runId);
-    const role = roles.find(
-      (role) => hub.agent(role).profile.id === row.agent_id,
-    );
-    assert.ok(role);
-    const { requests: pending, calls } = approvalCandidates(
-      activity,
-      ref.runId,
-      activity.thread.pendingRequestCount,
-    );
-    // Validate all pending inputs before approving even one concurrent request.
-    for (const call of calls) {
-      const tool = call.name;
-      assert.equal(call.input.channelId, hub.channelId);
-      if (
-        role === 'reviewer' &&
-        (tool === 'team_task_review' ||
-          (tool === 'team_messages_send' && !reviewWitnesses.has(ref.runId)))
-      ) {
-        const index = rows().findIndex((candidate) => candidate.id === row.id);
-        reviewProof(activity, ref.runId, {
-          channelId: hub.channelId,
-          taskId: hub.taskId,
-          developerId: hub.agent('developer').profile.id,
-          developerEventId: rows()[index - 1]?.event_id ?? '',
-          humanId: hub.humanId,
-          marker: hub.marker,
-          rework: index >= 2,
-          reworkNote: hub.reworkNote,
-        });
-      }
-      if (
-        [
-          'team_message_get',
-          'team_messages_read',
-          'team_task_get',
-          'team_tasks_history',
-        ].includes(tool)
-      ) {
-        if (tool.startsWith('team_task'))
-          assert.equal(call.input.taskId, hub.taskId);
-      } else if (tool === 'team_messages_send') {
-        assert.equal(call.input.sourceEventId, row.event_id);
-        assert.deepEqual(call.input.mentions, []);
-        assert.equal(typeof call.input.body, 'string');
-      } else {
-        assert.equal(call.input.taskId, hub.taskId);
-        assert.equal(call.input.expectedVersion, (await hub.task()).version);
-        if (role === 'developer' && tool === 'team_task_handoff') {
-          assert.equal(call.input.mode, 'review');
-          assert.deepEqual(call.input.recipient, {
-            kind: 'agent',
-            id: hub.agent('reviewer').profile.id,
-          });
-        } else if (role === 'reviewer' && tool === 'team_task_review') {
-          assert.equal(call.input.decision, 'approve');
-          reviewWitnesses.add(ref.runId);
-          evidence.readWitnesses = [...reviewWitnesses].map((runId) =>
-            hash(runId),
-          );
-        } else throw new Error('UNEXPECTED_NATIVE_WRITE');
-      }
-      if (
-        [
-          'team_messages_send',
-          'team_task_handoff',
-          'team_task_review',
-        ].includes(tool)
-      )
-        assert.equal(typeof call.input.operationKey, 'string');
-    }
-    const page = native.page;
-    assert.ok(activity.thread.link);
-    const target = new URL(activity.thread.link);
-    assert.equal(target.origin, native.origin);
-    if (page.url() !== target.href) await page.goto(target.href);
-    // These are public T3 0.1.5 UI attributes. Each card closes over its own runtime request ID.
-    const cards = page.locator('[data-v2-item-type="approval_request"]');
-    await until(
-      async () => (await cards.count()) === pending.length,
-      'NATIVE_APPROVAL_CARDS_NOT_SYNCHRONIZED',
-      10_000,
-    );
-    for (const card of await cards.all()) {
-      assert.ok(
-        [
-          'App access approval',
-          'App permission approval',
-          ...(executor === 'grok' ? ['Command approval'] : []),
-        ].includes((await card.getAttribute('aria-label')) ?? ''),
-      );
-      const detail = await card
-        .locator('[data-approval-detail="complete"]')
-        .innerText();
-      assert.ok(
-        pending.some(
-          (request) =>
-            request.text === detail || request.text?.startsWith(detail + '\n'),
-        ),
-      );
-    }
-    const detail = await cards
-      .first()
-      .locator('[data-approval-detail="complete"]')
-      .innerText();
-    const checked = cards.filter({ hasText: detail }).first();
-    const button = checked.getByRole('button', {
-      name: 'Approve',
-      exact: true,
-    });
-    await button.waitFor();
-    assert.equal(await button.count(), 1);
-    await button.click();
+  function approve() {
+    // Owner-native approval-required is separate from simulated Human task decisions.
+    requireOwnerNativeApproval();
   }
   let crashed = false;
   let originalRequest = '';
@@ -534,7 +414,7 @@ test('complete real two-agent workflow, Human rework/acceptance, recovery and au
           checks.actualWorkerKilledAfterNativeLaunch = true;
           await delay(1000);
         }
-        await approve(row);
+        approve();
       }
       if (!db) throw new Error('DATABASE_REQUIRED');
       const task = z

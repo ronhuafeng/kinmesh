@@ -1,52 +1,34 @@
-# CI and complete native collaboration
+# CI and owner-native acceptance
 
-Kinmesh has two different gates. A green code gate alone is not evidence of real model integration.
+Credential-free code checks and owner-native acceptance have separate authority.
 
-| Gate                 | Trigger                                       | Authority and execution                                                                                         | Required result                                                                   |
-| -------------------- | --------------------------------------------- | --------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------- |
-| `CI`                 | Pull requests to `main`, and pushes to `main` | No model credentials; strict checks, real SQLite/process tests, genuine Chromium; native DTO cases use fixtures | `foundation` and `chromium` pass on the reviewed revision                         |
-| `Live collaboration` | Explicit dispatch on `main`                   | GitHub-hosted disposable Linux VM per executor, Environment `live`, real T3/Codex or T3/Grok                    | Both executor jobs pass, including cleanup; evidence identifies the tested commit |
+| Gate                          | Trigger                                             | Authority and result                                                                                                                                                                                                            |
+| ----------------------------- | --------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `CI`                          | Pull requests to `main`, and all branch pushes      | Separate `foundation` and `chromium` jobs check the exact revision without native or model credentials. A topic-branch push and its PR each run both jobs. Native DTO/oracle cases are fixtures.                                |
+| `Live collaboration`          | Manual dispatch                                     | **Blocked: `approval-required`.** Its first executable step rejects every ref except `refs/heads/main`. Main then fails before checkout, npm, native installation or secret-bearing execution. No native acceptance is claimed. |
+| `Authenticated T3 acceptance` | Owner-authorized manual dispatch on reviewed `main` | Existing dedicated owner-runner workflow and `release:check`; see [release preparation](release-check.md). The owner must personally provide native consent and individual approvals.                                           |
 
-The live workflow uses Actions Environment Secrets `LLM_API_KEY`, `CODEX_BASE_URL` and `GROK_BASE_URL`. The Environment allows only the `main` branch. Secrets are supplied only to the integration step, not dependency installation or ordinary PR jobs. Endpoint settings are generated at runtime. Base64 is not encryption and is not required. Neither provider configuration files nor private OAuth credentials belong in Git or artifacts.
+## Owner consent boundary
 
-`main` requires current `foundation` and `chromium` checks through pull requests. The manual live gate is a release requirement, rather than a required PR status that cannot run on an unmerged fork. A release must use successful native evidence for its exact source commit; a previous green run does not approve later changes.
+The unattended collaboration harness previously selected native Read only/Supervised OAuth consent, clicked Authorize/Allow, and clicked native pending-tool Approve. These automated decisions cannot establish the human owner's consent. The harness now fails with `approval-required` before setup, and its OAuth and pending-approval paths cannot click consent or approval controls. Runner entry points also reject Provider configuration, native startup/pairing and Provider setup when `GITHUB_ACTIONS` is present. There is no approval flag, relay, environment-reviewer substitute or skipped pass.
 
-## Native dependencies and isolation
+The workflow binds no model secrets. Its main-ref guard executes before any repository code, and its next step deliberately exits nonzero. GitHub Environment restrictions and review settings are additional controls, not the executable safety gate. A dispatch of this workflow currently cannot succeed. Do not dispatch it for acceptance or retry the failed paid run.
 
-The runner installs T3 **0.1.5** (release SHA-256 verified), Codex **0.166.0**, and Grok **1.0.70** (release SHA-256 verified). It checks real executables rather than using `login status` as proof of model access. The model combinations are Codex `gpt-6.1-sol` and Grok `grok-4.7`.
+The harness's CI Human account simulates product task creation, rework and acceptance. Those actions test Kinmesh permissions and persistence. They never grant T3 owner-native OAuth consent, individual native `approval-required` tool approval, human product acceptance or release signoff. Native Supervised authority must remain `approval-required`; no automatic approval or Full access is authorized.
 
-Each matrix job creates its own T3 state, Kinmesh database, channel, Human account, Agent profiles, role-specific Provider homes, Team MCP listener and browser context. Provider instances are configured through native T3 settings. Real native consent issues separate Read only and Supervised OAuth grants. Kinmesh uses the official external OAuth/MCP interface for execution and authoritative reads. Providers use the actual authenticated Team MCP server for team operations. An official SDK preflight checks both Agent credentials and the actual tool catalog before any model Run. Codex uses its supported `enabled_tools` and `http_headers` settings. Grok uses `headers`, `disabled_mcp_tools`, explicit Responses model configuration, and deny rules for shell, file and web tools. Its narrowly allowed Team reads do not approve mutations. Each Grok Provider has a persisted, read-back-verified `GROK_MAX_MCP_OUTPUT_BYTES=131072` environment override. The pinned ACP execution did not honor the user config size setting in our reproduced case; it still clipped the second review history at 20,000 bytes. The explicit environment override bounds output at 128 KiB so this scenario's complete decision history reaches the model. Incomplete read replies never count as proof; a later complete reply can establish it. The Reviewer can read the artifact through channel history or exact message lookup. No direct-model fallback, shared owner desktop state or private T3 storage/API is used.
+A genuine owner-operated consent/approval path has not been implemented for the disposable GitHub runner. Removing the block requires a separately reviewed implementation with actual owner-operated native consent and exact Run/request approval correlation. Re-enabling the old clicks, setting a flag, approving a GitHub Environment or relabeling the simulated Human does not satisfy that requirement. Until then use only the existing, separately authorized [owner-manual path](release-check.md), with private owner-issued grants, isolated Providers and deliberate individual native approvals. Code CI does not authorize running that path.
 
-T3 and Kinmesh run on the same disposable VM with protected loopback MCP endpoints. This proves the MCP contract and full workflow; it does not establish remote HTTPS routing, tunnel availability or cross-host deployment. Those deployment properties require their own topology checks. The model endpoints remain HTTPS.
+## Evidence and limitations
 
-## Complete collaboration contract
+[Issue #9](https://github.com/ronhuafeng/kinmesh/issues/9) remains open. The prior [native run 41187016509](https://github.com/ronhuafeng/kinmesh/actions/runs/41187016509) failed both matrix jobs and published zero artifacts; it is not a release pass. The [AI source review](https://github.com/ronhuafeng/kinmesh/pull/42#pullrequestreview-5722134795) identifies the owner-consent and pre-checkout ref defects. An AI comment is not human approval.
 
-Both executors must complete the entire sequence. A partial scenario or an assistant saying it completed work is insufficient.
+PR #46's persisted, read-back-verified `GROK_MAX_MCP_OUTPUT_BYTES=131072` Provider override remains in source: its pinned ACP execution had clipped the second review history at 20,000 bytes despite the user config size setting. Preserving that repair does not authorize native execution or establish that its live acceptance passed.
 
-1. Use the browser to bootstrap an Owner, sign in, create a channel, register and enroll distinct Developer and Reviewer Agents, and create a task with acceptance criteria and both assignments.
-2. Verify native Provider capability/model readiness and distinct Read only/Supervised grants. A native mutation attempted with Read only must be denied by T3.
-3. Start the product with normal `npm start` and Inbox configuration. The task event must launch the Developer automatically. The Developer reads Team MCP context, publishes an actual artifact, and hands off the current task version to the Reviewer. The Reviewer reads the artifact and decision history independently, publishes a review, and requests Human acceptance.
-4. During the first native execution, kill the actual supervised Worker while it holds a live lease. A competing claim must fail. Normal supervision must restart the Worker; after the real lease expires, the existing delivery must settle with its original stable native request and result. Do not shorten or edit production lease timestamps.
-5. Replay the original task submission and verify it does not create more deliveries. Attempt Human acceptance with an Agent Bearer and a spoofed Human header; it must be denied and leave the task awaiting Human.
-6. Stop only the disposable T3 service. Use the browser to request rework requiring a second artifact that keeps the marker and arithmetic and adds `verified`. The queued work must retain its identity without a result while T3 is unavailable. Restart the same T3 state. Both Agents must execute a second cycle, ending at `awaiting-human` again.
-7. Independently match every Inbox delivery, source event, Agent author, execution journal, exact native Thread/Run, actual Assistant item, published result and task execution link. Verify four distinct original native requests and results, and inspect actual Team MCP calls for both roles. Reviewer reads must already have successful native replies before permitting review publication or technical approval; the second cycle must include the actual Human rework event. Concurrent native requests are checked individually through their scoped UI cards.
-8. Restart Kinmesh and verify persisted task/execution history. Use the browser to accept the second artifact. Check the distinct Human rework and acceptance events and task version. Native execution success and Reviewer approval must never perform Human acceptance.
-9. Use the real AG-UI native observer and Read only OAuth, follow the exact T3-returned verified thread link, and check desktop/mobile layouts. Deny cross-channel Team MCP reads and deny access with a revoked Agent grant.
-10. Revoke both test Agent grants, verify denial, stop owned process groups, and verify cleanup. Cleanup failure fails the gate. Publish only bounded redacted evidence.
+PR #45's `.live-evidence/*.json`, `include-hidden-files: true`, retention and missing-file failure settings remain intact. Its native activity cursor and diagnostics changes remain intact. A blocked dispatch creates no native state or evidence; the upload step is gated on the owner-approval step succeeding, so it cannot upload stale evidence or replace the explicit failure with an artifact error. No new native artifact path repair is required. No native evidence upload was exercised by this code-only remediation.
 
-The CI Human is an authenticated **simulated Human test account**. Its decisions test product permissions and persistence; they are not a real person's product acceptance or release approval. Native Supervised approvals are inspected and limited to the disposable channel/task and expected operation. The disposable T3 browser is paired as its setup owner to configure Providers. Execution still uses the separate narrowed OAuth grants. Session-wide tool approval and Full access runtime mode are not used.
+Private logs, Provider homes/configuration, OAuth grants, tokens, callback/one-time URLs, tool payloads, browser state and databases must never enter public logs, issues, PRs or artifacts. Local safety tests use synthetic canaries and page/process traps without contacting T3 or any Provider. They are source-safety evidence, never live native PASS. The [historical v0.1 report](acceptance/v01-workflow-2026-10-31.md) keeps its original revision-specific scope.
 
-## Fault coverage and evidence limits
-
-This scenario includes duplicate-source delivery, concurrent claim fencing, actual Worker death after launch, service unavailability, stateful restart and permission revocation. Ordinary tests separately exercise lost replies, exact older-Run settlement, causality limits and native terminal/uncertain states using explicit fixtures. Those fixture tests must not be reported as new live fault-injection evidence. The historical [v0.1 report](acceptance/v01-workflow-2026-10-31.md) remains a separate, revision-specific record.
-
-Every stage fails on unexpected state, blocked work, wrong authority, wrong Run/model, missing real output or incomplete cleanup. Real uncertainty must remain investigable. There is no test retry. Planned normal cost is **four native model Runs per executor**, eight across the matrix; failures can leave fewer completed Runs. Retries after an identified repair are new, separately recorded invocations and can incur more cost. No exact monetary bound is inferred from output length.
-
-Only `.live-evidence/*.json` is uploaded, with source commit, dependency/model identity, checked outcomes, hashed correlations, failure stage and cleanup state. Logs, prompts, tool payloads, browser recordings, tokens and private databases are excluded. Tracing, video and screenshots are disabled. Failed local state remains in its private temporary directory for investigation; successful state is removed after cleanup. GitHub runner state disappears with the disposable VM.
-
-## Execute and diagnose
-
-Ordinary checks:
+## Credential-free verification
 
 ```sh
 npm ci
@@ -58,12 +40,4 @@ npx playwright install --with-deps chromium
 npm run test:browser
 ```
 
-Dispatch real integration for reviewed `main`:
-
-```sh
-gh workflow run live.yml --ref main
-```
-
-For a trusted local runner, use Node 24, the same three secret environment variables, `KINMESH_LIVE_EXECUTOR=codex` or `grok`, and absolute `KINMESH_T3_BINARY`, `KINMESH_CODEX_BINARY`, `KINMESH_GROK_BINARY` paths. After installing Chromium and building, run `npm run test:collaboration-live`. The OAuth callback port `127.0.0.1:49871` must be free. Do not run jobs concurrently on the same machine, reuse another gate's consumed fixture, or run the test inside a directory with an unrelated `.env` file.
-
-On failure, inspect the redacted artifact and exact source revision first. Use the private native state through official MCP/UI to identify the real cause. Do not delete journals, change operation keys, weaken assertions or repeatedly dispatch merely to obtain green output. Fix the responsible layer, review the change, and execute a new gate for that revision. A failed job and its partial native executions remain part of the acceptance record.
+These commands exercise strict types, lint, local SQLite/process tests, architecture and real Chromium against Kinmesh. Browser native DTO cases remain fixtures. Do not run `test:collaboration-live`, `release:check`, `t3:auth`, model/Provider commands or native workflows as part of code-only verification.
