@@ -2,10 +2,10 @@
 
 Kinmesh has two different gates. A green code gate alone is not evidence of real model integration.
 
-| Gate                 | Trigger                                       | Authority and execution                                                                                         | Required result                                                                   |
-| -------------------- | --------------------------------------------- | --------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------- |
-| `CI`                 | Pull requests to `main`, and pushes to `main` | No model credentials; strict checks, real SQLite/process tests, genuine Chromium; native DTO cases use fixtures | `foundation` and `chromium` pass on the reviewed revision                         |
-| `Live collaboration` | Explicit dispatch on `main`                   | GitHub-hosted disposable Linux VM per executor, Environment `live`, real T3/Codex or T3/Grok                    | Both executor jobs pass, including cleanup; evidence identifies the tested commit |
+| Gate                 | Trigger                                        | Authority and execution                                                                                         | Required result                                                                   |
+| -------------------- | ---------------------------------------------- | --------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------- |
+| `CI`                 | Pull requests to `main`, and all branch pushes | No model credentials; strict checks, real SQLite/process tests, genuine Chromium; native DTO cases use fixtures | `foundation` and `chromium` pass on the reviewed revision                         |
+| `Live collaboration` | Explicit dispatch on `main`                    | GitHub-hosted disposable Linux VM per executor, Environment `live`, real T3/Codex or T3/Grok                    | Both executor jobs pass, including cleanup; evidence identifies the tested commit |
 
 ## Authorized disposable CI and separate owner release
 
