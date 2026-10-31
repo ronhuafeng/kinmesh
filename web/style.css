@@ -2775,3 +2775,20 @@ details.technical p {
   padding: 0.25rem 0.6rem;
   font-size: 0.8rem;
 }
+
+/* Polish after the audit pass. */
+.setup-details > summary {
+  font-size: 0.8rem;
+}
+.setup-details[open] > summary {
+  margin-bottom: 0.5rem;
+}
+.agent-setup .setup-details:not([open]) {
+  margin-bottom: 0.25rem;
+}
+.task-card footer small {
+  white-space: nowrap;
+}
+.task-card footer {
+  gap: 0.4rem;
+}
