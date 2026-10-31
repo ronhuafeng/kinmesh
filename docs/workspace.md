@@ -54,7 +54,7 @@ Each execution card keeps **Last recorded** AG-UI reports separate from **Native
 
 Missing configuration, unsafe/missing credentials, issuer/environment mismatch, native authentication/permission/schema failures and network outages return the same generic HTTP 503. They clear the displayed native result and link without signing out the Kinmesh owner. Actual Kinmesh 401/403 denials clear both native results and protected execution snapshots. No native approval, send, launch, interrupt or model execution control is available here.
 
-Issue #8 remains **Open** until an authenticated observer and returned original-T3 browser link are proven in a real, separately approved T3 environment. Code-only tests and local deterministic mocks provide no live native acceptance evidence.
+Native acceptance requires an authenticated observer and a returned original-T3 browser link in a real, separately approved T3 environment. Code-only tests and local deterministic mocks provide no live native evidence. See the [v0.1 acceptance record](acceptance/v01-workflow-2026-10-31.md) for actual observations and their limits. A Kinmesh OAuth grant does not establish a T3 browser session; a desktop-managed T3 browser may separately require pairing before it displays the thread.
 
 ## Errors and idempotency
 
