@@ -1,4 +1,4 @@
-import { spawn, type ChildProcess } from 'node:child_process';
+import { spawn, execFileSync, type ChildProcess } from 'node:child_process';
 import { openSync, closeSync } from 'node:fs';
 import { createServer } from 'node:net';
 import { setTimeout as delay } from 'node:timers/promises';
@@ -52,7 +52,13 @@ export class Process {
     const alive = () => {
       try {
         process.kill(-pid, 0);
-        return true;
+        // Reaped children can briefly remain as zombies; they cannot execute or use credentials.
+        return execFileSync('ps', ['-axo', 'pgid=,stat='], { encoding: 'utf8' })
+          .split('\n')
+          .some((line) => {
+            const fields = line.trim().split(/\s+/);
+            return Number(fields[0]) === pid && !fields[1]?.startsWith('Z');
+          });
       } catch (error) {
         if (error instanceof Error && 'code' in error && error.code === 'ESRCH')
           return false;

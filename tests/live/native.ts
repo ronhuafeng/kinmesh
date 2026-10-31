@@ -30,6 +30,7 @@ export class Native {
   page: Page | undefined;
   server: Process | undefined;
   stage = 'native-start';
+  cleanupErrors: string[] = [];
   readonly binary = process.env.KINMESH_T3_BINARY ?? 't3';
   constructor(
     readonly root: string,
@@ -245,6 +246,16 @@ export class Native {
       this.browser?.close(),
       this.server?.stop(),
     ]);
+    this.cleanupErrors = stopped.flatMap((result) =>
+      result.status === 'rejected'
+        ? [
+            result.reason instanceof Error &&
+            /^[A-Z_]+$/.test(result.reason.message)
+              ? result.reason.message
+              : 'CLEANUP_OPERATION_FAILED',
+          ]
+        : [],
+    );
     if (stopped.some((result) => result.status === 'rejected'))
       throw new Error('NATIVE_CLEANUP_FAILED');
   }

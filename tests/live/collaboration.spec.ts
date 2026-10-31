@@ -68,7 +68,14 @@ test('complete real two-agent workflow, Human rework/acceptance, recovery and au
   let tools: ValidatedTools | undefined;
   let stage = 'prepare';
   const evidence: Record<string, unknown> = {
-    sourceCommit: process.env.GITHUB_SHA ?? 'local',
+    sourceCommit:
+      process.env.GITHUB_SHA ??
+      execFileSync('git', ['rev-parse', 'HEAD'], { encoding: 'utf8' }).trim(),
+    workingTreeDirty:
+      execFileSync('git', ['status', '--porcelain'], {
+        encoding: 'utf8',
+      }).trim().length > 0,
+    releaseEvidence: process.env.GITHUB_ACTIONS === 'true',
     executor,
     t3Version: '0.1.5',
     model: models[executor],
@@ -163,9 +170,31 @@ test('complete real two-agent workflow, Human rework/acceptance, recovery and au
           ),
         );
       }
+      const decisionIndex = successfulCalls.findIndex(
+        (call) =>
+          call.name ===
+            (role === 'developer' ? 'team_task_handoff' : 'team_task_review') &&
+          call.input.taskId === hub.taskId &&
+          call.input.channelId === hub.channelId,
+      );
+      assert.ok(decisionIndex >= 0);
+      const beforeDecision = successfulCalls.slice(0, decisionIndex);
+      for (const name of ['team_task_get', 'team_tasks_history'])
+        assert.ok(
+          beforeDecision.some(
+            (call) =>
+              call.name === name &&
+              call.input.taskId === hub.taskId &&
+              call.input.channelId === hub.channelId,
+          ),
+        );
       if (role === 'reviewer') {
-        const artifacts = successfulCalls
-          .filter((call) => call.name === 'team_messages_read')
+        const artifacts = beforeDecision
+          .filter(
+            (call) =>
+              call.name === 'team_messages_read' &&
+              call.input.channelId === hub.channelId,
+          )
           .flatMap(
             (call) =>
               z
@@ -305,6 +334,12 @@ test('complete real two-agent workflow, Human rework/acceptance, recovery and au
       }),
     );
     if (!activity.thread.pendingRequestCount) return;
+    assert.equal(activity.thread.pendingRequestCount, 1);
+    assert.equal(activity.thread.activeRunId, ref.runId);
+    assert.equal(activity.thread.latestRunId, ref.runId);
+    const approval = activity.items.at(-1);
+    assert.equal(approval?.type, 'approval_request');
+    assert.equal(approval?.runId, ref.runId);
     const role = roles.find((r) => hub.agent(r).profile.id === row.agent_id);
     assert.ok(role);
     const calls = activity.items.filter(
@@ -313,9 +348,19 @@ test('complete real two-agent workflow, Human rework/acceptance, recovery and au
     const call = calls.at(-1);
     if (!call?.text) throw new Error('NATIVE_APPROVAL_NOT_INSPECTABLE');
     const input = z
-      .object({ toolName: z.string(), input: record })
+      .object({
+        toolName: z.string(),
+        input: record,
+        output: z.unknown().optional(),
+      })
       .parse(JSON.parse(call.text) as unknown);
+    assert.equal(input.output, undefined);
     const tool = input.toolName.replace(/^kinmesh\./, '');
+    assert.equal(
+      approval?.text,
+      `Allow the kinmesh MCP server to run tool \"${tool}\"?`,
+    );
+    assert.equal(activity.items.at(-2)?.itemId, call.itemId);
     assert.equal(input.input.channelId, hub.channelId);
     if (tool === 'team_messages_send') {
       assert.equal(input.input.sourceEventId, row.event_id);
@@ -342,9 +387,13 @@ test('complete real two-agent workflow, Human rework/acceptance, recovery and au
     assert.equal(target.origin, native.origin);
     if (page.url() !== target.href) await page.goto(target.href);
     await page
-      .getByRole('button', { name: 'Approve', exact: true })
-      .last()
-      .click();
+      .getByText(approval.text ?? '', { exact: true })
+      .first()
+      .waitFor();
+    const button = page.getByRole('button', { name: 'Approve', exact: true });
+    await button.waitFor();
+    assert.equal(await button.count(), 1);
+    await button.click();
   }
   let crashed = false;
   let originalRequest = '';
@@ -554,23 +603,23 @@ test('complete real two-agent workflow, Human rework/acceptance, recovery and au
     checks.sourceReplayDoesNotDuplicateDelivery = true;
     stage = 'agent-human-boundary';
     const developer = hub.agent('developer');
-    const denied = await fetch(
-      `${hub.origin}/api/teams/${hub.teamId}/channels/${hub.channelId}/tasks/${hub.taskId}/accept`,
-      {
+    const acceptanceUrl = `${hub.origin}/api/teams/${hub.teamId}/channels/${hub.channelId}/tasks/${hub.taskId}/accept`;
+    for (const spoof of [false, true]) {
+      const denied = await fetch(acceptanceUrl, {
         method: 'POST',
         headers: {
           authorization: 'Bearer ' + developer.token,
           'content-type': 'application/json',
-          'X-Kinmesh-Actor': hub.humanId,
+          ...(spoof ? { 'X-Kinmesh-Actor': hub.humanId } : {}),
         },
         body: JSON.stringify({
           operationKey: randomUUID(),
           expectedVersion: 3,
           note: 'Agent must not accept',
         }),
-      },
-    );
-    assert.equal(denied.status, 403);
+      });
+      assert.equal(denied.status, spoof ? 400 : 403);
+    }
     assert.equal((await hub.task()).state.status, 'awaiting-human');
     checks.agentCannotImpersonateHumanAcceptance = true;
     stage = 't3-outage-and-human-rework';
@@ -762,40 +811,64 @@ test('complete real two-agent workflow, Human rework/acceptance, recovery and au
     // Raw errors, prompts, tool traffic and credential-bearing browser state stay private.
     throw new Error('LIVE_COLLABORATION_FAILED_AT_' + stage);
   } finally {
-    if (db) {
-      evidence.correlatedNativeRuns = new Set(
-        rows().flatMap((row) => (row.reference ? [row.reference] : [])),
-      ).size;
-      evidence.ackedDeliveries = rows().filter(
-        (row) => row.state === 'acked',
-      ).length;
+    const cleanupIssues: string[] = [];
+    try {
+      if (db) {
+        const current = rows();
+        evidence.correlatedNativeRuns = new Set(
+          current.flatMap((row) => (row.reference ? [row.reference] : [])),
+        ).size;
+        evidence.ackedDeliveries = current.filter(
+          (row) => row.state === 'acked',
+        ).length;
+      }
+    } catch {
+      cleanupIssues.push('FINAL_DATABASE_READ_FAILED');
     }
-    const wireClosed = await Promise.allSettled([wire?.close()]);
-    store?.close();
-    db?.close();
-    const hubCleanup = await hub.close();
-    const nativeClosed = await Promise.allSettled([native.close()]);
-    const cleanupPassed =
+    for (const close of [() => store?.close(), () => db?.close()]) {
+      try {
+        close();
+      } catch {
+        cleanupIssues.push('DATABASE_CLOSE_FAILED');
+      }
+    }
+    const [hubOutcome] = await Promise.allSettled([hub.close()]);
+    const hubCleanup =
+      hubOutcome?.status === 'fulfilled'
+        ? hubOutcome.value
+        : { grantsRevoked: false, servicesStopped: false };
+    const nativeClosed = await Promise.allSettled([
+      native.close(),
+      wire?.close(),
+    ]);
+    let cleanupPassed =
       hubCleanup.grantsRevoked &&
       hubCleanup.servicesStopped &&
-      [...wireClosed, ...nativeClosed].every(
-        (result) => result.status === 'fulfilled',
-      );
+      cleanupIssues.length === 0 &&
+      nativeClosed.every((result) => result.status === 'fulfilled');
     evidence.cleanup = {
       ...hubCleanup,
-      nativeStopped: nativeClosed.every(
-        (result) => result.status === 'fulfilled',
-      ),
+      nativeErrors: native.cleanupErrors,
+      issues: cleanupIssues,
+      nativeStopped: nativeClosed[0]?.status === 'fulfilled',
       privateStateUploaded: false,
     };
     if (!cleanupPassed) evidence.result = 'FAIL';
-    if (evidence.result === 'PASS')
-      rmSync(root, { recursive: true, force: true });
+    if (evidence.result === 'PASS') {
+      try {
+        rmSync(root, { recursive: true, force: true });
+      } catch {
+        cleanupIssues.push('PRIVATE_STATE_REMOVAL_FAILED');
+        cleanupPassed = false;
+        evidence.result = 'FAIL';
+      }
+    }
     mkdirSync('.live-evidence', { recursive: true });
     writeFileSync(
       join('.live-evidence', executor + '.json'),
       JSON.stringify(evidence, null, 2) + '\n',
     );
-    if (!cleanupPassed) throw new Error('LIVE_CLEANUP_FAILED');
+    if (!cleanupPassed && !evidence.failedStage)
+      throw new Error('LIVE_CLEANUP_FAILED');
   }
 });
