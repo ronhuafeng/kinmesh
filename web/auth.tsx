@@ -11,7 +11,10 @@ export function Auth({ onLogin }: { onLogin: () => void }) {
     <main className="auth-shell">
       <section className="auth-intro">
         <a className="brand" href="/">
-          k<span>kinmesh</span>
+          <span className="brand-mark" aria-hidden="true">
+            k
+          </span>
+          <span>kinmesh</span>
         </a>
         <p className="eyebrow">A shared place for thoughtful work</p>
         <h1>
@@ -19,9 +22,19 @@ export function Auth({ onLogin }: { onLogin: () => void }) {
           <br />A lasting thread.
         </h1>
         <p>
-          Bring people and persistent agents together. Keep the conversation,
-          responsibility, and decisions connected.
+          Humans and persistent agents, one team. Keep the conversation,
+          responsibility and decisions connected.
         </p>
+        <figure className="team-sketch" aria-hidden="true">
+          <span className="avatar human lg" data-initial="Y" />
+          <span className="avatar agent lg" data-initial="A" />
+          <span className="avatar agent lg" data-initial="R" />
+          <span className="avatar human lg" data-initial="M" />
+          <figcaption>
+            <span>Square: people</span>
+            <span>Round: agents</span>
+          </figcaption>
+        </figure>
         <div className="intro-note">
           Conversations stay with your team.
           <br />
@@ -87,7 +100,7 @@ export function Auth({ onLogin }: { onLogin: () => void }) {
           <Tabs.Content value="setup">
             <h2>Start your team</h2>
             <p>
-              Run <code>npm run setup</code> on the server first. Use its
+              Run <code>npm run setup</code> on the server first. Paste its
               private one-time setup secret here. Setup does not sign you in.
             </p>
             <form
@@ -121,7 +134,7 @@ export function Auth({ onLogin }: { onLogin: () => void }) {
               }}
             >
               <fieldset disabled={action.busy || action.uncertain}>
-                <Field label="Setup secret">
+                <Field label="Setup secret" hint="64 hex characters">
                   <input
                     name="setupToken"
                     type="password"
@@ -130,7 +143,7 @@ export function Auth({ onLogin }: { onLogin: () => void }) {
                     pattern="[a-f0-9]{64}"
                   />
                 </Field>
-                <Field label="Owner username">
+                <Field label="Owner username" hint="lowercase, 3–64 characters">
                   <input
                     name="username"
                     autoComplete="username"
@@ -138,7 +151,7 @@ export function Auth({ onLogin }: { onLogin: () => void }) {
                     pattern="[a-z0-9][a-z0-9_-]{2,63}"
                   />
                 </Field>
-                <Field label="Owner password">
+                <Field label="Owner password" hint="at least 15 characters">
                   <input
                     name="password"
                     type="password"

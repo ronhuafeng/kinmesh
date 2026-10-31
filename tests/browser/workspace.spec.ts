@@ -32,7 +32,7 @@ async function snapshot(request: APIRequestContext, origin: string) {
   return WorkspaceSnapshot.parse(await response.json());
 }
 async function register(page: Page, name: string, role: string) {
-  await page.getByRole('tab', { name: 'Agents & activity' }).click();
+  await page.getByRole('tab', { name: 'Team', exact: true }).click();
   await page.getByText('Register agent', { exact: true }).first().click();
   const form = page.getByRole('form', { name: 'Agent profile' });
   await form.getByLabel('Agent name').fill(name);
@@ -95,31 +95,44 @@ for (const width of [1440, 375]) {
       page.getByRole('heading', { name: '# design', exact: true }),
     ).toBeVisible();
     await register(page, 'Ada', 'developer');
-    await page.getByRole('tab', { name: 'Conversation', exact: true }).click();
+    await page.getByRole('tab', { name: 'Chat', exact: true }).click();
     await page.getByText('Start a topic', { exact: true }).click();
     await page.getByLabel('Topic title').fill('Release planning');
     await page
       .getByRole('button', { name: 'Create topic', exact: true })
       .click();
-    await page
-      .getByLabel('Topic', { exact: true })
-      .selectOption({ label: 'Release planning' });
+    const topics = page.getByRole('group', { name: 'Topics' });
+    await topics
+      .getByRole('button', { name: 'Release planning', exact: true })
+      .click();
+    await expect(
+      topics.getByRole('button', { name: 'Release planning', exact: true }),
+    ).toHaveAttribute('aria-pressed', 'true');
     const composer = page.getByRole('form', { name: 'Message your team' });
     const text =
       '<img src=x onerror="window.__injected=true"> Persistent hello';
-    await composer.getByLabel('Message', { exact: true }).fill(text);
-    await composer
-      .getByLabel('Mention an agent')
-      .selectOption({ label: 'Ada' });
+    const sent = text + ' @Ada';
+    const message = composer.getByLabel('Message', { exact: true });
+    await message.fill(text);
+    await message.pressSequentially(' @Ad');
+    await page
+      .getByRole('listbox', { name: 'Mention suggestions' })
+      .getByRole('option', { name: /Ada/ })
+      .click();
+    await expect(
+      composer.getByRole('list', { name: 'Mentions' }).getByText('@Ada'),
+    ).toBeVisible();
     await composer.getByRole('button', { name: 'Send message' }).click();
     await expect(
       page
         .getByRole('list', { name: 'Channel messages' })
-        .getByText(text, { exact: true }),
+        .getByText(sent, { exact: true }),
     ).toBeVisible();
-    await expect(page.getByText('Mentions: Ada')).toBeVisible();
+    await expect(
+      page.getByRole('list', { name: 'Mentioned' }).getByText('@Ada'),
+    ).toBeVisible();
     await page.reload();
-    await expect(page.getByText(text, { exact: true })).toBeVisible();
+    await expect(page.getByText(sent, { exact: true })).toBeVisible();
     expect(await page.locator('.messages img').count()).toBe(0);
     await context.setOffline(true);
     await page.getByRole('button', { name: 'Reconnect / refresh' }).click();
@@ -129,7 +142,7 @@ for (const width of [1440, 375]) {
     await expect(
       page.getByText('Snapshot connected', { exact: true }),
     ).toBeVisible();
-    await expect(page.getByText(text, { exact: true })).toBeVisible();
+    await expect(page.getByText(sent, { exact: true })).toBeVisible();
     expect(
       await page.evaluate(
         () => document.documentElement.scrollWidth <= window.innerWidth,
@@ -173,7 +186,7 @@ test('two independent task cards: real agent handoff, human review, acceptance a
     extraHTTPHeaders: { authorization: 'Bearer ' + token },
   });
   try {
-    await page.getByRole('tab', { name: 'Tasks', exact: true }).click();
+    await page.getByRole('tab', { name: 'Board', exact: true }).click();
     await page
       .locator('summary')
       .filter({ hasText: /^Create task$/ })
@@ -231,53 +244,72 @@ test('two independent task cards: real agent handoff, human review, acceptance a
       exact: true,
     });
     const beta = page.getByRole('article', { name: 'Ship beta', exact: true });
+    // Each task opens in its own drawer; decisions are explicit buttons.
+    const alphaDrawer = page.getByRole('region', {
+      name: 'Ship alpha',
+      exact: true,
+    });
+    const betaDrawer = page.getByRole('region', {
+      name: 'Ship beta',
+      exact: true,
+    });
     await expect(
-      alpha.getByText('review-requested', { exact: true }),
+      alpha.getByText('Review requested', { exact: true }),
     ).toBeVisible();
-    await alpha.getByLabel('Decision note').fill('Technical review complete');
-    await alpha
+    await alpha.getByRole('button', { name: 'Ship alpha' }).click();
+    await alphaDrawer
+      .getByLabel('Decision note')
+      .fill('Technical review complete');
+    await alphaDrawer
       .getByRole('button', { name: 'Approve review', exact: true })
       .click();
     await expect(
-      alpha.getByText('awaiting-human', { exact: true }),
+      alpha.getByText('Awaiting human', { exact: true }),
     ).toBeVisible();
     await expect(
-      beta.getByText('review-requested', { exact: true }),
+      beta.getByText('Review requested', { exact: true }),
     ).toBeVisible();
-    await alpha.getByLabel('Decision note').fill('I accept the alpha outcome');
-    await alpha
+    await alphaDrawer
+      .getByLabel('Decision note')
+      .fill('I accept the alpha outcome');
+    await alphaDrawer
       .getByRole('button', { name: 'Accept task', exact: true })
       .click();
-    await expect(alpha.getByText('accepted', { exact: true })).toBeVisible();
-    await beta.getByLabel('Action', { exact: true }).selectOption('rework');
-    await beta.getByLabel('Decision note').fill('Beta needs more work');
-    await beta
+    await expect(alpha.getByText('Accepted', { exact: true })).toBeVisible();
+    await beta.getByRole('button', { name: 'Ship beta' }).click();
+    await expect(alphaDrawer).toHaveCount(0);
+    await betaDrawer.getByLabel('Decision note').fill('Beta needs more work');
+    await betaDrawer
       .getByRole('button', { name: 'Request rework', exact: true })
       .click();
     await expect(
-      beta.getByText('rework-requested', { exact: true }),
+      beta.getByText('Rework requested', { exact: true }),
     ).toBeVisible();
-    await expect(alpha.getByText('accepted', { exact: true })).toBeVisible();
+    await expect(alpha.getByText('Accepted', { exact: true })).toBeVisible();
     await page.screenshot({
       path: 'artifacts/workspace-tasks.png',
       fullPage: true,
     });
-    await alpha.getByRole('button', { name: 'Show activity' }).click();
+    await alpha.getByRole('button', { name: 'Ship alpha' }).click();
     await expect(
-      alpha.getByRole('heading', { name: 'Decision history' }),
+      alphaDrawer.getByRole('heading', { name: 'Decision history' }),
     ).toBeVisible();
-    await expect(alpha.getByText('I accept the alpha outcome')).toBeVisible();
+    await expect(
+      alphaDrawer.getByText('I accept the alpha outcome'),
+    ).toBeVisible();
+    await page.keyboard.press('Escape');
+    await expect(alphaDrawer).toHaveCount(0);
     await page.reload();
-    await page.getByRole('tab', { name: 'Tasks', exact: true }).click();
+    await page.getByRole('tab', { name: 'Board', exact: true }).click();
     await expect(
       page
         .getByRole('article', { name: 'Ship alpha' })
-        .getByText('accepted', { exact: true }),
+        .getByText('Accepted', { exact: true }),
     ).toBeVisible();
     await expect(
       page
         .getByRole('article', { name: 'Ship beta' })
-        .getByText('rework-requested', { exact: true }),
+        .getByText('Rework requested', { exact: true }),
     ).toBeVisible();
   } finally {
     await agent.dispose();
@@ -390,6 +422,116 @@ test('AG-UI snapshots render persisted reports honestly; identity spoofing and c
   }
 });
 
+test('keyboard mention, message becomes a task in its topic, and the needs-me filter', async ({
+  page,
+  context,
+  hub,
+}) => {
+  await onboard(page, hub);
+  await register(page, 'Ada', 'developer');
+  await page.getByRole('tab', { name: 'Chat', exact: true }).click();
+  await page.getByText('Start a topic', { exact: true }).click();
+  await page.getByLabel('Topic title').fill('Billing');
+  await page.getByRole('button', { name: 'Create topic', exact: true }).click();
+  await page
+    .getByRole('group', { name: 'Topics' })
+    .getByRole('button', { name: 'Billing', exact: true })
+    .click();
+  // No wait for the topic refresh: typing must survive a background reload.
+  const composer = page.getByRole('form', { name: 'Message your team' });
+  const message = composer.getByLabel('Message', { exact: true });
+  await message.fill('Validate postal codes per country');
+  await message.pressSequentially(' @a');
+  await expect(message).toHaveValue('Validate postal codes per country @a');
+  await expect(
+    page.getByRole('option', { name: /Ada/, selected: true }),
+  ).toBeVisible();
+  await message.press('Enter');
+  await expect(message).toHaveValue('Validate postal codes per country @Ada ');
+  await expect(
+    composer.getByRole('list', { name: 'Mentions' }).getByText('@Ada'),
+  ).toBeVisible();
+  // Sent while the topic switch may still be refreshing: it must go through.
+  await message.press('ControlOrMeta+Enter');
+  const posted = page
+    .getByRole('list', { name: 'Channel messages' })
+    .getByRole('listitem')
+    .filter({ hasText: 'Validate postal codes per country @Ada' });
+  await expect(posted).toBeVisible();
+  await posted.getByRole('button', { name: 'Make task', exact: true }).click();
+  await expect(
+    page.getByRole('tab', { name: 'Board', exact: true }),
+  ).toHaveAttribute('aria-selected', 'true');
+  const form = page.getByRole('form', { name: 'New task' });
+  await expect(form.getByLabel('Task title')).toHaveValue(
+    'Validate postal codes per country @Ada',
+  );
+  await expect(
+    page.getByText('From a message by browser_owner.', { exact: false }),
+  ).toBeVisible();
+  await form
+    .getByLabel('Acceptance criteria (one per line)')
+    .fill('Postal codes validated per country');
+  const state = await snapshot(context.request, hub.origin);
+  const ada = state.agents[0];
+  if (!ada || !state.channel) throw new Error('Local fixture unavailable');
+  await form
+    .getByLabel('Owner', { exact: true })
+    .selectOption('agent:' + ada.id);
+  await form.getByRole('button', { name: 'Create task', exact: true }).click();
+  const card = page.getByRole('article', {
+    name: 'Validate postal codes per country @Ada',
+  });
+  await expect(card.getByText('In progress', { exact: true })).toBeVisible();
+  const base = `${hub.origin}/api/teams/${state.team.id}/channels/${state.channel.id}`;
+  const tasks = pageOf(Task).parse(
+    await (await context.request.get(base + '/tasks')).json(),
+  ).items;
+  const topics = z
+    .object({ items: z.array(z.object({ id: z.uuid(), title: z.string() })) })
+    .parse(await (await context.request.get(base + '/topics')).json()).items;
+  expect(tasks).toHaveLength(1);
+  expect(tasks[0]?.topicId).toBe(topics.find((t) => t.title === 'Billing')?.id);
+  const filter = page.getByRole('group', { name: 'Task filter' });
+  await filter.getByRole('button', { name: 'Needs me', exact: true }).click();
+  await expect(card).toHaveCount(0);
+  await filter.getByRole('button', { name: 'Mine', exact: true }).click();
+  await expect(card).toBeVisible();
+  await filter.getByRole('button', { name: 'All', exact: true }).click();
+  await expect(card).toBeVisible();
+  // ⌘K jumps straight to the task; only its acceptor may cancel it, with a note.
+  await page.getByRole('tab', { name: 'Chat', exact: true }).click();
+  await page.keyboard.press('ControlOrMeta+k');
+  const palette = page.getByRole('dialog', { name: 'Command palette' });
+  await palette
+    .getByRole('combobox', { name: /Search/ })
+    .fill('postal in progress');
+  await expect(
+    palette.getByRole('option', { name: /Validate postal codes/ }),
+  ).toHaveAttribute('aria-selected', 'true');
+  await page.keyboard.press('Enter');
+  await expect(palette).toBeHidden();
+  const drawer = page.getByRole('region', {
+    name: 'Validate postal codes per country @Ada',
+  });
+  await expect(drawer).toBeVisible();
+  await drawer
+    .getByRole('button', { name: 'Cancel task…', exact: true })
+    .click();
+  await expect(
+    drawer.getByText(/closes the task without acceptance/),
+  ).toBeVisible();
+  await drawer.getByLabel('Decision note').fill('Superseded by the new form');
+  await drawer
+    .getByRole('button', { name: 'Cancel task', exact: true })
+    .click();
+  await expect(card.getByText('Cancelled', { exact: true })).toBeVisible();
+  await expect(
+    page.getByRole('status').filter({ hasText: 'Task cancelled.' }),
+  ).toBeVisible();
+  await expect(drawer.getByText('This task is closed.')).toBeVisible();
+});
+
 test('lost message response retries the same committed operation; real conflict stays visible', async ({
   page,
   context,
@@ -450,7 +592,7 @@ test('human claim and request-review controls, plus leave/rejoin of known member
   const state = await snapshot(context.request, hub.origin);
   if (!state.channel || !state.agents[0])
     throw new Error('Local fixture unavailable');
-  await page.getByRole('tab', { name: 'Tasks', exact: true }).click();
+  await page.getByRole('tab', { name: 'Board', exact: true }).click();
   await page
     .locator('summary')
     .filter({ hasText: /^Create task$/ })
@@ -462,25 +604,27 @@ test('human claim and request-review controls, plus leave/rejoin of known member
     .fill('Review requested with a recorded note');
   await form.getByRole('button', { name: 'Create task', exact: true }).click();
   const card = page.getByRole('article', { name: 'Human owned task' });
-  await card.getByRole('button', { name: 'Claim task', exact: true }).click();
-  await expect(card.getByText('in-progress', { exact: true })).toBeVisible();
-  await card
-    .getByLabel('Action', { exact: true })
-    .selectOption('request-review');
-  await card
+  const drawer = page.getByRole('region', { name: 'Human owned task' });
+  await card.getByRole('button', { name: 'Human owned task' }).click();
+  await drawer.getByRole('button', { name: 'Claim task', exact: true }).click();
+  await expect(card.getByText('In progress', { exact: true })).toBeVisible();
+  await drawer
+    .getByRole('button', { name: 'Request review…', exact: true })
+    .click();
+  await drawer
     .getByLabel('Recipient', { exact: true })
     .selectOption('agent:' + state.agents[0].id);
-  await card.getByLabel('Decision note').fill('Please review the human work');
-  await card
+  await drawer.getByLabel('Decision note').fill('Please review the human work');
+  await drawer
     .getByRole('button', { name: 'Request review', exact: true })
     .click();
   await expect(
-    card.getByText('review-requested', { exact: true }),
+    card.getByText('Review requested', { exact: true }),
   ).toBeVisible();
   await expect(
-    card.getByRole('definition').filter({ hasText: /^Reviewer$/ }),
+    drawer.getByRole('definition').filter({ hasText: /^Reviewer$/ }),
   ).toBeVisible();
-  await page.getByRole('tab', { name: 'Conversation', exact: true }).click();
+  await page.getByRole('tab', { name: 'Chat', exact: true }).click();
   await page.getByText('Channel details', { exact: true }).click();
   await page
     .getByRole('button', { name: 'Leave channel', exact: true })
@@ -492,13 +636,13 @@ test('human claim and request-review controls, plus leave/rejoin of known member
   await page.getByLabel('Known channel ID').fill(state.channel.id);
   await page.getByRole('button', { name: 'Join channel', exact: true }).click();
   await expect(page.getByRole('heading', { name: '# general' })).toBeVisible();
-  await page.getByRole('tab', { name: 'Tasks', exact: true }).click();
+  await page.getByRole('tab', { name: 'Board', exact: true }).click();
   await expect(
-    card.getByText('review-requested', { exact: true }),
+    card.getByText('Review requested', { exact: true }),
   ).toBeVisible();
 });
 
-test('sidebar mutations block submission while workspace GET is loading or failing, then reconnect', async ({
+test('a heartbeat refresh never interrupts work; after a failure nothing submits until a reconnect succeeds', async ({
   page,
   context,
   hub,
@@ -512,65 +656,92 @@ test('sidebar mutations block submission while workspace GET is loading or faili
   await page.getByText('Rejoin a channel', { exact: true }).click();
   await page.getByLabel('Known channel ID').fill(state.channel.id);
   const join = page.getByRole('form', { name: 'Rejoin membership' });
+  const composer = page.getByRole('form', { name: 'Message your team' });
   let posts = 0;
   page.on('request', (request) => {
     if (request.method() === 'POST') posts++;
   });
-  let release: () => void = () => {
-    throw new Error('Workspace request not intercepted');
-  };
-  const held = new Promise<void>((resolve) => {
-    release = resolve;
-  });
-  await page.route('**/api/workspace?*', async (route) => {
-    await held;
-    await route.fulfill({
-      status: 503,
-      contentType: 'application/json',
-      body: '{}',
+  /** Holds every workspace GET until released, then answers with `status`. */
+  async function holdWorkspace(status: number) {
+    let release: () => void = () => {
+      throw new Error('Workspace request not intercepted');
+    };
+    const held = new Promise<void>((resolve) => {
+      release = resolve;
     });
-  });
+    await page.unroute('**/api/workspace?*');
+    await page.route('**/api/workspace?*', async (route) => {
+      await held;
+      if (status === 200) await route.continue();
+      else
+        await route.fulfill({
+          status,
+          contentType: 'application/json',
+          body: '{}',
+        });
+    });
+    return () => {
+      release();
+    };
+  }
+  async function expectNothingSubmits() {
+    for (const form of [create, join]) {
+      await expect(
+        form.getByRole('button', { name: /Create channel|Join channel/ }),
+      ).toBeDisabled();
+      // Bypass native disabled controls to verify the submit handler also fails closed.
+      await form.evaluate((node) =>
+        node.dispatchEvent(
+          new Event('submit', { bubbles: true, cancelable: true }),
+        ),
+      );
+    }
+    await expect(
+      composer.getByRole('button', { name: 'Send message' }),
+    ).toBeDisabled();
+    await expect(
+      page.getByRole('button', { name: 'Sign out', exact: true }),
+    ).toBeDisabled();
+    expect(posts).toBe(0);
+  }
+  // A: refreshing a confirmed snapshot changes nothing the person can do.
+  const failRefresh = await holdWorkspace(503);
   await page.getByRole('button', { name: 'Reconnect / refresh' }).click();
   await expect(page.getByText('Refreshing…', { exact: true })).toBeVisible();
-  for (const form of [create, join]) {
-    await expect(
-      form.getByRole('button', { name: /Create channel|Join channel/ }),
-    ).toBeDisabled();
-    // Bypass native disabled controls to verify the submit handler also fails closed.
-    await form.evaluate((node) =>
-      node.dispatchEvent(
-        new Event('submit', { bubbles: true, cancelable: true }),
-      ),
-    );
-  }
+  await expect(composer.getByLabel('Message', { exact: true })).toBeEditable();
   await expect(
-    page.getByRole('button', { name: 'Sign out', exact: true }),
-  ).toBeDisabled();
-  expect(posts).toBe(0);
-  release();
+    composer.getByRole('button', { name: 'Send message' }),
+  ).toBeEnabled();
+  await expect(
+    create.getByRole('button', { name: 'Create channel', exact: true }),
+  ).toBeEnabled();
+  // B: once a refresh fails, the snapshot is stale and every submission stops.
+  failRefresh();
   await expect(page.getByText('Disconnected', { exact: true })).toBeVisible();
-  for (const form of [create, join]) {
-    await expect(
-      form.getByRole('button', { name: /Create channel|Join channel/ }),
-    ).toBeDisabled();
-    await form.evaluate((node) =>
-      node.dispatchEvent(
-        new Event('submit', { bubbles: true, cancelable: true }),
-      ),
-    );
-  }
-  expect(posts).toBe(0);
+  // Typing goes on (nothing is lost); only sending waits for a confirmed snapshot.
+  await expect(create.getByLabel('Channel name')).toBeEditable();
+  await expect(composer.getByLabel('Message', { exact: true })).toBeEditable();
+  await expectNothingSubmits();
+  // B': a reconnect still in flight has not confirmed anything yet.
+  const succeed = await holdWorkspace(200);
+  await page.getByRole('button', { name: 'Reconnect / refresh' }).click();
+  await expect(page.getByText('Refreshing…', { exact: true })).toBeVisible();
+  await expect(create.getByLabel('Channel name')).toBeEditable();
+  await expectNothingSubmits();
+  await expect(
+    composer.getByRole('alert').or(page.getByRole('alert')).first(),
+  ).toBeVisible();
   // Only GET is broken: real server POST remains reachable to the authenticated owner.
   const probe = await context.request.post(
     `${hub.origin}/api/teams/${state.team.id}/channels`,
     { data: { name: 'reachable-post', operationKey: randomUUID() } },
   );
   expect(probe.status()).toBe(201);
-  await page.unroute('**/api/workspace?*');
-  await page.getByRole('button', { name: 'Reconnect / refresh' }).click();
+  succeed();
   await expect(
     page.getByText('Snapshot connected', { exact: true }),
   ).toBeVisible();
+  await page.unroute('**/api/workspace?*');
   await join.getByRole('button', { name: 'Join channel', exact: true }).click();
   await expect(
     create.getByRole('button', { name: 'Create channel', exact: true }),
@@ -711,7 +882,7 @@ test('permission loss purges workspace snapshot instead of retaining stale team 
   await composer.getByRole('button', { name: 'Send message' }).click();
   await expect(page.getByText(privateMessage, { exact: true })).toBeVisible();
 
-  await page.getByRole('tab', { name: 'Tasks', exact: true }).click();
+  await page.getByRole('tab', { name: 'Board', exact: true }).click();
   await page
     .locator('summary')
     .filter({ hasText: /^Create task$/ })
