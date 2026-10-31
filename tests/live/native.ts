@@ -45,6 +45,7 @@ export class Native {
       this.origin !== this.ownedOrigin ||
       !this.server?.child?.pid ||
       this.server.child.exitCode !== null ||
+      this.server.child.signalCode !== null ||
       this.endpoint !== this.origin + '/mcp' ||
       !/^http:\/\/127\.0\.0\.1:\d+$/.test(this.origin)
     )

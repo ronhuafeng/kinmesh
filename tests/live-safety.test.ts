@@ -11,6 +11,8 @@ import {
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { spawnSync } from 'node:child_process';
+import { once } from 'node:events';
+import { Process } from './live/processes.js';
 import { Native } from './live/native.js';
 import { requireLiveDispatch, requireDisposableRoot } from './live/safety.js';
 
@@ -151,4 +153,37 @@ await test('SAFETY: evidence upload remains failure-inclusive JSON only and does
     workflow,
     /path:.*(?:log|sqlite|home|oauth)|printenv|set -x/,
   );
+});
+
+await test('SAFETY: a signal-terminated owned child cannot authorize native browser actions', async (t) => {
+  environment(t, eligible);
+  const root = fixture(t);
+  const native = new Native(root, 'codex');
+  const server = new Process(
+    process.execPath,
+    ['-e', 'setInterval(() => {}, 1000)'],
+    { PATH: process.env.PATH },
+    join(root, 'child.log'),
+  );
+  t.after(() => server.stop());
+  server.start();
+  const child = server.child;
+  assert.ok(child);
+  await once(child, 'spawn');
+  native.server = server;
+  native.origin = 'http://127.0.0.1:9999';
+  native.endpoint = native.origin + '/mcp';
+  // Synthetic setup identity isolates the real Node signal-exit regression.
+  Object.defineProperty(native, 'ownedOrigin', { value: native.origin });
+  const exited = once(child, 'exit');
+  child.kill('SIGTERM');
+  await exited;
+  assert.equal(child.exitCode, null);
+  assert.equal(child.signalCode, 'SIGTERM');
+  Object.defineProperty(native, 'page', {
+    get() {
+      throw new Error('DEAD_SERVER_PAGE_ACCESSED');
+    },
+  });
+  await assert.rejects(native.oauth(true), /DISPOSABLE_SERVER_REQUIRED/);
 });
