@@ -18,7 +18,13 @@ import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js';
 import { Native, Executor, models, roles } from './native.js';
 import { Hub } from './hub.js';
-import { Activity, parseCall, completedCalls, reviewProof } from './proof.js';
+import {
+  Activity,
+  approvalCandidates,
+  completedCalls,
+  reviewProof,
+  identityLinks,
+} from './proof.js';
 import { until, ready } from './processes.js';
 import { SdkWire } from '../../src/adapters/t3/sdk.js';
 import { T3Backend } from '../../src/adapters/t3/backend.js';
@@ -294,22 +300,20 @@ test('complete real two-agent workflow, Human rework/acceptance, recovery and au
       assert.ok(!requestIds.has(op.request_id));
       requestIds.add(op.request_id);
       assert.deepEqual(JSON.parse(op.reference) as unknown, ref);
-      const association = z
-        .object({ reference: z.string() })
-        .parse(
-          db
-            .prepare('select *from agent_correlations where id=?')
-            .get(savedResult.correlation_id),
-        );
-      assert.deepEqual(JSON.parse(association.reference) as unknown, ref);
-      const link = z
-        .object({ task_id: z.string() })
-        .parse(
-          db
-            .prepare('select *from task_executions where id=?')
-            .get(savedResult.task_link_id),
-        );
-      assert.equal(link.task_id, hub.taskId);
+      identityLinks(
+        db
+          .prepare('select *from agent_correlations where id=?')
+          .get(savedResult.correlation_id),
+        db
+          .prepare('select *from task_executions where id=?')
+          .get(savedResult.task_link_id),
+        {
+          teamId: hub.teamId,
+          agentId: row.agent_id,
+          taskId: hub.taskId,
+          reference: ref,
+        },
+      );
       results.push({
         role,
         eventDigest: hash(row.event_id),
@@ -337,54 +341,19 @@ test('complete real two-agent workflow, Human rework/acceptance, recovery and au
       (role) => hub.agent(role).profile.id === row.agent_id,
     );
     assert.ok(role);
-    const unresolved = (status: string) =>
-      ['pending', 'waiting', 'running'].includes(status);
-    const pending = activity.items.filter(
-      (item) =>
-        item.runId === ref.runId &&
-        item.type === 'approval_request' &&
-        unresolved(item.status),
+    const { requests: pending, calls } = approvalCandidates(
+      activity,
+      ref.runId,
+      activity.thread.pendingRequestCount,
     );
-    const mutations = [
-      'team_message_get',
-      'team_messages_read',
-      'team_task_get',
-      'team_tasks_history',
-      'team_messages_send',
-      'team_task_handoff',
-      'team_task_review',
-    ];
-    const matches = (text: string | null, tool: string) =>
-      text?.includes('kinmesh') &&
-      (text.includes('\"' + tool + '\"') || text.trim() === 'kinmesh__' + tool);
-    const calls = activity.items
-      .filter(
-        (item) =>
-          item.runId === ref.runId &&
-          item.type === 'dynamic_tool' &&
-          unresolved(item.status),
-      )
-      .flatMap((item) => {
-        assert.equal(item.textTruncated, false);
-        const call = parseCall(JSON.parse(item.text ?? 'null') as unknown);
-        if (!call) return [];
-        assert.equal(call.output, undefined);
-        return [call];
-      })
-      .filter(
-        (call) =>
-          mutations.includes(call.name) &&
-          pending.some((request) => matches(request.text, call.name)),
-      );
-    assert.equal(pending.length, activity.thread.pendingRequestCount);
-    assert.equal(calls.length, pending.length);
     // Validate all pending inputs before approving even one concurrent request.
     for (const call of calls) {
       const tool = call.name;
       assert.equal(call.input.channelId, hub.channelId);
       if (
         role === 'reviewer' &&
-        ['team_messages_send', 'team_task_review'].includes(tool)
+        (tool === 'team_task_review' ||
+          (tool === 'team_messages_send' && !reviewWitnesses.has(ref.runId)))
       ) {
         const index = rows().findIndex((candidate) => candidate.id === row.id);
         reviewProof(activity, ref.runId, {
@@ -452,9 +421,11 @@ test('complete real two-agent workflow, Human rework/acceptance, recovery and au
     );
     for (const card of await cards.all()) {
       assert.ok(
-        ['App access approval', 'App permission approval'].includes(
-          (await card.getAttribute('aria-label')) ?? '',
-        ),
+        [
+          'App access approval',
+          'App permission approval',
+          ...(executor === 'grok' ? ['Command approval'] : []),
+        ].includes((await card.getAttribute('aria-label')) ?? ''),
       );
       const detail = await card
         .locator('[data-approval-detail="complete"]')

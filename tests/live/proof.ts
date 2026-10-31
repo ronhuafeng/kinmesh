@@ -207,3 +207,99 @@ export function reviewProof(
   }
   return calls;
 }
+
+const teamTools = [
+  'team_message_get',
+  'team_messages_read',
+  'team_task_get',
+  'team_tasks_history',
+  'team_messages_send',
+  'team_task_handoff',
+  'team_task_review',
+];
+const unresolved = (status: string) =>
+  ['pending', 'waiting', 'running'].includes(status);
+/** These are the captured approval prompts for the exact pinned native CLI versions. */
+export function approvalTool(text: string | null) {
+  const prompt = text?.split('\n')[0] ?? '';
+  const match =
+    /^(?:kinmesh__(team_[a-z_]+)|Allow the kinmesh MCP server to run tool "(team_[a-z_]+)"\?)$/.exec(
+      prompt,
+    );
+  const name = match?.[1] ?? match?.[2];
+  assert.ok(name && teamTools.includes(name), 'UNRECOGNIZED_NATIVE_APPROVAL');
+  return name;
+}
+export function approvalCandidates(
+  activity: Pick<Activity, 'items'>,
+  runId: string,
+  count: number,
+) {
+  const requests = activity.items
+    .filter(
+      (item) =>
+        item.runId === runId &&
+        item.type === 'approval_request' &&
+        unresolved(item.status),
+    )
+    .map((item) => ({ ...item, tool: approvalTool(item.text) }));
+  assert.equal(requests.length, count);
+  const names = new Set(requests.map((request) => request.tool));
+  const calls = activity.items
+    .filter(
+      (item) =>
+        item.runId === runId &&
+        item.type === 'dynamic_tool' &&
+        unresolved(item.status),
+    )
+    .flatMap((item) => {
+      assert.equal(item.textTruncated, false);
+      const call = parseCall(JSON.parse(item.text ?? 'null') as unknown);
+      if (!call || !names.has(call.name)) return [];
+      assert.equal(call.output, undefined);
+      return [{ ...call, itemId: item.itemId }];
+    });
+  // A same-name call already approved can still be running. Check ALL possible payloads,
+  // and require enough distinct candidates for EACH requested tool, never just a total count.
+  assert.equal(new Set(calls.map((call) => call.itemId)).size, calls.length);
+  for (const name of names)
+    assert.ok(
+      calls.filter((call) => call.name === name).length >=
+        requests.filter((request) => request.tool === name).length,
+      'NATIVE_APPROVAL_INPUT_MISSING',
+    );
+  return { requests, calls };
+}
+
+export function identityLinks(
+  association: unknown,
+  link: unknown,
+  expected: {
+    teamId: string;
+    agentId: string;
+    taskId: string;
+    reference: unknown;
+  },
+) {
+  const correlation = z
+    .object({
+      team_id: z.string(),
+      agent_id: z.string(),
+      reference: z.string(),
+    })
+    .parse(association);
+  const taskLink = z
+    .object({ task_id: z.string(), reference: z.string() })
+    .parse(link);
+  assert.equal(correlation.team_id, expected.teamId);
+  assert.equal(correlation.agent_id, expected.agentId);
+  assert.equal(taskLink.task_id, expected.taskId);
+  assert.deepEqual(
+    JSON.parse(correlation.reference) as unknown,
+    expected.reference,
+  );
+  assert.deepEqual(
+    JSON.parse(taskLink.reference) as unknown,
+    expected.reference,
+  );
+}

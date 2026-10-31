@@ -136,3 +136,101 @@ await test('LIVE ORACLE FIXTURE: real Grok wrapper yields the same verified Team
     parseCall({ ...raw, output: { ...raw.output, server_name: 'other' } }),
   );
 });
+
+await test('LIVE ORACLE FIXTURE: native approvals match per tool and tolerate an approved same-tool call still running', async () => {
+  const { approvalCandidates } = await import('./live/proof.js');
+  const request = (name: string, id: string): Activity['items'][number] => ({
+    itemId: id,
+    runId: 'run',
+    type: 'approval_request',
+    status: 'waiting',
+    textTruncated: false,
+    text: `Allow the kinmesh MCP server to run tool "${name}"?`,
+  });
+  const pending = (name: string, id: string) => ({
+    ...call(name, undefined, false),
+    itemId: id,
+  });
+  const a = 'team_messages_send',
+    b = 'team_task_handoff';
+  assert.throws(
+    () =>
+      approvalCandidates(
+        {
+          items: [
+            pending(a, 'a1'),
+            pending(a, 'a2'),
+            request(a, 'ra'),
+            request(b, 'rb'),
+          ],
+        },
+        'run',
+        2,
+      ),
+    /NATIVE_APPROVAL_INPUT_MISSING/,
+  );
+  assert.equal(
+    approvalCandidates(
+      { items: [pending(a, 'a1'), pending(a, 'a2'), request(a, 'ra')] },
+      'run',
+      1,
+    ).calls.length,
+    2,
+  );
+  assert.equal(
+    approvalCandidates(
+      {
+        items: [
+          pending(a, 'a1'),
+          pending(b, 'b1'),
+          request(a, 'ra'),
+          request(b, 'rb'),
+        ],
+      },
+      'run',
+      2,
+    ).requests.length,
+    2,
+  );
+  assert.throws(
+    () =>
+      approvalCandidates({ items: [call(a, {}), request(a, 'ra')] }, 'run', 1),
+    /NATIVE_APPROVAL_INPUT_MISSING/,
+  );
+});
+
+await test('LIVE ORACLE FIXTURE: the correlation owner and task link must identify the exact original execution', async () => {
+  const { identityLinks } = await import('./live/proof.js');
+  const reference = {
+    backend: 't3',
+    environmentId: 'environment',
+    threadId: 'thread',
+    runId: 'run',
+  };
+  const expected = {
+    teamId: 'team',
+    agentId: 'agent',
+    taskId: 'task',
+    reference,
+  };
+  const association = {
+    team_id: 'team',
+    agent_id: 'agent',
+    reference: JSON.stringify(reference),
+  };
+  const link = { task_id: 'task', reference: JSON.stringify(reference) };
+  identityLinks(association, link, expected);
+  assert.throws(() => {
+    identityLinks({ ...association, agent_id: 'other' }, link, expected);
+  });
+  assert.throws(() => {
+    identityLinks({ ...association, team_id: 'other' }, link, expected);
+  });
+  assert.throws(() => {
+    identityLinks(
+      association,
+      { ...link, reference: JSON.stringify({ ...reference, runId: 'other' }) },
+      expected,
+    );
+  });
+});
