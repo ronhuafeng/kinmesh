@@ -93,7 +93,7 @@ await test('CI: no private OAuth or paid model runner in routine checks', () => 
       'Missing GitHub-hosted owner dispatch check: ' + condition,
     );
     assert.ok(
-      trusted.indexOf(condition) >= 0 &&
+      trusted.includes(condition) &&
         trusted.indexOf(condition) < trustedCheckout,
       'Missing trusted runner recheck before checkout: ' + condition,
     );
