@@ -8,7 +8,7 @@ import { join } from 'node:path';
 import Database from 'better-sqlite3';
 import { z } from 'zod';
 import { Claim } from '../src/domain/inbox.js';
-import { inboxFixture, due } from './inbox-helpers.js';
+import { inboxFixture, due, fixtureResult } from './inbox-helpers.js';
 import { postInput } from './communication-helpers.js';
 async function stop(child: ChildProcess, signal: NodeJS.Signals = 'SIGTERM') {
   if (child.exitCode !== null || child.signalCode !== null) return;
@@ -139,6 +139,109 @@ await test(
       });
     } finally {
       for (const c of children) await stop(c, 'SIGKILL');
+      raw.close();
+      await f.dispose();
+    }
+  },
+);
+await test(
+  'MOCK SQLite: SIGKILL after an agent prelinks its Run recovers one publication without relaunch',
+  { timeout: 30000 },
+  async () => {
+    const f = await inboxFixture();
+    const children: ChildProcess[] = [];
+    const raw = new Database(f.dbPath);
+    raw.pragma('busy_timeout=5000');
+    try {
+      const task = f.create({ owner: { kind: 'agent', id: f.agent.id } }).task;
+      const originalWorker = worker(f.configPath, 'prelinked-hold');
+      children.push(originalWorker);
+      await until(
+        () =>
+          raw.prepare('SELECT count(*) FROM task_executions').pluck().get() ===
+          1,
+      );
+      const original = f.rows()[0];
+      assert.ok(original);
+      assert.ok(original.reference);
+      const stale = Claim.parse(original);
+      const requestId: unknown = raw
+        .prepare('SELECT request_id FROM execution_operations')
+        .pluck()
+        .get();
+      assert.equal(typeof requestId, 'string');
+      await stop(originalWorker, 'SIGKILL');
+      assert.equal(
+        f.inbox.claim([f.agent.id]),
+        undefined,
+        'Crash cannot release the live lease',
+      );
+      due(f.dbPath, true);
+      const recovery = worker(f.configPath);
+      children.push(recovery);
+      await until(() => f.inbox.get(original.id).state === 'acked');
+      await stop(recovery);
+      const result = f.inbox.get(original.id);
+      assert.equal(result.generation, original.generation + 1);
+      assert.equal(result.reference, original.reference);
+      assert.equal(result.launch, original.launch);
+      assert.equal(
+        raw.prepare('SELECT count(*) FROM task_executions').pluck().get(),
+        1,
+      );
+      assert.equal(
+        raw.prepare('SELECT count(*) FROM inbox_results').pluck().get(),
+        1,
+      );
+      assert.equal(
+        raw.prepare('SELECT count(*) FROM agent_correlations').pluck().get(),
+        1,
+      );
+      assert.equal(
+        raw.prepare('SELECT task_link_id FROM inbox_results').pluck().get(),
+        raw.prepare('SELECT id FROM task_executions').pluck().get(),
+      );
+      assert.equal(
+        raw
+          .prepare('SELECT request_id FROM execution_operations')
+          .pluck()
+          .get(),
+        requestId,
+      );
+      assert.equal(
+        raw
+          .prepare('SELECT count(*) FROM fixture_native_launches')
+          .pluck()
+          .get(),
+        1,
+      );
+      assert.equal(
+        raw
+          .prepare('SELECT transmissions FROM fixture_native_launches')
+          .pluck()
+          .get(),
+        1,
+        'A remembered Run is read, never relaunched',
+      );
+      assert.ok(result.resultMessageId);
+      assert.equal(
+        f.comm.message(
+          f.principal,
+          f.teamId,
+          f.channelId,
+          result.resultMessageId,
+        ).sourceEventId,
+        original.eventId,
+      );
+      assert.equal(
+        f.tasks.get(f.principal, f.teamId, f.channelId, task.id).state.status,
+        'in-progress',
+      );
+      assert.throws(() =>
+        f.inbox.ack(stale, f.workerPrincipal, fixtureResult()),
+      );
+    } finally {
+      for (const child of children) await stop(child, 'SIGKILL');
       raw.close();
       await f.dispose();
     }
