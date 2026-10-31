@@ -6,7 +6,7 @@ import type { WorkspaceSnapshot } from '../src/workspace/contracts.js';
 import { value } from './api.js';
 import { ActionForm, Field } from './forms.js';
 import { authorName } from './names.js';
-import { Avatar, shortTime } from './ui.js';
+import { Avatar, shortTime, wakeOf } from './ui.js';
 
 type ChatMessage = z.infer<typeof Message>;
 const mentionQuery = /(?:^|\s)@([\w.-]{0,40})$/;
@@ -26,12 +26,14 @@ function Composer({
   channelPath,
   topicId,
   agents,
+  connected,
   onDone,
 }: {
   channelName: string;
   channelPath: string;
   topicId: string;
   agents: Agent[];
+  connected: (agentId: string) => boolean;
   onDone: () => void;
 }) {
   const [chips, setChips] = useState<Agent[]>([]);
@@ -137,7 +139,11 @@ function Composer({
                 >
                   <Avatar kind="agent" name={agent.name} size="sm" />
                   <span className="person-name">{agent.name}</span>
-                  <small>Agent · {agent.role}</small>
+                  <small>
+                    {connected(agent.id)
+                      ? 'Agent · ' + agent.role
+                      : 'Not connected · won’t wake'}
+                  </small>
                 </li>
               ))}
             </ul>
@@ -455,6 +461,7 @@ export function Chat({
         channelPath={channelPath}
         topicId={topic}
         agents={joinedAgents}
+        connected={(id) => wakeOf(data.wake, id).connected}
         onDone={onDone}
       />
       <details className="channel-details">

@@ -6,7 +6,9 @@ import { join } from 'node:path';
 import { randomBytes } from 'node:crypto';
 import { createServer } from 'node:net';
 import { setTimeout as delay } from 'node:timers/promises';
-export const test = base.extend<{ hub: { origin: string; setup: string } }>({
+export const test = base.extend<{
+  hub: { origin: string; setup: string; database: string };
+}>({
   hub: async ({}, use) => {
     const dir = mkdtempSync(join(tmpdir(), 'kinmesh-browser-'));
     chmodSync(dir, 0o700);
@@ -67,7 +69,7 @@ export const test = base.extend<{ hub: { origin: string; setup: string } }>({
         await delay(100);
       }
       if (!ready) throw new Error('Disposable Kinmesh startup failed');
-      await use({ origin, setup });
+      await use({ origin, setup, database: join(dir, 'team.sqlite') });
     } finally {
       child.kill('SIGTERM');
       const graceful = await Promise.race([

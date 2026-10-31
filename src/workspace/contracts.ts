@@ -27,6 +27,16 @@ export const WorkspaceSnapshot = z.strictObject({
   agents: z.array(Agent).max(100),
   agentsTruncated: z.boolean(),
   joinedAgentIds: z.array(AgentId).max(100),
+  /** Inbox worker liveness per agent; absent means no worker has ever claimed it. */
+  wake: z
+    .array(
+      z.strictObject({
+        agentId: AgentId,
+        connected: z.boolean(),
+        lastSeenAt: z.iso.datetime(),
+      }),
+    )
+    .max(100),
   messages: pageOf(Message),
   topics: pageOf(Topic),
   tasks: pageOf(Task),

@@ -12,7 +12,7 @@ import type {
 } from '../src/workspace/contracts.js';
 import { api, HttpError, value } from './api.js';
 import { ActionForm, Field, Notice } from './forms.js';
-import { Avatar, Drawer, shortTime } from './ui.js';
+import { Avatar, Drawer, shortTime, WakeLabel, wakeOf } from './ui.js';
 function NativeStatus({
   correlation,
   teamId,
@@ -310,6 +310,7 @@ export function AgentDrawer({
                 {agent.lifecycle}
               </span>
             </p>
+            <WakeLabel wake={data.wake} agentId={agent.id} />
           </div>
         </header>
         <h3>Profile</h3>
@@ -403,6 +404,13 @@ export function Team({
           </p>
         </ActionForm>
       </details>
+      {data.agents.length > 0 &&
+        !data.agents.some((a) => wakeOf(data.wake, a.id).connected) && (
+          <p className="roster-note">
+            No agent can be woken yet. Mentions are kept, but nobody will act on
+            them until an Inbox worker is running for that agent.
+          </p>
+        )}
       <ul className="roster">
         <li className="roster-row" data-kind="human">
           <Avatar kind="human" name={data.human.username} />
@@ -423,6 +431,7 @@ export function Team({
             <Avatar kind="agent" name={agent.name} />
             <div className="roster-identity">
               <h3>{agent.name}</h3>
+              <WakeLabel wake={data.wake} agentId={agent.id} />
               <p>
                 {agent.role} · {agent.lifecycle}
                 {agent.preferences.modelId && (

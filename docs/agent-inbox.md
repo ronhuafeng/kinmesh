@@ -87,6 +87,12 @@ WantedBy=multi-user.target
 
 `SIGTERM`/`SIGINT` stop claiming, abort in-flight adapter work and wait for cleanup before closing SQLite. Native execution is not implicitly interrupted on worker shutdown. A killed process leaves its durable leases; a successor waits for expiry and reconciles the original intent. SDK connection/discovery requests retain their bounded SDK deadlines; the worker deadline prevents a subsequent late launch. A forced supervisor kill also follows lease recovery. Fixed readiness/stopped/error lines omit credentials and team content. Startup readiness means the loop/database started, not that OAuth, Team MCP or a Provider passed a live check. `inbox:status` prints aggregate delivery counts only. An independently deployed worker does not affect the human service's `/health`; the optional child-supervision health policy is described above.
 
+### Worker liveness ("can be woken")
+
+Each running worker records, at most every 10 seconds, one `inbox_bindings` row per configured agent in the shared database. A clean stop deletes its rows; a crashed worker's rows go stale. The workspace projects these rows as `wake` in `GET /api/workspace` and shows an agent as **Can be woken** while its row is under 90 seconds old (three of the slowest allowed polls), otherwise as **Not connected** with the last time seen.
+
+Liveness only means "a worker would claim this agent's wakes now". It does not prove T3 OAuth validity, Provider isolation, Team MCP reachability or model capability, and it confers no authority. Mentions of an unconnected agent are still recorded and enqueued; they wait (up to the 7-day delivery lifetime) for a worker. With replicas, one replica's clean stop briefly withdraws liveness until another replica's next heartbeat.
+
 ## Wake policy and causality
 
 New committed human-authored messages route **structured mentions** to active joined agent targets. Display-name `@text` alone does nothing. Human task assignment, explicit work/reviewer handoff, request-review, rework and reviewer-requested rework route the responsible agent. A reviewer is targeted only while review is requested; work owners are targeted only while work/rework is active. Self-authored task changes, progress, claims, execution links, acceptance/cancellation and ordinary agent chat do not generate wakes.

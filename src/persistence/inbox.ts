@@ -503,6 +503,48 @@ export function inboxRepository(
         history(get(id), 'operator-resume');
       });
     },
+    /** Liveness only, never authority: unknown or foreign agent IDs are ignored. */
+    heartbeat(agentIds: string[]) {
+      const ids = z.array(AgentId).parse(agentIds);
+      if (ids.length === 0) return;
+      atomic(() => {
+        for (const agent of db
+          .select({ id: s.agents.id, teamId: s.agents.teamId })
+          .from(s.agents)
+          .where(inArray(s.agents.id, ids))
+          .all())
+          db.insert(s.inboxBindings)
+            .values({
+              agentId: agent.id,
+              teamId: agent.teamId,
+              lastSeenAt: sqliteNow,
+            })
+            .onConflictDoUpdate({
+              target: s.inboxBindings.agentId,
+              set: { lastSeenAt: sqliteNow },
+            })
+            .run();
+      });
+    },
+    /** A clean stop withdraws liveness at once instead of waiting for it to go stale. */
+    release(agentIds: string[]) {
+      const ids = z.array(AgentId).parse(agentIds);
+      if (ids.length === 0) return;
+      db.delete(s.inboxBindings)
+        .where(inArray(s.inboxBindings.agentId, ids))
+        .run();
+    },
+    /** Last worker heartbeat per agent of one team (milliseconds since epoch). */
+    liveness(teamId: string) {
+      return db
+        .select({
+          agentId: s.inboxBindings.agentId,
+          lastSeenAt: s.inboxBindings.lastSeenAt,
+        })
+        .from(s.inboxBindings)
+        .where(eq(s.inboxBindings.teamId, teamId))
+        .all();
+    },
     status() {
       return db
         .select({ state: t.state, count: sql<number>`count(*)` })

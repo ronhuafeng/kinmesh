@@ -64,6 +64,35 @@ export function age(iso: string, now = Date.now()) {
     ? `${String(hours)}h`
     : `${String(Math.round(hours / 24))}d`;
 }
+/** Whether an Inbox worker would wake this agent now (never "online"). */
+export function wakeOf(
+  wake: readonly { agentId: string; connected: boolean; lastSeenAt: string }[],
+  agentId: string,
+) {
+  const row = wake.find((w) => w.agentId === agentId);
+  return {
+    connected: row?.connected ?? false,
+    lastSeenAt: row?.lastSeenAt ?? null,
+  };
+}
+export function WakeLabel({
+  wake,
+  agentId,
+}: {
+  wake: readonly { agentId: string; connected: boolean; lastSeenAt: string }[];
+  agentId: string;
+}) {
+  const state = wakeOf(wake, agentId);
+  return (
+    <span className="wake-label" data-wake={state.connected ? 'on' : 'off'}>
+      {state.connected
+        ? 'Can be woken'
+        : state.lastSeenAt
+          ? `Not connected · last seen ${age(state.lastSeenAt)} ago`
+          : 'Not connected'}
+    </span>
+  );
+}
 export function plural(count: number, noun: string) {
   return `${String(count)} ${noun}${count === 1 ? '' : 's'}`;
 }
