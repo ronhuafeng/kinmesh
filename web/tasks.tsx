@@ -176,7 +176,11 @@ function TaskCard({
       ? 'review'
       : selected;
   return (
-    <article className="task-card" aria-label={task.title}>
+    <article
+      className="task-card"
+      data-status={task.state.status}
+      aria-label={task.title}
+    >
       <header>
         <span className={'badge ' + task.state.status}>
           {task.state.status}

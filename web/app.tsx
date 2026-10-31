@@ -238,7 +238,7 @@ export function App() {
                   : 'Create or rejoin a channel to begin.'}
               </p>
             </div>
-            <div className="connection">
+            <div className="connection" data-state={status}>
               <span role="status">
                 {status === 'ready'
                   ? 'Snapshot connected'
@@ -330,8 +330,13 @@ export function App() {
                     <ol className="messages" aria-label="Channel messages">
                       {data.messages.items.map((m) => (
                         <li key={m.id}>
-                          <div className={'message-avatar ' + m.author.kind}>
-                            {m.author.kind === 'human' ? 'H' : 'A'}
+                          <div
+                            className={'message-avatar ' + m.author.kind}
+                            aria-hidden="true"
+                          >
+                            {authorName(m.author, data)
+                              .slice(0, 1)
+                              .toUpperCase()}
                           </div>
                           <div>
                             <header>
