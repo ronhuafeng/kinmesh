@@ -65,6 +65,9 @@ await test('CI: native Provider/model gates exist only on explicit trusted manua
   const workflow = source('../.github/workflows/t3-live.yml');
   assert.match(workflow, /^on:\n  workflow_dispatch:\npermissions:/m);
   assert.ok(workflow.includes('runs-on: [self-hosted, kinmesh-t3-acceptance]'));
+  const mainGuard = workflow.indexOf('test "$GITHUB_REF" = "refs/heads/main"');
+  const checkout = workflow.indexOf('uses: actions/checkout@v4');
+  assert.ok(mainGuard > 0 && checkout > mainGuard);
   assert.ok(workflow.includes('npm run release:check'));
   assert.doesNotMatch(workflow, /continue-on-error\s*:/);
 });
