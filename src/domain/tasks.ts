@@ -106,12 +106,9 @@ export function retainsExecutionResponsibility(task: Task, agentId: AgentId) {
   const state = task.state;
   return (
     state.status !== 'cancelled' &&
+    state.status !== 'proposed' &&
     ((state.owner?.kind === 'agent' && state.owner.id === agentId) ||
-      (['review-requested', 'awaiting-human', 'accepted'].includes(
-        state.status,
-      ) &&
-        state.reviewer?.kind === 'agent' &&
-        state.reviewer.id === agentId))
+      (state.reviewer?.kind === 'agent' && state.reviewer.id === agentId))
   );
 }
 const CommandBase = Mutation.extend({

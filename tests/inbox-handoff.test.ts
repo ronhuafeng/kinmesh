@@ -77,7 +77,14 @@ await test('MOCK native: retry after developer handoff reads the existing Run an
   }
 });
 
-for (const outcome of ['awaiting-human', 'accepted', 'cancelled', 'revoked'])
+for (const outcome of [
+  'awaiting-human',
+  'accepted',
+  'rework-requested',
+  'in-progress',
+  'cancelled',
+  'revoked',
+])
   await test(`MOCK native: reviewer settlement respects ${outcome}`, async () => {
     const f = await inboxFixture();
     try {
@@ -131,6 +138,17 @@ for (const outcome of ['awaiting-human', 'accepted', 'cancelled', 'revoked'])
               type: 'cancel',
               note: 'The designated human cancels before publication.',
             }).task;
+          if (outcome === 'rework-requested' || outcome === 'in-progress') {
+            task = f.act(f.principal, task, {
+              type: 'rework',
+              note: 'Human requests another pass while the old Run settles.',
+            }).task;
+            if (outcome === 'in-progress')
+              task = f.act(f.developer, task, {
+                type: 'progress',
+                note: 'Developer has started the human-requested rework.',
+              }).task;
+          }
           if (outcome === 'revoked')
             f.store.agents.revoke(
               f.principal,

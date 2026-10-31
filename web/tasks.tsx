@@ -70,6 +70,7 @@ function TaskHistory({
   const [history, setHistory] = useState<z.infer<typeof TaskEvent>[]>([]);
   const [links, setLinks] = useState<z.infer<typeof TaskExecution>[]>([]);
   const [error, setError] = useState('');
+  const [refresh, setRefresh] = useState(0);
   useEffect(() => {
     const controller = new AbortController();
     void Promise.all([
@@ -87,9 +88,18 @@ function TaskHistory({
     return () => {
       controller.abort();
     };
-  }, [path, task.version, data.observedAt]);
+  }, [path, task.version, refresh]);
   return (
     <div className="task-history">
+      <button
+        type="button"
+        className="quiet"
+        onClick={() => {
+          setRefresh((value) => value + 1);
+        }}
+      >
+        Refresh activity
+      </button>
       {error && <Notice>{error}</Notice>}
       <h4>Decision history</h4>
       <ol>
