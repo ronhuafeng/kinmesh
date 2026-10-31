@@ -29,6 +29,48 @@ export function memberName(
       : 'Human member'
     : (data.agents.find((a) => a.id === member.id)?.name ?? 'Agent member');
 }
+/** What the signed-in human must decide or do next, if anything. */
+export function humanAsk(task: Task, data: WorkspaceSnapshot): string | null {
+  const me = memberKey({ kind: 'human', id: data.human.id });
+  const { status, owner, reviewer } = task.state;
+  if (status === 'awaiting-human' && task.acceptorHumanId === data.human.id)
+    return 'Accept or send back';
+  if (status === 'review-requested' && memberKey(reviewer) === me)
+    return 'Review requested';
+  if (status === 'rework-requested' && memberKey(owner) === me)
+    return 'Rework requested';
+  return null;
+}
+const stages = [
+  { label: 'Proposed', statuses: ['proposed'] },
+  { label: 'Working', statuses: ['in-progress', 'rework-requested'] },
+  { label: 'Review', statuses: ['review-requested'] },
+  { label: 'Human sign-off', statuses: ['awaiting-human'] },
+  { label: 'Done', statuses: ['accepted'] },
+];
+function Lifecycle({ status }: { status: Task['state']['status'] }) {
+  const current = stages.findIndex((s) => s.statuses.includes(status));
+  if (current < 0) return null;
+  return (
+    <ol className="lifecycle" aria-label="Task progress">
+      {stages.map((stage, index) => (
+        <li
+          key={stage.label}
+          data-step={
+            index < current || status === 'accepted'
+              ? 'done'
+              : index === current
+                ? 'current'
+                : 'todo'
+          }
+          aria-current={index === current ? 'step' : undefined}
+        >
+          <span>{stage.label}</span>
+        </li>
+      ))}
+    </ol>
+  );
+}
 export function MemberSelect({
   name,
   id,
@@ -176,7 +218,12 @@ function TaskCard({
       ? 'review'
       : selected;
   return (
-    <article className="task-card" aria-label={task.title}>
+    <article
+      className="task-card"
+      data-status={task.state.status}
+      data-ask={humanAsk(task, data) ? 'true' : undefined}
+      aria-label={task.title}
+    >
       <header>
         <span className={'badge ' + task.state.status}>
           {task.state.status}
@@ -184,7 +231,8 @@ function TaskCard({
         <small>v{task.version}</small>
       </header>
       <h3>{task.title}</h3>
-      <p>{task.description}</p>
+      <Lifecycle status={task.state.status} />
+      {task.description && <p>{task.description}</p>}
       <ul className="criteria">
         {task.criteria.map((c) => (
           <li key={c}>{c}</li>
@@ -302,14 +350,25 @@ export function Tasks({
   onDone: () => void;
   next: () => void;
 }) {
+  const items = data.tasks.items;
+  const isClosed = (t: Task) =>
+    t.state.status === 'accepted' || t.state.status === 'cancelled';
+  const needs = items.filter((t) => humanAsk(t, data) !== null);
+  const closed = items.filter(isClosed);
+  const moving = items.filter((t) => !isClosed(t) && !needs.includes(t));
+  const open = items.length - closed.length;
+  const lanes = [
+    { id: 'needs', title: 'Needs you', tasks: needs },
+    { id: 'moving', title: 'In motion', tasks: moving },
+    { id: 'closed', title: 'Closed', tasks: closed },
+  ];
   return (
     <section className="tasks-view">
       <div className="section-heading">
-        <div>
-          <p className="eyebrow">Responsibility, made visible</p>
-          <h2>Team tasks</h2>
-        </div>
-        <span>{data.tasks.items.length} in this page</span>
+        <h2>Tasks</h2>
+        <span>
+          {open} open · {closed.length} closed
+        </span>
       </div>
       <details className="create-panel">
         <summary>Create task</summary>
@@ -355,21 +414,40 @@ export function Tasks({
           </Field>
         </ActionForm>
       </details>
-      <div className="task-grid">
-        {data.tasks.items.map((task) => (
-          <TaskCard
-            key={task.id}
-            task={task}
-            data={data}
-            path={channelPath + '/tasks/' + task.id}
-            onDone={onDone}
-          />
-        ))}
-      </div>
+      {lanes.map(
+        (lane) =>
+          lane.tasks.length > 0 && (
+            <section
+              className="task-lane"
+              data-lane={lane.id}
+              key={lane.id}
+              aria-label={lane.title}
+            >
+              <h3 className="lane-heading">
+                {lane.title} <span>{lane.tasks.length}</span>
+              </h3>
+              <div className="task-grid">
+                {lane.tasks.map((task) => (
+                  <TaskCard
+                    key={task.id}
+                    task={task}
+                    data={data}
+                    path={channelPath + '/tasks/' + task.id}
+                    onDone={onDone}
+                  />
+                ))}
+              </div>
+            </section>
+          ),
+      )}
       {data.tasks.items.length === 0 && (
-        <p className="empty">
-          A clear task gives the team a shared next step. Create the first one.
-        </p>
+        <div className="empty">
+          <h3>No promises yet</h3>
+          <p>
+            A task turns a conversation into a clear next step, with a human
+            sign-off at the end.
+          </p>
+        </div>
       )}
       {data.tasks.nextCursor && <button onClick={next}>Next tasks page</button>}
     </section>
