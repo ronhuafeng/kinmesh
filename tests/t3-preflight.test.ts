@@ -201,9 +201,9 @@ const failures: {
     rewrite: (r) => patch(r, { serverVersion: '0.1.4' }),
   },
   {
-    name: 'future version',
+    name: 'malformed version',
     path: DESCRIPTOR,
-    rewrite: (r) => patch(r, { serverVersion: '0.1.6' }),
+    rewrite: (r) => patch(r, { serverVersion: '0.1.6-beta' }),
   },
   {
     name: 'missing environment ID',
