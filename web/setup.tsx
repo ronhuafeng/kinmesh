@@ -37,6 +37,7 @@ const T3Status = z.object({
       endpoint: z.string(),
       environmentId: z.string(),
       connectedAt: z.string(),
+      access: z.enum(['operate', 'read']).nullable(),
     })
     .nullable(),
   signIn: z.enum(['waiting', 'failed']).nullable(),
@@ -196,257 +197,179 @@ function useT3(teamId: string) {
   }, [status?.signIn, load]);
   return { status, load };
 }
-function T3Step({
+/** One thing to do now: the only control on screen until it is done. */
+function NextStep({ title, children }: { title: string; children: ReactNode }) {
+  return (
+    <div className="next-step" role="group" aria-label={title}>
+      <strong>{title}</strong>
+      {children}
+    </div>
+  );
+}
+/**
+ * Connect the team to T3 once. The T3 desktop app on this machine is found
+ * on its own; another T3 takes its MCP URL.
+ */
+function ConnectT3({
   teamId,
   t3,
   reload,
+  agentName,
 }: {
   teamId: string;
   t3: T3Status | null;
   reload: () => void;
+  agentName: string;
 }) {
   const { run, busy, error, permitted } = useRequest();
   const [approval, setApproval] = useState<string | null>(null);
-  const [replacing, setReplacing] = useState(false);
-  const connection = t3?.connection ?? null;
-  const connectedAt = connection?.connectedAt;
+  const [local, setLocal] = useState<string | null | undefined>(undefined);
+  const [other, setOther] = useState(false);
   useEffect(() => {
-    setReplacing(false);
-    setApproval(null);
-  }, [connectedAt]);
-  if (connection && !replacing)
-    return (
-      <Row step="done" title="T3 connected">
-        <p className="muted">
-          {new URL(connection.endpoint).host} · environment{' '}
-          {connection.environmentId} ·{' '}
-          <button
-            type="button"
-            className="link-button"
-            onClick={() => {
-              setReplacing(true);
-            }}
-          >
-            Reconnect
-          </button>
-        </p>
-      </Row>
-    );
+    void api(`/api/teams/${teamId}/t3/local`)
+      .then((raw) => {
+        setLocal(
+          z.object({ endpoint: z.string().nullable() }).parse(raw).endpoint,
+        );
+      })
+      .catch(() => {
+        setLocal(null);
+      });
+  }, [teamId]);
+  const connection = t3?.connection ?? null;
+  const readOnly = connection?.access === 'read';
   const waiting = t3?.signIn === 'waiting' && approval !== null;
+  const start = (endpoint: string) => {
+    void run(`/api/teams/${teamId}/t3/connect`, {
+      endpoint,
+      replace: connection !== null,
+    }).then((raw) => {
+      if (raw === undefined) return;
+      setApproval(
+        z.object({ authorizationUrl: z.string().nullable() }).parse(raw)
+          .authorizationUrl,
+      );
+      reload();
+    });
+  };
+  const askForUrl = other || local === null;
   return (
-    <Row step="todo" title="Connect T3">
+    <NextStep title={readOnly ? 'Give T3 permission to run' : 'Connect T3'}>
       <p className="muted">
-        One approval for the whole team. In T3, choose Read only or Supervised,
-        never Full access.
+        {readOnly
+          ? `T3 only allowed reading, so ${agentName} can’t run there. Connect again and choose Supervised.`
+          : local && !other
+            ? `T3 is running on this Mac. Connect it once for the whole team.`
+            : `Paste the MCP URL from T3: Settings → Environments → Copy MCP URL.`}
       </p>
-      <form
-        className="t3-connect"
-        onSubmit={(event) => {
-          event.preventDefault();
-          const endpoint = new FormData(event.currentTarget).get('endpoint');
-          void run(`/api/teams/${teamId}/t3/connect`, {
-            endpoint: typeof endpoint === 'string' ? endpoint.trim() : '',
-            replace: connection !== null,
-          }).then((raw) => {
-            if (raw === undefined) return;
-            setApproval(
-              z.object({ authorizationUrl: z.string().nullable() }).parse(raw)
-                .authorizationUrl,
-            );
-            reload();
-          });
-        }}
-      >
-        <Field
-          label="T3 MCP URL"
-          hint="In T3: Settings → Environments → Copy MCP URL"
-        >
-          <input
-            name="endpoint"
-            type="url"
-            required
-            placeholder="https://t3.example/mcp"
-            defaultValue={connection?.endpoint ?? ''}
-          />
-        </Field>
-        <div className="token-actions">
-          <button type="submit" disabled={!permitted || busy || waiting}>
-            {busy ? 'Starting…' : 'Connect T3'}
-          </button>
-          {waiting && (
-            <>
-              <a
-                className="button-link"
-                href={approval}
-                target="_blank"
-                rel="noopener noreferrer"
-              >
-                Approve in T3 ↗
-              </a>
-              <span className="muted" role="status">
-                Waiting for your approval…
-              </span>
-            </>
-          )}
+      {waiting ? (
+        <div className="approve">
+          <a
+            className="button-link"
+            href={approval}
+            target="_blank"
+            rel="noopener noreferrer"
+          >
+            Approve in T3 ↗
+          </a>
+          <span className="muted" role="status">
+            Waiting for your approval…
+          </span>
+          <ul className="approve-hints">
+            <li>
+              Choose <strong>Supervised</strong>, so {agentName} can run.
+            </li>
+            <li>
+              Asked for a pairing code? Create one in T3 under Settings →
+              Sharing &amp; access.
+            </li>
+          </ul>
         </div>
-      </form>
+      ) : (
+        <form
+          className="t3-connect"
+          onSubmit={(event) => {
+            event.preventDefault();
+            const typed = new FormData(event.currentTarget).get('endpoint');
+            const endpoint =
+              askForUrl && typeof typed === 'string' ? typed.trim() : local;
+            if (endpoint) start(endpoint);
+          }}
+        >
+          {askForUrl && local !== undefined && (
+            <Field label="T3 MCP URL">
+              <input
+                name="endpoint"
+                type="url"
+                required
+                placeholder="https://t3.example/mcp"
+                defaultValue={connection?.endpoint ?? ''}
+              />
+            </Field>
+          )}
+          <div className="token-actions">
+            <button
+              type="submit"
+              disabled={!permitted || busy || local === undefined}
+            >
+              {busy ? 'Starting…' : 'Connect T3'}
+            </button>
+            {local && (
+              <button
+                type="button"
+                className="link-button"
+                onClick={() => {
+                  setOther((v) => !v);
+                }}
+              >
+                {other ? 'Use T3 on this Mac' : 'Use another T3'}
+              </button>
+            )}
+          </div>
+        </form>
+      )}
       {t3?.signIn === 'failed' && (
         <Notice>T3 didn’t approve the connection. Try again.</Notice>
       )}
       {error && <Notice>{error}</Notice>}
-      <details className="technical">
-        <summary>Technical details</summary>
-        <p>
-          The approval returns to this machine (127.0.0.1:49871), so approve in
-          a browser on the computer running Kinmesh. Otherwise run{' '}
-          <code>npm run t3:auth</code> there. The credential is saved in
-          Kinmesh’s private directory, never in the browser.
-        </p>
-      </details>
-    </Row>
+    </NextStep>
   );
 }
-function ProviderStep({
+/** Pick what the agent runs on, as one choice: provider and model together. */
+function ChooseModel({
   agent,
   data,
-}: {
-  agent: Agent;
-  data: WorkspaceSnapshot;
-}) {
-  const { run, busy, error, permitted } = useRequest();
-  const [token, setToken] = useState<string | null>(null);
-  const seen = data.teamMcp.find((p) => p.agentId === agent.id)?.lastSeenAt;
-  return (
-    <Row
-      step={seen ? 'done' : 'manual'}
-      title={`${agent.name}’s provider in T3`}
-    >
-      <p className="muted">
-        In T3, give {agent.name} an isolated provider that uses Kinmesh’s Team
-        MCP (<code>{TEAM_MCP_URL}</code> by default) with its own credential.
-        Kinmesh never changes T3’s settings.
-      </p>
-      <p className="muted">
-        {seen
-          ? `${agent.name} reached Team MCP ${ago(seen)}.`
-          : `This turns done the first time ${agent.name} reaches Team MCP.`}
-      </p>
-      {token ? (
-        <TokenOnce
-          token={token}
-          agent={agent}
-          where={`Paste it into ${agent.name}’s provider in T3 as its Team MCP bearer token.`}
-          onDismiss={() => {
-            setToken(null);
-          }}
-        />
-      ) : (
-        <div className="token-actions">
-          <button
-            type="button"
-            className="secondary"
-            disabled={!permitted || busy || agent.lifecycle !== 'active'}
-            onClick={() => {
-              void run(`/api/teams/${data.team.id}/agents/${agent.id}/grants`, {
-                label: 'Team MCP',
-                scopes: TEAM_MCP_SCOPES,
-                lifetimeSeconds: 90 * 86400,
-              }).then((raw) => {
-                if (raw !== undefined) setToken(Issued.parse(raw).token);
-              });
-            }}
-          >
-            Issue Team MCP credential
-          </button>
-        </div>
-      )}
-      {error && <Notice>{error}</Notice>}
-    </Row>
-  );
-}
-function ConnectStep({
-  agent,
-  data,
-  t3,
   onDone,
+  onCancel,
 }: {
   agent: Agent;
   data: WorkspaceSnapshot;
-  t3: T3Status | null;
   onDone: () => void;
+  onCancel?: () => void;
 }) {
   const { run, busy, error, permitted } = useRequest();
-  const managed = data.managed.find((m) => m.agentId === agent.id);
-  const [changing, setChanging] = useState(false);
   const [offered, setOffered] = useState<
     z.infer<typeof Providers>['providers'] | 'unavailable' | null
   >(null);
-  const [provider, setProvider] = useState('');
-  const connected = t3?.connection != null;
-  const choosing = connected && (!managed || changing);
-  const base = `/api/teams/${data.team.id}/agents/${agent.id}`;
   useEffect(() => {
-    if (!choosing) return;
     void api(`/api/teams/${data.team.id}/t3/providers`)
       .then((raw) => {
-        const list = Providers.parse(raw).providers;
-        setOffered(list);
-        setProvider(
-          (current) =>
-            current ||
-            (list.find((p) => p.id === agent.preferences.providerId)?.id ??
-              list[0]?.id ??
-              ''),
+        setOffered(
+          Providers.parse(raw).providers.filter((p) => p.models.length > 0),
         );
       })
       .catch(() => {
         setOffered('unavailable');
       });
-  }, [choosing, data.team.id, agent.preferences.providerId]);
-  const title = `Connect ${agent.name}`;
-  if (managed && !changing)
-    return (
-      <Row step="done" title={`${agent.name} is connected`}>
-        <p className="muted">
-          Runs on {managed.providerId} · {agent.preferences.modelId} ·{' '}
-          <button
-            type="button"
-            className="link-button"
-            onClick={() => {
-              setChanging(true);
-            }}
-          >
-            Change
-          </button>{' '}
-          ·{' '}
-          <button
-            type="button"
-            className="link-button subtle-danger"
-            disabled={!permitted || busy}
-            onClick={() => {
-              void run(base + '/disconnect').then((ok) => {
-                if (ok !== undefined) onDone();
-              });
-            }}
-          >
-            Disconnect
-          </button>
-        </p>
-        {error && <Notice>{error}</Notice>}
-      </Row>
-    );
-  if (!connected)
-    return (
-      <Row step="todo" title={title}>
-        <p className="muted">Connect T3 first.</p>
-      </Row>
-    );
-  const models =
-    offered !== null && offered !== 'unavailable'
-      ? (offered.find((p) => p.id === provider)?.models ?? [])
-      : [];
+  }, [data.team.id]);
+  const prefs = agent.preferences;
+  const current =
+    prefs.providerId && prefs.modelId
+      ? prefs.providerId + '\n' + prefs.modelId
+      : '';
+  const title = `Choose what ${agent.name} runs on`;
   return (
-    <Row step="todo" title={title}>
+    <NextStep title={title}>
       <form
         className="agent-connect"
         aria-label={title}
@@ -457,75 +380,66 @@ function ConnectStep({
             const v = form.get(key);
             return typeof v === 'string' ? v.trim() : '';
           };
-          void run(base + '/connect', {
-            providerId: read('providerId'),
-            modelId: read('modelId'),
-            providerConfigured: form.get('providerConfigured') === 'on',
+          const [providerId = '', modelId = ''] = read('model').includes('\n')
+            ? read('model').split('\n')
+            : [read('providerId'), read('modelId')];
+          void run(`/api/teams/${data.team.id}/agents/${agent.id}/connect`, {
+            providerId,
+            modelId,
           }).then((ok) => {
-            if (ok === undefined) return;
-            setChanging(false);
-            onDone();
+            if (ok !== undefined) onDone();
           });
         }}
       >
         {offered === null ? (
-          <p className="muted">Reading providers from T3…</p>
-        ) : offered === 'unavailable' ? (
+          <p className="muted">Asking T3 what it can run…</p>
+        ) : offered === 'unavailable' || offered.length === 0 ? (
           <>
             <p className="muted">
-              T3 didn’t list its providers; type them as T3 shows them.
+              T3 didn’t list its models; type them as T3 shows them.
             </p>
             <div className="field-row">
               <Field label="Provider">
-                <input name="providerId" required />
+                <input
+                  name="providerId"
+                  required
+                  defaultValue={prefs.providerId ?? ''}
+                />
               </Field>
               <Field label="Model">
-                <input name="modelId" required />
+                <input
+                  name="modelId"
+                  required
+                  defaultValue={prefs.modelId ?? ''}
+                />
               </Field>
             </div>
           </>
         ) : (
-          <div className="field-row">
-            <Field label="Provider">
-              <select
-                name="providerId"
-                required
-                value={provider}
-                onChange={(e) => {
-                  setProvider(e.target.value);
-                }}
-              >
-                {offered.map((p) => (
-                  <option key={p.id} value={p.id}>
-                    {p.id}
-                  </option>
-                ))}
-              </select>
-            </Field>
-            <Field label="Model">
-              <select
-                name="modelId"
-                required
-                key={provider}
-                defaultValue={
-                  models.includes(agent.preferences.modelId ?? '')
-                    ? (agent.preferences.modelId ?? '')
-                    : models[0]
-                }
-              >
-                {models.map((m) => (
-                  <option key={m} value={m}>
-                    {m}
-                  </option>
-                ))}
-              </select>
-            </Field>
-          </div>
+          <Field label="Model">
+            <select
+              name="model"
+              required
+              defaultValue={
+                offered.some((p) =>
+                  p.models.some((m) => p.id + '\n' + m === current),
+                )
+                  ? current
+                  : undefined
+              }
+            >
+              {offered.map((p) => (
+                <optgroup key={p.id} label={p.id}>
+                  {p.models.map((m) => (
+                    <option key={m} value={p.id + '\n' + m}>
+                      {m}
+                    </option>
+                  ))}
+                </optgroup>
+              ))}
+            </select>
+          </Field>
         )}
-        <label className="check">
-          <input type="checkbox" name="providerConfigured" required />
-          This provider is {agent.name}’s, set up in T3 as described above
-        </label>
         <div className="token-actions">
           <button
             type="submit"
@@ -536,23 +450,69 @@ function ConnectStep({
               agent.lifecycle !== 'active'
             }
           >
-            {busy ? 'Connecting…' : title}
+            {busy ? 'Connecting…' : `Connect ${agent.name}`}
           </button>
-          {changing && (
-            <button
-              type="button"
-              className="quiet"
-              onClick={() => {
-                setChanging(false);
-              }}
-            >
+          {onCancel && (
+            <button type="button" className="quiet" onClick={onCancel}>
               Keep current
             </button>
           )}
         </div>
       </form>
       {error && <Notice>{error}</Notice>}
-    </Row>
+    </NextStep>
+  );
+}
+/**
+ * Optional: let the agent read and act in Kinmesh while it works (Team MCP).
+ * Without it the agent still answers; its reply comes back as a message.
+ */
+function TeamMcp({ agent, data }: { agent: Agent; data: WorkspaceSnapshot }) {
+  const { run, busy, error, permitted } = useRequest();
+  const [token, setToken] = useState<string | null>(null);
+  const seen = data.teamMcp.find((p) => p.agentId === agent.id)?.lastSeenAt;
+  return (
+    <div className="more-section">
+      <p className="muted">
+        {agent.name} answers without this. To let it also read the channel, take
+        tasks and hand them on while it works, give its T3 provider Kinmesh’s
+        Team MCP (<code>{TEAM_MCP_URL}</code> by default) and a credential of
+        its own. Kinmesh never changes T3’s settings.
+      </p>
+      {seen && (
+        <p className="muted">
+          {agent.name} last reached Team MCP {ago(seen)}.
+        </p>
+      )}
+      {token ? (
+        <TokenOnce
+          token={token}
+          agent={agent}
+          where={`Paste it into ${agent.name}’s provider in T3 as its Team MCP bearer token.`}
+          onDismiss={() => {
+            setToken(null);
+          }}
+        />
+      ) : (
+        <button
+          type="button"
+          className="secondary"
+          disabled={!permitted || busy || agent.lifecycle !== 'active'}
+          onClick={() => {
+            void run(`/api/teams/${data.team.id}/agents/${agent.id}/grants`, {
+              label: 'Team MCP',
+              scopes: TEAM_MCP_SCOPES,
+              lifetimeSeconds: 90 * 86400,
+            }).then((raw) => {
+              if (raw !== undefined) setToken(Issued.parse(raw).token);
+            });
+          }}
+        >
+          Issue Team MCP credential
+        </button>
+      )}
+      {error && <Notice>{error}</Notice>}
+    </div>
   );
 }
 /**
@@ -792,6 +752,10 @@ function OwnWorker({
     </ol>
   );
 }
+/**
+ * The agent's setup shows one thing at a time: the next step, or, once the
+ * agent can be woken, a single line saying so. Everything else is in More.
+ */
 export function AgentSetup({
   agent,
   data,
@@ -804,50 +768,137 @@ export function AgentSetup({
   onDone: () => void;
 }) {
   const t3 = useT3(data.team.id);
+  const { run, busy, error, permitted } = useRequest();
+  const [changing, setChanging] = useState(false);
+  const [reconnecting, setReconnecting] = useState(false);
   const joined = data.joinedAgentIds.includes(agent.id);
-  const connected = wakeOf(data.wake, agent.id).connected;
+  const awake = wakeOf(data.wake, agent.id).connected;
   const managed = data.managed.find((m) => m.agentId === agent.id) ?? null;
+  const connection = t3.status?.connection ?? null;
+  const t3Ready = connection !== null && connection.access !== 'read';
+  const connectedAt = connection?.connectedAt;
+  useEffect(() => {
+    setReconnecting(false);
+  }, [connectedAt]);
+  const base = `/api/teams/${data.team.id}/agents/${agent.id}`;
+  let next: ReactNode = null;
+  if (agent.lifecycle !== 'active')
+    next = (
+      <p className="muted">{agent.name} is disabled, so it can’t be woken.</p>
+    );
+  else if (t3.status === null) next = <p className="muted">Checking T3…</p>;
+  else if (!t3Ready || reconnecting)
+    next = (
+      <ConnectT3
+        teamId={data.team.id}
+        t3={t3.status}
+        reload={t3.load}
+        agentName={agent.name}
+      />
+    );
+  else if (!managed || changing)
+    next = (
+      <ChooseModel
+        agent={agent}
+        data={data}
+        onDone={() => {
+          setChanging(false);
+          onDone();
+        }}
+        {...(managed
+          ? {
+              onCancel: () => {
+                setChanging(false);
+              },
+            }
+          : {})}
+      />
+    );
   return (
     <section className="agent-setup" aria-label="Setup">
-      <div className="drawer-heading">
-        <h3>Setup</h3>
-        <span className="eyebrow">
-          {connected ? 'Ready' : `What ${agent.name} still needs`}
-        </span>
-      </div>
-      {/* A working agent needs no checklist in front; it stays one click away. */}
-      <details className="setup-details" open={!connected}>
-        <summary>{connected ? 'Show setup' : 'Setup steps'}</summary>
-        <ol className="setup-steps">
-          <Row step={joined ? 'done' : 'todo'} title="Joined this channel">
-            {!joined && channelPath && agent.lifecycle === 'active' && (
-              <ActionForm
-                title={'Enroll ' + agent.name}
-                path={channelPath + '/participants/invite'}
-                build={() => ({ member: { kind: 'agent', id: agent.id } })}
-                onDone={onDone}
-                submit={'Add ' + agent.name + ' to channel'}
-              />
-            )}
-          </Row>
-          <T3Step teamId={data.team.id} t3={t3.status} reload={t3.load} />
-          <ProviderStep agent={agent} data={data} />
-          <ConnectStep
-            agent={agent}
-            data={data}
-            t3={t3.status}
+      {next ?? (
+        <div className="setup-status" data-ready={awake ? 'true' : undefined}>
+          <span className="setup-mark" aria-hidden="true" />
+          <p>
+            <strong>
+              {awake
+                ? `${agent.name} is ready`
+                : `Starting ${agent.name}’s worker…`}
+            </strong>
+            <span className="muted">
+              {' '}
+              Runs on {managed?.providerId} · {agent.preferences.modelId}
+            </span>
+          </p>
+          <span className="setup-actions">
+            <button
+              type="button"
+              className="link-button"
+              onClick={() => {
+                setChanging(true);
+              }}
+            >
+              Change model
+            </button>
+            <button
+              type="button"
+              className="link-button subtle-danger"
+              disabled={!permitted || busy}
+              onClick={() => {
+                void run(base + '/disconnect').then((ok) => {
+                  if (ok !== undefined) onDone();
+                });
+              }}
+            >
+              Disconnect
+            </button>
+          </span>
+        </div>
+      )}
+      {error && <Notice>{error}</Notice>}
+      {/* Membership is per channel, not a setup step: say it, offer the fix. */}
+      {!joined && channelPath && agent.lifecycle === 'active' && (
+        <div className="channel-note">
+          <p className="muted">
+            {agent.name} isn’t in this channel, so mentions here won’t reach it.
+          </p>
+          <ActionForm
+            title={'Enroll ' + agent.name}
+            path={channelPath + '/participants/invite'}
+            build={() => ({ member: { kind: 'agent', id: agent.id } })}
             onDone={onDone}
+            submit={'Add ' + agent.name + ' to channel'}
           />
-          <Row step={connected ? 'done' : 'todo'} title="Can be woken">
+        </div>
+      )}
+      <details className="setup-details">
+        <summary>More</summary>
+        {connection && (
+          <div className="more-section">
             <p className="muted">
-              {connected
-                ? `A worker is ready to wake ${agent.name}.`
-                : managed
-                  ? `Kinmesh is starting ${agent.name}’s worker…`
-                  : `Turns ready once ${agent.name} is connected.`}
+              T3: {new URL(connection.endpoint).host} ·{' '}
+              {connection.access === 'read' ? 'read only' : 'supervised'}
+              {t3Ready && !reconnecting && (
+                <>
+                  {' · '}
+                  <button
+                    type="button"
+                    className="link-button"
+                    onClick={() => {
+                      setReconnecting(true);
+                    }}
+                  >
+                    Reconnect
+                  </button>
+                </>
+              )}
             </p>
-          </Row>
-        </ol>
+          </div>
+        )}
+        <details className="setup-details">
+          <summary>Let {agent.name} act in Kinmesh while it works</summary>
+          <TeamMcp agent={agent} data={data} />
+        </details>
         <details className="setup-details own-worker">
           <summary>Run the worker yourself</summary>
           <OwnWorker

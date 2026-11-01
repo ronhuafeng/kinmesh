@@ -356,15 +356,41 @@ export function inboxRepository(
         const value = FrozenLaunch.parse(launch);
         if (p.kind !== 'agent' || value.grantId !== p.grantId)
           throw new IdentityError(403);
-        const old = get(c.id).launch;
-        if (old !== null) {
-          const frozen = FrozenLaunch.parse(decode(old));
+        const row = get(c.id);
+        if (row.launch !== null) {
+          const frozen = FrozenLaunch.parse(decode(row.launch));
           if (
-            frozen.grantId !== p.grantId ||
-            JSON.stringify(frozen.execution) !== JSON.stringify(value.execution)
+            frozen.grantId === p.grantId &&
+            JSON.stringify(frozen.execution) === JSON.stringify(value.execution)
+          )
+            return frozen;
+          // A different grant or T3 authority may never replay an operation
+          // that could exist natively. One that provably never reached T3
+          // (nothing journaled: the journal is written before dispatch) is
+          // frozen again under the current authority, e.g. after the owner
+          // reconnects T3 with the access the first attempt lacked.
+          const journaled = db
+            .select({ id: s.executionOperations.id })
+            .from(s.executionOperations)
+            .where(
+              and(
+                eq(s.executionOperations.actor, 'inbox-agent:' + c.agentId),
+                eq(s.executionOperations.operationKey, 'inbox:' + c.id),
+              ),
+            )
+            .get();
+          if (
+            row.operationId !== null ||
+            row.reference !== null ||
+            journaled !== undefined
           )
             throw new IdentityError(403);
-          return frozen;
+          update(c, {
+            launch: JSON.stringify(value),
+            reason: 'launch-refrozen',
+          });
+          history(get(c.id), 'launch-refrozen');
+          return value;
         }
         update(c, { launch: JSON.stringify(value), reason: 'launch-frozen' });
         history(get(c.id), 'launch-frozen');

@@ -38,15 +38,18 @@ The Team view, the sidebar, the agent panel and the `@` popover show whether an 
 
 ## Setting up an agent
 
-The agent panel's checklist connects an agent without touching a file:
+The agent panel shows one next step at a time ([ADR 0008](adr/0008-one-step-connect.md)):
 
-1. **Joined this channel**.
-2. **Connect T3**: paste the T3 MCP URL and approve in T3, once for the team.
-3. **The agent's provider in T3**: the one step done in T3. It issues a Team MCP credential once and turns done when the agent first reaches Team MCP.
-4. **Connect** the agent: choose the provider and model T3 offers, and confirm the provider is set up.
-5. **Can be woken**.
+1. **Connect T3**, once for the team. A T3 desktop running on this machine is found on its own; otherwise paste its MCP URL. Approve in T3 and choose Supervised; T3 may ask for a pairing code from Settings → Sharing & access. A read-only approval is reported as the next step, not as success.
+2. **Choose what the agent runs on**: one list of the models each T3 provider offers.
 
-The hub keeps the secrets and runs the worker ([ADR 0007](adr/0007-hub-managed-worker.md)). **Run the worker yourself** keeps the manual path: runtime preferences, a worker credential (issue, rotate, revoke; shown once, see [security](security.md#issuing-agent-credentials-in-the-browser)), `npm run t3:auth` and an `inbox.json` binding without secrets.
+The panel then shows one line: the agent is ready (or its worker is starting), with **Change model** and **Disconnect**. If the agent isn't in the channel on screen, a note offers to add it. The hub keeps the secrets and runs the worker ([ADR 0007](adr/0007-hub-managed-worker.md)).
+
+**More** holds the rest:
+
+- reconnecting T3;
+- optional Team MCP, which lets the agent read the channel and act on tasks while it works and issues its credential once;
+- **Run the worker yourself**: runtime preferences, a worker credential (issue, rotate, revoke; shown once, see [security](security.md#issuing-agent-credentials-in-the-browser)), `npm run t3:auth` and an `inbox.json` binding without secrets.
 
 ## What happened after you asked
 

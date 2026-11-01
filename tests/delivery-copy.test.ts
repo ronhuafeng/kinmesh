@@ -36,7 +36,12 @@ await test('every delivery state reads as a plain sentence about the agent', () 
     ['blocked', 'credential-invalid', true, /^Ada’s credential was revoked/],
     ['blocked', 'not-in-channel', true, /^Ada was removed from the channel/],
     ['blocked', 'not-assigned', true, /no longer assigned to Ada/],
-    ['blocked', 'native-access', true, /^T3 refused Ada’s access$/],
+    [
+      'blocked',
+      'native-access',
+      true,
+      /^T3 refused Ada’s access: reconnect T3/,
+    ],
     ['blocked', 'native-incompatible', true, /setup doesn’t match/],
     ['expired', 'undispatched-expiry', true, /never picked this up/],
     ['expired', 'something-new', true, /request expired/],

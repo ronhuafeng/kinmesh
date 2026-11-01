@@ -2874,3 +2874,86 @@ label.check {
 .own-worker {
   margin-top: 0.5rem;
 }
+/* Agent setup: one next step at a time, then one line when ready. */
+.next-step {
+  display: grid;
+  gap: 0.55rem;
+  padding: 0.85rem 0.9rem;
+  border: 1.5px solid var(--primary);
+  border-radius: var(--radius);
+  background: var(--surface);
+}
+.next-step > strong {
+  font-size: 0.95rem;
+}
+.next-step p {
+  margin: 0;
+}
+.next-step .action-form h3 {
+  display: none;
+}
+.approve {
+  display: grid;
+  gap: 0.5rem;
+  justify-items: start;
+}
+.approve-hints {
+  margin: 0;
+  padding-left: 1.1rem;
+  font-size: 0.82rem;
+  color: var(--ink-muted);
+}
+.setup-status {
+  display: grid;
+  grid-template-columns: 1.25rem minmax(0, 1fr);
+  gap: 0.25rem 0.6rem;
+  align-items: start;
+  padding: 0.7rem 0.8rem;
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius);
+  background: var(--raised);
+}
+.setup-status p {
+  margin: 0;
+}
+.setup-status[data-ready] .setup-mark {
+  background: var(--ok);
+  border-color: var(--ok);
+}
+.setup-status[data-ready] .setup-mark::before {
+  content: '✓';
+}
+.setup-actions {
+  grid-column: 2;
+  display: flex;
+  gap: 0.9rem;
+  font-size: 0.82rem;
+}
+.more-section {
+  display: grid;
+  gap: 0.5rem;
+  margin: 0.25rem 0 0.5rem;
+}
+.more-section p {
+  margin: 0;
+}
+.agent-setup .setup-details > .setup-details {
+  margin-left: 0.75rem;
+}
+.channel-note {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.4rem 0.75rem;
+  font-size: 0.85rem;
+}
+.channel-note p {
+  margin: 0;
+}
+.channel-note .action-form h3 {
+  display: none;
+}
+.channel-note button[type='submit'] {
+  padding: 0.25rem 0.6rem;
+  font-size: 0.8rem;
+}
