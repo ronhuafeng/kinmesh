@@ -617,6 +617,7 @@ export function TaskDrawer({
   onDone,
   onClose,
   onDecided,
+  openAgent,
 }: {
   task: Task;
   data: WorkspaceSnapshot;
@@ -624,6 +625,7 @@ export function TaskDrawer({
   onDone: () => void;
   onClose: () => void;
   onDecided: (message: string) => void;
+  openAgent?: (agentId: string) => void;
 }) {
   const topic = task.topicId
     ? data.topics.items.find((t) => t.id === task.topicId)
@@ -659,7 +661,14 @@ export function TaskDrawer({
         {taskDeliveries(data, task.id).length > 0 && (
           <ul className="deliveries" aria-label="Agent responses">
             {taskDeliveries(data, task.id).map((d) => (
-              <DeliveryLine key={d.id} delivery={d} data={data} />
+              <DeliveryLine
+                key={d.id}
+                delivery={d}
+                data={data}
+                channelId={task.channelId}
+                {...(openAgent ? { openAgent } : {})}
+                onDone={onDone}
+              />
             ))}
           </ul>
         )}

@@ -726,6 +726,7 @@ export function App() {
               onDone={refresh}
               onClose={closeFocus}
               onDecided={notify}
+              openAgent={openAgent}
             />
           )}
           {focusedAgent && (
@@ -749,6 +750,7 @@ export function App() {
                 setFocus(null);
               }}
               openAgent={openAgent}
+              onDone={refresh}
             />
           )}
           {toast && (

@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react';
 import type { WorkspaceSnapshot } from '../src/workspace/contracts.js';
-import { deliveryText } from './deliveries.js';
+import { deliveryText, Recovery } from './deliveries.js';
 import { humanAsk } from './tasks.js';
 import { Drawer, ago, plural, wakeOf } from './ui.js';
 
@@ -30,9 +30,11 @@ export function NeedsDrawer({
   openTask,
   openChannel,
   openAgent,
+  onDone,
 }: {
   data: WorkspaceSnapshot;
   onClose: () => void;
+  onDone: () => void;
   openTask: (channelId: string, taskId: string) => void;
   openChannel: (channelId: string) => void;
   openAgent: (agentId: string) => void;
@@ -97,6 +99,13 @@ export function NeedsDrawer({
                     {d.updatedAt ? ' · ' + ago(d.updatedAt) : ''}
                   </small>
                 </button>
+                <Recovery
+                  delivery={d}
+                  data={data}
+                  channelId={d.channelId}
+                  openAgent={openAgent}
+                  onDone={onDone}
+                />
               </li>
             ))}
           </Group>

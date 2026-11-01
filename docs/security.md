@@ -29,3 +29,7 @@ The agent panel's setup checklist can issue, rotate and revoke an agent's Kinmes
 - Only the signed-in team owner can issue; the preset is the Inbox worker's scopes (`channels:read/write`, `tasks:read/write/review`, `executions:read/write`) for 30 days.
 - The response is `Cache-Control: no-store`. The token is held only in that panel's memory, shown once, offered for copy or as a `tokenFile` download, and dropped when dismissed or closed. It is never written to browser storage, URLs or logs, and the grants list never contains it.
 - Rotation revokes the previous credential. Treat a token that was displayed on a shared screen as exposed and rotate it.
+
+## Resuming a blocked delivery from the workspace
+
+Owners can resume a blocked Inbox delivery over HTTP ([ADR 0006](adr/0006-owner-recovery.md)). The route requires a human owner session and read access to the delivery's channel. Agent bearers are denied whatever their scopes. It takes an operation key, so a retried request replays. It reopens the delivery with its frozen intent, authority and native request key, and authority is rechecked at dispatch and publication, so a resume cannot revive a revoked credential or switch to another one. The recorded cause names only which Kinmesh or T3 precondition failed. It contains no token, URL or upstream error text.

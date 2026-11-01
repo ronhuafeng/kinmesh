@@ -21,6 +21,20 @@ export const InboxState = z.enum([
   'blocked',
   'expired',
 ]);
+/**
+ * Why a delivery is blocked, in terms of what a person can fix. The last value
+ * is the cause recorded before causes were told apart, and stays readable.
+ */
+export const BlockedReason = z.enum([
+  'agent-disabled',
+  'credential-invalid',
+  'not-in-channel',
+  'not-assigned',
+  'native-access',
+  'native-incompatible',
+  'authority-or-contract-blocked',
+]);
+export type BlockedReason = z.infer<typeof BlockedReason>;
 export const Delivery = z.object({
   position: z.number().int().positive(),
   id: z.uuid(),
