@@ -25,12 +25,37 @@ stopping.signal.addEventListener(
 try {
   const config = loadConfig(process.env);
   const path = process.env.KINMESH_INBOX_CONFIG;
+  const fatal = () => {
+    process.exitCode = 1;
+    stopping.abort();
+  };
   if (path !== undefined)
-    supervisor = new InboxSupervisor(path, config.database, () => {
-      process.exitCode = 1;
-      stopping.abort();
-    });
+    supervisor = new InboxSupervisor(path, config.database, fatal);
   store = openStore(config.database);
+  // Agents connected from the workspace need the hub's worker even without
+  // an operator configuration; with none, no worker runs (ADR 0007).
+  if (supervisor === undefined && store.managed.workerBindings().length > 0)
+    supervisor = new InboxSupervisor(undefined, config.database, fatal);
+  let starting: Promise<void> | undefined;
+  const ensureWorker = () => {
+    if (supervisor !== undefined || stopping.signal.aborted)
+      return Promise.resolve();
+    starting ??= (async () => {
+      const started = new InboxSupervisor(undefined, config.database, fatal);
+      // Visible to shutdown at once, so a stop during start cannot orphan it.
+      supervisor = started;
+      try {
+        await started.prepare();
+        await started.activate();
+      } catch (error) {
+        supervisor = undefined;
+        await started.stop();
+        starting = undefined;
+        throw error;
+      }
+    })();
+    return starting;
+  };
   app = await createApp(
     config,
     store,
@@ -38,6 +63,7 @@ try {
     async () => {
       await supervisor?.stop();
     },
+    { ensureWorker },
   );
   stopping.signal.throwIfAborted();
   await supervisor?.prepare();

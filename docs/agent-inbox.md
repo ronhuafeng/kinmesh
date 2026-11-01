@@ -6,6 +6,8 @@ The Inbox connects committed collaboration facts to the existing external T3 ada
 
 Execution is optional. With `KINMESH_INBOX_CONFIG` **absent**, `npm start` starts only the human service and needs no worker/T3 credentials. With that variable set to a private worker configuration, ordinary startup also supervises a separate Inbox child process. Team MCP (`npm run team:mcp`) always remains a separate service. All components use the **same local database**.
 
+**Connected from the workspace.** An owner can instead connect T3 and each agent from the agent panel ([ADR 0007](adr/0007-hub-managed-worker.md)). The hub keeps the worker token and T3 credential in `<database directory>/managed/` (0700 directory, 0600 files) and supervises a worker as soon as one agent is connected, even without `KINMESH_INBOX_CONFIG`. Workers merge these managed bindings with `inbox.json` on every loop, and the file wins for an agent named in both. Step 4 below, the agent's T3 provider, stays manual.
+
 Alternatively, leave the variable absent from the human service and supervise `npm run inbox:worker` independently. Choose one ordinary deployment arrangement; do not accidentally start both. Intentional worker replicas still share the existing SQLite capacity and leases. Neither arrangement uses durable PID files or a resident model process.
 
 Use Node 24 and `npm ci`, then the owner bootstrap/login/enrollment APIs in the [identity](agent-identities.md), [channel](channels-messages.md) and [task](tasks.md) guides. For each worker-bound agent:

@@ -47,14 +47,21 @@ export async function createTeamApp(config: TeamConfig, store: Store) {
       void reply.code(400).send({ error: 'Request rejected' });
       return;
     }
+    let agent;
     try {
-      agentPrincipal(store, request.headers.authorization);
+      agent = agentPrincipal(store, request.headers.authorization);
     } catch {
       void reply
         .header('WWW-Authenticate', 'Bearer realm="kinmesh-team"')
         .code(401)
         .send({ error: 'Authentication required' });
       return;
+    }
+    try {
+      // Evidence for the workspace that this agent's provider reaches Team MCP.
+      store.managed.seenByTeamMcp(agent);
+    } catch {
+      // Evidence only: a failed write never refuses an authenticated request.
     }
     done();
   });

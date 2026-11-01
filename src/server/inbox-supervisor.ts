@@ -1,7 +1,7 @@
 import { fork, type ChildProcess } from 'node:child_process';
 import { resolve } from 'node:path';
 import { setTimeout as delay } from 'node:timers/promises';
-import { loadWorkerConfig } from '../inbox/config.js';
+import { loadWorkerConfig, WorkerConfig } from '../inbox/config.js';
 import {
   databaseIdentity,
   WorkerEvent,
@@ -27,8 +27,9 @@ export class InboxSupervisor {
   private running = false;
   private databaseState: ReturnType<typeof databaseIdentity> | undefined;
 
+  /** Without a path, the worker serves only agents connected from the workspace. */
   constructor(
-    private readonly path: string,
+    private readonly path: string | undefined,
     private readonly database: string,
     private readonly fatal: () => void,
   ) {
@@ -44,7 +45,10 @@ export class InboxSupervisor {
   }
 
   private configuration() {
-    const config = loadWorkerConfig(this.path);
+    const config =
+      this.path === undefined
+        ? WorkerConfig.parse({ database: this.database, bindings: [] })
+        : loadWorkerConfig(this.path);
     if (resolve(config.database) !== resolve(this.database))
       throw new Error('Worker must use the hub database path');
     return config;

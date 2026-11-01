@@ -20,6 +20,8 @@ import { randomBytes } from 'node:crypto';
 import { setTimeout as delay } from 'node:timers/promises';
 import { z } from 'zod';
 import { inboxFixture } from './inbox-helpers.js';
+import { WORKER_GRANT } from '../src/server/connect.js';
+import { managedDirectory, writeAgentToken } from '../src/inbox/managed.js';
 import { postInput } from './communication-helpers.js';
 import { Message } from '../src/domain/communication.js';
 import { WORKER_SHUTDOWN_MS } from '../src/inbox/lifecycle.js';
@@ -325,6 +327,43 @@ await test(
       assert.equal(await f.health(), 0);
     } finally {
       await f.dispose();
+    }
+  },
+);
+
+await test(
+  'without opt-in, a hub with agents connected from the workspace supervises its own worker for them',
+  { timeout: 40000 },
+  async () => {
+    const seed = await inboxFixture();
+    seed.store.managed.saveConnection(
+      seed.principal,
+      seed.teamId,
+      'https://t3.test/mcp',
+      'env-live',
+    );
+    const { token } = seed.store.managed.connect(
+      seed.principal,
+      seed.teamId,
+      seed.agent.id,
+      { providerId: 'isolated-dev', modelId: 'model-a' },
+      WORKER_GRANT,
+    );
+    writeAgentToken(managedDirectory(seed.dbPath), seed.agent.id, token);
+    const f = await fixture(seed.dbPath);
+    try {
+      const p = f.start(false);
+      await p.ready();
+      assert.equal(p.workers().length, 1);
+      // The worker serves the connected agent: it reports liveness for it.
+      await until(
+        () => seed.store.inbox.liveness(seed.teamId).map((r) => r.agentId),
+        (ids) => ids.includes(seed.agent.id),
+      );
+      assert.equal(await p.stop(), 0);
+    } finally {
+      await f.dispose();
+      await seed.dispose();
     }
   },
 );

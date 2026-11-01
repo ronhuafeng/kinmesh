@@ -423,8 +423,8 @@ export function Team({
             </select>
           </Field>
           <p>
-            After registering, open the agent to finish its setup: a worker
-            credential and an Inbox worker binding, so mentions can wake it.
+            After registering, open the agent and connect it to T3, so mentions
+            can wake it.
           </p>
         </ActionForm>
       </details>

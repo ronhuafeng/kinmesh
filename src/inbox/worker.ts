@@ -8,6 +8,7 @@ import {
   type Observation,
 } from '../domain/execution.js';
 import { IdentityError } from '../domain/agents.js';
+import type { AgentId } from '../domain/contracts.js';
 import {
   FrozenLaunch,
   INBOX_ATTEMPT_MS,
@@ -17,7 +18,8 @@ import {
   NativeTerminalNotice,
   type Claim,
 } from '../domain/inbox.js';
-import type { Binding, WorkerConfig } from './config.js';
+import { Binding, type WorkerConfig } from './config.js';
+import { agentTokenFile, managedDirectory, t3AuthFile } from './managed.js';
 import type { BackendFactory } from './t3.js';
 
 /** Native read only. No tool/user text or synthetic status can become an assistant result. */
@@ -258,6 +260,20 @@ export async function deliver(
   }
 }
 /** Ordinary independently supervised process loop, sharing SQLite capacity/leases across processes. */
+/** Bindings for agents the owner connected from the workspace (ADR 0007). */
+export function managedBindings(store: Store, directory: string): Binding[] {
+  return store.managed.workerBindings().map((b) =>
+    Binding.parse({
+      agentId: b.agentId,
+      tokenFile: agentTokenFile(directory, b.agentId),
+      t3Endpoint: b.endpoint,
+      t3AuthFile: t3AuthFile(directory),
+      isolatedProviderId: b.providerId,
+      // Asserted by the owner when connecting the agent.
+      externalTeamMcpConfigured: true,
+    }),
+  );
+}
 export async function runWorker(
   store: Store,
   config: WorkerConfig,
@@ -268,10 +284,23 @@ export async function runWorker(
   const stopped = () => stopping.aborted;
   let initialized = false;
   const running = new Set<Promise<void>>();
-  const bindings = new Map(config.bindings.map((b) => [b.agentId, b]));
+  const directory = managedDirectory(config.database);
+  let bindings = new Map<AgentId, Binding>();
   let lastBeat = 0;
   try {
     while (!stopped()) {
+      // Agents connected from the workspace join or leave without a restart;
+      // a binding in the operator's configuration wins over a managed one.
+      const next = new Map(
+        managedBindings(store, directory).map((b) => [b.agentId, b]),
+      );
+      for (const b of config.bindings) next.set(b.agentId, b);
+      const gone = [...bindings.keys()].filter((id) => !next.has(id));
+      if (gone.length > 0) store.inbox.release(gone);
+      // New or removed agents show their state now, not at the next beat.
+      if (gone.length > 0 || [...next.keys()].some((id) => !bindings.has(id)))
+        lastBeat = 0;
+      bindings = next;
       if (Date.now() - lastBeat >= INBOX_HEARTBEAT_MS) {
         store.inbox.heartbeat([...bindings.keys()]);
         lastBeat = Date.now();

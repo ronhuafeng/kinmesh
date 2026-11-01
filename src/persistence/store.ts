@@ -1,3 +1,4 @@
+import { managedRepository } from './managed.js';
 import { inboxRepository } from './inbox.js';
 import { taskRepository } from './tasks.js';
 import { CommunicationFact } from '../domain/communication.js';
@@ -50,6 +51,7 @@ export function openStore(path: string) {
     communication: communicationStore,
     operations: operationJournal(db),
     agents: agentStore,
+    managed: managedRepository(db, agentStore),
     close: () => {
       if (sqlite.open) sqlite.close();
     },

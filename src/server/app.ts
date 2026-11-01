@@ -3,6 +3,8 @@ import { registerWeb } from './web.js';
 import { registerTasks } from './tasks.js';
 import { registerCommunication } from './communication.js';
 import { registerAgents } from './agents.js';
+import { defaultHub, registerConnect, type Hub } from './connect.js';
+import { managedDirectory } from '../inbox/managed.js';
 import { resolvePrincipal } from './principals.js';
 import { z } from 'zod';
 import Fastify from 'fastify';
@@ -24,7 +26,12 @@ export async function createApp(
   store: Store,
   workerReady: () => boolean = () => true,
   beforeClose?: () => Promise<void>,
+  overrides: Partial<Omit<Hub, 'directory'>> = {},
 ) {
+  const hub = {
+    ...defaultHub(managedDirectory(config.database)),
+    ...overrides,
+  };
   const app = Fastify({ logger: false, bodyLimit: 16_384, trustProxy: false });
   await app.register(rateLimit, { max: 60, timeWindow: '1 minute' });
   await app.register(secureSession, {
@@ -182,7 +189,8 @@ export async function createApp(
     )
       return reply.code(403).send({ error: 'Human authentication required' });
   });
-  registerAgents(app, store);
+  registerAgents(app, store, hub.directory);
+  registerConnect(app, store, hub);
   registerCommunication(app, store);
   registerTasks(app, store);
   registerWorkspace(app, store, config);

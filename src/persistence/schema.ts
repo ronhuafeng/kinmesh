@@ -570,3 +570,49 @@ export const inboxBindings = sqliteTable(
     }),
   ],
 );
+/** One T3 connection per team, approved by its owner from the workspace. No secrets. */
+export const t3Connections = sqliteTable('t3_connections', {
+  teamId: text('team_id')
+    .primaryKey()
+    .references(() => teams.id),
+  endpoint: text('endpoint').notNull(),
+  environmentId: text('environment_id').notNull(),
+  connectedAt: integer('connected_at').notNull(),
+});
+/**
+ * Agents the hub's own worker serves. The token lives in a private file named
+ * by the agent ID; this row holds no secret.
+ */
+export const managedBindings = sqliteTable(
+  'managed_bindings',
+  {
+    agentId: text('agent_id').primaryKey(),
+    teamId: text('team_id').notNull(),
+    grantId: text('grant_id')
+      .notNull()
+      .references(() => agentGrants.id),
+    providerId: text('provider_id').notNull(),
+    createdAt: integer('created_at').notNull(),
+  },
+  (t) => [
+    foreignKey({
+      columns: [t.agentId, t.teamId],
+      foreignColumns: [agents.id, agents.teamId],
+    }),
+  ],
+);
+/** Last authenticated Team MCP request per agent: evidence, never authority. */
+export const teamMcpPresence = sqliteTable(
+  'team_mcp_presence',
+  {
+    agentId: text('agent_id').primaryKey(),
+    teamId: text('team_id').notNull(),
+    lastSeenAt: integer('last_seen_at').notNull(),
+  },
+  (t) => [
+    foreignKey({
+      columns: [t.agentId, t.teamId],
+      foreignColumns: [agents.id, agents.teamId],
+    }),
+  ],
+);
