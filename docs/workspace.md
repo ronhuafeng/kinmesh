@@ -57,6 +57,10 @@ Under each message that mentions an agent, and on a task the agent was handed, t
 
 `GET /api/workspace` includes these as `deliveries` for the visible messages and tasks of a channel the caller can read. Only identifiers, state, reason, timestamps and the reply message are exposed; claims, frozen launches, operation IDs, native references and counters stay in the worker. Owners resume blocked deliveries from the workspace; see [ADR 0006](adr/0006-owner-recovery.md).
 
+## Reading a reply
+
+Messages render a safe subset of Markdown: paragraphs, lists, quotes, headings, code, emphasis and links. Links go only to http(s) addresses and open in a new tab, and no HTML from a message is ever rendered. An agent's reply shows the message it answers and one quiet line saying what ran it, e.g. "via T3 · codex · gpt-6.1-terra". The T3 identifiers sit behind Technical details. The asking message's delivery line says how long the reply took. A mention already written as `@Name` in the text gets no second chip. On a wide screen the channel header and its Chat/Board/Team views stay in place while the conversation scrolls; on a phone the views are a bottom bar.
+
 ## Needs you
 
 The sidebar's **Needs you** counts everything waiting on the signed-in owner across the team, not just the channel on screen, and opens one list grouped by what to do:

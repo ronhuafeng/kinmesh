@@ -516,10 +516,14 @@ export function inboxRepository(
                 task.id,
                 result.reference,
               ));
+        // The message is the answer only. Where it came from (run, model,
+        // state) is kept in inbox_results and shown beside it, not in it.
         const body =
           'kind' in result
-            ? `[T3 ${result.state}; native status notice only; no assistant message observed in bounded read; environment ${result.reference.environmentId}; thread ${result.reference.threadId}; run ${result.reference.runId}; inbox ${c.id}; source event ${c.eventId}]`
-            : `${result.text}\n\n[T3 ${result.state}${result.truncated ? '; excerpt' : ''}; environment ${result.reference.environmentId}; thread ${result.reference.threadId}; run ${result.reference.runId}; item ${result.itemId}; inbox ${c.id}; source event ${c.eventId}]`;
+            ? result.state === 'failed'
+              ? 'The run in T3 failed before writing a reply.'
+              : 'The run in T3 was stopped before writing a reply.'
+            : result.text;
         const publicationReason =
           'kind' in result
             ? 'native-terminal-notice-published'
@@ -756,6 +760,50 @@ export function inboxRepository(
         .where(and(eq(t.teamId, teamId), eq(t.state, 'ready')))
         .groupBy(t.agentId)
         .all();
+    },
+    /**
+     * Where each visible agent reply came from: the run's outcome, the model
+     * it ran on and its T3 identifiers. Allow-listed; no prompts or tokens.
+     */
+    repliesFor(teamId: string, channelId: string, messageIds: string[]) {
+      const ids = z.array(z.uuid()).max(100).parse(messageIds);
+      if (ids.length === 0) return [];
+      return db
+        .select({
+          messageId: s.inboxResults.messageId,
+          result: s.inboxResults.result,
+          agentId: t.agentId,
+          launch: t.launch,
+        })
+        .from(s.inboxResults)
+        .innerJoin(t, eq(t.id, s.inboxResults.deliveryId))
+        .where(
+          and(
+            eq(t.teamId, teamId),
+            eq(t.channelId, channelId),
+            inArray(s.inboxResults.messageId, ids),
+          ),
+        )
+        .all()
+        .map((r) => {
+          const outcome = PublishedOutcome.parse(decode(r.result));
+          const model =
+            r.launch === null
+              ? null
+              : FrozenLaunch.parse(decode(r.launch)).input.model;
+          return {
+            messageId: r.messageId,
+            agentId: r.agentId,
+            state: outcome.state,
+            answered: !('kind' in outcome),
+            excerpt: 'kind' in outcome ? false : outcome.truncated,
+            providerId: model?.providerId ?? null,
+            modelId: model?.modelId ?? null,
+            environmentId: outcome.reference.environmentId,
+            threadId: outcome.reference.threadId,
+            runId: outcome.reference.runId,
+          };
+        });
     },
     /** Last worker heartbeat per agent of one team (milliseconds since epoch). */
     liveness(teamId: string) {

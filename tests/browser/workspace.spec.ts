@@ -170,9 +170,18 @@ for (const width of [1440, 375]) {
         .getByRole('list', { name: 'Channel messages' })
         .getByText(sent, { exact: true }),
     ).toBeVisible();
+    // The mention reads in the text itself; no second @Ada chip repeats it,
+    // and it still reaches Ada (its delivery line is shown).
+    const posted = page
+      .getByRole('list', { name: 'Channel messages' })
+      .getByRole('listitem')
+      .filter({ hasText: sent });
+    await expect(posted.getByRole('list', { name: 'Mentioned' })).toHaveCount(
+      0,
+    );
     await expect(
-      page.getByRole('list', { name: 'Mentioned' }).getByText('@Ada'),
-    ).toBeVisible();
+      posted.getByRole('list', { name: 'Agent responses' }),
+    ).toContainText('Ada');
     await page.reload();
     await expect(page.getByText(sent, { exact: true })).toBeVisible();
     expect(await page.locator('.messages img').count()).toBe(0);

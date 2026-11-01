@@ -140,7 +140,16 @@ await test('MOCK external adapter: exact-run actual assistant is attributed and 
     assert.equal(message.author.agentId, f.agent.id);
     assert.equal(message.sourceMessageId, source.id);
     assert.equal(message.sourceEventId, c.eventId);
-    assert.ok(message.body.includes('run ' + (reference.runId ?? '')));
+    // The reply is the answer only; where it came from is projected beside it.
+    assert.equal(
+      message.body,
+      'Fixture assistant output; no real model was invoked.',
+    );
+    const [reply] = f.inbox.repliesFor(f.teamId, f.channelId, [message.id]);
+    assert.ok(reply);
+    assert.equal(reply.runId, reference.runId);
+    assert.equal(reply.state, 'succeeded');
+    assert.equal(reply.answered, true);
     assert.equal(
       f.wire.calls.filter((c) => c.name === 't3_thread_launch').length,
       1,
@@ -216,7 +225,7 @@ for (const status of ['completed', 'failed'] as const)
         assert.ok(
           message.body.startsWith(
             status === 'failed'
-              ? '[T3 failed; native status notice only'
+              ? 'The run in T3 failed before writing a reply.'
               : 'MOCK exact-run recovered result',
           ),
         );
@@ -345,10 +354,12 @@ await test('MOCK native terminal failure without assistant posts truthful notice
       f.channelId,
       row.resultMessageId,
     );
-    assert.ok(notice.body.includes('T3 failed; native status notice only'));
-    assert.ok(notice.body.includes('no assistant message observed'));
-    assert.ok(!notice.body.includes('item '));
-    assert.ok(!notice.body.includes('Fixture assistant output'));
+    // Said plainly, never dressed up as the agent's answer.
+    assert.equal(notice.body, 'The run in T3 failed before writing a reply.');
+    const [status] = f.inbox.repliesFor(f.teamId, f.channelId, [notice.id]);
+    assert.ok(status);
+    assert.equal(status.state, 'failed');
+    assert.equal(status.answered, false);
     assert.equal(notice.sourceMessageId, source.id);
     assert.equal(notice.sourceEventId, c.eventId);
     assert.equal(notice.author.kind, 'agent');
