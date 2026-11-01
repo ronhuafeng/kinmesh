@@ -26,6 +26,7 @@ import {
   Read,
   Waited,
   Interrupted,
+  runnable,
   type Wire,
 } from './contracts.js';
 
@@ -118,19 +119,11 @@ export class T3Backend implements ExecutionBackend {
     const provider = this.caps.providers.find(
       (p) => p.providerInstanceId === request.model.providerId,
     );
-    if (
-      provider === undefined ||
-      !provider.canRunChildTask ||
-      provider.constraints.length > 0 ||
-      !provider.models.some((m) => m.id === request.model.modelId)
-    )
+    if (!provider?.models.some((m) => m.id === request.model.modelId))
       throw new ExecutionFailure('incompatible');
     if (ranking.indexOf(request.mode) > ranking.indexOf(this.caps.runtimeMode))
       throw new ExecutionFailure('permission');
-    if (
-      provider.runtimeModes !== undefined &&
-      !provider.runtimeModes.includes(request.mode)
-    )
+    if (!runnable(provider, request.mode))
       throw new ExecutionFailure('incompatible');
     return {
       ...this.target(),

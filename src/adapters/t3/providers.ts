@@ -1,4 +1,4 @@
-import { Capabilities, ValidatedTools } from './contracts.js';
+import { Capabilities, ValidatedTools, runnable } from './contracts.js';
 import type { Credential } from './oauth.js';
 import { SdkWire } from './sdk.js';
 
@@ -12,10 +12,14 @@ export async function t3Providers(credential: Credential, signal: AbortSignal) {
     const capabilities = Capabilities.parse(
       await tools.call('orchestrator_capabilities', {}, signal, 8000),
     );
-    return capabilities.providers.map((p) => ({
-      id: p.providerInstanceId,
-      models: p.models.map((m) => m.id),
-    }));
+    // Only what a wake can actually run on: a provider switched off in T3,
+    // or one without models, is never offered.
+    return capabilities.providers
+      .filter((p) => runnable(p, 'approval-required') && p.models.length > 0)
+      .map((p) => ({
+        id: p.providerInstanceId,
+        models: p.models.map((m) => m.id),
+      }));
   } finally {
     await wire.close();
   }
