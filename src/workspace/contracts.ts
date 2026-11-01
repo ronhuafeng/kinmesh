@@ -5,7 +5,7 @@ import { Agent, Correlation, RuntimeEvent } from '../domain/agents.js';
 import { Reference } from '../domain/execution.js';
 import { nativeThreadUrl } from './links.js';
 import { Status } from '../adapters/t3/contracts.js';
-import { Human, Team, AgentId } from '../domain/contracts.js';
+import { Human, Team, AgentId, ChannelId } from '../domain/contracts.js';
 import {
   ChannelView,
   Message,
@@ -15,6 +15,18 @@ import {
 import { Task } from '../domain/tasks.js';
 import { InboxState } from '../domain/inbox.js';
 
+/** A delivery as people see it: no leases, launches or native references. */
+export const DeliveryView = z.strictObject({
+  id: z.uuid(),
+  agentId: AgentId,
+  messageId: z.uuid().nullable(),
+  taskId: z.uuid().nullable(),
+  state: InboxState,
+  reason: z.string().regex(/^[a-z][a-z-]{0,63}$/),
+  queuedAt: z.iso.datetime().nullable(),
+  updatedAt: z.iso.datetime().nullable(),
+  resultMessageId: z.uuid().nullable(),
+});
 export const WorkspaceSnapshot = z.strictObject({
   observedAt: z.iso.datetime(),
   nativeT3Origin: z
@@ -31,21 +43,29 @@ export const WorkspaceSnapshot = z.strictObject({
   agentsTruncated: z.boolean(),
   joinedAgentIds: z.array(AgentId).max(100),
   /** Inbox deliveries for the visible messages and tasks (allow-listed fields only). */
-  deliveries: z
-    .array(
-      z.strictObject({
-        id: z.uuid(),
-        agentId: AgentId,
-        messageId: z.uuid().nullable(),
-        taskId: z.uuid().nullable(),
-        state: InboxState,
-        reason: z.string().regex(/^[a-z][a-z-]{0,63}$/),
-        queuedAt: z.iso.datetime().nullable(),
-        updatedAt: z.iso.datetime().nullable(),
-        resultMessageId: z.uuid().nullable(),
-      }),
-    )
-    .max(1000),
+  deliveries: z.array(DeliveryView).max(1000),
+  /** What waits on this human across the team: one list, grouped by action. */
+  attention: z.strictObject({
+    decide: z
+      .array(z.strictObject({ task: Task, channelName: z.string().max(80) }))
+      .max(50),
+    unstuck: z
+      .array(
+        DeliveryView.extend({
+          channelId: ChannelId,
+          channelName: z.string().max(80),
+        }),
+      )
+      .max(50),
+    connect: z
+      .array(
+        z.strictObject({
+          agentId: AgentId,
+          queued: z.number().int().positive(),
+        }),
+      )
+      .max(100),
+  }),
   /** Inbox worker liveness per agent; absent means no worker has ever claimed it. */
   wake: z
     .array(

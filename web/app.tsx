@@ -13,9 +13,10 @@ import { Board, draftFromMessage, humanAsk, TaskDrawer } from './tasks.js';
 import type { BoardFilter, TaskDraft } from './tasks.js';
 import { Avatar, plural, statusLabel, wakeOf } from './ui.js';
 import { CommandPalette } from './palette.js';
+import { NeedsDrawer, attentionCount } from './needs.js';
 import type { Command } from './palette.js';
 type View = 'chat' | 'board' | 'team';
-type Focus = { kind: 'task' | 'agent'; id: string } | null;
+type Focus = { kind: 'task' | 'agent'; id: string } | { kind: 'needs' } | null;
 /** True when a refresh moved at least one visible task to another status. */
 function statusesMoved(
   before: WorkspaceSnapshot | null,
@@ -280,18 +281,20 @@ export function App() {
     setView('board');
     setFocus({ kind: 'task', id });
   };
-  const showNeeds = () => {
-    setFilter('needs');
-    setView('board');
+  /** Open a task in any joined channel; the drawer appears once it loads. */
+  const openTaskIn = (channelId: string, id: string) => {
+    if (channelId !== channel?.id) selectChannel(channelId);
+    openTask(id);
   };
+  const needs = attentionCount(data.attention);
   const commands: Command[] = [
-    ...asks.map(({ task, ask }) => ({
+    ...data.attention.decide.map(({ task, channelName }) => ({
       id: 'ask-' + task.id,
       group: 'Needs you',
       label: task.title,
-      hint: ask,
+      hint: (humanAsk(task, data) ?? 'Your decision') + ' · #' + channelName,
       run: () => {
-        openTask(task.id);
+        openTaskIn(task.channelId, task.id);
       },
     })),
     ...(['chat', 'board', 'team'] as const).map((v) => ({
@@ -364,7 +367,11 @@ export function App() {
       <Offline value={!canAct && !switching}>
         <div
           className="workspace-shell"
-          data-drawer={focusedTask || focusedAgent ? 'open' : undefined}
+          data-drawer={
+            focusedTask || focusedAgent || focus?.kind === 'needs'
+              ? 'open'
+              : undefined
+          }
         >
           <aside className="sidebar">
             <div className="sidebar-top">
@@ -384,16 +391,17 @@ export function App() {
                 </div>
               </div>
             </div>
-            {channel && (
-              <button
-                className="needs-you"
-                data-count={asks.length > 0 ? 'true' : undefined}
-                onClick={showNeeds}
-              >
-                <span>Needs you</span>
-                <span className="count">{asks.length}</span>
-              </button>
-            )}
+            <button
+              className="needs-you"
+              data-count={needs > 0 ? 'true' : undefined}
+              aria-pressed={focus?.kind === 'needs'}
+              onClick={() => {
+                setFocus({ kind: 'needs' });
+              }}
+            >
+              <span>Needs you</span>
+              <span className="count">{needs}</span>
+            </button>
             <nav aria-label="Channels">
               <div className="nav-heading">
                 <h2>Channels</h2>
@@ -728,6 +736,19 @@ export function App() {
               channelPath={channelPath}
               onDone={refresh}
               onClose={closeFocus}
+            />
+          )}
+          {focus?.kind === 'needs' && (
+            <NeedsDrawer
+              data={data}
+              onClose={closeFocus}
+              openTask={openTaskIn}
+              openChannel={(id) => {
+                if (id !== channel?.id) selectChannel(id);
+                setView('chat');
+                setFocus(null);
+              }}
+              openAgent={openAgent}
             />
           )}
           {toast && (

@@ -2792,3 +2792,45 @@ details.technical p {
 .task-card footer {
   gap: 0.4rem;
 }
+/* Needs you: one team-wide list, grouped by what the person has to do. */
+.needs-group h3 {
+  font-family: var(--mono);
+  font-size: 0.7rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--ink-muted);
+  margin: 0.75rem 0 0.35rem;
+}
+.needs-group ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 0.35rem;
+}
+button.needs-item {
+  display: grid;
+  gap: 0.15rem;
+  width: 100%;
+  text-align: left;
+  background: var(--surface);
+  color: var(--ink);
+  border-color: var(--hairline);
+  padding: 0.55rem 0.7rem;
+}
+button.needs-item:hover:not(:disabled) {
+  background: var(--hover);
+  border-color: var(--hairline-strong);
+}
+button.needs-item[data-tone='problem'] {
+  border-left: 3px solid var(--danger);
+}
+.needs-what {
+  font-weight: 400;
+  overflow-wrap: anywhere;
+}
+button.needs-item small {
+  font-family: var(--mono);
+  font-size: 0.7rem;
+  color: var(--ink-subtle);
+}

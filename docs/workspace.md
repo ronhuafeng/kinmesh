@@ -46,6 +46,18 @@ Under each message that mentions an agent, and on a task the agent was handed, t
 
 `GET /api/workspace` includes these as `deliveries` for the visible messages and tasks of a channel the caller can read. Only identifiers, state, reason, timestamps and the reply message are exposed; claims, frozen launches, operation IDs, native references and counters stay in the worker. Blocked deliveries are still resumed only by an operator (see [Agent Inbox](agent-inbox.md)).
 
+## Needs you
+
+The sidebar's **Needs you** counts everything waiting on the signed-in owner across the team, not just the channel on screen, and opens one list grouped by what to do:
+
+- **Decide**: tasks in joined channels waiting for your sign-off, review or rework.
+- **Unstuck**: blocked deliveries in joined channels.
+- **Connect**: agents with queued deliveries and no live worker.
+
+Each item opens where it can be resolved (the task, the channel or the agent's setup) and leaves the list as soon as its cause is resolved; there is nothing to dismiss. Expired deliveries are not listed: they have no action left and stay on their message line, and the cause they share with queued work (no worker) is listed under **Connect**.
+
+`GET /api/workspace` includes this as `attention`, bounded to 50 tasks, 50 deliveries and 100 agents, with the same allow-listed delivery fields plus the channel. Leaving a channel removes its items.
+
 ## AG-UI and refresh semantics
 
 `GET /api/workspace` reconstructs the signed-in owner's team, joined channels, selected channel/topic message history, tasks and agent enrollment from Kinmesh-owned repositories. It accepts only bounded validated paging/filter parameters and never accepts an actor selector. Responses are `Cache-Control: no-store` and authorized through the existing server-derived principal.

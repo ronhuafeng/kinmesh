@@ -34,6 +34,34 @@ export function inboxRepository(
 ) {
   const { atomic } = transactional(db);
   const t = s.agentInbox;
+  /** First and last recorded transition, for "queued 2 h ago" copy. */
+  function withTimes<R extends { id: string; state: string }>(rows: R[]) {
+    if (rows.length === 0) return [];
+    const times = new Map(
+      db
+        .select({
+          id: s.inboxHistory.deliveryId,
+          first: sql<number>`min(${s.inboxHistory.createdAt})`,
+          last: sql<number>`max(${s.inboxHistory.createdAt})`,
+        })
+        .from(s.inboxHistory)
+        .where(
+          inArray(
+            s.inboxHistory.deliveryId,
+            rows.map((r) => r.id),
+          ),
+        )
+        .groupBy(s.inboxHistory.deliveryId)
+        .all()
+        .map((r) => [r.id, r]),
+    );
+    return rows.map((r) => ({
+      ...r,
+      state: InboxState.parse(r.state),
+      queuedAt: times.get(r.id)?.first ?? null,
+      updatedAt: times.get(r.id)?.last ?? null,
+    }));
+  }
   function get(id: string) {
     z.uuid().parse(id);
     return Delivery.parse(db.select().from(t).where(eq(t.id, id)).get());
@@ -574,31 +602,50 @@ export function inboxRepository(
         )
         .orderBy(asc(t.position))
         .all();
-      if (rows.length === 0) return [];
-      const times = new Map(
-        db
-          .select({
-            id: s.inboxHistory.deliveryId,
-            first: sql<number>`min(${s.inboxHistory.createdAt})`,
-            last: sql<number>`max(${s.inboxHistory.createdAt})`,
-          })
-          .from(s.inboxHistory)
-          .where(
-            inArray(
-              s.inboxHistory.deliveryId,
-              rows.map((r) => r.id),
-            ),
-          )
-          .groupBy(s.inboxHistory.deliveryId)
-          .all()
-          .map((r) => [r.id, r]),
-      );
-      return rows.map((r) => ({
-        ...r,
-        state: InboxState.parse(r.state),
-        queuedAt: times.get(r.id)?.first ?? null,
-        updatedAt: times.get(r.id)?.last ?? null,
-      }));
+      return withTimes(rows);
+    },
+    /**
+     * Blocked deliveries in the channels a member has joined, newest first.
+     * The caller decides who may see them; the projection is allow-listed.
+     */
+    blockedIn(teamId: string, member: string) {
+      const rows = db
+        .select({
+          id: t.id,
+          position: t.position,
+          agentId: t.agentId,
+          channelId: t.channelId,
+          channelName: s.channels.name,
+          messageId: t.messageId,
+          taskId: t.taskId,
+          state: t.state,
+          reason: t.reason,
+          resultMessageId: t.resultMessageId,
+        })
+        .from(t)
+        .innerJoin(s.channels, eq(s.channels.id, t.channelId))
+        .innerJoin(
+          s.channelParticipants,
+          and(
+            eq(s.channelParticipants.channelId, t.channelId),
+            eq(s.channelParticipants.memberKey, member),
+            eq(s.channelParticipants.state, 'joined'),
+          ),
+        )
+        .where(and(eq(t.teamId, teamId), eq(t.state, 'blocked')))
+        .orderBy(sql`${t.position} DESC`)
+        .limit(50)
+        .all();
+      return withTimes(rows);
+    },
+    /** Deliveries still waiting for a worker to pick them up, per agent. */
+    queuedPerAgent(teamId: string) {
+      return db
+        .select({ agentId: t.agentId, count: sql<number>`count(*)` })
+        .from(t)
+        .where(and(eq(t.teamId, teamId), eq(t.state, 'ready')))
+        .groupBy(t.agentId)
+        .all();
     },
     /** Last worker heartbeat per agent of one team (milliseconds since epoch). */
     liveness(teamId: string) {
