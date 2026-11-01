@@ -3,7 +3,7 @@ import { z } from 'zod';
 import { PROTOCOL_VERSION } from '@ag-ui/core';
 import { AgentId, ChannelId, TeamId } from '../domain/contracts.js';
 import { IdentityError } from '../domain/agents.js';
-import { TopicId } from '../domain/communication.js';
+import { TopicId, memberKey } from '../domain/communication.js';
 import { INBOX_LIVENESS_MS } from '../domain/inbox.js';
 import type { Store } from '../persistence/store.js';
 import type { Config } from './config.js';
@@ -138,6 +138,27 @@ export function registerWorkspace(
     // Channel access was authorized above; the projection is allow-listed.
     const iso = (ms: number | null) =>
       ms === null ? null : new Date(ms).toISOString();
+    const project = (d: {
+      id: string;
+      agentId: string;
+      messageId: string | null;
+      taskId: string | null;
+      state: string;
+      reason: string;
+      queuedAt: number | null;
+      updatedAt: number | null;
+      resultMessageId: string | null;
+    }) => ({
+      id: d.id,
+      agentId: d.agentId,
+      messageId: d.messageId,
+      taskId: d.taskId,
+      state: d.state,
+      reason: d.reason,
+      queuedAt: iso(d.queuedAt),
+      updatedAt: iso(d.updatedAt),
+      resultMessageId: d.resultMessageId,
+    });
     const deliveries = channel
       ? store.inbox
           .deliveriesFor(
@@ -146,18 +167,28 @@ export function registerWorkspace(
             messages.items.map((m) => m.id),
             tasks.items.map((t) => t.id),
           )
-          .map((d) => ({
-            id: d.id,
-            agentId: d.agentId,
-            messageId: d.messageId,
-            taskId: d.taskId,
-            state: d.state,
-            reason: d.reason,
-            queuedAt: iso(d.queuedAt),
-            updatedAt: iso(d.updatedAt),
-            resultMessageId: d.resultMessageId,
-          }))
+          .map(project)
       : [];
+    // Only owners reach this route (teamFor), so recovery and setup items are theirs.
+    const me = memberKey({ kind: 'human', id: principal.humanId });
+    const live = new Set(wake.filter((w) => w.connected).map((w) => w.agentId));
+    const attention = {
+      decide: store.tasks.waitingOn(principal, teamId),
+      unstuck: store.inbox
+        .blockedIn(teamId, me)
+        .filter((d) => known.has(AgentId.parse(d.agentId)))
+        .map((d) => ({
+          ...project(d),
+          channelId: d.channelId,
+          channelName: d.channelName,
+        })),
+      connect: store.inbox
+        .queuedPerAgent(teamId)
+        .filter(
+          (q) => known.has(AgentId.parse(q.agentId)) && !live.has(q.agentId),
+        )
+        .map((q) => ({ agentId: q.agentId, queued: q.count })),
+    };
     return WorkspaceSnapshot.parse({
       observedAt: new Date(now).toISOString(),
       nativeT3Origin: config.nativeT3
@@ -172,6 +203,7 @@ export function registerWorkspace(
       agentsTruncated: profiles.truncated,
       joinedAgentIds,
       deliveries,
+      attention,
       wake,
       messages,
       topics: channel

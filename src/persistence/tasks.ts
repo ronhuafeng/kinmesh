@@ -1,6 +1,6 @@
 import { enqueueFact } from './inbox-enqueue.js';
 import { randomUUID } from 'node:crypto';
-import { and, asc, eq, gt, isNull, lte, max } from 'drizzle-orm';
+import { and, asc, eq, gt, isNull, lte, max, or, sql } from 'drizzle-orm';
 import type { BetterSQLite3Database } from 'drizzle-orm/better-sqlite3';
 import { z } from 'zod';
 import * as s from './schema.js';
@@ -301,6 +301,53 @@ export function taskRepository(
       return atomic(() => {
         access(p, teamId, channelId);
         return view(row(teamId, channelId, id));
+      });
+    },
+    /**
+     * Tasks across every channel a human has joined that wait on that human's
+     * decision: sign-off, review or rework. Newest change first.
+     */
+    waitingOn(p: Principal, teamId: TeamId) {
+      return atomic(() => {
+        if (p.kind !== 'human') throw new IdentityError(403);
+        agents.teamAccess(p, teamId, 'tasks:read');
+        const me = memberKey(principalMember(p));
+        return db
+          .select({ task: s.tasks, channelName: s.channels.name })
+          .from(s.tasks)
+          .innerJoin(s.channels, eq(s.channels.id, s.tasks.channelId))
+          .innerJoin(
+            s.channelParticipants,
+            and(
+              eq(s.channelParticipants.channelId, s.tasks.channelId),
+              eq(s.channelParticipants.memberKey, me),
+              eq(s.channelParticipants.state, 'joined'),
+            ),
+          )
+          .where(
+            and(
+              eq(s.tasks.teamId, teamId),
+              or(
+                and(
+                  eq(s.tasks.status, 'awaiting-human'),
+                  eq(s.tasks.acceptorHumanId, p.humanId),
+                ),
+                and(
+                  eq(s.tasks.status, 'review-requested'),
+                  sql`json_extract(${s.tasks.state}, '$.reviewer.kind') = 'human'`,
+                  sql`json_extract(${s.tasks.state}, '$.reviewer.id') = ${p.humanId}`,
+                ),
+                and(
+                  eq(s.tasks.status, 'rework-requested'),
+                  eq(s.tasks.ownerKey, me),
+                ),
+              ),
+            ),
+          )
+          .orderBy(sql`${s.tasks.updatedAt} DESC`)
+          .limit(50)
+          .all()
+          .map((r) => ({ task: view(r.task), channelName: r.channelName }));
       });
     },
     list(

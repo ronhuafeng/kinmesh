@@ -692,6 +692,73 @@ test('a mention says what happened to it and leads to the agent’s reply', asyn
   ).toBeVisible();
 });
 
+test('Needs you gathers what waits on me across channels and leads to the fix', async ({
+  page,
+  hub,
+}) => {
+  await onboard(page, hub);
+  await register(page, 'Ada', 'developer');
+  await page.keyboard.press('Escape');
+  const needs = page.getByRole('button', { name: /^Needs you/ });
+  await expect(needs).toHaveText(/0$/);
+  await page.getByRole('tab', { name: 'Chat', exact: true }).click();
+  const composer = page.getByRole('form', { name: 'Message your team' });
+  await composer
+    .getByLabel('Message', { exact: true })
+    .fill('@Ada please check the release notes');
+  await composer.getByRole('button', { name: 'Send message' }).click();
+  // Ada has no worker: queued work shows up as something to connect.
+  await expect(needs).toHaveText(/1$/);
+  await page.getByText('New channel', { exact: true }).click();
+  await page.getByLabel('Channel name').fill('launch');
+  await page
+    .getByRole('button', { name: 'Create channel', exact: true })
+    .click();
+  await page
+    .getByRole('navigation', { name: 'Channels' })
+    .getByRole('button', { name: 'launch' })
+    .click();
+  await expect(page.getByRole('heading', { name: '# launch' })).toBeVisible();
+  await expect(needs).toHaveText(/1$/);
+  await needs.click();
+  const drawer = page.getByRole('region', { name: 'Needs you' });
+  await drawer
+    .getByRole('button', {
+      name: /Ada has 1 request waiting but can’t be woken yet/,
+    })
+    .click();
+  await expect(
+    page
+      .getByRole('region', { name: 'Ada', exact: true })
+      .getByText('Setup steps'),
+  ).toBeVisible();
+  // A blocking failure turns it into something to unstick, wherever I am.
+  const sql = new Database(hub.database);
+  try {
+    sql
+      .prepare(
+        "UPDATE agent_inbox SET state = 'blocked', reason = 'authority-or-contract-blocked'",
+      )
+      .run();
+  } finally {
+    sql.close();
+  }
+  await refreshNow(page);
+  await page.keyboard.press('Escape');
+  await needs.click();
+  await expect(drawer.getByRole('region', { name: 'Connect' })).toHaveCount(0);
+  await drawer
+    .getByRole('region', { name: 'Unstuck' })
+    .getByRole('button', { name: /Ada is stuck/ })
+    .click();
+  await expect(page.getByRole('heading', { name: '# general' })).toBeVisible();
+  await expect(
+    page
+      .getByRole('list', { name: 'Channel messages' })
+      .getByText('please check the release notes'),
+  ).toBeVisible();
+});
+
 test('the agent panel walks the owner from a profile to a ready-to-run worker binding', async ({
   page,
   context,
