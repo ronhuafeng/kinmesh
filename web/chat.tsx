@@ -8,6 +8,8 @@ import { ActionForm, Field } from './forms.js';
 import { authorName } from './names.js';
 import { Avatar, shortTime, wakeOf } from './ui.js';
 import { DeliveryLine } from './deliveries.js';
+import { Markdown } from './markdown.js';
+import { ReplyOrigin, answerOnly } from './replies.js';
 import type { DeliveryView } from './deliveries.js';
 
 type ChatMessage = z.infer<typeof Message>;
@@ -301,12 +303,20 @@ export function Chat({
     if (d.resultMessageId && d.messageId)
       replyTo.set(d.resultMessageId, d.messageId);
   }
+  const origin = new Map(data.replies.map((r) => [r.messageId, r]));
+  const mentionName = (member: ChatMessage['mentions'][number]) =>
+    member.kind === 'agent'
+      ? (data.agents.find((a) => a.id === member.id)?.name ?? 'Agent')
+      : 'Human member';
+  // A mention already written as @Name in the text needs no second chip.
+  const unwritten = (m: ChatMessage) =>
+    m.mentions.filter((member) => !m.body.includes('@' + mentionName(member)));
   const replySource = (id: string) => {
     const source = messages.find((m) => m.id === id);
     if (!source) return 'an earlier message';
-    const text =
-      source.body.length > 60 ? source.body.slice(0, 57) + '…' : source.body;
-    return `${authorName(source.author, data)}: “${text}”`;
+    const flat = source.body.replace(/\s+/g, ' ').trim();
+    const text = flat.length > 80 ? flat.slice(0, 77) + '…' : flat;
+    return `${authorName(source.author, data)}: ${text}`;
   };
   const jump = (id: string) => {
     const target = document.getElementById('message-' + id);
@@ -436,23 +446,24 @@ export function Chat({
                       jump(replyTo.get(m.id) ?? '');
                     }}
                   >
-                    ↑ In reply to {replySource(replyTo.get(m.id) ?? '')}
+                    <span aria-hidden="true">↩</span>{' '}
+                    <span className="visually-hidden">In reply to </span>
+                    {replySource(replyTo.get(m.id) ?? '')}
                   </button>
                 )}
-                <p>{m.body}</p>
-                {m.mentions.length > 0 && (
+                <div className="message-text">
+                  <Markdown text={answerOnly(m.body, origin.get(m.id))} />
+                </div>
+                {origin.get(m.id) && <ReplyOrigin reply={origin.get(m.id)} />}
+                {unwritten(m).length > 0 && (
                   <ul className="mentions" aria-label="Mentioned">
-                    {m.mentions.map((member) => (
+                    {unwritten(m).map((member) => (
                       <li
                         key={member.kind + member.id}
                         className="mention-chip"
                         data-kind={member.kind}
                       >
-                        @
-                        {member.kind === 'agent'
-                          ? (data.agents.find((a) => a.id === member.id)
-                              ?.name ?? 'Agent')
-                          : 'Human member'}
+                        @{mentionName(member)}
                       </li>
                     ))}
                   </ul>

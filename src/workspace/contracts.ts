@@ -44,6 +44,23 @@ export const WorkspaceSnapshot = z.strictObject({
   joinedAgentIds: z.array(AgentId).max(100),
   /** Inbox deliveries for the visible messages and tasks (allow-listed fields only). */
   deliveries: z.array(DeliveryView).max(1000),
+  /** Where each visible agent reply came from; shown beside it, never in it. */
+  replies: z
+    .array(
+      z.strictObject({
+        messageId: z.uuid(),
+        agentId: AgentId,
+        state: z.enum(['succeeded', 'failed', 'stopped']),
+        answered: z.boolean(),
+        excerpt: z.boolean(),
+        providerId: z.string().max(256).nullable(),
+        modelId: z.string().max(256).nullable(),
+        environmentId: z.string().max(256),
+        threadId: z.string().max(256),
+        runId: z.string().max(256),
+      }),
+    )
+    .max(100),
   /** What waits on this human across the team: one list, grouped by action. */
   attention: z.strictObject({
     decide: z

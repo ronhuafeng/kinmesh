@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
-import { deliveryText } from '../web/deliveries.js';
+import { deliveryText, took } from '../web/deliveries.js';
 import type { DeliveryView } from '../web/deliveries.js';
 import { AgentId } from '../src/domain/contracts.js';
 
@@ -30,7 +30,12 @@ await test('every delivery state reads as a plain sentence about the agent', () 
     ['waiting', 'human-or-approval-wait', true, /waiting for an approval/],
     ['waiting', 'assistant-result-unavailable', true, /working on it/],
     ['uncertain', 'native-launch-uncertain', true, /^Checking whether Ada/],
-    ['acked', 'assistant-result-published', true, /^Ada replied$/],
+    [
+      'acked',
+      'assistant-result-published',
+      true,
+      /^Ada replied in under a minute$/,
+    ],
     ['blocked', 'authority-or-contract-blocked', true, /^Ada is stuck/],
     ['blocked', 'agent-disabled', true, /^Ada is disabled/],
     ['blocked', 'credential-invalid', true, /^Ada’s credential was revoked/],
@@ -52,4 +57,23 @@ await test('every delivery state reads as a plain sentence about the agent', () 
     // No machine vocabulary leaks into the sentence.
     assert.doesNotMatch(text, /acked|enqueued|uncertain|delivery|inbox/i);
   }
+});
+
+await test('a reply says how long it took', () => {
+  assert.equal(
+    took('2026-10-31T11:00:00Z', '2026-10-31T11:00:40Z'),
+    'in under a minute',
+  );
+  assert.equal(
+    took('2026-10-31T11:00:00Z', '2026-10-31T11:07:00Z'),
+    'after 7 min',
+  );
+  assert.equal(
+    took('2026-10-31T11:00:00Z', '2026-10-31T12:11:00Z'),
+    'after 1 h 11 min',
+  );
+  assert.equal(
+    took('2026-10-31T11:00:00Z', '2026-10-31T13:00:00Z'),
+    'after 2 h',
+  );
 });

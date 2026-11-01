@@ -540,85 +540,8 @@ export function App() {
             </div>
           </aside>
           <main className="workspace-main">
-            <header className="workspace-header">
-              <div className="title-block">
-                <h1>
-                  {shownChannelName
-                    ? '# ' + shownChannelName
-                    : switching
-                      ? 'Opening channel…'
-                      : 'Welcome to your team'}
-                </h1>
-                <p>
-                  {channel
-                    ? `${plural(joinedAgents.length + 1, 'member')} · ${plural(openTasks, 'open task')}`
-                    : 'Create or rejoin a channel to begin.'}
-                </p>
-              </div>
-              <CommandPalette commands={commands} />
-              {/* Healthy is silent: the pill appears only when something is off. */}
-              {connection !== 'ready' && (
-                <div className="connection" data-state={connection}>
-                  <span className="connection-dot" aria-hidden="true" />
-                  <span role="status">
-                    {connection === 'loading' ? 'Refreshing…' : 'Disconnected'}
-                  </span>
-                  {connection === 'offline' && (
-                    <>
-                      <small>
-                        Last update{' '}
-                        {new Date(data.observedAt).toLocaleTimeString()}
-                      </small>
-                      <button className="secondary" onClick={refreshNow}>
-                        Reconnect
-                      </button>
-                    </>
-                  )}
-                </div>
-              )}
-            </header>
-            {error && (
-              <div className="stale-banner" data-state={status}>
-                <Notice>
-                  {error}{' '}
-                  <button
-                    onClick={() => {
-                      selectChannel('');
-                      setError('');
-                    }}
-                  >
-                    Return to joined channels
-                  </button>
-                </Notice>
-              </div>
-            )}
-            {asks.length > 0 && view !== 'board' && (
-              <section className="decision-strip" aria-label="Waiting for you">
-                <p>
-                  <strong>
-                    {asks.length === 1
-                      ? '1 task is waiting for you'
-                      : `${String(asks.length)} tasks are waiting for you`}
-                  </strong>
-                </p>
-                <ul>
-                  {asks.map(({ task, ask }) => (
-                    <li key={task.id}>
-                      <button
-                        className="ask"
-                        onClick={() => {
-                          openTask(task.id);
-                        }}
-                      >
-                        <span className="ask-title">{task.title}</span>
-                        <small>{ask}</small>
-                      </button>
-                    </li>
-                  ))}
-                </ul>
-              </section>
-            )}
             <Tabs.Root
+              className="workspace-tabs"
               value={view}
               // Focus returning from a drawer or the palette must not switch views.
               activationMode="manual"
@@ -626,18 +549,102 @@ export function App() {
                 setView(v === 'board' || v === 'team' ? v : 'chat');
               }}
             >
-              <Tabs.List aria-label="Workspace views" className="view-switch">
-                <Tabs.Trigger value="chat">Chat</Tabs.Trigger>
-                <Tabs.Trigger value="board">
-                  Board
-                  {asks.length > 0 && (
-                    <span className="tab-count" aria-hidden="true">
-                      {asks.length}
+              <header className="workspace-header">
+                <div className="title-block">
+                  <h1>
+                    {shownChannelName
+                      ? '# ' + shownChannelName
+                      : switching
+                        ? 'Opening channel…'
+                        : 'Welcome to your team'}
+                  </h1>
+                  <p>
+                    {channel
+                      ? `${plural(joinedAgents.length + 1, 'member')} · ${plural(openTasks, 'open task')}`
+                      : 'Create or rejoin a channel to begin.'}
+                  </p>
+                </div>
+                {/* Views stay in reach however far the conversation scrolls. */}
+                <Tabs.List aria-label="Workspace views" className="view-switch">
+                  <Tabs.Trigger value="chat">Chat</Tabs.Trigger>
+                  <Tabs.Trigger value="board">
+                    Board
+                    {asks.length > 0 && (
+                      <span className="tab-count" aria-hidden="true">
+                        {asks.length}
+                      </span>
+                    )}
+                  </Tabs.Trigger>
+                  <Tabs.Trigger value="team">Team</Tabs.Trigger>
+                </Tabs.List>
+                <CommandPalette commands={commands} />
+                {/* Healthy is silent: the pill appears only when something is off. */}
+                {connection !== 'ready' && (
+                  <div className="connection" data-state={connection}>
+                    <span className="connection-dot" aria-hidden="true" />
+                    <span role="status">
+                      {connection === 'loading'
+                        ? 'Refreshing…'
+                        : 'Disconnected'}
                     </span>
-                  )}
-                </Tabs.Trigger>
-                <Tabs.Trigger value="team">Team</Tabs.Trigger>
-              </Tabs.List>
+                    {connection === 'offline' && (
+                      <>
+                        <small>
+                          Last update{' '}
+                          {new Date(data.observedAt).toLocaleTimeString()}
+                        </small>
+                        <button className="secondary" onClick={refreshNow}>
+                          Reconnect
+                        </button>
+                      </>
+                    )}
+                  </div>
+                )}
+              </header>
+              {error && (
+                <div className="stale-banner" data-state={status}>
+                  <Notice>
+                    {error}{' '}
+                    <button
+                      onClick={() => {
+                        selectChannel('');
+                        setError('');
+                      }}
+                    >
+                      Return to joined channels
+                    </button>
+                  </Notice>
+                </div>
+              )}
+              {asks.length > 0 && view !== 'board' && (
+                <section
+                  className="decision-strip"
+                  aria-label="Waiting for you"
+                >
+                  <p>
+                    <strong>
+                      {asks.length === 1
+                        ? '1 task is waiting for you'
+                        : `${String(asks.length)} tasks are waiting for you`}
+                    </strong>
+                  </p>
+                  <ul>
+                    {asks.map(({ task, ask }) => (
+                      <li key={task.id}>
+                        <button
+                          className="ask"
+                          onClick={() => {
+                            openTask(task.id);
+                          }}
+                        >
+                          <span className="ask-title">{task.title}</span>
+                          <small>{ask}</small>
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                </section>
+              )}
               <fieldset
                 className="view-content"
                 data-switching={switching ? 'true' : undefined}

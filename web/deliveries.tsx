@@ -10,6 +10,16 @@ type Tone = 'queued' | 'active' | 'waiting' | 'done' | 'problem';
  * What a delivery means to the person who asked, in their words. The machine
  * state and reason stay available as a tooltip for whoever operates Kinmesh.
  */
+/** How long an answer took, the way a person would say it. */
+export function took(from: string, to: string) {
+  const seconds = (Date.parse(to) - Date.parse(from)) / 1000;
+  if (seconds < 60) return 'in under a minute';
+  const minutes = Math.round(seconds / 60);
+  if (minutes < 60) return `after ${String(minutes)} min`;
+  const hours = Math.floor(minutes / 60);
+  const rest = minutes % 60;
+  return `after ${String(hours)} h` + (rest ? ` ${String(rest)} min` : '');
+}
 /** A blocked delivery says what was lost, so the fix is obvious. */
 function blockedText(reason: string, name: string) {
   const cause = BlockedReason.safeParse(reason);
@@ -57,7 +67,14 @@ export function deliveryText(
         tone: 'waiting',
       };
     case 'acked':
-      return { text: `${name} replied`, tone: 'done' };
+      return {
+        text:
+          `${name} replied` +
+          (d.queuedAt && d.updatedAt
+            ? ' ' + took(d.queuedAt, d.updatedAt)
+            : ''),
+        tone: 'done',
+      };
     case 'blocked':
       return { text: blockedText(d.reason, name), tone: 'problem' };
     case 'expired':

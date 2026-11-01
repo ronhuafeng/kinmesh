@@ -203,6 +203,13 @@ export function registerWorkspace(
       agentsTruncated: profiles.truncated,
       joinedAgentIds,
       deliveries,
+      replies: channel
+        ? store.inbox.repliesFor(
+            teamId,
+            channel.id,
+            messages.items.map((m) => m.id),
+          )
+        : [],
       attention,
       wake,
       managed: store.managed
