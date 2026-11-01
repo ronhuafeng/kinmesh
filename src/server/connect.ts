@@ -16,6 +16,7 @@ import {
   saveCredential,
 } from '../adapters/t3/oauth.js';
 import { t3Providers, type T3Providers } from '../adapters/t3/providers.js';
+import { Descriptor } from '../adapters/t3/contracts.js';
 import {
   privateDirectory,
   removeAgentToken,
@@ -32,12 +33,30 @@ export interface Hub {
   ensureWorker: () => Promise<void>;
   authorize: typeof authorize;
   providers: T3Providers;
+  /** The local T3 MCP endpoint, when T3 runs on this machine. */
+  discover: () => Promise<string | null>;
+}
+/** T3 desktop's fixed loopback address; only this one address is probed. */
+const LOCAL_T3 = 'http://127.0.0.1:3773';
+async function discoverLocal() {
+  try {
+    const response = await fetch(LOCAL_T3 + '/.well-known/t3/environment', {
+      redirect: 'error',
+      signal: AbortSignal.timeout(1500),
+    });
+    if (!response.ok) return null;
+    Descriptor.parse(await response.json());
+    return LOCAL_T3 + '/mcp';
+  } catch {
+    return null;
+  }
 }
 export const defaultHub = (directory: string): Hub => ({
   directory,
   ensureWorker: () => Promise.resolve(),
   authorize,
   providers: t3Providers,
+  discover: discoverLocal,
 });
 /** Scopes the worker uses (docs/agent-inbox.md, step 2), for 90 days. */
 export const WORKER_GRANT = {
@@ -74,14 +93,36 @@ export function registerConnect(app: FastifyInstance, store: Store, hub: Hub) {
     reply.header('Cache-Control', 'no-store');
     const { teamId } = TeamPath.parse(request.params);
     const connection = store.managed.connection(principal(request), teamId);
+    // Whether T3 let agents run, or only read: a read-only approval looks
+    // connected but every wake would be refused.
+    let access: 'operate' | 'read' | null = null;
+    if (connection)
+      try {
+        const scopes =
+          loadCredential(
+            credentialFile,
+            connection.endpoint,
+          ).tokens.scope?.split(/\s+/) ?? [];
+        access = scopes.includes('orchestration:operate') ? 'operate' : 'read';
+      } catch {
+        access = null;
+      }
     return {
       connection: connection && {
         endpoint: connection.endpoint,
         environmentId: connection.environmentId,
         connectedAt: new Date(connection.connectedAt).toISOString(),
+        access,
       },
       signIn: flow?.teamId === teamId ? flow.state : null,
     };
+  });
+  /** The T3 desktop app on this machine, if one is running: no URL to find. */
+  app.get('/api/teams/:teamId/t3/local', async (request, reply) => {
+    reply.header('Cache-Control', 'no-store');
+    const { teamId } = TeamPath.parse(request.params);
+    store.managed.connection(principal(request), teamId);
+    return { endpoint: await hub.discover() };
   });
   app.post('/api/teams/:teamId/t3/connect', async (request, reply) => {
     reply.header('Cache-Control', 'no-store');
@@ -173,8 +214,6 @@ export function registerConnect(app: FastifyInstance, store: Store, hub: Hub) {
         .strictObject({
           providerId: z.string().trim().min(1).max(256),
           modelId: z.string().trim().min(1).max(256),
-          // The owner's assertion that the provider uses Team MCP (step in T3).
-          providerConfigured: z.literal(true),
         })
         .parse(request.body);
       const { token } = store.managed.connect(

@@ -269,7 +269,7 @@ export function managedBindings(store: Store, directory: string): Binding[] {
       t3Endpoint: b.endpoint,
       t3AuthFile: t3AuthFile(directory),
       isolatedProviderId: b.providerId,
-      // Asserted by the owner when connecting the agent.
+      // Not an assertion here: workspace agents run without Team MCP (ADR 0008).
       externalTeamMcpConfigured: true,
     }),
   );

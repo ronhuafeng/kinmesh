@@ -2,7 +2,11 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { z } from 'zod';
+import Database from 'better-sqlite3';
 import { deliver } from '../src/inbox/worker.js';
+import { FrozenLaunch } from '../src/domain/inbox.js';
+import { IdentityError } from '../src/domain/agents.js';
+import { launch, options, reference } from './t3-helpers.js';
 import { inboxFixture } from './inbox-helpers.js';
 import { key, postInput } from './communication-helpers.js';
 
@@ -179,5 +183,55 @@ await test('resume cannot bypass a revoked credential, and task work reports los
     );
   } finally {
     await g.dispose();
+  }
+});
+
+await test('a request that never reached T3 is retried under a reconnected T3; one that may have reached it is not', async () => {
+  const f = await inboxFixture();
+  try {
+    const claim = mention(f);
+    const worker = f.workerPrincipal;
+    if (worker.kind !== 'agent') throw new Error('Agent principal expected');
+    const frozen = (authority: string) =>
+      FrozenLaunch.parse({
+        grantId: worker.grantId,
+        execution: {
+          endpoint: options.endpoint,
+          environmentId: reference.environmentId,
+          authority,
+        },
+        input: launch,
+      });
+    // Frozen under a read-only grant that T3 then refused before any dispatch.
+    f.inbox.freeze(claim, f.workerPrincipal, frozen('read-only'));
+    const refrozen = f.inbox.freeze(
+      claim,
+      f.workerPrincipal,
+      frozen('supervised'),
+    );
+    assert.equal(refrozen.execution.authority, 'supervised');
+    assert.equal(f.inbox.get(claim.id).reason, 'launch-refrozen');
+    // Once an operation may exist natively, the authority is pinned for good.
+    f.inbox.remember(claim, { operationId: 'native-operation' });
+    assert.throws(
+      () => f.inbox.freeze(claim, f.workerPrincipal, frozen('another')),
+      (error: unknown) =>
+        error instanceof IdentityError && error.statusCode === 403,
+    );
+    // The database refuses it too, whatever code tries.
+    const raw = new Database(f.dbPath);
+    try {
+      assert.throws(
+        () =>
+          raw
+            .prepare('UPDATE agent_inbox SET launch = ? WHERE id = ?')
+            .run(JSON.stringify(frozen('another')), claim.id),
+        /immutable inbox contract/,
+      );
+    } finally {
+      raw.close();
+    }
+  } finally {
+    await f.dispose();
   }
 });

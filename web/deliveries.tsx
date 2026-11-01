@@ -23,7 +23,7 @@ function blockedText(reason: string, name: string) {
     case 'not-assigned':
       return `The task is no longer assigned to ${name}, so this was stopped`;
     case 'native-access':
-      return `T3 refused ${name}’s access`;
+      return `T3 refused ${name}’s access: reconnect T3 and choose Supervised`;
     case 'native-incompatible':
       return `${name}’s T3 setup doesn’t match (environment, provider or model)`;
     default:

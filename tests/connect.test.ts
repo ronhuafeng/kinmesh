@@ -52,6 +52,7 @@ async function connectFixture() {
     },
     providers: () =>
       Promise.resolve([{ id: 'isolated-dev', models: ['model-a'] }]),
+    discover: () => Promise.resolve('http://127.0.0.1:3773/mcp'),
     ensureWorker: () => {
       workers.push(Date.now());
       return Promise.resolve();
@@ -129,6 +130,20 @@ await test('the owner connects T3 from the browser; the credential is saved priv
       connection: { endpoint, environmentId: 'env-live' },
       signIn: null,
     });
+    // Supervised access is reported, so a read-only approval can be caught.
+    assert.equal(
+      z
+        .object({ connection: z.object({ access: z.string().nullable() }) })
+        .parse((await f.call('GET', f.team + '/t3')).json<unknown>()).connection
+        .access,
+      'operate',
+    );
+    assert.deepEqual(
+      (await f.call('GET', f.team + '/t3/local')).json<unknown>(),
+      {
+        endpoint: 'http://127.0.0.1:3773/mcp',
+      },
+    );
     const file = t3AuthFile(f.directory);
     assert.equal(mode(file), 0o600);
     assert.equal(mode(dirname(file)), 0o700);
@@ -164,7 +179,6 @@ await test('connecting an agent gives the hub’s worker a private credential th
       f.call('POST', f.agentPath + '/connect', {
         providerId: 'isolated-dev',
         modelId: 'model-a',
-        providerConfigured: true,
       });
     // T3 first.
     assert.equal((await connect()).statusCode, 409);
@@ -250,12 +264,11 @@ await test('connecting an agent gives the hub’s worker a private credential th
     );
     assert.equal(existsSync(tokenFile), false);
     assert.throws(() => f.store.agents.resolveToken(last));
-    // The provider assertion is required, and agents never reach these routes.
+    // A model is required, and agents never reach these routes.
     assert.equal(
       (
         await f.call('POST', f.agentPath + '/connect', {
           providerId: 'isolated-dev',
-          modelId: 'model-a',
         })
       ).statusCode,
       400,
