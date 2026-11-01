@@ -55,17 +55,26 @@ await test('MOCK: explicit project selection is not replaced by linked environme
     f.dispose();
   }
 });
-await test('MOCK: unknown version and missing idempotency support fail before mutation', async () => {
+await test('MOCK: versions below 0.1.5 and missing idempotency support fail before mutation', async () => {
   const f = await backendFixture();
   try {
-    f.wire.values.t3_environment_read = {
+    const at = (serverVersion: string) => ({
       ...z.record(z.string(), z.unknown()).parse(captured.t3_environment_read),
-      serverVersion: '0.1.6',
-    };
-    await assert.rejects(
-      T3Backend.connect(f.wire, f.store.operations, options),
-      failure('incompatible'),
-    );
+      serverVersion,
+    });
+    for (const old of ['0.1.4', '0.0.9', '0.1.5-rc.1', 'v0.1.6']) {
+      f.wire.values.t3_environment_read = at(old);
+      await assert.rejects(
+        T3Backend.connect(f.wire, f.store.operations, options),
+        failure('incompatible'),
+        old,
+      );
+    }
+    // Newer releases connect; each call is still held to the advertised schemas.
+    for (const newer of ['0.1.6', '0.2.0', '1.0.0']) {
+      f.wire.values.t3_environment_read = at(newer);
+      await T3Backend.connect(f.wire, f.store.operations, options);
+    }
     f.wire.values.t3_environment_read = captured.t3_environment_read;
     for (const name of [
       't3_thread_launch',

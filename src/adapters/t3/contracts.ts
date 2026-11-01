@@ -15,9 +15,26 @@ export const Status = z.enum([
   'cancelled',
   'rolled_back',
 ]);
+/** Oldest T3 whose MCP contract and native idempotency the adapter was verified against. */
+export const MIN_T3_VERSION = [0, 1, 5] as const;
+/**
+ * Plain `major.minor.patch`, at least the verified floor. Newer releases are
+ * still held to the advertised schemas each tool call is validated against.
+ */
+export const ServerVersion = z
+  .string()
+  .regex(/^(0|[1-9]\d{0,5})\.(0|[1-9]\d{0,5})\.(0|[1-9]\d{0,5})$/)
+  .refine((value) => {
+    const parts = value.split('.').map(Number);
+    for (const [i, floor] of MIN_T3_VERSION.entries()) {
+      const part = parts[i] ?? 0;
+      if (part !== floor) return part > floor;
+    }
+    return true;
+  });
 export const Descriptor = z.object({
   environmentId: z.string().min(1),
-  serverVersion: z.literal('0.1.5'),
+  serverVersion: ServerVersion,
 });
 export const Capabilities = z.object({
   runtimeMode: z.enum([
