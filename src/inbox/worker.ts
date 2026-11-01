@@ -235,7 +235,13 @@ export async function deliver(
         claim,
         blocked ? 'blocked' : stage === 'execution' ? 'uncertain' : 'ready',
         blocked
-          ? 'authority-or-contract-blocked'
+          ? error instanceof ExecutionFailure
+            ? ['permission', 'authentication'].includes(error.kind)
+              ? 'native-access'
+              : 'native-incompatible'
+            : store.inbox.blockedCause(claim, () =>
+                loadAgentToken(binding.tokenFile),
+              )
           : stopping.aborted
             ? 'worker-stopping'
             : 'temporarily-unavailable',

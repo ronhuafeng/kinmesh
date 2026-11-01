@@ -118,7 +118,9 @@ Changing the T3 endpoint/OAuth authority, Kinmesh grant or configured model afte
 KINMESH_INBOX_CONFIG=/private/kinmesh/inbox.json npm run inbox:worker -- resume DELIVERY_UUID
 ```
 
-Resume keeps the frozen intent/authority and native request key; it cannot bypass a revoked grant or switch authority. This CLI is local administration, not a new human/agent HTTP or MCP privilege surface.
+Resume keeps the frozen intent/authority and native request key; it cannot bypass a revoked grant or switch authority.
+
+A blocked delivery records its cause: `agent-disabled`, `credential-invalid`, `not-in-channel`, `not-assigned`, `native-access` or `native-incompatible`. Older rows keep `authority-or-contract-blocked`. Team owners can also resume from the workspace (`POST /api/teams/:teamId/deliveries/:deliveryId/resume`, owner session only, never agent bearers), through the same transition and with the same invariants; see [ADR 0006](adr/0006-owner-recovery.md). The workspace offers the matching fix next to the retry.
 
 ## Results, ACK and retention
 

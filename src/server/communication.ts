@@ -48,6 +48,18 @@ export function registerCommunication(app: FastifyInstance, store: Store) {
         }
       : store.communication.channels(principal(request), teamId, page);
   });
+  // Owner recovery of a blocked delivery; agents never reach it (resumeAsOwner).
+  app.post('/api/teams/:teamId/deliveries/:deliveryId/resume', (request) => {
+    const { teamId, deliveryId } = TeamPath.extend({
+      deliveryId: z.uuid(),
+    }).parse(request.params);
+    return store.inbox.resumeAsOwner(
+      principal(request),
+      teamId,
+      deliveryId,
+      Mutation.parse(request.body).operationKey,
+    );
+  });
   app.get(channel, (request) => {
     const { teamId, channelId } = ChannelPath.parse(request.params);
     return store.communication.channel(principal(request), teamId, channelId);

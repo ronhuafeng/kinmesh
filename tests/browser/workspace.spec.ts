@@ -759,6 +759,89 @@ test('Needs you gathers what waits on me across channels and leads to the fix', 
   ).toBeVisible();
 });
 
+test('a stuck request says what was lost and is fixed and retried in place', async ({
+  page,
+  context,
+  hub,
+}) => {
+  await onboard(page, hub);
+  await register(page, 'Ada', 'developer');
+  await page.keyboard.press('Escape');
+  const state = await snapshot(context.request, hub.origin);
+  const ada = state.agents[0];
+  if (!ada || !state.channel) throw new Error('Local fixture unavailable');
+  await page.getByRole('tab', { name: 'Chat', exact: true }).click();
+  const composer = page.getByRole('form', { name: 'Message your team' });
+  await composer
+    .getByLabel('Message', { exact: true })
+    .fill('@Ada please check the release notes');
+  await composer.getByRole('button', { name: 'Send message' }).click();
+  const responses = page
+    .getByRole('list', { name: 'Channel messages' })
+    .getByRole('listitem')
+    .filter({ hasText: 'please check the release notes' })
+    .first()
+    .getByRole('list', { name: 'Agent responses' });
+  await expect(responses).toContainText('Ada isn’t connected');
+  // Ada is removed from the channel; the worker records that as the cause.
+  const removed = await context.request.post(
+    `${hub.origin}/api/teams/${state.team.id}/channels/${state.channel.id}/participants/remove`,
+    {
+      data: {
+        operationKey: randomUUID(),
+        member: { kind: 'agent', id: ada.id },
+      },
+    },
+  );
+  expect(removed.status()).toBe(200);
+  const sql = new Database(hub.database);
+  try {
+    sql
+      .prepare(
+        "UPDATE agent_inbox SET state = 'blocked', reason = 'not-in-channel'",
+      )
+      .run();
+  } finally {
+    sql.close();
+  }
+  await refreshNow(page);
+  await expect(responses).toContainText(
+    'Ada was removed from the channel, so this is on hold',
+  );
+  await expect(responses.getByText(/npm run/)).toHaveCount(0);
+  await responses
+    .getByRole('button', { name: 'Add Ada back and retry', exact: true })
+    .click();
+  // Back in the channel and retried with the original request.
+  await expect(responses).toContainText('Checking whether Ada’s run started');
+  const after = await snapshot(context.request, hub.origin);
+  expect(after.joinedAgentIds).toContain(ada.id);
+  expect(after.deliveries[0]?.state).toBe('uncertain');
+  expect(after.deliveries[0]?.reason).toBe('owner-resume');
+  // A cause fixed elsewhere leads there and offers a plain retry.
+  const db = new Database(hub.database);
+  try {
+    db.prepare(
+      "UPDATE agent_inbox SET state = 'blocked', reason = 'credential-invalid'",
+    ).run();
+  } finally {
+    db.close();
+  }
+  await refreshNow(page);
+  await expect(responses).toContainText('Ada’s credential was revoked');
+  await expect(
+    responses.getByRole('button', { name: 'Retry', exact: true }),
+  ).toBeVisible();
+  await responses
+    .getByRole('button', { name: 'Fix Ada’s setup', exact: true })
+    .click();
+  await expect(
+    page
+      .getByRole('region', { name: 'Ada', exact: true })
+      .getByText('Worker credential', { exact: true }),
+  ).toBeVisible();
+});
+
 test('the agent panel walks the owner from a profile to a ready-to-run worker binding', async ({
   page,
   context,

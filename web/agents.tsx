@@ -335,7 +335,13 @@ export function AgentDrawer({
                 .slice(-5)
                 .reverse()
                 .map((d) => (
-                  <DeliveryLine key={d.id} delivery={d} data={data} />
+                  <DeliveryLine
+                    key={d.id}
+                    delivery={d}
+                    data={data}
+                    channelId={data.channel?.id ?? ''}
+                    onDone={onDone}
+                  />
                 ))}
             </ul>
           </>

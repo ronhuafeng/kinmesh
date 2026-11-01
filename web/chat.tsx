@@ -464,7 +464,10 @@ export function Chat({
                         key={d.id}
                         delivery={d}
                         data={data}
+                        channelId={data.channel?.id ?? ''}
                         onReply={jump}
+                        openAgent={openAgent}
+                        onDone={onDone}
                       />
                     ))}
                   </ul>

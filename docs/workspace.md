@@ -42,9 +42,9 @@ The agent panel shows a setup checklist from profile to a running worker: joined
 
 ## What happened after you asked
 
-Under each message that mentions an agent, and on a task the agent was handed, the workspace shows one line per agent describing its Inbox delivery in plain words: _will pick this up_, _isn't connected_, _is working on it_, _is waiting for an approval in T3_, _replied_ (a link to the reply, which shows what it answers), _is stuck_ (with the operator recovery command) or _never picked this up_. The machine state and reason are available as a tooltip.
+Under each message that mentions an agent, and on a task the agent was handed, the workspace shows one line per agent describing its Inbox delivery in plain words: _will pick this up_, _isn't connected_, _is working on it_, _is waiting for an approval in T3_, _replied_ (a link to the reply, which shows what it answers), _is stuck_ (with what was lost and one fix: re-enable the agent, add it back, or open its setup, then retry) or _never picked this up_. The machine state and reason are available as a tooltip.
 
-`GET /api/workspace` includes these as `deliveries` for the visible messages and tasks of a channel the caller can read. Only identifiers, state, reason, timestamps and the reply message are exposed; claims, frozen launches, operation IDs, native references and counters stay in the worker. Blocked deliveries are still resumed only by an operator (see [Agent Inbox](agent-inbox.md)).
+`GET /api/workspace` includes these as `deliveries` for the visible messages and tasks of a channel the caller can read. Only identifiers, state, reason, timestamps and the reply message are exposed; claims, frozen launches, operation IDs, native references and counters stay in the worker. Owners resume blocked deliveries from the workspace; see [ADR 0006](adr/0006-owner-recovery.md).
 
 ## Needs you
 

@@ -2560,7 +2560,20 @@ button.quiet.subtle-danger {
 }
 .delivery-recovery {
   flex-basis: 100%;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.35rem 0.5rem;
+  margin-top: 0.3rem;
   font-size: 0.78rem;
+}
+.delivery-recovery button {
+  font-size: 0.78rem;
+  padding: 0.25rem 0.6rem;
+}
+.delivery-recovery .notice,
+.delivery-recovery details {
+  flex-basis: 100%;
 }
 .delivery-recovery code {
   display: inline-block;

@@ -8,9 +8,9 @@ import type { communicationRepository } from './communication.js';
 import type { taskRepository } from './tasks.js';
 import { fingerprint, transactional } from './transactional.js';
 import { sqliteNow } from './inbox-enqueue.js';
-import { IdentityError, type Principal } from '../domain/agents.js';
-import { AgentId } from '../domain/contracts.js';
-import { OutboxFact } from '../domain/communication.js';
+import { IdentityError, type Principal, type Scope } from '../domain/agents.js';
+import { AgentId, ChannelId, TeamId } from '../domain/contracts.js';
+import { OutboxFact, memberKey } from '../domain/communication.js';
 import {
   Claim,
   Delivery,
@@ -21,6 +21,7 @@ import {
   PublishedOutcome,
   retryDelay,
   InboxState,
+  type BlockedReason,
 } from '../domain/inbox.js';
 import { Reference } from '../domain/execution.js';
 import { retainsExecutionResponsibility } from '../domain/tasks.js';
@@ -32,7 +33,7 @@ export function inboxRepository(
   communication: ReturnType<typeof communicationRepository>,
   tasks: ReturnType<typeof taskRepository>,
 ) {
-  const { atomic } = transactional(db);
+  const { atomic, receipt } = transactional(db);
   const t = s.agentInbox;
   /** First and last recorded transition, for "queued 2 h ago" copy. */
   function withTimes<R extends { id: string; state: string }>(rows: R[]) {
@@ -97,6 +98,24 @@ export function inboxRepository(
         createdAt: sqliteNow,
       })
       .run();
+  }
+  /** Blocked → retry with the frozen intent; never a new native operation key. */
+  function reopen(id: string, reason: string) {
+    const row = get(id);
+    if (row.state !== 'blocked') throw new IdentityError(409);
+    const changed = db
+      .update(t)
+      .set({
+        state: row.reference === null ? 'uncertain' : 'waiting',
+        reason,
+        nextAttempt: sqliteNow,
+      })
+      .where(
+        and(eq(t.id, id), eq(t.state, 'blocked'), lte(t.leaseUntil, sqliteNow)),
+      )
+      .run();
+    if (changed.changes !== 1) throw new IdentityError(409);
+    history(get(id), reason);
   }
   function authorized(c: Claim, p: Principal) {
     owned(c);
@@ -507,28 +526,93 @@ export function inboxRepository(
         return message;
       });
     },
-    // Operator-local recovery only; no HTTP/MCP authority or new native operation key.
+    /**
+     * The first Kinmesh precondition a delivery no longer meets, so whoever
+     * can fix it is told what to fix. Read-only; never grants authority.
+     */
+    blockedCause(c: Claim, token: () => string): BlockedReason {
+      const agent = db
+        .select({ lifecycle: s.agents.lifecycle })
+        .from(s.agents)
+        .where(and(eq(s.agents.id, c.agentId), eq(s.agents.teamId, c.teamId)))
+        .get();
+      if (agent?.lifecycle !== 'active') return 'agent-disabled';
+      let p: Principal;
+      try {
+        p = agents.resolveToken(token());
+      } catch {
+        return 'credential-invalid';
+      }
+      const needed: Scope[] = ['executions:write', 'channels:write'];
+      if (c.taskId !== null) needed.push('tasks:write');
+      if (
+        p.kind !== 'agent' ||
+        p.agentId !== c.agentId ||
+        !needed.every((scope) => p.scopes.includes(scope))
+      )
+        return 'credential-invalid';
+      const joined = db
+        .select({ state: s.channelParticipants.state })
+        .from(s.channelParticipants)
+        .where(
+          and(
+            eq(s.channelParticipants.channelId, c.channelId),
+            eq(
+              s.channelParticipants.memberKey,
+              memberKey({ kind: 'agent', id: c.agentId }),
+            ),
+          ),
+        )
+        .get();
+      if (joined?.state !== 'joined') return 'not-in-channel';
+      return c.taskId !== null
+        ? 'not-assigned'
+        : 'authority-or-contract-blocked';
+    },
+    // Operator-local recovery; owners use resumeAsOwner. Neither mints a new native operation key.
     resume(id: string) {
       atomic(() => {
-        const row = get(id);
-        if (row.state !== 'blocked') throw new IdentityError(409);
-        const changed = db
-          .update(t)
-          .set({
-            state: row.reference === null ? 'uncertain' : 'waiting',
-            reason: 'operator-resume',
-            nextAttempt: sqliteNow,
-          })
-          .where(
-            and(
-              eq(t.id, id),
-              eq(t.state, 'blocked'),
-              lte(t.leaseUntil, sqliteNow),
-            ),
-          )
-          .run();
-        if (changed.changes !== 1) throw new IdentityError(409);
-        history(get(id), 'operator-resume');
+        reopen(id, 'operator-resume');
+      });
+    },
+    /**
+     * Owner recovery from the workspace: the same resume, for a delivery in a
+     * channel the owner can read. Retrying the same operation key replays.
+     */
+    resumeAsOwner(
+      p: Principal,
+      teamId: string,
+      id: string,
+      operationKey: string,
+    ) {
+      return atomic(() => {
+        if (p.kind !== 'human') throw new IdentityError(403);
+        if (
+          agents.teamAccess(p, TeamId.parse(teamId), 'channels:read').role !==
+          'owner'
+        )
+          throw new IdentityError(403);
+        const row = db
+          .select()
+          .from(t)
+          .where(eq(t.id, z.uuid().parse(id)))
+          .get();
+        if (row?.teamId !== teamId) throw new IdentityError(404);
+        communication.channel(
+          p,
+          TeamId.parse(teamId),
+          ChannelId.parse(row.channelId),
+        );
+        return receipt(
+          'inbox-resume:' + teamId,
+          operationKey,
+          { id },
+          z.strictObject({ id: z.uuid() }),
+          () => {
+            reopen(id, 'owner-resume');
+            return { id };
+          },
+        );
       });
     },
     /** Liveness only, never authority: unknown or foreign agent IDs are ignored. */
