@@ -2,6 +2,8 @@ import type { Page, APIRequestContext } from '@playwright/test';
 import { z } from 'zod';
 import { randomBytes, randomUUID } from 'node:crypto';
 import Database from 'better-sqlite3';
+import { readFileSync, statSync } from 'node:fs';
+import { dirname, join } from 'node:path';
 import { Agent, Grant } from '../../src/domain/agents.js';
 import { Task, TaskResult } from '../../src/domain/tasks.js';
 import { pageOf } from '../../src/domain/communication.js';
@@ -838,11 +840,114 @@ test('a stuck request says what was lost and is fixed and retried in place', asy
   await expect(
     page
       .getByRole('region', { name: 'Ada', exact: true })
-      .getByText('Worker credential', { exact: true }),
+      .getByRole('button', { name: 'Connect T3', exact: true }),
   ).toBeVisible();
 });
 
-test('the agent panel walks the owner from a profile to a ready-to-run worker binding', async ({
+test('connect T3 and an agent in two clicks: the hub keeps the credential and wakes the agent', async ({
+  page,
+  context,
+  hub,
+}) => {
+  await onboard(page, hub);
+  await register(page, 'Ada', 'developer');
+  const state = await snapshot(context.request, hub.origin);
+  const ada = state.agents[0];
+  if (!ada) throw new Error('Local fixture unavailable');
+  // MOCK T3 only: the sign-in and provider list. Everything after is real.
+  let t3: 'none' | 'waiting' | 'connected' = 'none';
+  await page.route('**/api/teams/*/t3', (route) =>
+    route.fulfill({
+      json: {
+        connection:
+          t3 === 'connected'
+            ? {
+                endpoint: 'https://t3.example/mcp',
+                environmentId: 'env-live',
+                connectedAt: new Date().toISOString(),
+              }
+            : null,
+        signIn: t3 === 'waiting' ? 'waiting' : null,
+      },
+    }),
+  );
+  await page.route('**/api/teams/*/t3/connect', (route) => {
+    t3 = 'waiting';
+    return route.fulfill({
+      json: { authorizationUrl: 'https://t3.example/authorize?state=x' },
+    });
+  });
+  await page.route('**/api/teams/*/t3/providers', (route) =>
+    route.fulfill({
+      json: { providers: [{ id: 'isolated-ada', models: ['model-x'] }] },
+    }),
+  );
+  await page.getByRole('button', { name: 'View Ada activity' }).click();
+  const setup = page
+    .getByRole('region', { name: 'Ada', exact: true })
+    .getByRole('region', { name: 'Setup' });
+  const step = (title: string) =>
+    setup.getByRole('listitem').filter({ hasText: title });
+  await setup.getByLabel('T3 MCP URL').fill('https://t3.example/mcp');
+  await setup.getByRole('button', { name: 'Connect T3', exact: true }).click();
+  await expect(
+    setup.getByRole('link', { name: 'Approve in T3 ↗' }),
+  ).toHaveAttribute('href', 'https://t3.example/authorize?state=x');
+  // The owner approves in T3; the hub records the connection.
+  const sql = new Database(hub.database);
+  try {
+    sql
+      .prepare(
+        'INSERT INTO t3_connections (team_id, endpoint, environment_id, connected_at) VALUES (?, ?, ?, ?)',
+      )
+      .run(state.team.id, 'https://t3.example/mcp', 'env-live', Date.now());
+  } finally {
+    sql.close();
+  }
+  t3 = 'connected';
+  await expect(step('T3 connected')).toContainText('env-live');
+  await expect(step('Ada’s provider in T3')).toContainText('(outside Kinmesh)');
+  const connect = setup.getByRole('form', { name: 'Connect Ada' });
+  await expect(connect.getByLabel('Provider', { exact: true })).toHaveValue(
+    'isolated-ada',
+  );
+  await connect
+    .getByLabel('This provider is Ada’s, set up in T3 as described above')
+    .check();
+  await connect.getByRole('button', { name: 'Connect Ada' }).click();
+  // The hub started its own worker for Ada; no file was edited. A ready
+  // agent's checklist folds away.
+  await expect(async () => {
+    await refreshNow(page);
+    await expect(setup.getByText('Ready', { exact: true })).toBeVisible({
+      timeout: 1000,
+    });
+  }).toPass({ timeout: 20000 });
+  await setup.getByText('Show setup', { exact: true }).click();
+  await expect(step('Ada is connected')).toContainText(
+    'Runs on isolated-ada · model-x',
+  );
+  await expect(step('Can be woken')).toContainText('(done)');
+  const tokenFile = join(
+    dirname(hub.database),
+    'managed',
+    'agents',
+    ada.id + '.json',
+  );
+  expect(statSync(tokenFile).mode & 0o777).toBe(0o600);
+  const { token } = z
+    .object({ token: z.string() })
+    .parse(JSON.parse(readFileSync(tokenFile, 'utf8')));
+  expect(await page.content()).not.toContain(token);
+  const after = await snapshot(context.request, hub.origin);
+  expect(after.agents[0]?.preferences).toEqual({
+    environmentId: 'env-live',
+    providerId: 'isolated-ada',
+    modelId: 'model-x',
+  });
+});
+
+test('the agent panel still walks an operator through a self-run worker binding', async ({
   page,
   context,
   hub,
@@ -859,6 +964,8 @@ test('the agent panel walks the owner from a profile to a ready-to-run worker bi
   const step = (title: string) =>
     setup.getByRole('listitem').filter({ hasText: title });
   await expect(step('Joined this channel')).toContainText('(done)');
+  // Running the worker by hand stays available, one click away.
+  await setup.getByText('Run the worker yourself', { exact: true }).click();
   await expect(step('Runtime preferences')).toContainText('(to do)');
   await setup.getByLabel('T3 environment ID').fill('env-primary');
   await setup.getByLabel('Isolated provider ID').fill('isolated-ada');

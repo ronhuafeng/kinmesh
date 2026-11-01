@@ -10,6 +10,8 @@ import {
   type Principal,
 } from '../domain/agents.js';
 import type { Store } from '../persistence/store.js';
+import { removeAgentToken, writeAgentToken } from '../inbox/managed.js';
+import { WORKER_GRANT } from './connect.js';
 
 declare module 'fastify' {
   interface FastifyRequest {
@@ -24,7 +26,12 @@ const TeamPath = z.object({ teamId: TeamId });
 const AgentPath = TeamPath.extend({ agentId: AgentId });
 const GrantPath = AgentPath.extend({ grantId: z.uuid() });
 const ExecutionPath = AgentPath.extend({ executionId: z.uuid() });
-export function registerAgents(app: FastifyInstance, store: Store) {
+/** `directory` holds the tokens of agents connected from the workspace (ADR 0007). */
+export function registerAgents(
+  app: FastifyInstance,
+  store: Store,
+  directory: string,
+) {
   const base = '/api/teams/:teamId/agents';
   app.post(base, (request, reply) => {
     const { teamId } = TeamPath.parse(request.params);
@@ -62,12 +69,22 @@ export function registerAgents(app: FastifyInstance, store: Store) {
     const { lifecycle } = z
       .strictObject({ lifecycle: z.enum(['active', 'disabled']) })
       .parse(request.body);
-    return store.agents.lifecycle(
-      principal(request),
+    const p = principal(request);
+    const agent = store.agents.lifecycle(p, teamId, agentId, lifecycle);
+    // Disabling revoked every credential; re-enabling a connected agent
+    // gives its worker a fresh one so it can be woken again.
+    const managed =
+      lifecycle === 'active' ? store.managed.binding(p, teamId, agentId) : null;
+    if (managed === null || agent.preferences.modelId === null) return agent;
+    const { token } = store.managed.connect(
+      p,
       teamId,
       agentId,
-      lifecycle,
+      { providerId: managed.providerId, modelId: agent.preferences.modelId },
+      WORKER_GRANT,
     );
+    writeAgentToken(directory, agentId, token);
+    return store.agents.get(p, teamId, agentId);
   });
   app.get(base + '/:agentId/grants', (request) => {
     const { teamId, agentId } = AgentPath.parse(request.params);
@@ -90,10 +107,20 @@ export function registerAgents(app: FastifyInstance, store: Store) {
   app.post(base + '/:agentId/grants/:grantId/revoke', (request, reply) => {
     const { teamId, agentId, grantId } = GrantPath.parse(request.params);
     store.agents.revoke(principal(request), teamId, agentId, grantId);
+    // Revoking the managed worker credential disconnects the agent.
+    if (store.managed.forgetGrant(teamId, agentId, grantId))
+      removeAgentToken(directory, agentId);
     return reply.code(204).send();
   });
   app.post(base + '/:agentId/grants/:grantId/rotate', (request, reply) => {
     const { teamId, agentId, grantId } = GrantPath.parse(request.params);
+    // The hub rotates its own worker credential by reconnecting; a rotated
+    // token shown in the browser would never reach the worker.
+    if (
+      store.managed.binding(principal(request), teamId, agentId)?.grantId ===
+      grantId
+    )
+      throw new IdentityError(409);
     return reply
       .header('Cache-Control', 'no-store')
       .code(201)

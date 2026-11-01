@@ -2847,3 +2847,30 @@ button.needs-item small {
   font-size: 0.7rem;
   color: var(--ink-subtle);
 }
+/* Connect T3 and agents from the setup checklist. */
+.t3-connect,
+.agent-connect {
+  display: grid;
+  gap: 0.5rem;
+}
+label.check {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.5rem;
+  font-size: 0.85rem;
+  color: var(--ink-muted);
+}
+label.check input[type='checkbox'] {
+  width: auto;
+  min-height: 0;
+  margin: 0.2rem 0 0;
+  padding: 0;
+  flex: none;
+}
+label.check {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.own-worker {
+  margin-top: 0.5rem;
+}

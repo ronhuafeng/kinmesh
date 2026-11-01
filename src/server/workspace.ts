@@ -205,6 +205,16 @@ export function registerWorkspace(
       deliveries,
       attention,
       wake,
+      managed: store.managed
+        .teamBindings(teamId)
+        .filter((b) => known.has(AgentId.parse(b.agentId))),
+      teamMcp: store.managed
+        .teamMcpPresence(teamId)
+        .filter((row) => known.has(AgentId.parse(row.agentId)))
+        .map((row) => ({
+          agentId: row.agentId,
+          lastSeenAt: new Date(row.lastSeenAt).toISOString(),
+        })),
       messages,
       topics: channel
         ? store.communication.topics(principal, teamId, channel.id, {

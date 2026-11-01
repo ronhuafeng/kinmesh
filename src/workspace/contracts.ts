@@ -76,6 +76,20 @@ export const WorkspaceSnapshot = z.strictObject({
       }),
     )
     .max(100),
+  /** Agents the hub's own worker serves (connected from the workspace). */
+  managed: z
+    .array(
+      z.strictObject({
+        agentId: AgentId,
+        providerId: z.string(),
+        grantId: z.uuid(),
+      }),
+    )
+    .max(100),
+  /** Last authenticated Team MCP request per agent: evidence its provider is set up. */
+  teamMcp: z
+    .array(z.strictObject({ agentId: AgentId, lastSeenAt: z.iso.datetime() }))
+    .max(100),
   messages: pageOf(Message),
   topics: pageOf(Topic),
   tasks: pageOf(Task),

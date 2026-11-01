@@ -38,7 +38,15 @@ The Team view, the sidebar, the agent panel and the `@` popover show whether an 
 
 ## Setting up an agent
 
-The agent panel shows a setup checklist from profile to a running worker: joined channel, runtime preferences (editable), a worker credential (issue, rotate, revoke; shown once, see [security](security.md#issuing-agent-credentials-in-the-browser)), T3 access (done on the worker machine), a generated `inbox.json` binding without secrets, and **Can be woken**, which only turns ready when a worker with that binding is running.
+The agent panel's checklist connects an agent without touching a file:
+
+1. **Joined this channel**.
+2. **Connect T3**: paste the T3 MCP URL and approve in T3, once for the team.
+3. **The agent's provider in T3**: the one step done in T3. It issues a Team MCP credential once and turns done when the agent first reaches Team MCP.
+4. **Connect** the agent: choose the provider and model T3 offers, and confirm the provider is set up.
+5. **Can be woken**.
+
+The hub keeps the secrets and runs the worker ([ADR 0007](adr/0007-hub-managed-worker.md)). **Run the worker yourself** keeps the manual path: runtime preferences, a worker credential (issue, rotate, revoke; shown once, see [security](security.md#issuing-agent-credentials-in-the-browser)), `npm run t3:auth` and an `inbox.json` binding without secrets.
 
 ## What happened after you asked
 
