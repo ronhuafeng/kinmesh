@@ -25,7 +25,7 @@ function blockedText(reason: string, name: string) {
     case 'native-access':
       return `T3 refused ${name}’s access: reconnect T3 and choose Supervised`;
     case 'native-incompatible':
-      return `${name}’s T3 setup doesn’t match (environment, provider or model)`;
+      return `${name}’s model isn’t available in T3: choose another one`;
     default:
       return `${name} is stuck: Kinmesh or T3 refused the request`;
   }

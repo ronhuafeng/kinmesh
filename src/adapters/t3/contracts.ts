@@ -54,6 +54,21 @@ export const Capabilities = z.object({
     }),
   ),
 });
+/**
+ * Whether T3 can run a Kinmesh launch on this provider now: switched on, able
+ * to run child tasks, and offering the requested runtime mode.
+ */
+export function runnable(
+  provider: z.infer<typeof Capabilities>['providers'][number],
+  mode: string,
+) {
+  return (
+    provider.canRunChildTask &&
+    provider.constraints.length === 0 &&
+    (provider.runtimeModes === undefined ||
+      provider.runtimeModes.includes(mode))
+  );
+}
 export const Launched = z.object({
   threadId: z.string().min(1),
   projectId: z.string().min(1),

@@ -42,7 +42,7 @@ await test('every delivery state reads as a plain sentence about the agent', () 
       true,
       /^T3 refused Ada’s access: reconnect T3/,
     ],
-    ['blocked', 'native-incompatible', true, /setup doesn’t match/],
+    ['blocked', 'native-incompatible', true, /model isn’t available in T3/],
     ['expired', 'undispatched-expiry', true, /never picked this up/],
     ['expired', 'something-new', true, /request expired/],
   ];

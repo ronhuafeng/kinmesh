@@ -440,6 +440,12 @@ function ChooseModel({
             </select>
           </Field>
         )}
+        {Array.isArray(offered) && offered.length > 0 && (
+          <p className="muted">
+            Only models T3 can run now are listed. A provider switched off in T3
+            appears once it’s on.
+          </p>
+        )}
         <div className="token-actions">
           <button
             type="submit"
