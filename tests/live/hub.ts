@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { execFileSync } from 'node:child_process';
 import { randomBytes } from 'node:crypto';
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
@@ -243,6 +244,38 @@ export class Hub {
       await new Promise((r) => setTimeout(r, 100));
     }
     throw new Error('TEAM_MCP_NOT_READY');
+  }
+  workerPid() {
+    const parent = this.process?.child;
+    assert.ok(
+      parent?.pid && parent.exitCode === null && parent.signalCode === null,
+    );
+    const entries = execFileSync('ps', ['-axo', 'pid=,ppid=,args='], {
+      encoding: 'utf8',
+    })
+      .split('\n')
+      .flatMap((line) => {
+        const match = /^(\d+)\s+(\d+)\s+(.*)$/.exec(line.trim());
+        return match
+          ? [
+              {
+                pid: Number(match[1]),
+                parent: Number(match[2]),
+                command: match[3] ?? '',
+              },
+            ]
+          : [];
+      });
+    const owned = new Set([parent.pid]);
+    for (let depth = 0; depth < 8; depth++)
+      for (const entry of entries)
+        if (owned.has(entry.parent)) owned.add(entry.pid);
+    const worker = entries.find(
+      (entry) =>
+        owned.has(entry.pid) && entry.command.includes('src/inbox/main.ts'),
+    );
+    assert.ok(worker, 'OWNED_WORKER_REQUIRED');
+    return worker.pid;
   }
   async refresh() {
     if (!this.page) throw new Error('NO_WORKSPACE');

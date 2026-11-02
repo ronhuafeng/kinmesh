@@ -496,39 +496,14 @@ test('complete real two-agent workflow, Human rework/acceptance, recovery and au
                 .get('inbox:' + row.id),
             );
           originalRequest = op.request_id;
-          const processTable = execFileSync(
-            'ps',
-            ['-axo', 'pid=,ppid=,args='],
-            { encoding: 'utf8' },
-          )
-            .split('\n')
-            .flatMap((line) => {
-              const m = /^(\d+)\s+(\d+)\s+(.*)$/.exec(line.trim());
-              return m
-                ? [
-                    {
-                      pid: Number(m[1]),
-                      parent: Number(m[2]),
-                      command: m[3] ?? '',
-                    },
-                  ]
-                : [];
-            });
-          const owned = new Set([hub.process?.child?.pid]);
-          for (let i = 0; i < 8; i++)
-            for (const p of processTable)
-              if (owned.has(p.parent)) owned.add(p.pid);
-          const worker = processTable.find(
-            (p) => owned.has(p.pid) && p.command.includes('src/inbox/main.ts'),
-          );
-          assert.ok(worker);
+          const worker = hub.workerPid();
           const leaseDeadline = Date.now() + 60_000;
           while (Date.now() < leaseDeadline) {
             const candidate = rows().find(
               (candidate) => candidate.id === row.id,
             );
             if ((candidate?.lease_until ?? 0) > Date.now()) {
-              process.kill(worker.pid, 'SIGSTOP');
+              process.kill(worker, 'SIGSTOP');
               const paused = rows().find(
                 (candidate) => candidate.id === row.id,
               );
@@ -537,7 +512,7 @@ test('complete real two-agent workflow, Human rework/acceptance, recovery and au
                 originalReference = paused?.reference ?? '';
                 originalGeneration = paused?.generation ?? 0;
                 assert.ok(originalReference);
-                process.kill(worker.pid, 'SIGKILL');
+                process.kill(worker, 'SIGKILL');
                 crashed = true;
                 assert.equal(
                   store.inbox.claim([hub.agent('developer').profile.id]),
@@ -546,7 +521,7 @@ test('complete real two-agent workflow, Human rework/acceptance, recovery and au
                 checks.concurrentClaimFenced = true;
                 break;
               }
-              process.kill(worker.pid, 'SIGCONT');
+              process.kill(worker, 'SIGCONT');
             }
             await delay(10);
           }
@@ -723,6 +698,25 @@ test('complete real two-agent workflow, Human rework/acceptance, recovery and au
     assert.ok(queued);
     assert.equal(queued.result_message_id, null);
     assert.equal(queued.reference, null);
+
+    // Hold this fixture's idle worker while its credential is replaced. Otherwise
+    // a fast reconnect could launch under the old authority before consent completes.
+    const pausedWorker = hub.workerPid();
+    await until(
+      async () => {
+        process.kill(pausedWorker, 'SIGSTOP');
+        if (rows().every((row) => row.lease_until === null)) return true;
+        process.kill(pausedWorker, 'SIGCONT');
+        await delay(50);
+        return false;
+      },
+      'IDLE_WORKER_NOT_PAUSED',
+      10000,
+    );
+    const idle = rows().find((row) => row.id === queued.id);
+    assert.ok(idle);
+    assert.equal(idle.launch, null);
+    assert.equal(idle.reference, null);
     assert.deepEqual(
       db
         .prepare(
@@ -731,9 +725,12 @@ test('complete real two-agent workflow, Human rework/acceptance, recovery and au
         .get('inbox:' + queued.id),
       { n: 0 },
     );
+    checks.idleWorkerHeldBeforeOAuthReplacement = true;
     native.server?.start();
     await ready(native.origin + '/.well-known/t3/environment');
     await hub.connectT3(true);
+    // Failure cleanup stops the owned group even if consent leaves it suspended.
+    process.kill(pausedWorker, 'SIGCONT');
     checks.workspaceReconnectUsesExistingTask = true;
     await connectRead(read);
     enter('second-collaboration-cycle');
