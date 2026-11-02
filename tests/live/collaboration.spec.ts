@@ -50,7 +50,8 @@ const rowSchema = z.object({
   agent_id: z.string(),
   state: z.string(),
   generation: z.number(),
-  lease_until: z.number().nullable(),
+  lease_until: z.number(),
+  claim_token: z.string().nullable(),
   reference: z.string().nullable(),
   launch: z.string().nullable(),
   result_message_id: z.string().nullable(),
@@ -705,7 +706,12 @@ test('complete real two-agent workflow, Human rework/acceptance, recovery and au
     await until(
       async () => {
         process.kill(pausedWorker, 'SIGSTOP');
-        if (rows().every((row) => row.lease_until === null)) return true;
+        if (
+          rows().every(
+            (row) => row.lease_until === 0 && row.claim_token === null,
+          )
+        )
+          return true;
         process.kill(pausedWorker, 'SIGCONT');
         await delay(50);
         return false;
