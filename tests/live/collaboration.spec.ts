@@ -41,6 +41,7 @@ import {
   type Observation,
 } from '../../src/domain/execution.js';
 import { openStore } from '../../src/persistence/store.js';
+import { FrozenLaunch } from '../../src/domain/inbox.js';
 import { assistantResult } from '../../src/inbox/worker.js';
 
 const rowSchema = z.object({
@@ -51,6 +52,7 @@ const rowSchema = z.object({
   generation: z.number(),
   lease_until: z.number().nullable(),
   reference: z.string().nullable(),
+  launch: z.string().nullable(),
   result_message_id: z.string().nullable(),
 });
 const hash = (value: string) =>
@@ -142,6 +144,20 @@ test('complete real two-agent workflow, Human rework/acceptance, recovery and au
     const requestIds = new Set<string>();
     for (const row of rows()) {
       assert.equal(row.state, 'acked');
+      const binding = z
+        .object({ grant_id: z.string(), provider_id: z.string() })
+        .parse(
+          db
+            .prepare(
+              'select grant_id,provider_id from managed_bindings where agent_id=? and team_id=?',
+            )
+            .get(row.agent_id, hub.teamId),
+        );
+      const frozen = FrozenLaunch.parse(
+        JSON.parse(row.launch ?? 'null') as unknown,
+      );
+      assert.equal(frozen.grantId, binding.grant_id);
+      assert.equal(frozen.input.model.providerId, binding.provider_id);
       const ref = Reference.parse(
         JSON.parse(row.reference ?? 'null') as unknown,
       );
@@ -324,6 +340,7 @@ test('complete real two-agent workflow, Human rework/acceptance, recovery and au
     evidence.nativeRunCount = results.length;
     checks.nativeItemJournalAuthorSourceAndTaskMatch = true;
     checks.actualRoleToolCallsAndReviewerArtifactReads = true;
+    checks.actualRunsUseWorkspaceManagedGrants = true;
   }
   async function approve(row: z.infer<typeof rowSchema>) {
     if (!tools || !row.reference || !native.page) return;
@@ -579,14 +596,12 @@ test('complete real two-agent workflow, Human rework/acceptance, recovery and au
     await hub.onboard();
     enter('native-provider-configuration');
     await native.addProviders();
-    enter('native-oauth');
+    enter('native-read-only-oauth');
     const read = await native.oauth(true);
-    const operate = await native.oauth(false);
     assert.ok(!read.tokens.scope?.split(' ').includes('orchestration:operate'));
-    assert.ok(
-      operate.tokens.scope?.split(' ').includes('orchestration:operate'),
-    );
-    checks.separateNativeOAuthScopes = true;
+    // Supply the independent Read only observer before the product starts its managed worker.
+    await hub.process?.stop();
+    await hub.start();
     store = openStore(hub.database);
     db = new Database(hub.database, { readonly: true });
     await connectRead(read);
@@ -625,9 +640,16 @@ test('complete real two-agent workflow, Human rework/acceptance, recovery and au
         throw new Error('NATIVE_READ_ONLY_DENIAL_MISSING');
     }
     checks.nativeReadOnlyMutationDenied = true;
+    enter('workspace-oauth-models-and-managed-worker');
     await hub.bind(read.environmentId);
-    await hub.process?.stop();
-    await hub.start(true);
+    checks.separateNativeOAuthScopes = true;
+    checks.workspaceOAuthModelBindingsPersisted = true;
+    checks.productManagedWorkerWithoutManualConfig = true;
+    assert.deepEqual(
+      db.prepare('select count(*) as n from execution_operations').get(),
+      { n: 0 },
+    );
+    checks.noModelRunBeforeWorkspacePreflight = true;
     enter('first-workflow-and-worker-crash');
     await hub.createTask();
     if (!native.page) throw new Error('NO_NATIVE_PAGE');
@@ -697,12 +719,27 @@ test('complete real two-agent workflow, Human rework/acceptance, recovery and au
     await hub.decision('rework');
     await until(() => rows().length === 3, 'REWORK_NOT_ENQUEUED');
     await delay(2000);
-    assert.equal(rows()[2]?.result_message_id, null);
+    const queued = rows()[2];
+    assert.ok(queued);
+    assert.equal(queued.result_message_id, null);
+    assert.equal(queued.reference, null);
+    assert.deepEqual(
+      db
+        .prepare(
+          'select count(*) as n from execution_operations where operation_key=?',
+        )
+        .get('inbox:' + queued.id),
+      { n: 0 },
+    );
     native.server?.start();
     await ready(native.origin + '/.well-known/t3/environment');
+    await hub.connectT3(true);
+    checks.workspaceReconnectUsesExistingTask = true;
     await connectRead(read);
     enter('second-collaboration-cycle');
     await progress(6, 4);
+    assert.equal(rows()[2]?.id, queued.id);
+    assert.equal(rows()[2]?.event_id, queued.event_id);
     checks.nativeOutageRetainsAndResumesHumanRework = true;
     await auditNative();
     enter('rework-artifact-and-independent-review');
@@ -730,7 +767,7 @@ test('complete real two-agent workflow, Human rework/acceptance, recovery and au
     enter('hub-restart');
     const before = JSON.stringify(await hub.task());
     await hub.process?.stop();
-    await hub.start(true);
+    await hub.start();
     assert.equal(JSON.stringify(await hub.task()), before);
     assert.equal(rows().length, 4);
     checks.hubRestartRetainsTaskAndNativeCorrelations = true;
@@ -783,16 +820,13 @@ test('complete real two-agent workflow, Human rework/acceptance, recovery and au
     enter('real-native-workspace');
     const page = hub.page;
     assert.ok(page);
-    await page.getByRole('tab', { name: 'Agents & activity' }).click();
+    await hub.openAgent('developer');
     await page
-      .getByRole('button', { name: 'View CI developer activity' })
-      .click();
-    await page
-      .getByRole('button', { name: 'Check native status', exact: true })
+      .getByRole('button', { name: 'Check in T3', exact: true })
       .first()
       .click();
     const link = page
-      .getByRole('link', { name: 'Open verified T3 thread', exact: true })
+      .getByRole('link', { name: 'Open in T3', exact: true })
       .first();
     await link.waitFor();
     const popupPromise = page.waitForEvent('popup');
