@@ -1,10 +1,18 @@
+import assert from 'node:assert/strict';
 import { randomBytes } from 'node:crypto';
-import { writeFileSync } from 'node:fs';
+import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { z } from 'zod';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js';
-import type { Page } from '@playwright/test';
+import { loadAgentToken } from '../../src/team-mcp/client.js';
+import { expect, type Page } from '@playwright/test';
+import { loadCredential } from '../../src/adapters/t3/oauth.js';
+import {
+  t3AuthFile,
+  managedDirectory,
+  agentTokenFile,
+} from '../../src/inbox/managed.js';
 import { Agent, Grant } from '../../src/domain/agents.js';
 import { Task } from '../../src/domain/tasks.js';
 import { WorkspaceSnapshot } from '../../src/workspace/contracts.js';
@@ -44,22 +52,20 @@ export class Hub {
   ) {
     this.database = join(root, 'team.sqlite');
   }
-  async api(path: string, data?: unknown, method?: 'PUT') {
+  async api(path: string, data?: unknown) {
     const request = this.page?.request;
     if (!request) throw new Error('HUB_PAGE_REQUIRED');
     const response =
-      method === 'PUT'
-        ? await request.put(this.origin + path, { data })
-        : data === undefined
-          ? await request.get(this.origin + path)
-          : await request.post(this.origin + path, { data });
+      data === undefined
+        ? await request.get(this.origin + path)
+        : await request.post(this.origin + path, { data });
     if (!response.ok())
       throw new Error('OWNER_API_' + String(response.status()));
     return response.status() === 204
       ? null
       : (response.json() as Promise<unknown>);
   }
-  async start(inbox = false) {
+  async start() {
     if (!this.origin) this.origin = `http://127.0.0.1:${String(await port())}`;
     const env: NodeJS.ProcessEnv = {
       PATH: process.env.PATH,
@@ -70,9 +76,8 @@ export class Hub {
       KINMESH_SESSION_KEY: this.session,
       KINMESH_ORIGIN: this.origin,
       KINMESH_PORT: new URL(this.origin).port,
-      ...(inbox
+      ...(existsSync(join(this.root, 'read-only.json'))
         ? {
-            KINMESH_INBOX_CONFIG: join(this.root, 'inbox.json'),
             KINMESH_T3_ENDPOINT: this.native.endpoint,
             KINMESH_T3_AUTH_FILE: join(this.root, 'read-only.json'),
           }
@@ -129,7 +134,7 @@ export class Hub {
       .parse(await this.api('/api/me'));
     this.humanId = me.human.id;
     for (const role of roles) {
-      await page.getByRole('tab', { name: 'Agents & activity' }).click();
+      await page.getByRole('tab', { name: 'Team', exact: true }).click();
       const name = 'CI ' + role;
       const form = page.getByRole('form', { name: 'Agent profile' });
       if (!(await form.isVisible()))
@@ -174,8 +179,6 @@ export class Hub {
               'channels:write',
               'tasks:read',
               'tasks:write',
-              'executions:read',
-              'executions:write',
               ...(role === 'reviewer' ? ['tasks:review'] : []),
             ],
             lifetimeSeconds: 3600,
@@ -241,46 +244,134 @@ export class Hub {
     }
     throw new Error('TEAM_MCP_NOT_READY');
   }
+  async refresh() {
+    if (!this.page) throw new Error('NO_WORKSPACE');
+    await this.page.keyboard.press('ControlOrMeta+k');
+    const search = this.page.getByRole('combobox', { name: /Search/ });
+    await search.fill('refresh now');
+    await search.press('Enter');
+  }
+  async openAgent(role: Role) {
+    const page = this.page;
+    if (!page) throw new Error('NO_WORKSPACE');
+    const close = page.getByRole('button', {
+      name: 'Close panel',
+      exact: true,
+    });
+    if (await close.isVisible()) await close.click();
+    await page.getByRole('tab', { name: 'Team', exact: true }).click();
+    await page
+      .getByRole('button', { name: `View CI ${role} activity`, exact: true })
+      .click();
+    return page
+      .getByRole('region', { name: 'CI ' + role, exact: true })
+      .getByRole('region', { name: 'Setup', exact: true });
+  }
+  async connectT3(reconnect = false) {
+    this.native.assertOwnedServer();
+    const page = this.page;
+    if (!page) throw new Error('NO_WORKSPACE');
+    const setup = await this.openAgent('developer');
+    if (reconnect) {
+      await setup.getByText('More', { exact: true }).first().click();
+      await setup
+        .getByRole('button', { name: 'Reconnect', exact: true })
+        .click();
+    }
+    const connect = setup.getByRole('group', {
+      name: 'Connect T3',
+      exact: true,
+    });
+    await expect(
+      connect.getByRole('button', { name: 'Connect T3', exact: true }),
+    ).toBeEnabled();
+    const another = connect.getByRole('button', {
+      name: 'Use another T3',
+      exact: true,
+    });
+    if (await another.isVisible()) await another.click();
+    await connect.getByLabel('T3 MCP URL').fill(this.native.endpoint);
+    await connect
+      .getByRole('button', { name: 'Connect T3', exact: true })
+      .click();
+    const popupPromise = page.waitForEvent('popup');
+    await connect.getByRole('link', { name: 'Approve in T3 ↗' }).click();
+    const popup = await popupPromise;
+    try {
+      await popup.waitForURL((url) => url.origin === this.native.origin);
+      await this.native.consent(popup, false);
+      await popup
+        .getByText('Authorization received. Return to your terminal.', {
+          exact: true,
+        })
+        .waitFor();
+    } finally {
+      await popup.close();
+    }
+    await expect(connect).toHaveCount(0, { timeout: 15000 });
+    const credential = loadCredential(
+      t3AuthFile(managedDirectory(this.database)),
+      this.native.endpoint,
+    );
+    assert.ok(
+      credential.tokens.scope?.split(' ').includes('orchestration:operate'),
+    );
+    return credential;
+  }
   async bind(environmentId: string) {
-    const bindings = [];
+    const credential = await this.connectT3();
+    assert.equal(credential.environmentId, environmentId);
     for (const role of roles) {
-      const { profile, token } = this.agent(role);
-      await this.api(
-        `/api/teams/${this.teamId}/agents/${profile.id}`,
-        {
-          name: profile.name,
-          role,
-          capabilities: profile.capabilities,
-          memoryLocation: null,
-          preferences: {
-            environmentId,
-            providerId: this.native.provider(role),
-            modelId: models[this.native.executor],
-          },
-        },
-        'PUT',
+      const setup = await this.openAgent(role);
+      const form = setup.getByRole('form', {
+        name: `Choose what CI ${role} runs on`,
+      });
+      const choice =
+        this.native.provider(role) + '\n' + models[this.native.executor];
+      await expect(
+        form
+          .getByLabel('Model')
+          .locator('option')
+          .filter({ hasText: models[this.native.executor] })
+          .first(),
+      ).toBeAttached();
+      await form.getByLabel('Model', { exact: true }).selectOption(choice);
+      await form
+        .getByRole('button', { name: 'Connect CI ' + role, exact: true })
+        .click();
+      await expect(
+        setup.getByText('CI ' + role + ' is ready', { exact: true }),
+      ).toBeVisible({ timeout: 20000 });
+    }
+    await this.page?.reload();
+    for (const role of roles) {
+      const setup = await this.openAgent(role);
+      await expect(setup).toContainText(
+        'Runs on ' +
+          this.native.provider(role) +
+          ' · ' +
+          models[this.native.executor],
       );
-      const tokenFile = join(this.root, role + '.json');
-      writeFileSync(tokenFile, JSON.stringify({ token }), { mode: 0o600 });
-      bindings.push({
-        agentId: profile.id,
-        tokenFile,
-        t3Endpoint: this.native.endpoint,
-        t3AuthFile: join(this.root, 'supervised.json'),
-        isolatedProviderId: this.native.provider(role),
-        externalTeamMcpConfigured: true,
+      const profile = Agent.parse(
+        await this.api(
+          `/api/teams/${this.teamId}/agents/${this.agent(role).profile.id}`,
+        ),
+      );
+      assert.deepEqual(profile.preferences, {
+        environmentId,
+        providerId: this.native.provider(role),
+        modelId: models[this.native.executor],
       });
     }
-    writeFileSync(
-      join(this.root, 'inbox.json'),
-      JSON.stringify({ database: this.database, pollMs: 250, bindings }),
-      { mode: 0o600 },
-    );
+    assert.equal(existsSync(join(this.root, 'inbox.json')), false);
+    await this.page
+      ?.getByRole('button', { name: 'Close panel', exact: true })
+      .click();
   }
   async createTask() {
     const page = this.page;
     if (!page) throw new Error('NO_WORKSPACE');
-    await page.getByRole('tab', { name: 'Tasks', exact: true }).click();
+    await page.getByRole('tab', { name: 'Board', exact: true }).click();
     await page
       .locator('summary')
       .filter({ hasText: /^Create task$/ })
@@ -337,18 +428,24 @@ export class Hub {
   async decision(action: 'rework' | 'accept') {
     const page = this.page;
     if (!page) throw new Error('NO_WORKSPACE');
-    await page.getByRole('button', { name: 'Reconnect / refresh' }).click();
-    await page.getByRole('tab', { name: 'Tasks', exact: true }).click();
+    await this.refresh();
+    await page.getByRole('tab', { name: 'Board', exact: true }).click();
+    const close = page.getByRole('button', {
+      name: 'Close panel',
+      exact: true,
+    });
+    if (await close.isVisible()) await close.click();
     const card = page.getByRole('article', { name: this.title, exact: true });
-    await card.getByLabel('Action', { exact: true }).selectOption(action);
-    await card
+    await card.getByRole('button', { name: this.title, exact: true }).click();
+    const drawer = page.getByRole('region', { name: this.title, exact: true });
+    await drawer
       .getByLabel('Decision note')
       .fill(
         action === 'rework'
           ? this.reworkNote
           : 'Test Human accepts the actual verified second artifact after independent review.',
       );
-    await card
+    await drawer
       .getByRole('button', {
         name: action === 'rework' ? 'Request rework' : 'Accept task',
         exact: true,
@@ -357,22 +454,39 @@ export class Hub {
   }
   async close() {
     let grantsRevoked = true;
-    if (this.page && this.teamId)
-      for (const { profile, grant, token } of this.agents.values())
-        await this.api(
-          `/api/teams/${this.teamId}/agents/${profile.id}/grants/${grant.id}/revoke`,
-          {},
-        )
-          .then(async () => {
+    if (this.page && this.teamId) {
+      for (const { profile, token } of this.agents.values()) {
+        try {
+          const directory = managedDirectory(this.database);
+          const managed = agentTokenFile(directory, profile.id);
+          const tokens = [
+            token,
+            ...(existsSync(managed) ? [loadAgentToken(managed)] : []),
+          ];
+          const grants = z
+            .array(Grant.omit({ agentId: true, teamId: true }))
+            .parse(
+              await this.api(
+                `/api/teams/${this.teamId}/agents/${profile.id}/grants`,
+              ),
+            );
+          for (const grant of grants.filter((g) => g.revokedAt === null))
+            await this.api(
+              `/api/teams/${this.teamId}/agents/${profile.id}/grants/${grant.id}/revoke`,
+              {},
+            );
+          for (const bearer of tokens) {
             const response = await fetch(this.teamOrigin + '/mcp', {
               method: 'POST',
-              headers: { authorization: 'Bearer ' + token },
+              headers: { authorization: 'Bearer ' + bearer },
             });
             if (response.status !== 401) grantsRevoked = false;
-          })
-          .catch(() => {
-            grantsRevoked = false;
-          });
+          }
+        } catch {
+          grantsRevoked = false;
+        }
+      }
+    }
     const stopped = await Promise.allSettled([
       this.process?.stop(),
       this.team?.stop(),

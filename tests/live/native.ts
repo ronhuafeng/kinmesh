@@ -245,63 +245,102 @@ export class Native {
         await page
           .getByRole('button', { name: 'Select CI ' + role, exact: true })
           .click();
-        for (const [index, [name, value]] of [
+        const expected = new Map([
           ['HOME', this.home(role)],
           ['GROK_HOME', join(this.home(role), '.grok')],
           ['GROK_MAX_MCP_OUTPUT_BYTES', '131072'],
-        ].entries()) {
+        ]);
+        const readEnvironment = async () => {
+          const fields = await page
+            .getByLabel(/^Environment variable name \d+$/)
+            .all();
+          const values = new Map<string, string>();
+          for (const [index, field] of fields.entries())
+            values.set(
+              await field.inputValue(),
+              await page
+                .getByLabel('Environment variable value ' + String(index + 1), {
+                  exact: true,
+                })
+                .inputValue(),
+            );
+          return values;
+        };
+        const reloadProvider = async () => {
+          await page.reload();
+          await page.getByText('Providers', { exact: true }).first().click();
+          await page
+            .getByRole('button', { name: 'Select CI ' + role, exact: true })
+            .click();
+        };
+        // Native autosaves can reorder rows. Settle each write through a fresh UI read.
+        for (const [name, value] of expected) {
           await page
             .getByRole('button', { name: 'Add variable', exact: true })
             .click();
-          const field = page.getByLabel(
-            'Environment variable name ' + String(index + 1),
-            { exact: true },
-          );
-          await field.fill(name ?? '');
+          const field = page
+            .getByLabel(/^Environment variable name \d+$/)
+            .last();
+          await field.fill(name);
           await field.press('Enter');
+          await until(
+            async () => {
+              await reloadProvider();
+              return (await readEnvironment()).has(name);
+            },
+            'PROVIDER_ENVIRONMENT_NAME_NOT_SAVED',
+            10000,
+          );
           const sensitive = page.getByRole('button', {
-            name: `Mark environment variable ${name ?? ''} as sensitive`,
+            name: `Mark environment variable ${name} as sensitive`,
             exact: true,
           });
-          if ((await sensitive.getAttribute('aria-pressed')) === 'true')
+          if ((await sensitive.getAttribute('aria-pressed')) === 'true') {
             await sensitive.click();
+            await until(
+              async () => {
+                await reloadProvider();
+                return (
+                  (await sensitive.getAttribute('aria-pressed')) === 'false'
+                );
+              },
+              'PROVIDER_ENVIRONMENT_VISIBILITY_NOT_SAVED',
+              10000,
+            );
+          }
+          const index = [...(await readEnvironment()).keys()].indexOf(name);
+          if (index < 0) throw new Error('ENVIRONMENT_FIELD_MISSING');
           const input = page.getByLabel(
             'Environment variable value ' + String(index + 1),
             { exact: true },
           );
-          await input.fill(value ?? '');
+          await input.fill(value);
           await input.press('Enter');
-          await page
-            .getByRole('button', { name: 'Select CI ' + role, exact: true })
-            .click();
+          await until(
+            async () => {
+              await reloadProvider();
+              return (await readEnvironment()).get(name) === value;
+            },
+            'PROVIDER_ENVIRONMENT_VALUE_NOT_SAVED',
+            10000,
+          );
         }
-        await page.reload();
-        await page.getByText('Providers', { exact: true }).first().click();
-        await page
-          .getByRole('button', { name: 'Select CI ' + role, exact: true })
-          .click();
-        const homeInput = page.getByLabel('Environment variable value 1', {
-          exact: true,
-        });
-        const grokInput = page.getByLabel('Environment variable value 2', {
-          exact: true,
-        });
-        const outputLimitInput = page.getByLabel(
-          'Environment variable value 3',
-          {
-            exact: true,
-          },
-        );
-        await until(
-          async () =>
-            (await outputLimitInput.inputValue()) === '131072' &&
-            (await homeInput.inputValue()) === this.home(role) &&
-            (await grokInput.inputValue()) === join(this.home(role), '.grok'),
-          'PROVIDER_HOME_NOT_PERSISTED',
-          10_000,
-        );
+        const actual = await readEnvironment();
+        if (![...expected].every(([name, value]) => actual.get(name) === value))
+          throw new Error('PROVIDER_ENVIRONMENT_NOT_PERSISTED');
       }
     }
+  }
+  async consent(page: Page, readOnly: boolean) {
+    this.assertOwnedServer();
+    if (new URL(page.url()).origin !== this.origin)
+      throw new Error('FOREIGN_CONSENT_PAGE');
+    await page
+      .getByText(readOnly ? 'Read only' : 'Supervised', { exact: true })
+      .click();
+    await page
+      .getByRole('button', { name: /authorize|allow|approve/i })
+      .click();
   }
   async oauth(readOnly: boolean) {
     this.assertOwnedServer();
@@ -310,6 +349,7 @@ export class Native {
     this.stage = readOnly ? 'native-oauth-read' : 'native-oauth-supervised';
     const signal = AbortSignal.timeout(60_000);
     let receiver: ReturnType<typeof callbackReceiver> | undefined;
+    const consent = (page: Page) => this.consent(page, readOnly);
     try {
       const credential = await authorize(
         this.endpoint,
@@ -322,12 +362,7 @@ export class Native {
           },
           async redirect(url) {
             await page.goto(url.href);
-            await page
-              .getByText(readOnly ? 'Read only' : 'Supervised', { exact: true })
-              .click();
-            await page
-              .getByRole('button', { name: /authorize|allow|approve/i })
-              .click();
+            await consent(page);
           },
         },
         signal,
