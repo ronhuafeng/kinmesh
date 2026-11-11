@@ -260,7 +260,7 @@ export async function deliver(
   }
 }
 /** Ordinary independently supervised process loop, sharing SQLite capacity/leases across processes. */
-/** Bindings for agents the owner connected from the workspace (ADR 0007). */
+/** Bindings for agents the owner connected from the workspace. */
 export function managedBindings(store: Store, directory: string): Binding[] {
   return store.managed.workerBindings().map((b) =>
     Binding.parse({
@@ -269,7 +269,7 @@ export function managedBindings(store: Store, directory: string): Binding[] {
       t3Endpoint: b.endpoint,
       t3AuthFile: t3AuthFile(directory),
       isolatedProviderId: b.providerId,
-      // Not an assertion here: workspace agents run without Team MCP (ADR 0008).
+      // Not an assertion here: workspace agents run without Team MCP.
       externalTeamMcpConfigured: true,
     }),
   );

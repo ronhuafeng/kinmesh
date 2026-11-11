@@ -13,7 +13,7 @@ import { AgentId } from '../domain/contracts.js';
 
 /**
  * Secrets the hub manages for its own worker live in one private directory
- * beside the database (ADR 0007): never in SQLite, logs or responses.
+ * beside the database: never in SQLite, logs or responses.
  */
 export function managedDirectory(database: string) {
   // Anchor at the real path, so a symlinked ancestor (macOS /var) is not

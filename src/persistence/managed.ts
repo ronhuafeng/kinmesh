@@ -15,7 +15,7 @@ const Provider = z.string().trim().min(1).max(256);
 
 /**
  * What the hub manages for its own worker: the team's T3 connection and the
- * agents it serves (ADR 0007). Rows hold no secrets; tokens live in files.
+ * agents it serves. Rows hold no secrets; tokens live in files.
  */
 export function managedRepository(
   db: BetterSQLite3Database<typeof s>,

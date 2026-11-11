@@ -33,7 +33,7 @@ try {
     supervisor = new InboxSupervisor(path, config.database, fatal);
   store = openStore(config.database);
   // Agents connected from the workspace need the hub's worker even without
-  // an operator configuration; with none, no worker runs (ADR 0007).
+  // an operator configuration; with none, no worker runs.
   if (supervisor === undefined && store.managed.workerBindings().length > 0)
     supervisor = new InboxSupervisor(undefined, config.database, fatal);
   let starting: Promise<void> | undefined;
