@@ -65,7 +65,7 @@ For optional execution integration, follow the T3 guide before `npm run t3:auth`
 | `src/inbox`            | Independently supervised bounded wake/delivery worker over the external execution adapter    |
 | `src/adapters/t3`      | Official-SDK external OAuth MCP and durable execution recovery                               |
 
-Kinmesh owns collaboration state; T3 owns provider sessions, threads, runs, Git/worktrees and execution records. They have independent installation and upgrade lifecycles. Kinmesh neither embeds nor modifies T3 and does not access private T3 packages, databases or WebSockets. See the [architecture decisions](docs/adr/) for policy and tradeoffs.
+Kinmesh owns collaboration state; T3 owns provider sessions, threads, runs, Git/worktrees and execution records. They have independent installation and upgrade lifecycles. Kinmesh neither embeds nor modifies T3 and does not access private T3 packages, databases or WebSockets.
 
 ## Validate changes
 

@@ -26,7 +26,7 @@ const TeamPath = z.object({ teamId: TeamId });
 const AgentPath = TeamPath.extend({ agentId: AgentId });
 const GrantPath = AgentPath.extend({ grantId: z.uuid() });
 const ExecutionPath = AgentPath.extend({ executionId: z.uuid() });
-/** `directory` holds the tokens of agents connected from the workspace (ADR 0007). */
+/** `directory` holds the tokens of agents connected from the workspace. */
 export function registerAgents(
   app: FastifyInstance,
   store: Store,

@@ -27,7 +27,7 @@ import type { Store } from '../persistence/store.js';
 
 /** What the hub does on the owner's behalf; replaceable in tests. */
 export interface Hub {
-  /** Private directory for managed secrets (ADR 0007). */
+  /** Private directory for managed secrets. */
   directory: string;
   /** Start the hub's own Inbox worker if it is not running. */
   ensureWorker: () => Promise<void>;

@@ -38,12 +38,12 @@ The Team view, the sidebar, the agent panel and the `@` popover show whether an 
 
 ## Setting up an agent
 
-The agent panel shows one next step at a time ([ADR 0008](adr/0008-one-step-connect.md)):
+The agent panel shows one next step at a time:
 
 1. **Connect T3**, once for the team. A T3 desktop running on this machine is found on its own; otherwise paste its MCP URL. Approve in T3 and choose Supervised; T3 may ask for a pairing code from Settings → Sharing & access. A read-only approval is reported as the next step, not as success.
 2. **Choose what the agent runs on**: one list of the models each T3 provider offers.
 
-The panel then shows one line: the agent is ready (or its worker is starting), with **Change model** and **Disconnect**. If the agent isn't in the channel on screen, a note offers to add it. The hub keeps the secrets and runs the worker ([ADR 0007](adr/0007-hub-managed-worker.md)).
+The panel then shows one line: the agent is ready (or its worker is starting), with **Change model** and **Disconnect**. If the agent isn't in the channel on screen, a note offers to add it. The hub keeps the secrets and runs the worker.
 
 **More** holds the rest:
 
@@ -55,7 +55,7 @@ The panel then shows one line: the agent is ready (or its worker is starting), w
 
 Under each message that mentions an agent, and on a task the agent was handed, the workspace shows one line per agent describing its Inbox delivery in plain words: _will pick this up_, _isn't connected_, _is working on it_, _is waiting for an approval in T3_, _replied_ (a link to the reply, which shows what it answers), _is stuck_ (with what was lost and one fix: re-enable the agent, add it back, or open its setup, then retry) or _never picked this up_. The machine state and reason are available as a tooltip.
 
-`GET /api/workspace` includes these as `deliveries` for the visible messages and tasks of a channel the caller can read. Only identifiers, state, reason, timestamps and the reply message are exposed; claims, frozen launches, operation IDs, native references and counters stay in the worker. Owners resume blocked deliveries from the workspace; see [ADR 0006](adr/0006-owner-recovery.md).
+`GET /api/workspace` includes these as `deliveries` for the visible messages and tasks of a channel the caller can read. Only identifiers, state, reason, timestamps and the reply message are exposed; claims, frozen launches, operation IDs, native references and counters stay in the worker. Owners resume blocked deliveries from the workspace.
 
 ## Reading a reply
 
