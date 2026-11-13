@@ -185,10 +185,6 @@ export function Auth({ onLogin }: { onLogin: () => void }) {
             Retry same action
           </button>
         )}
-        <p className="privacy-note">
-          Your session uses a protected cookie. No provider credentials are
-          required.
-        </p>
       </section>
     </main>
   );
