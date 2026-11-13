@@ -209,7 +209,9 @@ export function registerConnect(
     try {
       const credential = loadCredential(credentialFile, connection.endpoint);
       return {
-        providers: await hub.providers(credential, AbortSignal.timeout(8000)),
+        // A healthy T3 answers in well under a second; a failed read is
+        // simply read again, so nobody waits long on one that is down.
+        providers: await hub.providers(credential, AbortSignal.timeout(3000)),
       };
     } catch {
       return reply.code(503).send({ error: 'T3 providers unavailable' });

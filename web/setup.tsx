@@ -352,6 +352,9 @@ function ChooseModel({
   const [offered, setOffered] = useState<
     z.infer<typeof Providers>['providers'] | 'unavailable' | null
   >(null);
+  // T3 cannot say when its models change, so they are read again whenever
+  // T3 is: on a new connection, Refresh now, or a network that comes back.
+  const { reads } = useLive();
   useEffect(() => {
     void api(`/api/teams/${data.team.id}/t3/providers`)
       .then((raw) => {
@@ -362,7 +365,7 @@ function ChooseModel({
       .catch(() => {
         setOffered('unavailable');
       });
-  }, [data.team.id]);
+  }, [data.team.id, reads.t3]);
   const prefs = agent.preferences;
   const current =
     prefs.providerId && prefs.modelId
@@ -391,7 +394,9 @@ function ChooseModel({
       >
         {offered === null ? (
           <p className="muted">Asking T3 what it can run…</p>
-        ) : offered === 'unavailable' || offered.length === 0 ? (
+        ) : offered === 'unavailable' ? (
+          <p className="muted">T3 can’t be reached right now.</p>
+        ) : offered.length === 0 ? (
           <>
             <p className="muted">
               T3 didn’t list its models; type them as T3 shows them.
@@ -445,6 +450,7 @@ function ChooseModel({
               !permitted ||
               busy ||
               offered === null ||
+              offered === 'unavailable' ||
               agent.lifecycle !== 'active'
             }
           >
