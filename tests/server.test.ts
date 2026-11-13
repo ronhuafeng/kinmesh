@@ -140,6 +140,26 @@ await test('first-run setup requires secret, is one-time, validates input and au
     f.cleanup();
   }
 });
+await test('the overall rate limit bounds every client, at the configured pace', async () => {
+  const f = fixture();
+  const store = f.open();
+  const app = await createApp({ ...f.config, rateLimit: 3 }, store);
+  try {
+    for (let i = 0; i < 3; i++)
+      assert.equal(
+        (await app.inject({ url: '/api/setup/status' })).statusCode,
+        200,
+      );
+    assert.equal(
+      (await app.inject({ url: '/api/setup/status' })).statusCode,
+      429,
+    );
+  } finally {
+    await app.close();
+    store.close();
+    f.cleanup();
+  }
+});
 await test('login rejects invalid, unknown and incorrect credentials; rate limit bounds attempts', async () => {
   const f = fixture();
   const store = f.open();

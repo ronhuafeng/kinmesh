@@ -108,6 +108,9 @@ export class Hub {
       KINMESH_SESSION_KEY: this.session,
       KINMESH_ORIGIN: this.origin,
       KINMESH_PORT: new URL(this.origin).port,
+      // The gate checks correctness at machine speed, not the flood guard
+      // (tests/server.test.ts), which is set for people.
+      KINMESH_RATE_LIMIT: '10000',
     };
     this.process = new Process(
       'npm',
