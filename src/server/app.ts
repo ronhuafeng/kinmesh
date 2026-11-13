@@ -40,7 +40,10 @@ export async function createApp(
     ...overrides,
   };
   const app = Fastify({ logger: false, bodyLimit: 16_384, trustProxy: false });
-  await app.register(rateLimit, { max: 60, timeWindow: '1 minute' });
+  await app.register(rateLimit, {
+    max: config.rateLimit,
+    timeWindow: '1 minute',
+  });
   await app.register(secureSession, {
     key: config.sessionKey,
     cookieName: 'kinmesh-session',

@@ -21,6 +21,12 @@ await test('configuration rejects absent secrets, invalid ports and non-loopback
     true,
   );
   assert.equal(loadConfig(env).secureCookie, false);
+  assert.equal(loadConfig(env).rateLimit, 60);
+  assert.equal(
+    loadConfig({ ...env, KINMESH_RATE_LIMIT: '600' }).rateLimit,
+    600,
+  );
+  assert.throws(() => loadConfig({ ...env, KINMESH_RATE_LIMIT: '0' }));
 });
 await test('new session key rejects existing encrypted session', async () => {
   const { createApp } = await import('../src/server/app.js');
