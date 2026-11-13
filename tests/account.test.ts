@@ -92,3 +92,14 @@ await test('the owner renames the team', async () => {
     await f.dispose();
   }
 });
+
+await test('first-owner setup is offered only until a team exists', async () => {
+  const f = await agentFixture();
+  try {
+    const status = await f.app.inject({ url: '/api/setup/status' });
+    assert.equal(status.statusCode, 200);
+    assert.deepEqual(status.json<unknown>(), { open: false });
+  } finally {
+    await f.dispose();
+  }
+});

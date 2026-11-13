@@ -84,7 +84,9 @@ async function register(page: Page, name: string, role: string) {
     .click();
   await expect(page.getByRole('heading', { name, exact: true })).toBeVisible();
   await page.getByRole('button', { name: `Add ${name} to channel` }).click();
-  await expect(page.getByText('Joined this channel')).toHaveCount(1);
+  await expect(
+    page.getByRole('button', { name: `Add ${name} to channel` }),
+  ).toHaveCount(0);
 }
 async function agentGrant(
   request: APIRequestContext,

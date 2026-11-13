@@ -13,7 +13,7 @@ import type {
 import { api, HttpError, value } from './api.js';
 import { ActionForm, Field, Notice } from './forms.js';
 import { ago, Avatar, Drawer, shortTime, WakeLabel, wakeOf } from './ui.js';
-import { DeliveryLine } from './deliveries.js';
+import { DeliveryLine, deliveryText } from './deliveries.js';
 import { AgentSetup } from './setup.js';
 function NativeStatus({
   correlation,
@@ -301,6 +301,19 @@ export function AgentDrawer({
   onDone: () => void;
   onClose: () => void;
 }) {
+  const requests = data.deliveries
+    .filter((d) => d.agentId === agent.id)
+    .reverse();
+  const connected = wakeOf(data.wake, agent.id).connected;
+  const seen = new Set<string>();
+  const distinct = requests
+    .filter((d) => {
+      const text = deliveryText(d, agent.name, connected).text;
+      if (seen.has(text)) return false;
+      seen.add(text);
+      return true;
+    })
+    .slice(0, 5);
   return (
     <Drawer label={agent.name} onClose={onClose} className="agent-drawer">
       <div className="drawer-body">
@@ -329,23 +342,23 @@ export function AgentDrawer({
           channelPath={channelPath}
           onDone={onDone}
         />
-        {data.deliveries.some((d) => d.agentId === agent.id) && (
+        {requests.length > 0 && (
           <>
-            <h3>Recent requests in this channel</h3>
+            <h3>
+              Requests in this channel{' '}
+              <span className="muted">{requests.length}</span>
+            </h3>
+            {/* Newest first, and a sentence that repeats is said once. */}
             <ul className="deliveries" aria-label="Recent requests">
-              {data.deliveries
-                .filter((d) => d.agentId === agent.id)
-                .slice(-5)
-                .reverse()
-                .map((d) => (
-                  <DeliveryLine
-                    key={d.id}
-                    delivery={d}
-                    data={data}
-                    channelId={data.channel?.id ?? ''}
-                    onDone={onDone}
-                  />
-                ))}
+              {distinct.map((d) => (
+                <DeliveryLine
+                  key={d.id}
+                  delivery={d}
+                  data={data}
+                  channelId={data.channel?.id ?? ''}
+                  onDone={onDone}
+                />
+              ))}
             </ul>
           </>
         )}
@@ -445,7 +458,6 @@ export function Team({
             <h3>{data.human.username}</h3>
             <p>You · signs off on tasks</p>
           </div>
-          <span className="member-state">Joined</span>
         </li>
         {data.agents.map((agent) => (
           <li
@@ -472,11 +484,10 @@ export function Team({
               </p>
             </div>
             <div className="roster-actions">
+              {/* Membership is in the sidebar; only a missing one needs a fix. */}
               {channelPath &&
                 agent.lifecycle === 'active' &&
-                (data.joinedAgentIds.includes(agent.id) ? (
-                  <span className="member-state">Joined this channel</span>
-                ) : (
+                !data.joinedAgentIds.includes(agent.id) && (
                   <ActionForm
                     title={'Enroll ' + agent.name}
                     path={channelPath + '/participants/invite'}
@@ -484,14 +495,15 @@ export function Team({
                     onDone={onDone}
                     submit={'Add ' + agent.name + ' to channel'}
                   />
-                ))}
+                )}
               <button
-                className="secondary"
+                className="quiet"
+                aria-label={`View ${agent.name} activity`}
                 onClick={() => {
                   openAgent(agent.id);
                 }}
               >
-                View {agent.name} activity
+                Open
               </button>
             </div>
           </li>

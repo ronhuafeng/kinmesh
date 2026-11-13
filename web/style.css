@@ -3125,7 +3125,7 @@ button.icon-button:hover:not(:disabled) {
   flex: 1 1 0;
   min-width: 0;
 }
-.sidebar-menu {
+.sidebar button.sidebar-menu {
   display: none;
 }
 /* Channel details sit with the channel's other controls. */
@@ -3140,7 +3140,7 @@ button.icon-button:hover:not(:disabled) {
   .sidebar-top {
     grid-template-columns: minmax(0, 1fr) auto auto;
   }
-  .sidebar-menu {
+  .sidebar button.sidebar-menu {
     display: inline-grid;
   }
   .sidebar button.palette-trigger > .with-icon {
@@ -3154,4 +3154,16 @@ button.icon-button:hover:not(:disabled) {
   .sidebar:not([data-menu]) .account {
     display: none;
   }
+}
+/* Settings sections read as sections, not as another field label. */
+.settings-form h3 {
+  margin: 0.75rem 0 0.1rem;
+  font-family: var(--mono);
+  font-size: 0.7rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--ink-muted);
+}
+.team-sketch {
+  padding-bottom: 1rem;
 }

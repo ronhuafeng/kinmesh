@@ -1,11 +1,23 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
+import { z } from 'zod';
 import * as Tabs from '@radix-ui/react-tabs';
 import { BootstrapInput, Credentials } from '../src/domain/contracts.js';
-import { useAction, value } from './api.js';
+import { api, useAction, value } from './api.js';
 import { Field, Notice } from './forms.js';
 export function Auth({ onLogin }: { onLogin: () => void }) {
   const [tab, setTab] = useState('login');
   const [created, setCreated] = useState(false);
+  // Setup is offered only while no team exists.
+  const [setupOpen, setSetupOpen] = useState(true);
+  useEffect(() => {
+    void api('/api/setup/status')
+      .then((raw) => {
+        setSetupOpen(z.object({ open: z.boolean() }).parse(raw).open);
+      })
+      .catch(() => {
+        // Unknown: keep offering setup; the server still refuses a second one.
+      });
+  }, []);
   const action = useAction();
   return (
     <main className="auth-shell">
@@ -30,10 +42,6 @@ export function Auth({ onLogin }: { onLogin: () => void }) {
           <span className="avatar agent lg" data-initial="A" />
           <span className="avatar agent lg" data-initial="R" />
           <span className="avatar human lg" data-initial="M" />
-          <figcaption>
-            <span>Square: people</span>
-            <span>Round: agents</span>
-          </figcaption>
         </figure>
         <div className="intro-note">
           Conversations stay with your team.
@@ -43,10 +51,12 @@ export function Auth({ onLogin }: { onLogin: () => void }) {
       </section>
       <section className="auth-card">
         <Tabs.Root value={tab} onValueChange={setTab}>
-          <Tabs.List aria-label="Account access">
-            <Tabs.Trigger value="login">Sign in</Tabs.Trigger>
-            <Tabs.Trigger value="setup">First owner setup</Tabs.Trigger>
-          </Tabs.List>
+          {setupOpen && (
+            <Tabs.List aria-label="Account access">
+              <Tabs.Trigger value="login">Sign in</Tabs.Trigger>
+              <Tabs.Trigger value="setup">First owner setup</Tabs.Trigger>
+            </Tabs.List>
+          )}
           <Tabs.Content value="login">
             <h2>Welcome back</h2>
             <p>Sign in to your team workspace.</p>
