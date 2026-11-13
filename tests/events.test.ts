@@ -73,6 +73,9 @@ await test(
       const runs = async () =>
         decodeExecutionEvent(await get(`/api/agui/${f.teamId}/${f.agent.id}`))
           .revision;
+      const grants = async () =>
+        z.object({ revision: z.string() }).parse(await get(f.path + '/grants'))
+          .revision;
       const post = async (body: string) => {
         const posted = await f.app.inject({
           method: 'POST',
@@ -115,17 +118,31 @@ await test(
         t3: await t3(),
         runs: await runs(),
       });
+      // The page for running its worker yourself watches its credentials.
+      const worker = await stream(origin, cookie, 'page=worker:' + f.agent.id);
+      assert.deepEqual(await worker.next(), {
+        workspace: await workspace(),
+        grants: await grants(),
+      });
       // A new run is named as such.
       await f.execution();
       const ran = await agent.next();
       assert.equal(ran?.runs, await runs());
+      // A credential revoked elsewhere is named as such.
+      const revoked = await f.app.inject({
+        method: 'POST',
+        url: `${f.path}/grants/${f.grant.grant.id}/revoke`,
+        cookies: f.cookies,
+      });
+      assert.equal(revoked.statusCode, 204);
+      assert.deepEqual(await worker.next(), { grants: await grants() });
       // A message changes the workspace alone.
       await post('Only the workspace');
       assert.deepEqual(await agent.next(), { workspace: await workspace() });
 
       // Streams are bounded per person.
       const more = [];
-      for (let i = 0; i < 6; i++) more.push(await stream(origin, cookie));
+      for (let i = 0; i < 5; i++) more.push(await stream(origin, cookie));
       assert.equal(
         (await fetch(origin + '/api/events', { headers: { cookie } })).status,
         429,
@@ -142,7 +159,8 @@ await test(
         },
       });
       assert.equal(changed.statusCode, 204);
-      for (const s of [place, agent, ...more]) assert.ok(await s.ended());
+      for (const s of [place, agent, worker, ...more])
+        assert.ok(await s.ended());
     } finally {
       other.close();
       await f.dispose();

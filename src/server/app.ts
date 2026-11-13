@@ -232,7 +232,7 @@ export async function createApp(
       return reply.code(403).send({ error: 'Human authentication required' });
   });
   const changes = watchChanges(store);
-  registerAgents(app, store, hub.directory);
+  const { grants } = registerAgents(app, store, hub.directory);
   const { t3Status } = registerConnect(app, store, hub, changes);
   registerCommunication(app, store);
   registerTasks(app, store);
@@ -241,7 +241,7 @@ export async function createApp(
     store,
     t3AuthFile(hub.directory),
   );
-  registerEvents(app, store, changes, { snapshot, t3Status, runs });
+  registerEvents(app, store, changes, { snapshot, t3Status, runs, grants });
   await registerWeb(app);
   await app.register((protectedApi, _options, done) => {
     protectedApi.get('/api/me', (request) => {

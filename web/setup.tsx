@@ -31,6 +31,7 @@ const LIFETIME_DAYS = 30;
 const TEAM_MCP_URL = 'http://127.0.0.1:3001/mcp';
 const ListedGrant = Grant.omit({ agentId: true, teamId: true });
 type ListedGrant = z.infer<typeof ListedGrant>;
+const Grants = z.object({ grants: z.array(ListedGrant), revision: z.string() });
 const Issued = z.object({ grant: ListedGrant.loose(), token: z.string() });
 const T3Status = z.object({
   connection: z
@@ -531,16 +532,29 @@ function OwnWorker({
   const [token, setToken] = useState<string | null>(null);
   const [loadError, setLoadError] = useState('');
   const [editing, setEditing] = useState(false);
+  const { begin, settle, drop, reads } = useLive();
   const load = useCallback(() => {
+    begin('grants');
     void api(base + '/grants')
       .then((raw) => {
-        setGrants(z.array(ListedGrant).parse(raw));
+        const next = Grants.parse(raw);
+        setGrants(next.grants);
+        setLoadError('');
+        settle('grants', next.revision);
       })
       .catch(() => {
-        setLoadError('Credentials unavailable. Reopen this panel to retry.');
+        setLoadError('Credentials can’t be loaded right now.');
+        drop('grants');
       });
-  }, [base]);
-  useEffect(load, [load]);
+  }, [base, begin, settle, drop]);
+  useEffect(load, [load, reads.grants]);
+  // Another agent's credentials are another resource.
+  useEffect(
+    () => () => {
+      drop('grants');
+    },
+    [base, drop],
+  );
   const mutate = (path: string, body?: unknown) => {
     void send(path, body).then((raw) => {
       if (raw === undefined) return;

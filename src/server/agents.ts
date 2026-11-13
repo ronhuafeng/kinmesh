@@ -7,8 +7,10 @@ import {
   IdentityError,
   ProfileInput,
   RuntimeEventInput,
+  type Principal,
 } from '../domain/agents.js';
 import type { Store } from '../persistence/store.js';
+import { fingerprint } from '../persistence/transactional.js';
 import { AVATAR_LIMIT } from '../persistence/agents.js';
 import { removeAgentToken, writeAgentToken } from '../inbox/managed.js';
 import { WORKER_GRANT } from './connect.js';
@@ -111,9 +113,14 @@ export function registerAgents(
     writeAgentToken(directory, agentId, token);
     return store.agents.get(p, teamId, agentId);
   });
+  /** An agent's credentials, never a hash or secret, and their revision. */
+  const grants = (caller: Principal, teamId: TeamId, agentId: AgentId) => {
+    const listed = store.agents.grants(caller, teamId, agentId);
+    return { grants: listed, revision: fingerprint(listed) };
+  };
   app.get(base + '/:agentId/grants', (request) => {
     const { teamId, agentId } = AgentPath.parse(request.params);
-    return store.agents.grants(principal(request), teamId, agentId);
+    return grants(principal(request), teamId, agentId);
   });
   app.post(base + '/:agentId/grants', (request, reply) => {
     const { teamId, agentId } = AgentPath.parse(request.params);
@@ -210,4 +217,5 @@ export function registerAgents(
       executionId,
     );
   });
+  return { grants };
 }

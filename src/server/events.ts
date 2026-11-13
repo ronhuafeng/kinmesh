@@ -44,6 +44,11 @@ export function registerEvents(
     ) => Revisioned & { team: { id: TeamId } };
     t3Status: (principal: Principal, teamId: TeamId) => Revisioned;
     runs: (principal: Owner, teamId: TeamId, agentId: AgentId) => Revisioned;
+    grants: (
+      principal: Principal,
+      teamId: TeamId,
+      agentId: AgentId,
+    ) => Revisioned;
   },
 ) {
   const open = new Map<() => void, string>();
@@ -75,8 +80,11 @@ export function registerEvents(
         if (resource === 'workspace') now.workspace = workspace.revision;
         if (resource === 't3')
           now.t3 = readable(() => reads.t3Status(principal, teamId));
+        // Both pages are about one agent: `page.id`.
         if (resource === 'runs' && page)
           now.runs = readable(() => reads.runs(principal, teamId, page.id));
+        if (resource === 'grants' && page)
+          now.grants = readable(() => reads.grants(principal, teamId, page.id));
       }
       return now;
     };
