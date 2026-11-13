@@ -325,7 +325,8 @@ export class Hub {
       await form
         .getByRole('button', { name: 'Connect CI ' + role, exact: true })
         .click();
-      if (this.page) await untilReady(this.page);
+      // A real managed worker can take a while to start and be seen.
+      if (this.page) await untilReady(this.page, 60000);
     }
     await this.page?.reload();
     for (const role of roles) {

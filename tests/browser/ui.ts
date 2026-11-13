@@ -104,12 +104,14 @@ export async function openAgent(page: Page, name: string) {
 /** The worker reports in on its own; refresh until the page says so. */
 export async function untilReady(page: Page, timeout = 20000) {
   const setup = page.getByRole('region', { name: 'Setup', exact: true });
+  // Each refresh costs the hub several requests; asking every few seconds
+  // stays well under its per-minute limit while a real worker starts.
   await expect(async () => {
     await refreshNow(page);
     await expect(setup.getByText('Ready to answer')).toBeVisible({
       timeout: 1000,
     });
-  }).toPass({ timeout });
+  }).toPass({ timeout, intervals: [2000, 5000] });
 }
 export interface TaskFields {
   title: string;
