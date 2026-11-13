@@ -216,9 +216,6 @@ function Activity({
       <div className="drawer-heading">
         <h3>Activity</h3>
       </div>
-      <p className="muted">
-        What {agent.name} last reported. “Check in T3” asks T3 directly.
-      </p>
       {error && <Notice>{error}</Notice>}
       {snapshot && (
         <>
@@ -313,9 +310,15 @@ export function AgentDrawer({
             <h2>{agent.name}</h2>
             <p>
               <span className="role-pill">{agent.role}</span>
-              <span className="lifecycle-tag" data-lifecycle={agent.lifecycle}>
-                {agent.lifecycle}
-              </span>
+              {/* Only the exception is worth saying. */}
+              {agent.lifecycle !== 'active' && (
+                <span
+                  className="lifecycle-tag"
+                  data-lifecycle={agent.lifecycle}
+                >
+                  {agent.lifecycle}
+                </span>
+              )}
             </p>
             <WakeLabel wake={data.wake} agentId={agent.id} />
           </div>
@@ -431,8 +434,8 @@ export function Team({
       {data.agents.length > 0 &&
         !data.agents.some((a) => wakeOf(data.wake, a.id).connected) && (
           <p className="roster-note">
-            No agent can be woken yet. Mentions are kept, but nobody will act on
-            them until an Inbox worker is running for that agent.
+            No agent can be woken yet. Open one and connect it to T3, and
+            mentions will reach it.
           </p>
         )}
       <ul className="roster">
@@ -440,7 +443,7 @@ export function Team({
           <Avatar kind="human" name={data.human.username} />
           <div className="roster-identity">
             <h3>{data.human.username}</h3>
-            <p>Human owner · you · final acceptance</p>
+            <p>You · signs off on tasks</p>
           </div>
           <span className="member-state">Joined</span>
         </li>
@@ -457,7 +460,8 @@ export function Team({
               <h3>{agent.name}</h3>
               <WakeLabel wake={data.wake} agentId={agent.id} />
               <p>
-                {agent.role} · {agent.lifecycle}
+                {agent.role}
+                {agent.lifecycle !== 'active' && ' · ' + agent.lifecycle}
                 {agent.preferences.modelId && (
                   <span className="reference">
                     {' '}
