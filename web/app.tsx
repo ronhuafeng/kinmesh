@@ -159,6 +159,9 @@ export function App() {
   const [loadedFor, setLoadedFor] = useState<string | null>(null);
   // The exact place (channel, topic, pages) the snapshot on screen shows.
   const [loadedPlace, setLoadedPlace] = useState<string | null>(null);
+  // A stream the hub refused is opened again after the next good read.
+  const refused = useRef(false);
+  const [streamTry, setStreamTry] = useState(0);
   const [lastOk, setLastOk] = useState(false);
   const [revision, setRevision] = useState(0);
   const [manual, setManual] = useState(false);
@@ -248,6 +251,10 @@ export function App() {
           setLoadedFor(selection.channel);
           setLoadedPlace(place);
           setLastOk(true);
+          if (refused.current) {
+            refused.current = false;
+            setStreamTry((n) => n + 1);
+          }
           setError('');
         };
         // Cards on screen travel to their new column; other refreshes stay
@@ -339,6 +346,8 @@ export function App() {
     // once the stream is back.
     events.onerror = () => {
       lost = true;
+      // The browser retries a dropped stream but not a refused one.
+      if (events.readyState === EventSource.CLOSED) refused.current = true;
       refresh();
     };
     events.onopen = () => {
@@ -352,7 +361,15 @@ export function App() {
       events.close();
       window.removeEventListener('online', refresh);
     };
-  }, [live, place, agentOnScreen, refresh]);
+  }, [live, place, agentOnScreen, refresh, streamTry]);
+  // While the hub cannot be reached, nothing can say it is back: ask again.
+  useEffect(() => {
+    if (status !== 'offline') return;
+    const timer = setTimeout(refresh, 5000);
+    return () => {
+      clearTimeout(timer);
+    };
+  }, [status, refresh]);
   const next = (key: string, cursor: string | null) => {
     if (cursor) setCursors((old) => ({ ...old, [key]: cursor }));
   };
