@@ -2,15 +2,16 @@ import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { PROTOCOL_VERSION } from '@ag-ui/core';
 import { AgentId, ChannelId, TeamId } from '../domain/contracts.js';
-import { IdentityError } from '../domain/agents.js';
+import { IdentityError, type Principal } from '../domain/agents.js';
 import { TopicId, memberKey } from '../domain/communication.js';
 import { INBOX_LIVENESS_MS } from '../domain/inbox.js';
 import type { Store } from '../persistence/store.js';
+import { fingerprint } from '../persistence/transactional.js';
 import { loadCredential } from '../adapters/t3/oauth.js';
 import { readNativeExecution } from '../workspace/native.js';
 import { WorkspaceSnapshot, executionEvent } from '../workspace/contracts.js';
 
-const Query = z.strictObject({
+export const WorkspaceQuery = z.strictObject({
   channelId: ChannelId.optional(),
   topicId: TopicId.optional(),
   messagesCursor: z.string().min(1).max(2048).optional(),
@@ -18,6 +19,24 @@ const Query = z.strictObject({
   topicsCursor: z.string().min(1).max(2048).optional(),
   channelsCursor: z.string().min(1).max(2048).optional(),
 });
+export type WorkspaceQuery = z.infer<typeof WorkspaceQuery>;
+type Owner = Extract<Principal, { kind: 'human' }>;
+/**
+ * Names what a snapshot shows. The time it was read and worker heartbeats,
+ * which change nothing on screen, are left out.
+ */
+function withRevision<
+  T extends { wake: { agentId: string; connected: boolean }[] },
+>(view: T) {
+  return {
+    ...view,
+    revision: fingerprint({
+      ...view,
+      observedAt: null,
+      wake: view.wake.map(({ agentId, connected }) => ({ agentId, connected })),
+    }),
+  };
+}
 /**
  * `t3CredentialFile` is the team's T3 credential, the one approved in the
  * workspace: checking a run reads T3 through the same connection agents use.
@@ -74,14 +93,11 @@ export function registerWorkspace(
       }
     },
   );
-  app.get('/api/workspace', (request, reply) => {
-    reply.header('Cache-Control', 'no-store');
-    const principal = request.principal;
-    if (principal?.kind !== 'human') throw new IdentityError(403);
+  /** What one owner's workspace shows for one place. */
+  const snapshot = (principal: Owner, query: WorkspaceQuery) => {
     const human = store.human(principal.humanId);
     const membership = store.teamFor(principal.humanId);
     if (!human || !membership) throw new IdentityError(403);
-    const query = Query.parse(request.query);
     const teamId = membership.team.id;
     const channels = store.communication.channels(principal, teamId, {
       limit: 100,
@@ -195,48 +211,56 @@ export function registerWorkspace(
     };
     const t3 = store.managed.teamConnection(teamId);
     const t3Origin = t3 ? new URL(t3.endpoint).origin : null;
-    return WorkspaceSnapshot.parse({
-      observedAt: new Date(now).toISOString(),
-      nativeT3Origin: t3Origin,
-      human,
-      team: membership.team,
-      channels,
-      channel,
-      leftChannels: store.communication.leftChannels(principal, teamId),
-      agents,
-      agentsTruncated: profiles.truncated,
-      joinedAgentIds,
-      deliveries,
-      replies: channel
-        ? store.inbox.repliesFor(
-            teamId,
-            channel.id,
-            messages.items.map((m) => m.id),
-          )
-        : [],
-      attention,
-      wake,
-      managed: store.managed
-        .teamBindings(teamId)
-        .filter((b) => known.has(AgentId.parse(b.agentId))),
-      teamMcp: store.managed
-        .teamMcpPresence(teamId)
-        .filter((row) => known.has(AgentId.parse(row.agentId)))
-        .map((row) => ({
-          agentId: row.agentId,
-          lastSeenAt: new Date(row.lastSeenAt).toISOString(),
-        })),
-      avatars: store.agents
-        .avatars(principal, teamId)
-        .filter((row) => known.has(AgentId.parse(row.agentId))),
-      messages,
-      topics: channel
-        ? store.communication.topics(principal, teamId, channel.id, {
-            ...(query.topicsCursor ? { cursor: query.topicsCursor } : {}),
-          })
-        : { items: [], nextCursor: null },
-      tasks,
-    });
+    return WorkspaceSnapshot.parse(
+      withRevision({
+        observedAt: new Date(now).toISOString(),
+        nativeT3Origin: t3Origin,
+        human,
+        team: membership.team,
+        channels,
+        channel,
+        leftChannels: store.communication.leftChannels(principal, teamId),
+        agents,
+        agentsTruncated: profiles.truncated,
+        joinedAgentIds,
+        deliveries,
+        replies: channel
+          ? store.inbox.repliesFor(
+              teamId,
+              channel.id,
+              messages.items.map((m) => m.id),
+            )
+          : [],
+        attention,
+        wake,
+        managed: store.managed
+          .teamBindings(teamId)
+          .filter((b) => known.has(AgentId.parse(b.agentId))),
+        teamMcp: store.managed
+          .teamMcpPresence(teamId)
+          .filter((row) => known.has(AgentId.parse(row.agentId)))
+          .map((row) => ({
+            agentId: row.agentId,
+            lastSeenAt: new Date(row.lastSeenAt).toISOString(),
+          })),
+        avatars: store.agents
+          .avatars(principal, teamId)
+          .filter((row) => known.has(AgentId.parse(row.agentId))),
+        messages,
+        topics: channel
+          ? store.communication.topics(principal, teamId, channel.id, {
+              ...(query.topicsCursor ? { cursor: query.topicsCursor } : {}),
+            })
+          : { items: [], nextCursor: null },
+        tasks,
+      }),
+    );
+  };
+  app.get('/api/workspace', (request, reply) => {
+    reply.header('Cache-Control', 'no-store');
+    const principal = request.principal;
+    if (principal?.kind !== 'human') throw new IdentityError(403);
+    return snapshot(principal, WorkspaceQuery.parse(request.query));
   });
   app.get('/api/agui/:teamId/:memberId', (request, reply) => {
     reply.header('Cache-Control', 'no-store');
@@ -247,7 +271,7 @@ export function registerWorkspace(
     const principal = request.principal;
     if (principal?.kind !== 'human') throw new IdentityError(403);
     // Owner membership and current identity are rechecked by each repository call.
-    const snapshot = store.agents.workspaceExecutions(
+    const executions = store.agents.workspaceExecutions(
       principal,
       teamId,
       memberId,
@@ -256,7 +280,8 @@ export function registerWorkspace(
       protocolVersion: PROTOCOL_VERSION,
       source: 'kinmesh-persisted-reports',
       observedAt: new Date().toISOString(),
-      ...snapshot,
+      ...executions,
     });
   });
+  return { snapshot };
 }

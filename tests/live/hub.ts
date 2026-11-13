@@ -25,7 +25,6 @@ import {
   onboard,
   openAgent,
   openTask,
-  refreshNow,
   register,
   untilReady,
 } from '../browser/ui.js';
@@ -242,10 +241,6 @@ export class Hub {
     assert.ok(worker, 'OWNED_WORKER_REQUIRED');
     return worker.pid;
   }
-  async refresh() {
-    if (!this.page) throw new Error('NO_WORKSPACE');
-    await refreshNow(this.page);
-  }
   /** The agent's page; its Setup region holds the next step. */
   async openAgent(role: Role) {
     const page = this.page;
@@ -391,7 +386,6 @@ export class Hub {
   async decision(action: 'rework' | 'accept') {
     const page = this.page;
     if (!page) throw new Error('NO_WORKSPACE');
-    await this.refresh();
     const task = await openTask(page, this.title);
     await task
       .getByLabel('Decision note')

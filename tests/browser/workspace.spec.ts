@@ -229,7 +229,6 @@ test('two independent task cards: real agent handoff, human review, acceptance a
         'review-requested',
       );
     }
-    await refreshNow(page);
     const alpha = page.getByRole('article', {
       name: 'Ship alpha',
       exact: true,
@@ -345,7 +344,6 @@ test('AG-UI snapshots render persisted reports honestly', async ({
       )
     ).status(),
   ).toBe(201);
-  await refreshNow(page);
   await expect(runState(page, 'Finished')).toBeVisible();
 });
 
@@ -527,7 +525,6 @@ test('a mention says what happened to it and leads to the agent’s reply', asyn
   } finally {
     await agent.dispose();
   }
-  await refreshNow(page);
   await responses.getByRole('button', { name: /Ada replied/ }).click();
   const answer = page
     .getByRole('list', { name: 'Channel messages' })
@@ -578,7 +575,6 @@ test('the Inbox gathers what waits on me across channels and leads to the fix', 
   } finally {
     sql.close();
   }
-  await refreshNow(page);
   await page.keyboard.press('Escape');
   await needs.click();
   await inbox.getByRole('button', { name: /Ada is stuck/ }).click();
@@ -635,7 +631,6 @@ test('a stuck request says what was lost and is fixed and retried in place', asy
   } finally {
     sql.close();
   }
-  await refreshNow(page);
   await expect(responses).toContainText(
     'Ada was removed from the channel, so this is on hold',
   );
@@ -661,7 +656,6 @@ test('a stuck request says what was lost and is fixed and retried in place', asy
   } finally {
     db.close();
   }
-  await refreshNow(page);
   await expect(
     responses.getByRole('button', { name: 'Retry', exact: true }),
   ).toBeVisible();

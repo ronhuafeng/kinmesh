@@ -167,8 +167,11 @@ function TokenOnce({
     </div>
   );
 }
-/** The team's T3 connection; polled while the owner approves it in T3. */
-export function useT3(teamId: string) {
+/**
+ * The team's T3 connection, read again whenever the workspace is: the hub
+ * says when a sign-in in T3 completes.
+ */
+export function useT3(teamId: string, observedAt: string) {
   const [status, setStatus] = useState<T3Status | null>(null);
   const load = useCallback(() => {
     void api(`/api/teams/${teamId}/t3`)
@@ -179,14 +182,7 @@ export function useT3(teamId: string) {
         setStatus(null);
       });
   }, [teamId]);
-  useEffect(load, [load]);
-  useEffect(() => {
-    if (status?.signIn !== 'waiting') return;
-    const timer = setInterval(load, 2000);
-    return () => {
-      clearInterval(timer);
-    };
-  }, [status?.signIn, load]);
+  useEffect(load, [load, observedAt]);
   return { status, load };
 }
 /** One thing to do now: the only control on screen until it is done. */

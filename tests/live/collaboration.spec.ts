@@ -66,10 +66,37 @@ const grants = z.object({
   }),
 });
 
+/** The stages, in order. A dispatch may stop after any of them. */
+const STAGES = [
+  'native-bootstrap',
+  'workspace-onboarding',
+  'native-provider-configuration',
+  'native-read-only-oauth',
+  'native-capability-preflight',
+  'workspace-oauth-models-and-managed-worker',
+  'first-workflow-and-worker-crash',
+  'repeated-human-source',
+  'agent-human-boundary',
+  't3-outage-and-human-rework',
+  'second-collaboration-cycle',
+  'rework-artifact-and-independent-review',
+  'hub-restart',
+  'human-acceptance',
+  'real-native-workspace',
+  'cross-channel-authority',
+  'grant-revocation',
+] as const;
+type Stage = (typeof STAGES)[number];
+/** The run stopped where its dispatch asked: what came after was not run. */
+class Stopped extends Error {}
+
 test('complete real two-agent workflow, Human rework/acceptance, recovery and authority', async () => {
   requireLiveDispatch();
   process.umask(0o077);
   const executor = Executor.parse(process.env.KINMESH_LIVE_EXECUTOR);
+  // Checked before anything runs, so a misspelt stage costs nothing.
+  const asked = process.env.KINMESH_LIVE_THROUGH;
+  const through = asked ? z.enum(STAGES).parse(asked) : undefined;
   const root = realpathSync(mkdtempSync(join(tmpdir(), 'kinmesh-live-')));
   const native = new Native(root, executor);
   const hub = new Hub(root, native);
@@ -78,8 +105,9 @@ test('complete real two-agent workflow, Human rework/acceptance, recovery and au
   let wire: SdkWire | undefined;
   let backend: T3Backend | undefined;
   let tools: ValidatedTools | undefined;
-  let stage = 'prepare';
-  const enter = (next: string) => {
+  let stage: Stage | 'prepare' = 'prepare';
+  const enter = (next: Stage) => {
+    if (stage === through) throw new Stopped();
     stage = next;
     console.info('LIVE_PHASE ' + next);
   };
@@ -920,6 +948,11 @@ test('complete real two-agent workflow, Human rework/acceptance, recovery and au
     checks.fourUniqueNativeResults = true;
     evidence.result = 'PASS';
   } catch (error) {
+    if (error instanceof Stopped) {
+      evidence.result = 'PASS';
+      evidence.stoppedAfter = stage;
+      return;
+    }
     evidence.failedStage = stage;
     evidence.nativeSetupStage = native.stage;
     evidence.errorClass = error instanceof Error ? error.name : 'Unknown';

@@ -1,5 +1,16 @@
 import { randomUUID } from 'node:crypto';
-import { and, asc, eq, gt, inArray, lte, or, sql, type SQL } from 'drizzle-orm';
+import {
+  and,
+  asc,
+  eq,
+  gt,
+  gte,
+  inArray,
+  lte,
+  or,
+  sql,
+  type SQL,
+} from 'drizzle-orm';
 import type { BetterSQLite3Database } from 'drizzle-orm/better-sqlite3';
 import { z } from 'zod';
 import * as s from './schema.js';
@@ -17,6 +28,7 @@ import {
   FrozenLaunch,
   INBOX_CAPACITY,
   INBOX_LEASE_MS,
+  INBOX_LIVENESS_MS,
   SourceContext,
   PublishedOutcome,
   retryDelay,
@@ -790,6 +802,16 @@ export function inboxRepository(
         });
     },
     /** Last worker heartbeat per agent of one team (milliseconds since epoch). */
+    /** Agents whose worker was seen within the liveness window, in any team. */
+    awake(now: number) {
+      return db
+        .select({ agentId: s.inboxBindings.agentId })
+        .from(s.inboxBindings)
+        .where(gte(s.inboxBindings.lastSeenAt, now - INBOX_LIVENESS_MS))
+        .orderBy(s.inboxBindings.agentId)
+        .all()
+        .map((row) => row.agentId);
+    },
     liveness(teamId: string) {
       return db
         .select({

@@ -1,4 +1,6 @@
 import { registerWorkspace } from './workspace.js';
+import { registerEvents } from './events.js';
+import { watchChanges } from './changes.js';
 import { registerWeb } from './web.js';
 import { registerTasks } from './tasks.js';
 import { registerCommunication } from './communication.js';
@@ -226,11 +228,13 @@ export async function createApp(
     )
       return reply.code(403).send({ error: 'Human authentication required' });
   });
+  const changes = watchChanges(store);
   registerAgents(app, store, hub.directory);
-  registerConnect(app, store, hub);
+  const { signIn } = registerConnect(app, store, hub, changes);
   registerCommunication(app, store);
   registerTasks(app, store);
-  registerWorkspace(app, store, t3AuthFile(hub.directory));
+  const { snapshot } = registerWorkspace(app, store, t3AuthFile(hub.directory));
+  registerEvents(app, store, changes, { snapshot, signIn });
   await registerWeb(app);
   await app.register((protectedApi, _options, done) => {
     protectedApi.get('/api/me', (request) => {
@@ -253,6 +257,7 @@ export async function createApp(
   });
   if (beforeClose) app.addHook('preClose', beforeClose);
   app.addHook('onClose', () => {
+    changes.close();
     store.close();
   });
   await app.ready();

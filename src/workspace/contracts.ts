@@ -29,6 +29,8 @@ export const DeliveryView = z.strictObject({
 });
 export const WorkspaceSnapshot = z.strictObject({
   observedAt: z.iso.datetime(),
+  /** Changes exactly when what the snapshot shows changes. */
+  revision: z.string().regex(/^[a-f0-9]{64}$/),
   nativeT3Origin: z
     .url()
     .refine((origin) => new URL(origin).origin === origin)

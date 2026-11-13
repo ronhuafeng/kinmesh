@@ -46,7 +46,11 @@ export function openStore(path: string) {
   const agentStore = agentRepository(db);
   const communicationStore = communicationRepository(db, agentStore);
   const tasks = taskRepository(db, agentStore, communicationStore);
+  const ownWrites = sqlite.prepare('select total_changes()').pluck();
   return {
+    /** Moves on every commit: another process's (data_version), or this one's. */
+    writes: () =>
+      `${String(sqlite.pragma('data_version', { simple: true }))}:${String(ownWrites.get())}`,
     inbox: inboxRepository(db, agentStore, communicationStore, tasks),
     tasks,
     communication: communicationStore,
