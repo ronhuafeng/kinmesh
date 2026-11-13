@@ -59,7 +59,8 @@ await test('PR CI holds no secrets, credentials or paid/live runs', () => {
 await test('paid and credential-bearing runs are manual, owner-only on main, guarded before checkout', () => {
   for (const name of MANUAL) {
     const text = workflow(name);
-    assert.equal(triggers(text).trim(), 'workflow_dispatch:', name);
+    // Dispatch is the only trigger; only its own inputs may follow.
+    assert.match(triggers(text), /^ {2}workflow_dispatch:(?:\n {4}.*)*$/, name);
     assert.match(text, /cancel-in-progress: false/, name);
     for (const [job, body] of jobs(text)) {
       const checkout = body.indexOf('uses: actions/checkout@');
