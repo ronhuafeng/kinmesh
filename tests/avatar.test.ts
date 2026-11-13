@@ -23,13 +23,20 @@ await test('an agent picture is a small raster image set by the owner or the age
   const f = await agentFixture();
   try {
     const url = f.path + '/avatar';
-    const put = (body: Buffer, type: string, auth: object) =>
+    const put = (
+      body: Buffer,
+      type: string,
+      auth: {
+        cookies?: Record<string, string>;
+        headers?: Record<string, string>;
+      },
+    ) =>
       f.app.inject({
         method: 'PUT',
         url,
-        headers: { 'content-type': type },
         payload: body,
-        ...auth,
+        cookies: auth.cookies ?? {},
+        headers: { ...auth.headers, 'content-type': type },
       });
     // Nothing yet, and nothing without a session.
     assert.equal(

@@ -3,7 +3,13 @@ import { forkWorker, message, stop } from './process-helpers.js';
 import assert from 'node:assert/strict';
 import Database from 'better-sqlite3';
 import { fixture } from './helpers.js';
+import { readFileSync } from 'node:fs';
+import { z } from 'zod';
 import { HumanId } from '../src/domain/contracts.js';
+
+const journal = z
+  .object({ entries: z.array(z.unknown()) })
+  .parse(JSON.parse(readFileSync('drizzle/meta/_journal.json', 'utf8')));
 
 await test('deterministic migrations enable WAL and foreign keys; bootstrap survives reopen', () => {
   const f = fixture();
@@ -34,7 +40,8 @@ await test('deterministic migrations enable WAL and foreign keys; bootstrap surv
         .prepare('SELECT count(*) AS n FROM __drizzle_migrations')
         .pluck()
         .get(),
-      10,
+      // Every migration in the journal is applied, whatever their number.
+      journal.entries.length,
     );
     raw.close();
   } finally {
