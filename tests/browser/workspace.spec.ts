@@ -707,15 +707,19 @@ test('connect T3 and an agent in two clicks: the hub keeps the credential and wa
       json: { authorizationUrl: 'http://127.0.0.1:3773/authorize?state=x' },
     });
   });
+  // T3 is out of reach the first time its models are asked for.
+  let reachable = false;
   await page.route('**/api/teams/*/t3/providers', (route) =>
-    route.fulfill({
-      json: {
-        providers: [
-          { id: 'cursor', models: [] },
-          { id: 'isolated-ada', models: ['model-x'] },
-        ],
-      },
-    }),
+    reachable
+      ? route.fulfill({
+          json: {
+            providers: [
+              { id: 'cursor', models: [] },
+              { id: 'isolated-ada', models: ['model-x'] },
+            ],
+          },
+        })
+      : route.fulfill({ status: 503, json: { error: 'unavailable' } }),
   );
   await agentRow(page, 'Ada').click();
   const setup = page
@@ -756,8 +760,17 @@ test('connect T3 and an agent in two clicks: the hub keeps the credential and wa
     sql.close();
   }
   t3 = 'operate';
-  // One choice: the model, grouped by provider; providers without models are left out.
   const choose = setup.getByRole('form', { name: 'Choose what Ada runs on' });
+  // Out of reach is said as such, not turned into typing model names.
+  await expect(choose).toContainText('T3 can’t be reached right now.');
+  await expect(choose.getByLabel('Model')).toHaveCount(0);
+  await expect(
+    choose.getByRole('button', { name: 'Connect Ada' }),
+  ).toBeDisabled();
+  // Once T3 answers, reading again lists its models.
+  reachable = true;
+  await refreshNow(page);
+  // One choice: the model, grouped by provider; providers without models are left out.
   await expect(choose.getByLabel('Model')).toHaveValue('isolated-ada\nmodel-x');
   await expect(choose.locator('optgroup')).toHaveCount(1);
   await choose.getByRole('button', { name: 'Connect Ada' }).click();

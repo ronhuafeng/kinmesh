@@ -9,8 +9,9 @@ export async function t3Providers(credential: Credential, signal: AbortSignal) {
     const tools = new ValidatedTools(wire, await wire.list(), [
       'orchestrator_capabilities',
     ]);
+    // The caller's signal is the one deadline.
     const capabilities = Capabilities.parse(
-      await tools.call('orchestrator_capabilities', {}, signal, 8000),
+      await tools.call('orchestrator_capabilities', {}, signal),
     );
     // Only what a wake can actually run on: a provider switched off in T3,
     // or one without models, is never offered.

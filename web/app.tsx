@@ -375,13 +375,18 @@ export function App() {
       lost = false;
       refresh();
     };
-    // A network that comes back may not have broken the stream at all.
-    window.addEventListener('online', refresh);
+    // A network that comes back may not have broken the stream at all; what
+    // came from outside the hub, such as T3's models, is read again too.
+    const back = () => {
+      refresh();
+      readAll();
+    };
+    window.addEventListener('online', back);
     return () => {
       events.close();
-      window.removeEventListener('online', refresh);
+      window.removeEventListener('online', back);
     };
-  }, [live, place, pageOnScreen, refresh, receive, streamTry]);
+  }, [live, place, pageOnScreen, refresh, readAll, receive, streamTry]);
   // While the hub cannot be reached, nothing can say it is back: ask again.
   useEffect(() => {
     if (status !== 'offline') return;
