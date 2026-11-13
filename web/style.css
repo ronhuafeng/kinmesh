@@ -3098,3 +3098,48 @@ button.account-open {
 .settings-form .field {
   justify-self: stretch;
 }
+/* Compact sidebar: the team in one row, search under it, you in one row. */
+.sidebar-top {
+  gap: 0.6rem;
+}
+button.team-name {
+  margin: 0;
+  padding: 0.3rem 0.35rem;
+}
+button.team-name strong {
+  font-size: 0.98rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.sidebar button.palette-trigger {
+  width: 100%;
+  justify-content: space-between;
+  background: var(--surface);
+}
+.account {
+  gap: 0.4rem;
+  padding: 0.6rem 0 0;
+}
+button.account-open {
+  font-size: 0.9rem;
+  padding: 0.25rem 0.35rem;
+}
+button.account-open > span:last-child {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.account > button.quiet {
+  flex: none;
+  padding: 0.25rem 0.5rem;
+  font-size: 0.8rem;
+}
+@media (max-width: 720px) {
+  .sidebar-top {
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+  .sidebar button.palette-trigger {
+    width: auto;
+  }
+}
