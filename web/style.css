@@ -3143,3 +3143,32 @@ button.account-open > span:last-child {
     width: auto;
   }
 }
+/* Icons: drawn in the text colour, aligned with the label beside them. */
+.icon {
+  flex: none;
+  display: block;
+}
+.with-icon {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+button.icon-button {
+  display: inline-grid;
+  place-items: center;
+  padding: 0.4rem;
+  color: var(--ink-muted);
+}
+button.icon-button:hover:not(:disabled) {
+  color: var(--ink);
+}
+.person-kind {
+  margin-left: auto;
+  display: inline-grid;
+  place-items: center;
+  color: var(--ink-subtle);
+}
+.person-kind .icon {
+  width: 14px;
+  height: 14px;
+}

@@ -15,6 +15,7 @@ import { Avatar, plural, statusLabel, wakeOf } from './ui.js';
 import { CommandPalette } from './palette.js';
 import { NeedsDrawer, attentionCount } from './needs.js';
 import { SettingsDrawer } from './settings.js';
+import { BotIcon, InboxIcon, PersonIcon, SignOutIcon } from './icons.js';
 import type { Command } from './palette.js';
 type View = 'chat' | 'board' | 'team';
 type Focus =
@@ -406,7 +407,10 @@ export function App() {
                 setFocus({ kind: 'needs' });
               }}
             >
-              <span>Needs you</span>
+              <span className="with-icon">
+                <InboxIcon />
+                Needs you
+              </span>
               <span className="count">{needs}</span>
             </button>
             <nav aria-label="Channels">
@@ -475,7 +479,10 @@ export function App() {
                         size="sm"
                       />
                       <span className="person-name">{data.human.username}</span>
-                      <small>you</small>
+                      <span className="person-kind" title="You (human)">
+                        <PersonIcon />
+                        <span className="visually-hidden">you</span>
+                      </span>
                     </span>
                   </li>
                   {joinedAgents.map((agent) => (
@@ -499,7 +506,15 @@ export function App() {
                       >
                         <Avatar kind="agent" name={agent.name} size="sm" />
                         <span className="person-name">{agent.name}</span>
-                        <small>{agent.role}</small>
+                        <span
+                          className="person-kind"
+                          title={`Agent · ${agent.role}`}
+                        >
+                          <BotIcon />
+                          <span className="visually-hidden">
+                            agent, {agent.role}
+                          </span>
+                        </span>
                       </button>
                     </li>
                   ))}
@@ -529,7 +544,9 @@ export function App() {
                 <span>{data.human.username}</span>
               </button>
               <button
-                className="quiet"
+                className="quiet icon-button"
+                aria-label="Sign out"
+                title="Sign out"
                 disabled={!canAct}
                 onClick={() => {
                   if (!canAct) return;
@@ -548,7 +565,7 @@ export function App() {
                     });
                 }}
               >
-                Sign out
+                <SignOutIcon />
               </button>
             </div>
           </aside>
