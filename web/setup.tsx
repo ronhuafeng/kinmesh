@@ -4,6 +4,7 @@ import { z } from 'zod';
 import { Grant, ProfileInput } from '../src/domain/agents.js';
 import type { Agent, Scope } from '../src/domain/agents.js';
 import type { WorkspaceSnapshot } from '../src/workspace/contracts.js';
+import { useLive } from './live.js';
 import { api, useRequest, value } from './api.js';
 import { ActionForm, Field, Notice } from './forms.js';
 import { ago, Avatar, Page, workerConnected } from './ui.js';
@@ -41,6 +42,7 @@ const T3Status = z.object({
     })
     .nullable(),
   signIn: z.enum(['waiting', 'failed']).nullable(),
+  revision: z.string(),
 });
 type T3Status = z.infer<typeof T3Status>;
 const Providers = z.object({
@@ -168,21 +170,32 @@ function TokenOnce({
   );
 }
 /**
- * The team's T3 connection, read again whenever the workspace is: the hub
- * says when a sign-in in T3 completes.
+ * The team's T3 connection, read again when the hub says it changed, such as
+ * when a sign-in in T3 completes.
  */
-export function useT3(teamId: string, observedAt: string) {
+export function useT3(teamId: string) {
   const [status, setStatus] = useState<T3Status | null>(null);
+  const { begin, settle, drop, reads } = useLive();
   const load = useCallback(() => {
+    begin('t3');
     void api(`/api/teams/${teamId}/t3`)
       .then((raw) => {
-        setStatus(T3Status.parse(raw));
+        const next = T3Status.parse(raw);
+        setStatus(next);
+        settle('t3', next.revision);
       })
       .catch(() => {
         setStatus(null);
+        drop('t3');
       });
-  }, [teamId]);
-  useEffect(load, [load, observedAt]);
+  }, [teamId, begin, settle, drop]);
+  useEffect(load, [load, reads.t3]);
+  useEffect(
+    () => () => {
+      drop('t3');
+    },
+    [drop],
+  );
   return { status, load };
 }
 /** One thing to do now: the only control on screen until it is done. */

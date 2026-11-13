@@ -9,6 +9,7 @@ import type {
   ExecutionSnapshot,
   WorkspaceSnapshot,
 } from '../src/workspace/contracts.js';
+import { useLive } from './live.js';
 import { api, HttpError, request, useRequest, value } from './api.js';
 import { ActionForm, Notice } from './forms.js';
 import { ArrowIcon, PlusIcon } from './icons.js';
@@ -159,14 +160,13 @@ const reported: Record<string, string> = {
 function Activity({
   agent,
   teamId,
-  revision,
   trustedOrigin,
 }: {
   agent: Agent;
   teamId: string;
-  revision: string;
   trustedOrigin: string | null;
 }) {
+  const { begin, settle, drop, reads } = useLive();
   const [snapshot, setSnapshot] = useState<ExecutionSnapshot | null>(null);
   const [error, setError] = useState('');
   const snapshotRequest = useRef<AbortController | null>(null);
@@ -180,14 +180,18 @@ function Activity({
   useEffect(() => {
     const controller = new AbortController();
     snapshotRequest.current = controller;
+    begin('runs');
     void api(`/api/agui/${teamId}/${agent.id}`, { signal: controller.signal })
       .then((raw) => {
         if (controller.signal.aborted) return;
-        setSnapshot(decodeExecutionEvent(raw));
+        const next = decodeExecutionEvent(raw);
+        setSnapshot(next);
+        settle('runs', next.revision);
         setError('');
       })
       .catch((cause: unknown) => {
         if (controller.signal.aborted) return;
+        drop('runs');
         if (
           cause instanceof HttpError &&
           (cause.status === 401 || cause.status === 403)
@@ -207,7 +211,14 @@ function Activity({
     return () => {
       controller.abort();
     };
-  }, [agent.id, teamId, revision]);
+  }, [agent.id, teamId, reads.runs, begin, settle, drop]);
+  // Another agent's runs are another resource.
+  useEffect(
+    () => () => {
+      drop('runs');
+    },
+    [agent.id, drop],
+  );
   return (
     <section className="activity" aria-label={agent.name + ' activity'}>
       <h3>Runs</h3>
@@ -311,7 +322,7 @@ export function AgentPage({
   onOwnWorker: () => void;
   onDone: () => void;
 }) {
-  const t3 = useT3(data.team.id, data.observedAt);
+  const t3 = useT3(data.team.id);
   return (
     <Page label={agent.name} onClose={onBack} className="agent-page">
       <div className="agent-layout">
@@ -343,7 +354,6 @@ export function AgentPage({
         key={agent.id + (data.nativeT3Origin ?? '')}
         agent={agent}
         teamId={data.team.id}
-        revision={data.observedAt}
         trustedOrigin={data.nativeT3Origin}
       />
     </Page>

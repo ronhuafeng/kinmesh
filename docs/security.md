@@ -22,7 +22,7 @@ Kinmesh is a single-node, single-owner service with a loopback listener. This do
 - Actor headers and actor/identity/role query parameters are rejected (400); they are never identity.
 - A mutating request with an `Origin` header must match `KINMESH_ORIGIN`. There is no CORS and no proxy trust.
 - Rate limits are per client IP and in memory: 60 requests/minute overall; 5/minute for setup, login and password change. They reset on restart and are not a distributed defence.
-- Event streams (`GET /api/events`) are for signed-in humans and carry no data, only that a view changed. Each person may hold 8 and the hub 64; a stream ends after 10 minutes and the browser reconnects with its session. The session is rechecked on every change and every 25 seconds, so a changed password or lost membership ends its streams at once.
+- Event streams (`GET /api/events`) are for signed-in humans and carry no data, only the revisions of what a view shows, which are hashes of what that person can already read. Each person may hold 8 and the hub 64; a stream ends after 10 minutes and the browser reconnects with its session. The session is rechecked on every change and every 25 seconds, so a changed password or lost membership ends its streams at once.
 - JSON bodies are capped at 16 KiB. Errors are fixed messages that never echo input or internal exceptions.
 - Every response carries `nosniff`, `Referrer-Policy: no-referrer` and a restrictive CSP (`default-src 'self'`, no objects, no framing). Credential-bearing and workspace responses are `Cache-Control: no-store`.
 - Only `/` and the built `/assets/` tree are served; there is no repository or SPA fallback.

@@ -1,6 +1,11 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { WorkspaceSnapshot } from '../src/workspace/contracts.js';
+import { z } from 'zod';
+import {
+  WorkspaceSnapshot,
+  decodeExecutionEvent,
+} from '../src/workspace/contracts.js';
+import { Revisions } from '../src/workspace/events.js';
 import { communicationFixture, postInput } from './communication-helpers.js';
 
 /** One open `GET /api/events` stream, read event by event. */
@@ -17,31 +22,35 @@ async function stream(origin: string, cookie: string, query = '') {
   const reader = response.body.getReader();
   const decoder = new TextDecoder();
   let buffer = '';
-  return {
-    /** The next event's name, or null once the hub ends the stream. */
-    async next(): Promise<string | null> {
-      for (;;) {
-        const end = buffer.indexOf('\n\n');
-        if (end >= 0) {
-          const block = buffer.slice(0, end);
-          buffer = buffer.slice(end + 2);
-          const name = /^event: (.+)$/m.exec(block)?.[1];
-          if (name) return name;
-          continue;
-        }
-        const { value, done } = await reader.read();
-        if (done) return null;
-        buffer += decoder.decode(value, { stream: true });
+  const next = async (): Promise<Revisions | null> => {
+    for (;;) {
+      const end = buffer.indexOf('\n\n');
+      if (end >= 0) {
+        const block = buffer.slice(0, end);
+        buffer = buffer.slice(end + 2);
+        if (!/^event: revisions$/m.test(block)) continue;
+        const data = /^data: (.*)$/m.exec(block)?.[1] ?? '';
+        return Revisions.parse(JSON.parse(data) as unknown);
       }
+      const { value, done } = await reader.read();
+      if (done) return null;
+      buffer += decoder.decode(value, { stream: true });
+    }
+  };
+  return {
+    /** The next `revisions` event, or null once the hub ends the stream. */
+    next,
+    /** Reads to the end; true once the hub has ended the stream. */
+    async ended() {
+      while ((await next()) !== null);
+      return true;
     },
   };
 }
 
 await test(
-  'the hub says when what a view shows has changed, and only then',
-  {
-    timeout: 30_000,
-  },
+  'a stream names the revision of each resource a view shows, then only what changed',
+  { timeout: 30_000 },
   async () => {
     const f = await communicationFixture();
     const other = f.open();
@@ -53,42 +62,66 @@ await test(
       const cookie = Object.entries(f.cookies)
         .map(([name, value]) => `${name}=${encodeURIComponent(value)}`)
         .join('; ');
-      const revision = async () =>
-        WorkspaceSnapshot.parse(
-          (
-            await f.app.inject({ url: '/api/workspace', cookies: f.cookies })
-          ).json<unknown>(),
-        ).revision;
+      const get = async (url: string) =>
+        (await f.app.inject({ url, cookies: f.cookies })).json<unknown>();
+      const workspace = async () =>
+        WorkspaceSnapshot.parse(await get('/api/workspace')).revision;
+      const t3 = async () =>
+        z
+          .object({ revision: z.string() })
+          .parse(await get(`/api/teams/${f.teamId}/t3`)).revision;
+      const runs = async () =>
+        decodeExecutionEvent(await get(`/api/agui/${f.teamId}/${f.agent.id}`))
+          .revision;
+      const post = async (body: string) => {
+        const posted = await f.app.inject({
+          method: 'POST',
+          url: f.channelPath + '/messages',
+          cookies: f.cookies,
+          payload: postInput({ body }),
+        });
+        assert.equal(posted.statusCode, 201);
+      };
 
-      // Only a signed-in person gets a stream.
+      // Only a signed-in person gets a stream, and only for a known page.
       assert.equal((await fetch(origin + '/api/events')).status, 401);
+      for (const page of ['task:' + f.agent.id, 'agent:', 'agent'])
+        assert.equal(
+          (
+            await fetch(origin + '/api/events?page=' + page, {
+              headers: { cookie },
+            })
+          ).status,
+          400,
+        );
 
-      const first = await revision();
-      const events = await stream(origin, cookie, 'since=' + first);
-      // A write by the hub itself.
-      const posted = await f.app.inject({
-        method: 'POST',
-        url: f.channelPath + '/messages',
-        cookies: f.cookies,
-        payload: postInput({ body: 'Pushed, not polled' }),
-      });
-      assert.equal(posted.statusCode, 201);
-      assert.equal(await events.next(), 'changed');
-      const second = await revision();
-      assert.notEqual(second, first);
-
-      // A write by another process: the agent's worker starts.
+      // A channel view watches the workspace: named first, then on change.
+      const place = await stream(origin, cookie);
+      assert.deepEqual(await place.next(), { workspace: await workspace() });
+      await post('Pushed, not polled');
+      assert.deepEqual(await place.next(), { workspace: await workspace() });
+      // Another process writes: the agent's worker starts.
       other.inbox.heartbeat([f.agent.id]);
-      assert.equal(await events.next(), 'changed');
-      const awake = await revision();
-      assert.notEqual(awake, second);
+      assert.deepEqual(await place.next(), { workspace: await workspace() });
       // A later heartbeat changes nothing on screen.
+      const awake = await workspace();
       other.inbox.heartbeat([f.agent.id]);
-      assert.equal(await revision(), awake);
+      assert.equal(await workspace(), awake);
 
-      // A view opened with an older snapshot hears at once that it is behind.
-      const behind = await stream(origin, cookie, 'since=' + first);
-      assert.equal(await behind.next(), 'changed');
+      // An agent page also watches T3 and the agent's runs.
+      const agent = await stream(origin, cookie, 'page=agent:' + f.agent.id);
+      assert.deepEqual(await agent.next(), {
+        workspace: await workspace(),
+        t3: await t3(),
+        runs: await runs(),
+      });
+      // A new run is named as such.
+      await f.execution();
+      const ran = await agent.next();
+      assert.equal(ran?.runs, await runs());
+      // A message changes the workspace alone.
+      await post('Only the workspace');
+      assert.deepEqual(await agent.next(), { workspace: await workspace() });
 
       // Streams are bounded per person.
       const more = [];
@@ -109,9 +142,7 @@ await test(
         },
       });
       assert.equal(changed.statusCode, 204);
-      assert.equal(await events.next(), null);
-      assert.equal(await behind.next(), null);
-      for (const s of more) assert.equal(await s.next(), null);
+      for (const s of [place, agent, ...more]) assert.ok(await s.ended());
     } finally {
       other.close();
       await f.dispose();

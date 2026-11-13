@@ -694,6 +694,7 @@ test('connect T3 and an agent in two clicks: the hub keeps the credential and wa
               }
             : null,
         signIn: t3 === 'waiting' ? 'waiting' : null,
+        revision: t3,
       },
     }),
   );

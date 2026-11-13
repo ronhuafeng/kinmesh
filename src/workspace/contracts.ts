@@ -6,6 +6,7 @@ import { Reference } from '../domain/execution.js';
 import { nativeThreadUrl } from './links.js';
 import { Status, TERMINAL } from '../adapters/t3/contracts.js';
 import { Human, Team, AgentId, ChannelId } from '../domain/contracts.js';
+import { TopicId } from '../domain/communication.js';
 import {
   ChannelView,
   Message,
@@ -27,10 +28,21 @@ export const DeliveryView = z.strictObject({
   updatedAt: z.iso.datetime().nullable(),
   resultMessageId: z.uuid().nullable(),
 });
+/** Names what one read shows: equal revisions, equal screens. */
+export const Revision = z.string().regex(/^[a-f0-9]{64}$/);
+/** The place a workspace snapshot shows: channel, topic and pages. */
+export const WorkspaceQuery = z.strictObject({
+  channelId: ChannelId.optional(),
+  topicId: TopicId.optional(),
+  messagesCursor: z.string().min(1).max(2048).optional(),
+  tasksCursor: z.string().min(1).max(2048).optional(),
+  topicsCursor: z.string().min(1).max(2048).optional(),
+  channelsCursor: z.string().min(1).max(2048).optional(),
+});
+export type WorkspaceQuery = z.infer<typeof WorkspaceQuery>;
 export const WorkspaceSnapshot = z.strictObject({
   observedAt: z.iso.datetime(),
-  /** Changes exactly when what the snapshot shows changes. */
-  revision: z.string().regex(/^[a-f0-9]{64}$/),
+  revision: Revision,
   nativeT3Origin: z
     .url()
     .refine((origin) => new URL(origin).origin === origin)
@@ -122,6 +134,7 @@ export const ExecutionSnapshot = z.strictObject({
   protocolVersion: z.literal(PROTOCOL_VERSION),
   source: z.literal('kinmesh-persisted-reports'),
   observedAt: z.iso.datetime(),
+  revision: Revision,
   agent: Agent,
   executions: z
     .array(

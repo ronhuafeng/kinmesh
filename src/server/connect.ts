@@ -3,7 +3,7 @@ import { existsSync } from 'node:fs';
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { AgentId, TeamId } from '../domain/contracts.js';
-import { IdentityError, type Scope } from '../domain/agents.js';
+import { IdentityError, type Principal, type Scope } from '../domain/agents.js';
 import {
   AUTH_TIMEOUT_MS,
   authorize,
@@ -25,6 +25,7 @@ import {
 } from '../inbox/managed.js';
 import type { Changes } from './changes.js';
 import type { Store } from '../persistence/store.js';
+import { fingerprint } from '../persistence/transactional.js';
 import { principal } from './principals.js';
 
 /** What the hub does on the owner's behalf; replaceable in tests. */
@@ -92,10 +93,9 @@ export function registerConnect(
     | { teamId: string; state: 'waiting' | 'failed'; stop: AbortController }
     | undefined;
   const credentialFile = t3AuthFile(hub.directory);
-  app.get('/api/teams/:teamId/t3', (request, reply) => {
-    reply.header('Cache-Control', 'no-store');
-    const { teamId } = TeamPath.parse(request.params);
-    const connection = store.managed.connection(principal(request), teamId);
+  /** The team's T3 connection and any sign-in under way. */
+  const t3Status = (caller: Principal, teamId: TeamId) => {
+    const connection = store.managed.connection(caller, teamId);
     // Whether T3 let agents run, or only read: a read-only approval looks
     // connected but every wake would be refused.
     let access: 'operate' | 'read' | null = null;
@@ -110,7 +110,7 @@ export function registerConnect(
       } catch {
         access = null;
       }
-    return {
+    const status = {
       connection: connection && {
         endpoint: connection.endpoint,
         environmentId: connection.environmentId,
@@ -119,6 +119,12 @@ export function registerConnect(
       },
       signIn: flow?.teamId === teamId ? flow.state : null,
     };
+    return { ...status, revision: fingerprint(status) };
+  };
+  app.get('/api/teams/:teamId/t3', (request, reply) => {
+    reply.header('Cache-Control', 'no-store');
+    const { teamId } = TeamPath.parse(request.params);
+    return t3Status(principal(request), teamId);
   });
   /** The T3 desktop app on this machine, if one is running: no URL to find. */
   app.get('/api/teams/:teamId/t3/local', async (request, reply) => {
@@ -253,8 +259,5 @@ export function registerConnect(
       return reply.code(204).send();
     },
   );
-  /** A T3 sign-in under way for the team: kept in memory, never stored. */
-  return {
-    signIn: (teamId: string) => (flow?.teamId === teamId ? flow.state : null),
-  };
+  return { t3Status };
 }

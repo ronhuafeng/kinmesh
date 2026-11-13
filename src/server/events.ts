@@ -1,14 +1,22 @@
 import type { FastifyInstance } from 'fastify';
-import { z } from 'zod';
-import { AgentId, type TeamId } from '../domain/contracts.js';
+import type { AgentId, TeamId } from '../domain/contracts.js';
 import { IdentityError, type Principal } from '../domain/agents.js';
-import type { Store } from '../persistence/store.js';
 import { fingerprint } from '../persistence/transactional.js';
+import type { Store } from '../persistence/store.js';
+import type { WorkspaceQuery } from '../workspace/contracts.js';
+import {
+  Revisions,
+  WatchQuery,
+  watched,
+  type Resource,
+} from '../workspace/events.js';
 import type { Changes } from './changes.js';
 import { resolvePrincipal } from './principals.js';
-import { WorkspaceQuery } from './workspace.js';
 
 type Owner = Extract<Principal, { kind: 'human' }>;
+interface Revisioned {
+  revision: string;
+}
 /** Open streams are bounded per person and for the whole hub. */
 const PER_HUMAN = 8;
 const TOTAL = 64;
@@ -17,32 +25,25 @@ const LIFETIME_MS = 10 * 60_000;
 /** Keeps proxies from closing a quiet stream, and rechecks the session. */
 const KEEPALIVE_MS = 25_000;
 const RETRY_MS = 2000;
-
-const Query = WorkspaceQuery.extend({
-  /** The agent page on screen, whose runs are shown too. */
-  agent: AgentId.optional(),
-  /** The revision of the snapshot on screen. */
-  since: z
-    .string()
-    .regex(/^[a-f0-9]{64}$/)
-    .optional(),
-});
+/** A resource the viewer can no longer read; reading it again shows why. */
+const UNREADABLE = fingerprint('unreadable');
 
 /**
- * `GET /api/events`: one Server-Sent Events stream per open view. It sends
- * `changed`, and nothing else, whenever what that view shows has changed;
- * the browser then reads the view as usual. No data travels on the stream.
+ * `GET /api/events`: one Server-Sent Events stream per open view, whose only
+ * event is `revisions` (see `src/workspace/events.ts`). No data travels on
+ * the stream; the view reads what changed through its usual route.
  */
 export function registerEvents(
   app: FastifyInstance,
   store: Store,
   changes: Changes,
-  views: {
+  reads: {
     snapshot: (
       principal: Owner,
       query: WorkspaceQuery,
-    ) => { revision: string; team: { id: TeamId } };
-    signIn: (teamId: string) => string | null;
+    ) => Revisioned & { team: { id: TeamId } };
+    t3Status: (principal: Principal, teamId: TeamId) => Revisioned;
+    runs: (principal: Owner, teamId: TeamId, agentId: AgentId) => Revisioned;
   },
 ) {
   const open = new Map<() => void, string>();
@@ -53,28 +54,33 @@ export function registerEvents(
   app.get('/api/events', (request, reply) => {
     const principal = request.principal;
     if (principal?.kind !== 'human') throw new IdentityError(403);
-    const { agent, since, ...place } = Query.parse(request.query);
+    const { page, ...place } = WatchQuery.parse(request.query);
+    const resources = watched({ ...place, page });
     const humanId = request.session.get('humanId');
     const credential = request.session.get('credential');
-    const look = () => {
-      const shown = views.snapshot(principal, place);
-      let runs: unknown = null;
-      if (agent)
-        try {
-          runs = store.agents.workspaceExecutions(
-            principal,
-            shown.team.id,
-            agent,
-          );
-        } catch (error) {
-          if (!(error instanceof IdentityError)) throw error;
-        }
-      return {
-        workspace: shown.revision,
-        rest: fingerprint([runs, views.signIn(shown.team.id)]),
-      };
+    const readable = (read: () => Revisioned) => {
+      try {
+        return read().revision;
+      } catch (error) {
+        if (error instanceof IdentityError) return UNREADABLE;
+        throw error;
+      }
     };
-    let seen = look();
+    /** The current revision of every watched resource. */
+    const look = () => {
+      const workspace = reads.snapshot(principal, place);
+      const teamId = workspace.team.id;
+      const now: Partial<Record<Resource, string>> = {};
+      for (const resource of resources) {
+        if (resource === 'workspace') now.workspace = workspace.revision;
+        if (resource === 't3')
+          now.t3 = readable(() => reads.t3Status(principal, teamId));
+        if (resource === 'runs' && page)
+          now.runs = readable(() => reads.runs(principal, teamId, page.id));
+      }
+      return now;
+    };
+    let held = look();
     const mine = [...open.values()].filter((h) => h === principal.humanId);
     if (open.size >= TOTAL || mine.length >= PER_HUMAN)
       return reply.code(429).send({ error: 'Too many requests' });
@@ -89,9 +95,13 @@ export function registerEvents(
       'Content-Security-Policy': "default-src 'none'; frame-ancestors 'none'",
     });
     response.write(`retry: ${String(RETRY_MS)}\n\n`);
-    const send = () => response.write('event: changed\ndata:\n\n');
-    // The snapshot on screen may already be behind.
-    if (since !== undefined && since !== seen.workspace) send();
+    const send = (revisions: Partial<Record<Resource, string>>) =>
+      response.write(
+        `event: revisions\ndata: ${JSON.stringify(Revisions.parse(revisions))}\n\n`,
+      );
+    // The first event names everything watched, so a view that read before
+    // the stream opened learns at once what it is behind on.
+    send(held);
 
     let pending = false;
     const check = () => {
@@ -101,9 +111,14 @@ export function registerEvents(
         // A changed password or lost membership ends the stream at once.
         resolvePrincipal(store, undefined, humanId, credential);
         const now = look();
-        if (now.workspace === seen.workspace && now.rest === seen.rest) return;
-        seen = now;
-        send();
+        const changed: Partial<Record<Resource, string>> = {};
+        for (const resource of resources) {
+          const revision = now[resource];
+          if (revision !== undefined && revision !== held[resource])
+            changed[resource] = revision;
+        }
+        held = now;
+        if (Object.keys(changed).length > 0) send(changed);
       } catch {
         end();
       }

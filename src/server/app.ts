@@ -230,11 +230,15 @@ export async function createApp(
   });
   const changes = watchChanges(store);
   registerAgents(app, store, hub.directory);
-  const { signIn } = registerConnect(app, store, hub, changes);
+  const { t3Status } = registerConnect(app, store, hub, changes);
   registerCommunication(app, store);
   registerTasks(app, store);
-  const { snapshot } = registerWorkspace(app, store, t3AuthFile(hub.directory));
-  registerEvents(app, store, changes, { snapshot, signIn });
+  const { snapshot, runs } = registerWorkspace(
+    app,
+    store,
+    t3AuthFile(hub.directory),
+  );
+  registerEvents(app, store, changes, { snapshot, t3Status, runs });
   await registerWeb(app);
   await app.register((protectedApi, _options, done) => {
     protectedApi.get('/api/me', (request) => {
