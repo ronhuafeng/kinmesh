@@ -5,6 +5,7 @@ import { CommunicationFact } from '../domain/communication.js';
 import { communicationRepository } from './communication.js';
 import { max, asc } from 'drizzle-orm';
 import { agentRepository } from './agents.js';
+import { IdentityError } from '../domain/agents.js';
 import { operationJournal } from './operations.js';
 import Database from 'better-sqlite3';
 import { drizzle } from 'drizzle-orm/better-sqlite3';
@@ -22,6 +23,7 @@ import {
   Team,
   Channel,
   Membership,
+  BootstrapInput,
 } from '../domain/contracts.js';
 
 export function openStore(path: string) {
@@ -134,6 +136,35 @@ export function openStore(path: string) {
       return row === undefined
         ? undefined
         : z.object({ id: HumanId, passwordHash: z.string().min(1) }).parse(row);
+    },
+    /** The stored password hash, to check the current password or a session. */
+    passwordHash(id: HumanId) {
+      return db
+        .select({ hash: tables.humans.passwordHash })
+        .from(tables.humans)
+        .where(eq(tables.humans.id, id))
+        .get()?.hash;
+    },
+    setPasswordHash(id: HumanId, passwordHash: string) {
+      const changed = db
+        .update(tables.humans)
+        .set({ passwordHash: z.string().min(1).parse(passwordHash) })
+        .where(eq(tables.humans.id, id))
+        .run().changes;
+      if (changed !== 1) throw new IdentityError(404);
+    },
+    /** Only the team's owner renames it. */
+    renameTeam(id: HumanId, teamId: string, name: string) {
+      const membership = this.teamFor(id);
+      if (membership?.team.id !== teamId) throw new IdentityError(403);
+      db.update(tables.teams)
+        .set({ name: BootstrapInput.shape.teamName.parse(name) })
+        .where(eq(tables.teams.id, teamId))
+        .run();
+      return Team.parse({
+        ...membership.team,
+        name: BootstrapInput.shape.teamName.parse(name),
+      });
     },
     human(id: HumanId) {
       const row = db
