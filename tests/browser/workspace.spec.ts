@@ -1133,7 +1133,6 @@ test('human claim and request-review controls, plus leave/rejoin of known member
     drawer.getByRole('definition').filter({ hasText: /^Reviewer$/ }),
   ).toBeVisible();
   await page.getByRole('tab', { name: 'Chat', exact: true }).click();
-  await page.getByText('Channel details', { exact: true }).click();
   await page
     .getByRole('button', { name: 'Leave channel', exact: true })
     .click();
