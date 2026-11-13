@@ -1,43 +1,78 @@
-# Foundation security and operational limits
+# Security
 
-This is a single-node, single-owner foundation with a loopback HTTP listener. Production multi-user exposure is not accepted. Kinmesh secrets are unrelated to T3's execution credentials; the integration uses supported external MCP and never accesses T3 private storage or modifies its installation.
+Kinmesh is a single-node, single-owner service with a loopback listener. This document owns every security rule and limit; other documents link here. Kinmesh secrets are separate from T3's credentials, and Kinmesh never reads T3's private storage or modifies its installation.
 
-- `npm run setup` uses the OS CSPRNG for separate 256-bit setup and session secrets. Exclusive file creation and mode 0600 prevent accidental overwrite/disclosure. Keep the working directory private; do not send this file through logs, PRs, artifacts or chat. Keep backups private too.
-- Start the service, then `npm run onboard`. Inquirer masks the password; the CLI sends the secret and validated setup input only to the configured loopback port, refuses redirects, and prints fixed outcomes. Only a trusted local user should run this command. If another process can bind that port or read the same OS account's files, the local trust boundary is already compromised. HTTP over loopback is the explicit local-development transport exception.
-- `/api/setup` accepts only the secret bearer plus validated JSON. A committed singleton makes bootstrap one-time even under a race/restart. Missing/wrong credentials cannot create an owner. Setup returns public IDs, not password hashes, and grants no automatic session. Removing/replacing the database resets this one-time state and is a privileged destructive operation.
-- Login uses Argon2id (19 MiB, two iterations, one lane); a dummy hash bounds account-enumeration timing differences. IP rate limits and body/password length bounds reduce abuse; limits are in-memory, reset on restart, and are not a distributed denial-of-service defense. No MFA, invitation, password reset/change or account lockout workflow exists.
-- Fastify secure-session supplies authenticated cookie encryption, nonce handling and expiry. Cookies are HttpOnly, SameSite=Strict and Secure for an HTTPS origin. Rotation requires configuring a new session key (invalidates all existing sessions); multi-key rolling rotation is not implemented. Keys must persist across restart for sessions to survive.
-- Sessions expire after one hour. Logout clears the browser cookie, but **does not revoke a previously copied cookie** before expiry. There is no server-side session revocation list. Deleting an account invalidates its access because each request checks the account. Each session also carries a mark of the password hash it signed in with, and every request checks it. Changing the password through `POST /api/me/password` therefore ends every other session at once, including copied cookies, while the browser that made the change gets a re-issued session. The change requires the current password and is rate limited like login. Do not use this foundation for deployments requiring immediate per-session revocation; add vetted server-side session/identity management in #3.
-- Human-only account/administration routes require the verified session and appropriate owner membership. Collaboration reads/writes use current team/channel membership and role policy; agent routes additionally check current grant/lifecycle/scopes. Human invitation/account enrollment beyond bootstrap is not implemented. Unknown actor headers cannot assert identity. New `/api/` routes are protected by default; setup/login are explicit exceptions, and setup has its own bearer check.
-- Cross-origin mutating browser requests are rejected; JSON validation and strict same-site cookies protect cookie-authenticated endpoints. No CORS or trusted proxy headers are enabled. An HTTPS reverse proxy must preserve the intended origin and same-origin deployment; bind the backend only on loopback. Do not log request bodies, authorization/cookie headers, passwords, or raw errors at that proxy.
-- Process umask is 0077; the default DB directory is created with mode 0700 and the DB file is restricted to 0600. Existing directory ownership/mode remains the operator's responsibility. Runtime errors return fixed messages, not submitted input/SQLite/native exceptions. Health reports only Kinmesh database readiness, not T3 availability.
-- SQLite WAL plus atomic Drizzle migrations is for one local node. Reopen/restart, constraint/rollback, concurrent bootstrap and a SIGKILL-interrupted writer are tested. Online backups, disk-full handling, concurrent multi-process migrations and production disaster recovery need operational acceptance. Do not copy a live DB without accounting for WAL. Do not point `KINMESH_DATABASE` at any external component's storage.
-- Architecture checks parse source imports/calls and scan manifests, with negative fixtures. They detect common violations, not arbitrary data flow, shell obfuscation, symlinks or malicious dependencies. Review all adapter/dependency changes; never vendor, patch or inspect private T3 state.
+## Setup and onboarding
 
-Runtime dependency audit is available with `npm audit --omit=dev`. Drizzle Kit's current development-only legacy esbuild chain has moderate advisories; do not expose its development server and do not force a breaking dependency downgrade to hide them. Track upstream updates. No external/private credentials are required by CI, and no live T3/provider/browser result is claimed.
+- `npm run setup` draws separate 256-bit setup and session secrets from the OS CSPRNG and creates `.env` exclusively with mode 0600; it never overwrites. Keep the working directory, `.env` and backups private; never put secrets in arguments, logs, CI, PRs or chat.
+- `POST /api/setup` requires the setup secret as a bearer (compared in constant time) plus validated JSON. A committed singleton makes owner creation one-time, even under races or restarts. Setup returns public IDs and no session. Replacing the database resets this state and is a privileged, destructive act.
+- `npm run onboard` masks the password, sends only to the configured loopback port, refuses redirects and prints fixed outcomes. HTTP on loopback is the one plain-HTTP exception; a process that can bind that port or read the same user's files is already inside the trust boundary.
+- Usernames are 3–64 lowercase letters, digits, `_` or `-`; passwords 15–128 characters.
 
-Agent identity and credential policy is documented in [agent identities](agent-identities.md): per-request principal resolution, immutable agent/team grants, hash-only 256-bit opaque credentials, scoped access, expiration, rotation and transactional disable/revocation. These grant no human owner or T3 OAuth authority.
+## Passwords and sessions
 
-Communication authorization, channel enrollment, bounded history/mention reads, idempotent writes and sensitive DB/outbox retention are documented in [channels and messages](channels-messages.md). All channel reads recheck current team/channel membership and grant scopes; outbox facts do not confer authority or imply delivery.
+- Passwords are hashed with Argon2id (19 MiB, two iterations, one lane). Unknown accounts verify against a dummy hash to bound timing differences.
+- Sessions use `@fastify/secure-session`: an encrypted, authenticated `HttpOnly`, `SameSite=Strict` cookie, `Secure` for an HTTPS origin, expiring after one hour. Login regenerates the session. Sessions survive restarts only while the session key is unchanged; changing the key ends every session.
+- Each session carries a mark of the password hash it signed in with, checked on every request. `POST /api/me/password` (current password required, rate-limited like login) therefore ends every other session at once, including copied cookies; the changing browser gets a new session. Deleting an account ends its access.
+- Logout clears the browser cookie but does not revoke a copied cookie before it expires.
 
-Team MCP runs as a separate loopback listener with bearer-only agent authentication and no human-cookie authority. Every HTTP request and backend tool operation rechecks credentials; stateless SDK transports retain no authorized sessions. Host/Origin validation, body/rate/concurrency limits and fixed errors apply. See [Team MCP security and network setup](team-mcp.md). An opaque bearer can be used by anyone possessing it until expiration/revocation; no proof-of-possession or theft detection is claimed.
+## Requests
 
-## Issuing agent credentials in the browser
+- Every `/api/` route requires a principal unless it is explicitly public (`/api/setup`, `/api/setup/status`, `/api/login`). Non-team routes require a human. Human and agent credentials cannot be mixed.
+- Actor headers and actor/identity/role query parameters are rejected (400); they are never identity.
+- A mutating request with an `Origin` header must match `KINMESH_ORIGIN`. There is no CORS and no proxy trust.
+- Rate limits are per client IP and in memory: 60 requests/minute overall; 5/minute for setup, login and password change. They reset on restart and are not a distributed defence.
+- JSON bodies are capped at 16 KiB. Errors are fixed messages that never echo input or internal exceptions.
+- Every response carries `nosniff`, `Referrer-Policy: no-referrer` and a restrictive CSP (`default-src 'self'`, no objects, no framing). Credential-bearing and workspace responses are `Cache-Control: no-store`.
+- Only `/` and the built `/assets/` tree are served; there is no repository or SPA fallback.
+- `KINMESH_ORIGIN` must be HTTPS or exactly `http://127.0.0.1:<port>`. For remote access, put a same-origin HTTPS reverse proxy in front of the loopback listener; never expose the listener directly. The proxy must not log bodies, authorization or cookie headers.
 
-The agent panel's setup checklist can issue, rotate and revoke an agent's Kinmesh credential through the existing owner-only grants API. This changes where the token appears, not who may create it:
+## Agent credentials
 
-- Only the signed-in team owner can issue; the preset is the Inbox worker's scopes (`channels:read/write`, `tasks:read/write/review`, `executions:read/write`) for 30 days.
-- The response is `Cache-Control: no-store`. The token is held only in that panel's memory, shown once, offered for copy or as a `tokenFile` download, and dropped when dismissed or closed. It is never written to browser storage, URLs or logs, and the grants list never contains it.
-- Rotation revokes the previous credential. Treat a token that was displayed on a shared screen as exposed and rotate it.
+- Grants are opaque 256-bit bearer tokens. Only SHA-256 digests are stored; no token is persisted or logged. Each grant binds immutably to one agent and team, expires (60 seconds to 90 days), and is checked with its scopes, the agent's lifecycle and membership on every request.
+- A token is returned once, on issue or rotation, with `Cache-Control: no-store`; there is no recovery. The agent page holds it only in page memory, offers copy or a download for the worker's `tokenFile`, and drops it when dismissed; it never reaches browser storage, URLs or logs, and grant lists never contain it. Treat a token shown on a shared screen as exposed and rotate it.
+- Who may issue, rotate and revoke grants, and what each scope allows, is in [collaboration](collaboration.md#grants-and-scopes).
+- Anyone holding a bearer can use it until it expires or is revoked; there is no proof of possession. Use one narrowly scoped grant per agent and provider.
 
-## Resuming a blocked delivery from the workspace
+## Agent avatars
 
-Owners can resume a blocked Inbox delivery over HTTP. The route requires a human owner session and read access to the delivery's channel. Agent bearers are denied whatever their scopes. It takes an operation key, so a retried request replays. It reopens the delivery with its frozen intent, authority and native request key, and authority is rechecked at dispatch and publication, so a resume cannot revive a revoked credential or switch to another one. The recorded cause names only which Kinmesh or T3 precondition failed. It contains no token, URL or upstream error text.
+`PUT /api/teams/:teamId/agents/:agentId/avatar` accepts only the image bytes, typed `image/png`, `image/jpeg` or `image/webp`, at most 128 KiB. The type is decided from the content's signature, so SVG and anything else is refused. Only the team owner or the agent itself may set or remove it. Avatars are served with their detected type, `nosniff` and a sandboxing CSP.
 
 ## Hub-held worker secrets
 
-For agents connected from the workspace, the hub holds the worker's Kinmesh token and its T3 OAuth credential. Both are files in `<database directory>/managed/`. The directory is 0700 and must be owned by the hub's user; each file is 0600, written atomically, and never put in SQLite, logs, responses or the browser. These are the same files an operator would otherwise create for a worker on the same host, so the trust boundary is unchanged. Back up and protect this directory like the database. All connect, disconnect and T3 routes require a human owner session; agent bearers are refused. T3 sign-in uses the existing SDK flow and loopback callback. The approval URL goes only to the owner's browser and is never logged, and an approved credential is replaced only on request. Team MCP presence is evidence, not authority.
+For agents connected from the workspace, the hub holds the worker's Kinmesh tokens and the team's T3 OAuth credential as files in `<database directory>/managed/`. The directory is 0700 and must be owned by the hub's user and not a symlink; each file is 0600 and written atomically. They are never put in SQLite, logs, responses or the browser. Back up and protect the directory like the database. Every connect, disconnect and T3 route requires an owner session; agent bearers are refused. Revoking the hub's worker grant disconnects the agent; that grant cannot be rotated from the browser.
 
-## Workspace agents without an isolated provider
+## T3 credentials
 
-Agents connected from the workspace may run on any provider T3 offers. The isolated, Team MCP-configured provider is no longer required for them. A run can use whatever the owner configured for that provider in T3 and stays in T3's `approval-required` mode. Operator bindings keep the explicit `externalTeamMcpConfigured` assertion. To find a local T3, the hub probes only the fixed loopback address `127.0.0.1:3773`, never a user-supplied address, and treats it as found only if it returns a valid environment descriptor. A frozen launch can be re-frozen under a new authority only when nothing was journaled, which the code and a database trigger both enforce.
+- T3 OAuth credential files are 0600, outside the repository, owned by the service user; loading rejects symlinks and shared, executable, oversized or wrong-endpoint files, and any scope beyond `orchestration:read` and `orchestration:operate`.
+- Kinmesh asks for Supervised (`approval-required`) authority, never Full access, and never approves on the owner's behalf. Authorization URLs and callback values are never printed to logs; manual mode writes only to the controlling terminal. Never paste pairing codes, callback URLs or tokens into chat, issues or prompts.
+- Workers never open consent or widen authority. A frozen delivery cannot move to a different T3 authority unless it provably never reached T3.
+- The native observer reads only, with an endpoint and credential fixed by server configuration, and returns one generic error for every native failure. It shows a T3 link only after validating it against the configured origin and the exact thread.
+- The workspace probe for a local T3 contacts only `127.0.0.1:3773`.
+
+## Team MCP
+
+The Team MCP listener binds `127.0.0.1` only. Plain-HTTP clients must use `http://127.0.0.1:<port>/mcp`; remote clients use a same-host HTTPS reverse proxy with `KINMESH_TEAM_MCP_ORIGIN`. Host must match the configured origin or the exact loopback host; an `Origin`, when present, must match exactly. Limits: 16 KiB bodies, 600 requests/minute per connected IP (proxied clients share one bucket), 10-second request and connection timeouts, 16 requests in progress by default (1–64; overload is 503) and 128 connections. Results are not cacheable. Bearer authentication only; no cookies, no sessions, no OAuth.
+
+## Team content and agent prompts
+
+- Message bodies are text; the workspace renders a safe Markdown subset, never HTML, with links only to `http(s)` in a new tab with `noopener noreferrer`.
+- Agents receive team content as JSON in an ordinary user turn marked as untrusted data, never in system or developer context, and never as tool authorization. T3 keeps `approval-required`.
+- No T3 OAuth file, provider login, agent grant or prompt is sent to the browser.
+
+## Files and storage
+
+The hub, worker, Team MCP and the T3 sign-in and live-gate scripts run with umask 0077. The default database directory is created 0700 and the database file is set to 0600; existing directories are the operator's responsibility. The database, WAL and backups hold prompts, messages, task content and idempotency receipts: protect them like credentials. Privileged database access is a trusted administration boundary, not a tamper-proof audit store. Never point `KINMESH_DATABASE` at another component's storage.
+
+## Dependencies and guards
+
+`npm audit --omit=dev` checks runtime dependencies (use a registry that implements the audit API). `package.json` overrides `glob` under `@fastify/static` to a patched release. `npm run architecture` statically rejects imports and resource strings that reach T3 internals and unsafe type suppressions; it is not a sandbox, so review every adapter and dependency change.
+
+## Limits
+
+- One node, one SQLite database; no multi-node deployment, online backup or disaster-recovery procedure.
+- No human invitation beyond the first owner, password reset, MFA or account lockout.
+- No server-side per-session revocation; key rotation ends all sessions.
+- No proxy trust or distributed rate limiting.
+- No proof-of-possession or theft detection for bearer tokens.
+- Task acceptors cannot be reassigned.
