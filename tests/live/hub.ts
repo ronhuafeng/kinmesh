@@ -37,6 +37,23 @@ export class Hub {
   origin = '';
   teamOrigin = '';
   page: Page | undefined;
+  /** The live stage under way, for the traffic record. */
+  stage = 'prepare';
+  /** Responses from the hub per stage: method, path pattern, status. */
+  readonly traffic: Record<string, Record<string, number>> = {};
+  private record(method: string, url: string, status: number) {
+    const at = new URL(url);
+    if (at.origin !== this.origin) return;
+    const path = at.pathname
+      .replace(
+        /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/g,
+        ':id',
+      )
+      .replace(/^\/assets\/.*/, '/assets/*');
+    const key = `${method} ${path} ${String(status)}`;
+    const stage = (this.traffic[this.stage] ??= {});
+    stage[key] = (stage[key] ?? 0) + 1;
+  }
   process: Process | undefined;
   team: Process | undefined;
   teamId = '';
@@ -69,6 +86,11 @@ export class Hub {
       data === undefined
         ? await request.get(this.origin + path)
         : await request.post(this.origin + path, { data });
+    this.record(
+      data === undefined ? 'GET' : 'POST',
+      this.origin + path,
+      response.status(),
+    );
     if (!response.ok())
       throw new Error('OWNER_API_' + String(response.status()));
     return response.status() === 204
@@ -99,6 +121,13 @@ export class Hub {
   async onboard() {
     const context = this.native.context;
     if (!context) throw new Error('BROWSER_REQUIRED');
+    context.on('response', (response) => {
+      this.record(
+        response.request().method(),
+        response.url(),
+        response.status(),
+      );
+    });
     this.page = await context.newPage();
     const page = this.page;
     page.setDefaultTimeout(15_000);

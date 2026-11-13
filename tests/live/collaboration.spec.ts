@@ -109,6 +109,7 @@ test('complete real two-agent workflow, Human rework/acceptance, recovery and au
   const enter = (next: Stage) => {
     if (stage === through) throw new Stopped();
     stage = next;
+    hub.stage = next;
     console.info('LIVE_PHASE ' + next);
   };
   const evidence: Record<string, unknown> = {
@@ -135,6 +136,7 @@ test('complete real two-agent workflow, Human rework/acceptance, recovery and au
   };
   const checks: Record<string, boolean> = {};
   evidence.checks = checks;
+  evidence.hubTraffic = hub.traffic;
   const rows = () => {
     if (!db) throw new Error('DATABASE_REQUIRED');
     return z
