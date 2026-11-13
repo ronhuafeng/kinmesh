@@ -1,7 +1,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { flushSync } from 'react-dom';
 import * as Tabs from '@radix-ui/react-tabs';
-import { ChannelId, TaskId } from '../src/domain/contracts.js';
+import { AgentId, ChannelId, TaskId } from '../src/domain/contracts.js';
+import { Revisions, pageParam } from '../src/workspace/events.js';
+import { LiveContext, useRevisions } from './live.js';
 import { Agent } from '../src/domain/agents.js';
 import { TopicId } from '../src/domain/communication.js';
 import { WorkspaceSnapshot } from '../src/workspace/contracts.js';
@@ -212,11 +214,14 @@ export function App() {
   const refresh = useCallback(() => {
     setRevision((n) => n + 1);
   }, []);
-  /** A refresh the person asked for is shown; the 15 s heartbeat is not. */
+  const { live: liveReads, receive, readAll } = useRevisions(refresh);
+  const { begin, settle, drop } = liveReads;
+  /** A refresh the person asked for is shown, and reads everything on screen. */
   const refreshNow = useCallback(() => {
     setManual(true);
     setRevision((n) => n + 1);
-  }, []);
+    readAll();
+  }, [readAll]);
   useEffect(() => {
     if (status !== 'loading') {
       setManual(false);
@@ -239,12 +244,14 @@ export function App() {
   useEffect(() => {
     const controller = new AbortController();
     setStatus((previous) => (previous === 'signedout' ? previous : 'loading'));
+    begin('workspace');
     void api('/api/workspace?' + place, {
       signal: controller.signal,
     })
       .then((raw) => {
         const next = WorkspaceSnapshot.parse(raw);
         const apply = () => {
+          settle('workspace', next.revision);
           shown.current = next;
           setData(next);
           setStatus('ready');
@@ -268,6 +275,7 @@ export function App() {
       })
       .catch((cause: unknown) => {
         if (controller.signal.aborted) return;
+        drop('workspace');
         if (
           cause instanceof HttpError &&
           (cause.status === 401 || cause.status === 403)
@@ -287,7 +295,7 @@ export function App() {
     return () => {
       controller.abort();
     };
-  }, [place, selection.channel, revision, toSignedOut]);
+  }, [place, selection.channel, revision, toSignedOut, begin, settle, drop]);
   // The address follows the place. Going somewhere new adds a history
   // entry, so Back returns; a topic switch only rewrites the address.
   const routed = useRef(false);
@@ -336,11 +344,15 @@ export function App() {
   useEffect(() => {
     if (!live) return;
     const query = new URLSearchParams(place);
-    if (agentOnScreen) query.set('agent', agentOnScreen);
-    if (shown.current) query.set('since', shown.current.revision);
+    const agent = AgentId.safeParse(agentOnScreen);
+    if (agent.success)
+      query.set('page', pageParam({ kind: 'agent', id: agent.data }));
     const events = new EventSource('/api/events?' + query.toString());
     let lost = false;
-    events.addEventListener('changed', refresh);
+    events.addEventListener('revisions', (event) => {
+      if (event instanceof MessageEvent && typeof event.data === 'string')
+        receive(Revisions.parse(JSON.parse(event.data) as unknown));
+    });
     // The browser retries a lost stream. Reading the view now shows whether
     // the hub is out of reach or the session has ended; it is read again
     // once the stream is back.
@@ -361,7 +373,7 @@ export function App() {
       events.close();
       window.removeEventListener('online', refresh);
     };
-  }, [live, place, agentOnScreen, refresh, streamTry]);
+  }, [live, place, agentOnScreen, refresh, receive, streamTry]);
   // While the hub cannot be reached, nothing can say it is back: ask again.
   useEffect(() => {
     if (status !== 'offline') return;
@@ -563,442 +575,450 @@ export function App() {
   ];
   return (
     <MutationPermission value={canAct}>
-      <AvatarImages.Provider value={avatarImages}>
-        <Offline value={!canAct && !switching}>
-          <div className="workspace-shell">
-            <aside
-              className="sidebar"
-              data-menu={menuOpen ? 'open' : undefined}
-            >
-              {/* Search first; the team's name lives in Settings. */}
-              <div className="sidebar-top">
-                <CommandPalette commands={commands} />
-                <button
-                  type="button"
-                  className="quiet icon-button sidebar-menu"
-                  aria-label="Menu"
-                  aria-expanded={menuOpen}
-                  onClick={() => {
-                    setMenuOpen((open) => !open);
-                  }}
-                >
-                  <MenuIcon />
-                </button>
-              </div>
-              <button
-                className="inbox-link"
-                data-count={waiting > 0 ? 'true' : undefined}
-                aria-pressed={focus?.kind === 'inbox'}
-                onClick={() => {
-                  setFocus({ kind: 'inbox' });
-                }}
+      <LiveContext.Provider value={liveReads}>
+        <AvatarImages.Provider value={avatarImages}>
+          <Offline value={!canAct && !switching}>
+            <div className="workspace-shell">
+              <aside
+                className="sidebar"
+                data-menu={menuOpen ? 'open' : undefined}
               >
-                <span className="with-icon">
-                  <InboxIcon />
-                  Inbox
-                </span>
-                {/* An empty inbox needs no number. */}
-                {waiting > 0 && <span className="count">{waiting}</span>}
-              </button>
-              <nav aria-label="Channels">
-                <div className="nav-heading">
-                  <h2>Channels</h2>
-                  <AddButton
-                    label="New channel"
-                    onClick={() => {
-                      setAddingChannel(true);
-                    }}
-                  />
-                </div>
-                {data.channels.items.map((c) => (
+                {/* Search first; the team's name lives in Settings. */}
+                <div className="sidebar-top">
+                  <CommandPalette commands={commands} />
                   <button
-                    key={c.id}
-                    aria-current={
-                      // Only one place is current: a channel while you are
-                      // in its chat or board.
-                      channel?.id === c.id &&
-                      (tabValue === 'chat' || tabValue === 'board')
-                        ? 'page'
-                        : undefined
-                    }
+                    type="button"
+                    className="quiet icon-button sidebar-menu"
+                    aria-label="Menu"
+                    aria-expanded={menuOpen}
                     onClick={() => {
-                      selectChannel(c.id);
+                      setMenuOpen((open) => !open);
                     }}
                   >
-                    <span aria-hidden="true">#</span> {c.name}
+                    <MenuIcon />
                   </button>
-                ))}
-                {addingChannel && (
-                  <InlineField
-                    name="name"
-                    label="Channel name"
-                    placeholder="channel-name"
-                    maxLength={80}
-                    path={`/api/teams/${data.team.id}/channels`}
-                    className="channel-new"
-                    onClose={() => {
-                      setAddingChannel(false);
-                    }}
-                    onDone={refresh}
-                  />
-                )}
-                {/* Channels you left, only when there are any: one click back. */}
-                <LeftChannels
-                  teamId={data.team.id}
-                  channels={data.leftChannels}
-                  onDone={selectChannel}
-                />
-              </nav>
-              {data.channels.nextCursor && (
+                </div>
                 <button
-                  className="quiet"
+                  className="inbox-link"
+                  data-count={waiting > 0 ? 'true' : undefined}
+                  aria-pressed={focus?.kind === 'inbox'}
                   onClick={() => {
-                    next('channelsCursor', data.channels.nextCursor);
+                    setFocus({ kind: 'inbox' });
                   }}
                 >
-                  More channels
+                  <span className="with-icon">
+                    <InboxIcon />
+                    Inbox
+                  </span>
+                  {/* An empty inbox needs no number. */}
+                  {waiting > 0 && <span className="count">{waiting}</span>}
                 </button>
-              )}
-              {channel && (
-                <section className="people" aria-label="People in this channel">
-                  {/* A line, not a heading: what follows plainly belongs to
-                      the channel above. */}
-                  <hr className="nav-separator" />
-                  <ul>
-                    <li>
-                      <span className="person">
-                        <Avatar
-                          kind="human"
-                          name={data.human.username}
-                          size="sm"
-                        />
-                        <span className="person-name">
-                          {data.human.username}
-                        </span>
-                        <Presence online dot />
-                      </span>
-                    </li>
-                    {channelAgents.map((agent) => (
-                      <li key={agent.id}>
-                        <button
-                          className="person"
-                          aria-pressed={
-                            view === 'agent' && agentId === agent.id
-                          }
-                          onClick={() => {
-                            openAgent(agent.id);
-                          }}
-                        >
-                          <Avatar
-                            kind="agent"
-                            name={agent.name}
-                            id={agent.id}
-                            size="sm"
-                          />
-                          <span className="person-name">{agent.name}</span>
-                          <Presence
-                            online={workerConnected(data.wake, agent.id)}
-                            dot
-                          />
-                        </button>
-                      </li>
-                    ))}
-                  </ul>
-                  {channelAgents.length === 0 && (
-                    <button
-                      className="link-button"
+                <nav aria-label="Channels">
+                  <div className="nav-heading">
+                    <h2>Channels</h2>
+                    <AddButton
+                      label="New channel"
                       onClick={() => {
-                        setView('team');
+                        setAddingChannel(true);
+                      }}
+                    />
+                  </div>
+                  {data.channels.items.map((c) => (
+                    <button
+                      key={c.id}
+                      aria-current={
+                        // Only one place is current: a channel while you are
+                        // in its chat or board.
+                        channel?.id === c.id &&
+                        (tabValue === 'chat' || tabValue === 'board')
+                          ? 'page'
+                          : undefined
+                      }
+                      onClick={() => {
+                        selectChannel(c.id);
                       }}
                     >
-                      Add an agent
+                      <span aria-hidden="true">#</span> {c.name}
                     </button>
+                  ))}
+                  {addingChannel && (
+                    <InlineField
+                      name="name"
+                      label="Channel name"
+                      placeholder="channel-name"
+                      maxLength={80}
+                      path={`/api/teams/${data.team.id}/channels`}
+                      className="channel-new"
+                      onClose={() => {
+                        setAddingChannel(false);
+                      }}
+                      onDone={refresh}
+                    />
                   )}
-                </section>
-              )}
-              <div className="account">
-                <button
-                  type="button"
-                  className="account-open"
-                  aria-label="Account settings"
-                  onClick={() => {
-                    setFocus({ kind: 'settings' });
-                  }}
-                >
-                  <Avatar kind="human" name={data.human.username} size="sm" />
-                  <span>{data.human.username}</span>
-                </button>
-                <button
-                  className="quiet icon-button"
-                  aria-label="Sign out"
-                  title="Sign out"
-                  disabled={!canAct}
-                  onClick={() => {
-                    if (!canAct) return;
-                    void api('/api/logout', { method: 'POST' })
-                      .then(() => {
-                        toSignedOut('');
-                      })
-                      .catch(() => {
-                        setError('Sign out failed. Reconnect and try again.');
-                      });
-                  }}
-                >
-                  <SignOutIcon />
-                </button>
-              </div>
-            </aside>
-            <main className="workspace-main">
-              <Tabs.Root
-                className="workspace-tabs"
-                value={tabValue}
-                // Focus returning from a page or the palette must not switch views.
-                activationMode="manual"
-                onValueChange={(v) => {
-                  setView(v === 'board' || v === 'team' ? v : 'chat');
-                }}
-              >
-                <header className="workspace-header">
-                  {/* The sidebar already shows the channel (or agent) you are
-                      in, so the page never repeats it: the title is there for
-                      screen readers only, the same on every view. */}
-                  <h1 className="visually-hidden">
-                    {pageAgent
-                      ? pageAgent.name
-                      : view === 'team'
-                        ? 'Team'
-                        : shownChannelName
-                          ? '# ' + shownChannelName
-                          : switching
-                            ? 'Opening channel…'
-                            : 'Welcome to your team'}
-                  </h1>
-                  {/* Views stay in reach however far the conversation scrolls. */}
-                  <Tabs.List
-                    aria-label="Workspace views"
-                    className="view-switch"
+                  {/* Channels you left, only when there are any: one click back. */}
+                  <LeftChannels
+                    teamId={data.team.id}
+                    channels={data.leftChannels}
+                    onDone={selectChannel}
+                  />
+                </nav>
+                {data.channels.nextCursor && (
+                  <button
+                    className="quiet"
+                    onClick={() => {
+                      next('channelsCursor', data.channels.nextCursor);
+                    }}
                   >
-                    <Tabs.Trigger value="chat" onClick={leavePage}>
-                      Chat
-                    </Tabs.Trigger>
-                    <Tabs.Trigger value="board" onClick={leavePage}>
-                      Board
-                    </Tabs.Trigger>
-                    <Tabs.Trigger value="team" onClick={leavePage}>
-                      Team
-                    </Tabs.Trigger>
-                  </Tabs.List>
-                  {/* Healthy is silent: the pill appears only when something is off. */}
-                  {connection !== 'ready' && (
-                    <div className="connection" data-state={connection}>
-                      <span className="connection-dot" aria-hidden="true" />
-                      <span role="status">
-                        {connection === 'loading'
-                          ? 'Refreshing…'
-                          : 'Disconnected'}
-                      </span>
-                      {connection === 'offline' && (
-                        <>
-                          <small>
-                            Last update{' '}
-                            {new Date(data.observedAt).toLocaleTimeString()}
-                          </small>
-                          <button className="secondary" onClick={refreshNow}>
-                            Reconnect
+                    More channels
+                  </button>
+                )}
+                {channel && (
+                  <section
+                    className="people"
+                    aria-label="People in this channel"
+                  >
+                    {/* A line, not a heading: what follows plainly belongs to
+                      the channel above. */}
+                    <hr className="nav-separator" />
+                    <ul>
+                      <li>
+                        <span className="person">
+                          <Avatar
+                            kind="human"
+                            name={data.human.username}
+                            size="sm"
+                          />
+                          <span className="person-name">
+                            {data.human.username}
+                          </span>
+                          <Presence online dot />
+                        </span>
+                      </li>
+                      {channelAgents.map((agent) => (
+                        <li key={agent.id}>
+                          <button
+                            className="person"
+                            aria-pressed={
+                              view === 'agent' && agentId === agent.id
+                            }
+                            onClick={() => {
+                              openAgent(agent.id);
+                            }}
+                          >
+                            <Avatar
+                              kind="agent"
+                              name={agent.name}
+                              id={agent.id}
+                              size="sm"
+                            />
+                            <span className="person-name">{agent.name}</span>
+                            <Presence
+                              online={workerConnected(data.wake, agent.id)}
+                              dot
+                            />
                           </button>
-                        </>
-                      )}
-                    </div>
-                  )}
-                </header>
-                {error && (
-                  <div className="stale-banner" data-state={status}>
-                    <Notice>
-                      {error}{' '}
+                        </li>
+                      ))}
+                    </ul>
+                    {channelAgents.length === 0 && (
                       <button
+                        className="link-button"
                         onClick={() => {
-                          selectChannel('');
-                          setError('');
+                          setView('team');
                         }}
                       >
-                        Return to joined channels
+                        Add an agent
                       </button>
-                    </Notice>
-                  </div>
+                    )}
+                  </section>
                 )}
-                <fieldset
-                  className="view-content"
-                  data-switching={switching ? 'true' : undefined}
-                  data-page={onPage ? 'true' : undefined}
+                <div className="account">
+                  <button
+                    type="button"
+                    className="account-open"
+                    aria-label="Account settings"
+                    onClick={() => {
+                      setFocus({ kind: 'settings' });
+                    }}
+                  >
+                    <Avatar kind="human" name={data.human.username} size="sm" />
+                    <span>{data.human.username}</span>
+                  </button>
+                  <button
+                    className="quiet icon-button"
+                    aria-label="Sign out"
+                    title="Sign out"
+                    disabled={!canAct}
+                    onClick={() => {
+                      if (!canAct) return;
+                      void api('/api/logout', { method: 'POST' })
+                        .then(() => {
+                          toSignedOut('');
+                        })
+                        .catch(() => {
+                          setError('Sign out failed. Reconnect and try again.');
+                        });
+                    }}
+                  >
+                    <SignOutIcon />
+                  </button>
+                </div>
+              </aside>
+              <main className="workspace-main">
+                <Tabs.Root
+                  className="workspace-tabs"
+                  value={tabValue}
+                  // Focus returning from a page or the palette must not switch views.
+                  activationMode="manual"
+                  onValueChange={(v) => {
+                    setView(v === 'board' || v === 'team' ? v : 'chat');
+                  }}
                 >
-                  {/* A task, a new task, the Inbox, Settings or a hand-run
-                      worker opens here, in place of the view. Unsent text
-                      survives in session storage, not in the hidden view. */}
-                  {focusedTask && channelPath && (
-                    <TaskPage
-                      key={focusedTask.id}
-                      task={focusedTask}
-                      data={data}
-                      path={channelPath + '/tasks/' + focusedTask.id}
-                      onDone={refresh}
-                      onClose={closeFocus}
-                      onDecided={notify}
-                      openAgent={openAgent}
-                    />
-                  )}
-                  {workerAgent && (
-                    <OwnWorkerPage
-                      key={workerAgent.id}
-                      agent={workerAgent}
-                      data={data}
-                      onClose={closeFocus}
-                      onDone={refresh}
-                    />
-                  )}
-                  {focus?.kind === 'inbox' && (
-                    <InboxPage
-                      data={data}
-                      onClose={closeFocus}
-                      openTask={openTaskIn}
-                      openChannel={(id) => {
-                        if (id !== channel?.id) selectChannel(id);
-                        setView('chat');
-                        setFocus(null);
-                      }}
-                      openAgent={openAgent}
-                      onDone={refresh}
-                    />
-                  )}
-                  {newTask && channelPath && (
-                    <NewTaskPage
-                      draft={newTask}
-                      data={data}
-                      channelPath={channelPath}
-                      onClose={() => {
-                        setDraft(null);
-                      }}
-                      onCreated={(id) => {
-                        // The new task stays on screen, now as itself.
-                        setDraft(null);
-                        setView('board');
-                        setFocus({ kind: 'task', id });
-                        refresh();
-                      }}
-                      onNotify={notify}
-                    />
-                  )}
-                  {focus?.kind === 'settings' && (
-                    <SettingsPage
-                      data={data}
-                      onClose={closeFocus}
-                      onDone={refresh}
-                      onNotify={notify}
-                    />
-                  )}
-
-                  {switching && (
-                    <div className="view-skeleton" aria-hidden="true">
-                      <span className="skeleton-card" />
-                      <span className="skeleton-card" />
-                      <span className="skeleton-card" />
+                  <header className="workspace-header">
+                    {/* The sidebar already shows the channel (or agent) you are
+                      in, so the page never repeats it: the title is there for
+                      screen readers only, the same on every view. */}
+                    <h1 className="visually-hidden">
+                      {pageAgent
+                        ? pageAgent.name
+                        : view === 'team'
+                          ? 'Team'
+                          : shownChannelName
+                            ? '# ' + shownChannelName
+                            : switching
+                              ? 'Opening channel…'
+                              : 'Welcome to your team'}
+                    </h1>
+                    {/* Views stay in reach however far the conversation scrolls. */}
+                    <Tabs.List
+                      aria-label="Workspace views"
+                      className="view-switch"
+                    >
+                      <Tabs.Trigger value="chat" onClick={leavePage}>
+                        Chat
+                      </Tabs.Trigger>
+                      <Tabs.Trigger value="board" onClick={leavePage}>
+                        Board
+                      </Tabs.Trigger>
+                      <Tabs.Trigger value="team" onClick={leavePage}>
+                        Team
+                      </Tabs.Trigger>
+                    </Tabs.List>
+                    {/* Healthy is silent: the pill appears only when something is off. */}
+                    {connection !== 'ready' && (
+                      <div className="connection" data-state={connection}>
+                        <span className="connection-dot" aria-hidden="true" />
+                        <span role="status">
+                          {connection === 'loading'
+                            ? 'Refreshing…'
+                            : 'Disconnected'}
+                        </span>
+                        {connection === 'offline' && (
+                          <>
+                            <small>
+                              Last update{' '}
+                              {new Date(data.observedAt).toLocaleTimeString()}
+                            </small>
+                            <button className="secondary" onClick={refreshNow}>
+                              Reconnect
+                            </button>
+                          </>
+                        )}
+                      </div>
+                    )}
+                  </header>
+                  {error && (
+                    <div className="stale-banner" data-state={status}>
+                      <Notice>
+                        {error}{' '}
+                        <button
+                          onClick={() => {
+                            selectChannel('');
+                            setError('');
+                          }}
+                        >
+                          Return to joined channels
+                        </button>
+                      </Notice>
                     </div>
                   )}
-                  <Tabs.Content value="chat" key={channel?.id ?? 'no-channel'}>
-                    {channel && channelPath ? (
-                      <Chat
+                  <fieldset
+                    className="view-content"
+                    data-switching={switching ? 'true' : undefined}
+                    data-page={onPage ? 'true' : undefined}
+                  >
+                    {/* A task, a new task, the Inbox, Settings or a hand-run
+                      worker opens here, in place of the view. Unsent text
+                      survives in session storage, not in the hidden view. */}
+                    {focusedTask && channelPath && (
+                      <TaskPage
+                        key={focusedTask.id}
+                        task={focusedTask}
                         data={data}
-                        channelPath={channelPath}
-                        topic={selection.topic}
-                        onTopic={(topic) => {
-                          setSelection((old) => ({ ...old, topic }));
-                          setCursors({});
-                        }}
+                        path={channelPath + '/tasks/' + focusedTask.id}
                         onDone={refresh}
-                        next={next}
-                        firstPage={() => {
-                          setCursors({});
-                        }}
-                        pagedBack={Boolean(cursors.messagesCursor)}
-                        onMakeTask={(message) => {
-                          setDraft(draftFromMessage(message, data));
+                        onClose={closeFocus}
+                        onDecided={notify}
+                        openAgent={openAgent}
+                      />
+                    )}
+                    {workerAgent && (
+                      <OwnWorkerPage
+                        key={workerAgent.id}
+                        agent={workerAgent}
+                        data={data}
+                        onClose={closeFocus}
+                        onDone={refresh}
+                      />
+                    )}
+                    {focus?.kind === 'inbox' && (
+                      <InboxPage
+                        data={data}
+                        onClose={closeFocus}
+                        openTask={openTaskIn}
+                        openChannel={(id) => {
+                          if (id !== channel?.id) selectChannel(id);
+                          setView('chat');
                           setFocus(null);
-                          setView('board');
                         }}
                         openAgent={openAgent}
-                        onLeave={() => {
-                          selectChannel('');
-                        }}
-                      />
-                    ) : (
-                      <div className="empty">
-                        <h3>No channel open</h3>
-                        <p>Choose a joined channel to read and post.</p>
-                      </div>
-                    )}
-                  </Tabs.Content>
-                  <Tabs.Content value="board">
-                    {channelPath ? (
-                      <Board
-                        data={data}
-                        next={() => {
-                          next('tasksCursor', data.tasks.nextCursor);
-                        }}
-                        openTask={openTask}
-                        onNewTask={startNewTask}
-                      />
-                    ) : (
-                      <div className="empty">
-                        <p>Create a channel before creating tasks.</p>
-                      </div>
-                    )}
-                  </Tabs.Content>
-                  <Tabs.Content value="team">
-                    <Team
-                      data={data}
-                      channelPath={channelPath}
-                      onDone={refresh}
-                      openAgent={openAgent}
-                    />
-                  </Tabs.Content>
-                  <Tabs.Content value="agent">
-                    {pageAgent ? (
-                      <AgentPage
-                        key={pageAgent.id}
-                        agent={pageAgent}
-                        data={data}
-                        channelPath={channelPath}
-                        onBack={() => {
-                          setView(backTo);
-                        }}
-                        onOwnWorker={() => {
-                          setFocus({ kind: 'worker', id: pageAgent.id });
-                        }}
-                        onReply={(id) => {
-                          // The reply is in the chat; open it there and point to it.
-                          setView('chat');
-                          setTimeout(() => {
-                            showMessage(id);
-                          }, 60);
-                        }}
                         onDone={refresh}
                       />
-                    ) : (
-                      <div className="empty">
-                        <p>This agent isn’t in your team.</p>
+                    )}
+                    {newTask && channelPath && (
+                      <NewTaskPage
+                        draft={newTask}
+                        data={data}
+                        channelPath={channelPath}
+                        onClose={() => {
+                          setDraft(null);
+                        }}
+                        onCreated={(id) => {
+                          // The new task stays on screen, now as itself.
+                          setDraft(null);
+                          setView('board');
+                          setFocus({ kind: 'task', id });
+                          refresh();
+                        }}
+                        onNotify={notify}
+                      />
+                    )}
+                    {focus?.kind === 'settings' && (
+                      <SettingsPage
+                        data={data}
+                        onClose={closeFocus}
+                        onDone={refresh}
+                        onNotify={notify}
+                      />
+                    )}
+
+                    {switching && (
+                      <div className="view-skeleton" aria-hidden="true">
+                        <span className="skeleton-card" />
+                        <span className="skeleton-card" />
+                        <span className="skeleton-card" />
                       </div>
                     )}
-                  </Tabs.Content>
-                </fieldset>
-              </Tabs.Root>
-            </main>
-            {toast && (
-              <div className="toast" key={toast.id} role="status">
-                {toast.message}
-              </div>
-            )}
-          </div>
-        </Offline>
-      </AvatarImages.Provider>
+                    <Tabs.Content
+                      value="chat"
+                      key={channel?.id ?? 'no-channel'}
+                    >
+                      {channel && channelPath ? (
+                        <Chat
+                          data={data}
+                          channelPath={channelPath}
+                          topic={selection.topic}
+                          onTopic={(topic) => {
+                            setSelection((old) => ({ ...old, topic }));
+                            setCursors({});
+                          }}
+                          onDone={refresh}
+                          next={next}
+                          firstPage={() => {
+                            setCursors({});
+                          }}
+                          pagedBack={Boolean(cursors.messagesCursor)}
+                          onMakeTask={(message) => {
+                            setDraft(draftFromMessage(message, data));
+                            setFocus(null);
+                            setView('board');
+                          }}
+                          openAgent={openAgent}
+                          onLeave={() => {
+                            selectChannel('');
+                          }}
+                        />
+                      ) : (
+                        <div className="empty">
+                          <h3>No channel open</h3>
+                          <p>Choose a joined channel to read and post.</p>
+                        </div>
+                      )}
+                    </Tabs.Content>
+                    <Tabs.Content value="board">
+                      {channelPath ? (
+                        <Board
+                          data={data}
+                          next={() => {
+                            next('tasksCursor', data.tasks.nextCursor);
+                          }}
+                          openTask={openTask}
+                          onNewTask={startNewTask}
+                        />
+                      ) : (
+                        <div className="empty">
+                          <p>Create a channel before creating tasks.</p>
+                        </div>
+                      )}
+                    </Tabs.Content>
+                    <Tabs.Content value="team">
+                      <Team
+                        data={data}
+                        channelPath={channelPath}
+                        onDone={refresh}
+                        openAgent={openAgent}
+                      />
+                    </Tabs.Content>
+                    <Tabs.Content value="agent">
+                      {pageAgent ? (
+                        <AgentPage
+                          key={pageAgent.id}
+                          agent={pageAgent}
+                          data={data}
+                          channelPath={channelPath}
+                          onBack={() => {
+                            setView(backTo);
+                          }}
+                          onOwnWorker={() => {
+                            setFocus({ kind: 'worker', id: pageAgent.id });
+                          }}
+                          onReply={(id) => {
+                            // The reply is in the chat; open it there and point to it.
+                            setView('chat');
+                            setTimeout(() => {
+                              showMessage(id);
+                            }, 60);
+                          }}
+                          onDone={refresh}
+                        />
+                      ) : (
+                        <div className="empty">
+                          <p>This agent isn’t in your team.</p>
+                        </div>
+                      )}
+                    </Tabs.Content>
+                  </fieldset>
+                </Tabs.Root>
+              </main>
+              {toast && (
+                <div className="toast" key={toast.id} role="status">
+                  {toast.message}
+                </div>
+              )}
+            </div>
+          </Offline>
+        </AvatarImages.Provider>
+      </LiveContext.Provider>
     </MutationPermission>
   );
 }

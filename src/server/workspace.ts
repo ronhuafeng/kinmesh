@@ -1,25 +1,21 @@
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { PROTOCOL_VERSION } from '@ag-ui/core';
-import { AgentId, ChannelId, TeamId } from '../domain/contracts.js';
+import { AgentId, TeamId } from '../domain/contracts.js';
 import { IdentityError, type Principal } from '../domain/agents.js';
-import { TopicId, memberKey } from '../domain/communication.js';
+import { memberKey } from '../domain/communication.js';
 import { INBOX_LIVENESS_MS } from '../domain/inbox.js';
 import type { Store } from '../persistence/store.js';
 import { fingerprint } from '../persistence/transactional.js';
 import { loadCredential } from '../adapters/t3/oauth.js';
 import { readNativeExecution } from '../workspace/native.js';
-import { WorkspaceSnapshot, executionEvent } from '../workspace/contracts.js';
+import {
+  ExecutionSnapshot,
+  WorkspaceQuery,
+  WorkspaceSnapshot,
+  executionEvent,
+} from '../workspace/contracts.js';
 
-export const WorkspaceQuery = z.strictObject({
-  channelId: ChannelId.optional(),
-  topicId: TopicId.optional(),
-  messagesCursor: z.string().min(1).max(2048).optional(),
-  tasksCursor: z.string().min(1).max(2048).optional(),
-  topicsCursor: z.string().min(1).max(2048).optional(),
-  channelsCursor: z.string().min(1).max(2048).optional(),
-});
-export type WorkspaceQuery = z.infer<typeof WorkspaceQuery>;
 type Owner = Extract<Principal, { kind: 'human' }>;
 /**
  * Names what a snapshot shows. The time it was read and worker heartbeats,
@@ -256,6 +252,22 @@ export function registerWorkspace(
       }),
     );
   };
+  /** An agent's runs as Kinmesh recorded them; the read time is not part of what they show. */
+  const runs = (principal: Owner, teamId: TeamId, agentId: AgentId) => {
+    // Owner membership and current identity are rechecked by each repository call.
+    const executions = store.agents.workspaceExecutions(
+      principal,
+      teamId,
+      agentId,
+    );
+    return ExecutionSnapshot.parse({
+      protocolVersion: PROTOCOL_VERSION,
+      source: 'kinmesh-persisted-reports',
+      observedAt: new Date().toISOString(),
+      revision: fingerprint(executions),
+      ...executions,
+    });
+  };
   app.get('/api/workspace', (request, reply) => {
     reply.header('Cache-Control', 'no-store');
     const principal = request.principal;
@@ -270,18 +282,7 @@ export function registerWorkspace(
       .parse(request.params);
     const principal = request.principal;
     if (principal?.kind !== 'human') throw new IdentityError(403);
-    // Owner membership and current identity are rechecked by each repository call.
-    const executions = store.agents.workspaceExecutions(
-      principal,
-      teamId,
-      memberId,
-    );
-    return executionEvent({
-      protocolVersion: PROTOCOL_VERSION,
-      source: 'kinmesh-persisted-reports',
-      observedAt: new Date().toISOString(),
-      ...executions,
-    });
+    return executionEvent(runs(principal, teamId, memberId));
   });
-  return { snapshot };
+  return { snapshot, runs };
 }
