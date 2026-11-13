@@ -468,7 +468,7 @@ test('AG-UI snapshots render persisted reports honestly; identity spoofing and c
   }
 });
 
-test('keyboard mention, message becomes a task in its topic, and the needs-me filter', async ({
+test('keyboard mention, message becomes a task in its topic, and the board filter', async ({
   page,
   context,
   hub,
@@ -565,8 +565,10 @@ test('keyboard mention, message becomes a task in its topic, and the needs-me fi
   expect(tasks).toHaveLength(1);
   expect(tasks[0]?.topicId).toBe(topics.find((t) => t.title === 'Billing')?.id);
   const filter = page.getByRole('group', { name: 'Task filter' });
-  await filter.getByRole('button', { name: 'Needs me', exact: true }).click();
-  await expect(card).toHaveCount(0);
+  // What needs you lives in Needs you; the board filters only by ownership.
+  await expect(
+    filter.getByRole('button', { name: 'Needs me', exact: true }),
+  ).toHaveCount(0);
   await filter.getByRole('button', { name: 'Mine', exact: true }).click();
   await expect(card).toBeVisible();
   await filter.getByRole('button', { name: 'All', exact: true }).click();
@@ -577,7 +579,7 @@ test('keyboard mention, message becomes a task in its topic, and the needs-me fi
   const palette = page.getByRole('dialog', { name: 'Command palette' });
   await palette
     .getByRole('combobox', { name: /Search/ })
-    .fill('postal in progress');
+    .fill('postal working');
   await expect(
     palette.getByRole('option', { name: /Validate postal codes/ }),
   ).toHaveAttribute('aria-selected', 'true');

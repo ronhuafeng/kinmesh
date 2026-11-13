@@ -5,12 +5,13 @@ import type { Task } from '../src/domain/tasks.js';
 export type Status = Task['state']['status'];
 /** Board order: one column per real status, nothing invented. */
 export const statuses: readonly { id: Status; label: string }[] = [
+  // The board's stage names, so a task is called the same thing everywhere.
   { id: 'proposed', label: 'Proposed' },
-  { id: 'in-progress', label: 'In progress' },
-  { id: 'review-requested', label: 'Review requested' },
-  { id: 'awaiting-human', label: 'Awaiting human' },
-  { id: 'rework-requested', label: 'Rework requested' },
-  { id: 'accepted', label: 'Accepted' },
+  { id: 'in-progress', label: 'Working' },
+  { id: 'review-requested', label: 'Review' },
+  { id: 'awaiting-human', label: 'Human sign-off' },
+  { id: 'rework-requested', label: 'Sent back' },
+  { id: 'accepted', label: 'Done' },
   { id: 'cancelled', label: 'Cancelled' },
 ];
 export function statusLabel(status: Status) {

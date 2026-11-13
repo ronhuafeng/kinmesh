@@ -262,12 +262,6 @@ export function App() {
   const openTasks = data.tasks.items.filter(
     (t) => t.state.status !== 'accepted' && t.state.status !== 'cancelled',
   ).length;
-  const asks = channel
-    ? data.tasks.items.flatMap((task) => {
-        const ask = humanAsk(task, data);
-        return ask ? [{ task, ask }] : [];
-      })
-    : [];
   const focusedTask =
     focus?.kind === 'task' && channelPath
       ? data.tasks.items.find((t) => t.id === focus.id)
@@ -597,14 +591,7 @@ export function App() {
                 {/* Views stay in reach however far the conversation scrolls. */}
                 <Tabs.List aria-label="Workspace views" className="view-switch">
                   <Tabs.Trigger value="chat">Chat</Tabs.Trigger>
-                  <Tabs.Trigger value="board">
-                    Board
-                    {asks.length > 0 && (
-                      <span className="tab-count" aria-hidden="true">
-                        {asks.length}
-                      </span>
-                    )}
-                  </Tabs.Trigger>
+                  <Tabs.Trigger value="board">Board</Tabs.Trigger>
                   <Tabs.Trigger value="team">Team</Tabs.Trigger>
                 </Tabs.List>
                 {/* Healthy is silent: the pill appears only when something is off. */}
@@ -644,35 +631,6 @@ export function App() {
                     </button>
                   </Notice>
                 </div>
-              )}
-              {asks.length > 0 && view !== 'board' && (
-                <section
-                  className="decision-strip"
-                  aria-label="Waiting for you"
-                >
-                  <p>
-                    <strong>
-                      {asks.length === 1
-                        ? '1 task is waiting for you'
-                        : `${String(asks.length)} tasks are waiting for you`}
-                    </strong>
-                  </p>
-                  <ul>
-                    {asks.map(({ task, ask }) => (
-                      <li key={task.id}>
-                        <button
-                          className="ask"
-                          onClick={() => {
-                            openTask(task.id);
-                          }}
-                        >
-                          <span className="ask-title">{task.title}</span>
-                          <small>{ask}</small>
-                        </button>
-                      </li>
-                    ))}
-                  </ul>
-                </section>
               )}
               <fieldset
                 className="view-content"

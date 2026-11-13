@@ -630,16 +630,6 @@ details > summary:hover {
   border-color: var(--hairline);
   box-shadow: 0 1px 2px rgb(28 31 26 / 0.06);
 }
-.tab-count {
-  font-family: var(--mono);
-  font-size: 0.7rem;
-  min-width: 1.2rem;
-  padding: 0 0.3rem;
-  border-radius: 999px;
-  background: var(--decision);
-  color: #fff;
-  text-align: center;
-}
 
 /* ------------------------------------------------------------------
  * Workspace shell
@@ -942,54 +932,6 @@ button.person[aria-pressed='true'] {
 .workspace-shell:has(.stale-banner[data-state='offline']) .view-content,
 .workspace-shell:has(.stale-banner[data-state='offline']) .drawer-content {
   filter: saturate(0.7);
-}
-.decision-strip {
-  border: 1px solid color-mix(in srgb, var(--decision) 45%, var(--hairline));
-  background: var(--decision-soft);
-  border-radius: var(--radius);
-  padding: 0.65rem 0.85rem;
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 0.5rem 1rem;
-}
-.decision-strip > p {
-  margin: 0;
-  color: var(--decision-text);
-  font-size: 0.9rem;
-}
-.decision-strip ul {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.4rem;
-}
-button.ask {
-  display: inline-flex;
-  align-items: baseline;
-  gap: 0.45rem;
-  background: var(--surface);
-  color: var(--ink);
-  border-color: color-mix(in srgb, var(--decision) 40%, var(--hairline));
-  padding: 0.3rem 0.65rem;
-  max-width: 100%;
-}
-button.ask:hover:not(:disabled) {
-  background: var(--surface);
-  border-color: var(--decision);
-}
-.ask-title {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  max-width: 18rem;
-}
-button.ask small {
-  font-family: var(--mono);
-  font-size: 0.7rem;
-  color: var(--decision-text);
 }
 .view-switch {
   margin-bottom: 0.75rem;
@@ -2303,9 +2245,6 @@ body > #root > .notice {
     position: sticky;
     bottom: 0;
     z-index: 2;
-  }
-  .ask-title {
-    max-width: 12rem;
   }
 }
 

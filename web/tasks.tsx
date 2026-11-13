@@ -779,11 +779,10 @@ export function draftFromMessage(
     from: authorName(message.author, data),
   };
 }
-export type BoardFilter = 'all' | 'mine' | 'needs';
+export type BoardFilter = 'all' | 'mine';
 const filters: { id: BoardFilter; label: string }[] = [
   { id: 'all', label: 'All' },
   { id: 'mine', label: 'Mine' },
-  { id: 'needs', label: 'Needs me' },
 ];
 export function Board({
   data,
@@ -813,13 +812,11 @@ export function Board({
   const [creating, setCreating] = useState(false);
   const me = memberKey({ kind: 'human', id: data.human.id });
   const items = data.tasks.items.filter((t) =>
-    filter === 'needs'
-      ? humanAsk(t, data) !== null
-      : filter === 'mine'
-        ? [t.state.owner, t.state.reviewer].some(
-            (m) => m !== null && memberKey(m) === me,
-          ) || t.acceptorHumanId === data.human.id
-        : true,
+    filter === 'mine'
+      ? [t.state.owner, t.state.reviewer].some(
+          (m) => m !== null && memberKey(m) === me,
+        ) || t.acceptorHumanId === data.human.id
+      : true,
   );
   const [showCancelled, setShowCancelled] = useState(false);
   const cancelled = items.filter((t) => t.state.status === 'cancelled');
