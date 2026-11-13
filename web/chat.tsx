@@ -168,11 +168,7 @@ function Composer({
                   ? listId + '-' + candidates[active].id
                   : undefined
               }
-              placeholder={
-                'Message #' +
-                channelName +
-                ' — @ to mention, ⌘/Ctrl+Enter to send'
-              }
+              placeholder={'Message #' + channelName}
               onInput={track}
               onClick={track}
               onBlur={() => {
@@ -230,6 +226,9 @@ function Composer({
           </button>
         </div>
       </ActionForm>
+      <p className="composer-hint" aria-hidden="true">
+        @ to mention · ⌘/Ctrl+Enter to send
+      </p>
     </div>
   );
 }
@@ -333,15 +332,18 @@ export function Chat({
     <div className="conversation">
       <div className="topic-bar">
         <div className="topic-pills" role="group" aria-label="Topics">
-          <button
-            type="button"
-            aria-pressed={topic === ''}
-            onClick={() => {
-              onTopic('');
-            }}
-          >
-            All
-          </button>
+          {/* "All" means something only once there is a topic to filter by. */}
+          {data.topics.items.length > 0 && (
+            <button
+              type="button"
+              aria-pressed={topic === ''}
+              onClick={() => {
+                onTopic('');
+              }}
+            >
+              All
+            </button>
+          )}
           {data.topics.items.map((t) => (
             <button
               type="button"
@@ -379,6 +381,20 @@ export function Chat({
               <input name="title" required maxLength={160} />
             </Field>
           </ActionForm>
+        </details>
+        <details className="channel-details">
+          <summary>Channel details</summary>
+          <details className="technical">
+            <summary>Technical details</summary>
+            <p className="reference">Channel ID: {channel.id}</p>
+          </details>
+          <ActionForm
+            title="Channel membership"
+            path={channelPath + '/leave'}
+            build={() => ({})}
+            submit="Leave channel"
+            onDone={onLeave}
+          />
         </details>
       </div>
       {pagedBack && (
@@ -527,20 +543,6 @@ export function Chat({
         connected={(id) => wakeOf(data.wake, id).connected}
         onDone={onDone}
       />
-      <details className="channel-details">
-        <summary>Channel details</summary>
-        <details className="technical">
-          <summary>Technical details</summary>
-          <p className="reference">Channel ID: {channel.id}</p>
-        </details>
-        <ActionForm
-          title="Channel membership"
-          path={channelPath + '/leave'}
-          build={() => ({})}
-          submit="Leave channel"
-          onDone={onLeave}
-        />
-      </details>
     </div>
   );
 }

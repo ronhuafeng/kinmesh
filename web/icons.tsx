@@ -52,3 +52,8 @@ export const BotIcon = () => (
     <path d="M2 13v3M22 13v3" />
   </Icon>
 );
+export const MenuIcon = () => (
+  <Icon>
+    <path d="M4 7h16M4 12h16M4 17h16" />
+  </Icon>
+);

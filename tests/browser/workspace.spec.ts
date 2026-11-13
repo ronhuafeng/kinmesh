@@ -123,6 +123,13 @@ for (const width of [1440, 375]) {
     const errors: string[] = [];
     page.on('pageerror', (error) => errors.push(error.message));
     await onboard(page, hub);
+    // On a phone, channel actions and the account sit behind the menu.
+    const openMenu = async () => {
+      const menu = page.getByRole('button', { name: 'Menu' });
+      if (width < 721 && (await menu.getAttribute('aria-expanded')) !== 'true')
+        await menu.click();
+    };
+    await openMenu();
     await page.getByText('New channel', { exact: true }).click();
     const create = page.getByRole('form', { name: 'Create a channel' });
     await create.getByLabel('Channel name').fill('design');
@@ -211,6 +218,7 @@ for (const width of [1440, 375]) {
       path: `artifacts/workspace-${String(width)}.png`,
       fullPage: true,
     });
+    await openMenu();
     await page.getByRole('button', { name: 'Sign out', exact: true }).click();
     await expect(
       page.getByRole('heading', { name: 'Welcome back' }),

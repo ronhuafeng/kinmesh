@@ -1358,6 +1358,8 @@ li[data-kind='agent'] .author-kind {
   padding: 0.6rem;
   display: grid;
   gap: 0.5rem;
+  /* Rows keep their height; spare room stays below, so headings line up. */
+  align-content: start;
   min-height: 10rem;
   scroll-snap-align: start;
 }
@@ -3110,4 +3112,46 @@ button.icon-button:hover:not(:disabled) {
 .person-kind .icon {
   width: 14px;
   height: 14px;
+}
+/* Composer hint: the shortcuts, said once and quietly; not on a phone. */
+.composer-hint {
+  margin: 0.35rem 0 0;
+  font-size: 0.75rem;
+  color: var(--ink-subtle);
+}
+/* A delivery's dot stays on the line it marks. */
+.delivery > span:not(.visually-hidden),
+.delivery > .link-button {
+  flex: 1 1 0;
+  min-width: 0;
+}
+.sidebar-menu {
+  display: none;
+}
+/* Channel details sit with the channel's other controls. */
+.topic-bar .channel-details {
+  margin-left: 0.25rem;
+}
+@media (max-width: 720px) {
+  .composer-hint {
+    display: none;
+  }
+  /* The phone's sidebar is one row: team, search, menu. */
+  .sidebar-top {
+    grid-template-columns: minmax(0, 1fr) auto auto;
+  }
+  .sidebar-menu {
+    display: inline-grid;
+  }
+  .sidebar button.palette-trigger > .with-icon {
+    font-size: 0;
+    gap: 0;
+  }
+  .sidebar button.palette-trigger kbd {
+    display: none;
+  }
+  .sidebar:not([data-menu]) .sidebar-actions,
+  .sidebar:not([data-menu]) .account {
+    display: none;
+  }
 }

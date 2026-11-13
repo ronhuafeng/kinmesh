@@ -15,7 +15,13 @@ import { Avatar, plural, statusLabel, wakeOf } from './ui.js';
 import { CommandPalette } from './palette.js';
 import { NeedsDrawer, attentionCount } from './needs.js';
 import { SettingsDrawer } from './settings.js';
-import { BotIcon, InboxIcon, PersonIcon, SignOutIcon } from './icons.js';
+import {
+  BotIcon,
+  InboxIcon,
+  MenuIcon,
+  PersonIcon,
+  SignOutIcon,
+} from './icons.js';
 import type { Command } from './palette.js';
 type View = 'chat' | 'board' | 'team';
 type Focus =
@@ -59,6 +65,8 @@ function initialSelection() {
 }
 export function App() {
   const [selection, setSelection] = useState(initialSelection);
+  // Phone only: channel actions and the account fold behind a menu button.
+  const [menuOpen, setMenuOpen] = useState(false);
   const [data, setData] = useState<WorkspaceSnapshot | null>(null);
   const [status, setStatus] = useState<
     'loading' | 'ready' | 'offline' | 'signedout'
@@ -375,7 +383,7 @@ export function App() {
               : undefined
           }
         >
-          <aside className="sidebar">
+          <aside className="sidebar" data-menu={menuOpen ? 'open' : undefined}>
             {/* One row says whose workspace this is; search sits right under it. */}
             <div className="sidebar-top">
               <button
@@ -392,6 +400,17 @@ export function App() {
                 <strong>{data.team.name}</strong>
               </button>
               <CommandPalette commands={commands} />
+              <button
+                type="button"
+                className="quiet icon-button sidebar-menu"
+                aria-label="Menu"
+                aria-expanded={menuOpen}
+                onClick={() => {
+                  setMenuOpen((open) => !open);
+                }}
+              >
+                <MenuIcon />
+              </button>
             </div>
             <button
               className="needs-you"
