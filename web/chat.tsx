@@ -75,6 +75,7 @@ function Composer({
     );
     setQuery(null);
   }
+  const narrow = window.matchMedia('(max-width: 720px)').matches;
   return (
     <div className="composer">
       <ActionForm
@@ -168,7 +169,13 @@ function Composer({
                   ? listId + '-' + candidates[active].id
                   : undefined
               }
-              placeholder={'Message #' + channelName}
+              // The shortcuts belong in the placeholder; a phone gets just
+              // the channel, which fits.
+              placeholder={
+                'Message #' +
+                channelName +
+                (narrow ? '' : ' — @ to mention, ⌘/Ctrl+Enter to send')
+              }
               onInput={track}
               onClick={track}
               onBlur={() => {
@@ -226,9 +233,6 @@ function Composer({
           </button>
         </div>
       </ActionForm>
-      <p className="composer-hint" aria-hidden="true">
-        @ to mention · ⌘/Ctrl+Enter to send
-      </p>
     </div>
   );
 }
@@ -382,12 +386,7 @@ export function Chat({
             </Field>
           </ActionForm>
         </details>
-        <details className="channel-details">
-          <summary>Channel details</summary>
-          <details className="technical">
-            <summary>Technical details</summary>
-            <p className="reference">Channel ID: {channel.id}</p>
-          </details>
+        <div className="leave-channel">
           <ActionForm
             title="Channel membership"
             path={channelPath + '/leave'}
@@ -395,7 +394,7 @@ export function Chat({
             submit="Leave channel"
             onDone={onLeave}
           />
-        </details>
+        </div>
       </div>
       {pagedBack && (
         <button className="quiet page-control" onClick={firstPage}>
