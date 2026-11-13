@@ -6,13 +6,12 @@ Running Kinmesh, its Inbox worker and Team MCP; the live gates against real T3; 
 
 `npm start` applies migrations, then listens on `127.0.0.1:${KINMESH_PORT}`. It runs from source with the development dependencies installed by `npm ci`; keep `drizzle/` beside `src/`. `npm run build` also compiles a standalone server (`dist/src/server/main.js`) with staged assets and migrations. Without built assets, `/` returns 503 while the API keeps working. For UI work, run `npm run web:watch` beside `npm start` and reload after each build.
 
-| Variable                                      | Meaning                                                                                 |
-| --------------------------------------------- | --------------------------------------------------------------------------------------- |
-| `KINMESH_SETUP_TOKEN`, `KINMESH_SESSION_KEY`  | Required; 64 lowercase hex characters each; `npm run setup` writes them to `.env`       |
-| `KINMESH_DATABASE`                            | SQLite file (default `.store/kinmesh.sqlite`)                                           |
-| `KINMESH_ORIGIN`, `KINMESH_PORT`              | Public origin (an HTTPS origin, or exactly `http://127.0.0.1:<port>`) and listener port |
-| `KINMESH_INBOX_CONFIG`                        | Optional operator worker configuration (below)                                          |
-| `KINMESH_T3_ENDPOINT`, `KINMESH_T3_AUTH_FILE` | Optional [native observer](t3.md#native-observer); both or neither                      |
+| Variable                                     | Meaning                                                                                 |
+| -------------------------------------------- | --------------------------------------------------------------------------------------- |
+| `KINMESH_SETUP_TOKEN`, `KINMESH_SESSION_KEY` | Required; 64 lowercase hex characters each; `npm run setup` writes them to `.env`       |
+| `KINMESH_DATABASE`                           | SQLite file (default `.store/kinmesh.sqlite`)                                           |
+| `KINMESH_ORIGIN`, `KINMESH_PORT`             | Public origin (an HTTPS origin, or exactly `http://127.0.0.1:<port>`) and listener port |
+| `KINMESH_INBOX_CONFIG`                       | Optional operator worker configuration (below)                                          |
 
 `npm start` reads `.env` if present; managed deployments may inject the same variables instead. Missing or malformed values fail startup.
 
@@ -230,7 +229,7 @@ Both manual workflows check, before checkout, that the dispatcher and any rerun 
 
 ### Live collaboration
 
-`Live collaboration` installs pinned T3, Codex and Grok releases (`tests/live/install.sh`; T3 and Grok checksum-verified) and runs, per executor, the complete workflow in disposable state: browser owner setup, T3 OAuth from the workspace with separate Read only and Supervised grants, a Developer and a Reviewer through two full task cycles including human rework, a worker killed under a live lease and recovered, T3 stopped and restarted, replayed submissions, denied agent acceptance and spoofed headers, a Kinmesh restart, human acceptance, the native observer and revoked grants. Cleanup failure fails the job. It uses the `live` Environment secrets `LLM_API_KEY`, `CODEX_BASE_URL` and `GROK_BASE_URL`, given only to the test step. The simulated human's decisions test permissions, not product acceptance. Only `.live-evidence/*.json` (commit, versions, outcomes, hashed correlations, failure stage, cleanup) is uploaded; logs, prompts, tokens and databases are not.
+`Live collaboration` installs pinned T3, Codex and Grok releases (`tests/live/install.sh`; T3 and Grok checksum-verified) and runs, per executor, the complete workflow in disposable state: browser owner setup, T3 OAuth from the workspace with separate Read only and Supervised grants, a Developer and a Reviewer through two full task cycles including human rework, a worker killed under a live lease and recovered, T3 stopped and restarted, replayed submissions, denied agent acceptance and spoofed headers, a Kinmesh restart, human acceptance, checking a run in T3 and revoked grants. Cleanup failure fails the job. It uses the `live` Environment secrets `LLM_API_KEY`, `CODEX_BASE_URL` and `GROK_BASE_URL`, given only to the test step. The simulated human's decisions test permissions, not product acceptance. Only `.live-evidence/*.json` (commit, versions, outcomes, hashed correlations, failure stage, cleanup) is uploaded; logs, prompts, tokens and databases are not.
 
 To run it locally on a trusted machine: Node 24, the three secrets, `KINMESH_LIVE_EXECUTOR=codex` or `grok`, absolute `KINMESH_T3_BINARY`, `KINMESH_CODEX_BINARY` and `KINMESH_GROK_BINARY`, Chromium, a build, a free `127.0.0.1:49871`, and no unrelated `.env`; then `npm run test:collaboration-live`. Dispatch on GitHub with `gh workflow run live.yml --ref main`.
 

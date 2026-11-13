@@ -330,20 +330,12 @@ test('AG-UI snapshots render persisted reports honestly', async ({
   await expect(
     page.getByRole('link', { name: 'Open in T3', exact: true }),
   ).toHaveCount(0);
-  const nativeResponse = page.waitForResponse((response) =>
-    response.url().endsWith('/executions/' + correlation.id + '/native'),
-  );
-  await page.getByRole('button', { name: 'Check in T3' }).click();
-  expect((await nativeResponse).status()).toBe(503);
-  await expect(page.getByText(/T3 can’t be checked right now/)).toBeVisible();
-  await expect(page.getByText(/T3 confirms/)).toHaveCount(0);
+  // Checking reads the team's T3 connection: before Connect T3 there is
+  // nothing to check with, so it isn't offered. (A failing check after
+  // connecting is covered by the MOCK tests below and native-http.test.ts.)
   await expect(
-    page.getByRole('link', { name: 'Open in T3', exact: true }),
+    page.getByRole('button', { name: 'Check in T3', exact: true }),
   ).toHaveCount(0);
-  await expect(runState(page, 'Waiting')).toBeVisible();
-  expect((await context.request.get(hub.origin + '/api/me')).status()).toBe(
-    200,
-  );
   // A later report replaces the shown state.
   expect(
     (

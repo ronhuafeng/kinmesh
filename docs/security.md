@@ -47,7 +47,7 @@ For agents connected from the workspace, the hub holds the worker's Kinmesh toke
 - T3 OAuth credential files are 0600, outside the repository, owned by the service user; loading rejects symlinks and shared, executable, oversized or wrong-endpoint files, and any scope beyond `orchestration:read` and `orchestration:operate`.
 - Kinmesh asks for Supervised (`approval-required`) authority, never Full access, and never approves on the owner's behalf. Authorization URLs and callback values are never printed to logs; manual mode writes only to the controlling terminal. Never paste pairing codes, callback URLs or tokens into chat, issues or prompts.
 - Workers never open consent or widen authority. A frozen delivery cannot move to a different T3 authority unless it provably never reached T3.
-- The native observer reads only, with an endpoint and credential fixed by server configuration, and returns one generic error for every native failure. It shows a T3 link only after validating it against the configured origin and the exact thread.
+- **Check in T3** reads only, through the team's T3 connection; nothing in the request chooses the endpoint, credential, environment or thread. Every native failure is one generic error, and a T3 link is shown only after validating it against the team's T3 origin and the exact thread.
 - The workspace probe for a local T3 contacts only `127.0.0.1:3773`.
 
 ## Team MCP

@@ -73,7 +73,7 @@ function NativeStatus({
         onAccessLoss();
       } else {
         setError(
-          'T3 can’t be checked right now. The team owner can set up a T3 observer, or try again when T3 is reachable.',
+          'T3 can’t be checked right now. Try again when T3 is reachable.',
         );
       }
     } finally {
@@ -85,17 +85,21 @@ function NativeStatus({
   return (
     <div className="native-status">
       <span className="run-actions" role="cell">
-        <button
-          type="button"
-          className="link-button"
-          disabled={busy}
-          aria-busy={busy}
-          onClick={() => {
-            void check();
-          }}
-        >
-          Check in T3
-        </button>
+        {/* Checking reads the team's T3 connection; before Connect T3 there
+            is nothing to check with, so it isn't offered. */}
+        {trustedOrigin && (
+          <button
+            type="button"
+            className="link-button"
+            disabled={busy}
+            aria-busy={busy}
+            onClick={() => {
+              void check();
+            }}
+          >
+            Check in T3
+          </button>
+        )}
         {observation?.verifiedUrl && (
           <a
             href={observation.verifiedUrl}

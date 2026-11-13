@@ -2,17 +2,31 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { chmodSync, writeFileSync } from 'node:fs';
-import { join } from 'node:path';
 import Database from 'better-sqlite3';
 import { agentFixture, profileInput } from './agent-helpers.js';
-import { fixture } from './helpers.js';
 import { mockNativeServer } from './native-helpers.js';
 import { reference } from './t3-helpers.js';
 import { saveCredential } from '../src/adapters/t3/oauth.js';
 import { readNativeExecution } from '../src/workspace/native.js';
 import { NativeObservation } from '../src/workspace/contracts.js';
+import {
+  managedDirectory,
+  privateDirectory,
+  t3AuthFile,
+} from '../src/inbox/managed.js';
 
-await test('native HTTP: missing optional configuration is 503 without expiring owner; exact owner scope precedes availability', async () => {
+/** Record the team's T3 connection; returns where its credential lives. */
+function connectTeam(
+  f: Awaited<ReturnType<typeof agentFixture>>,
+  endpoint: string,
+) {
+  f.store.managed.saveConnection(f.principal, f.teamId, endpoint, 'env-one');
+  const directory = managedDirectory(f.dbPath);
+  privateDirectory(directory);
+  return t3AuthFile(directory);
+}
+
+await test('native HTTP: without a team T3 connection it is 503 without expiring the owner; exact owner scope precedes availability', async () => {
   const f = await agentFixture();
   try {
     const execution = await f.execution();
@@ -83,11 +97,9 @@ await test('native HTTP: missing optional configuration is 503 without expiring 
 
 await test('MOCK HTTP: private credential/issuer/environment failures return generic 503 before any external request', async () => {
   const mock = await mockNativeServer();
-  const files = fixture();
-  const authFile = join(files.directory, 'MOCK-observer.json');
-  const f = await agentFixture({
-    nativeT3: { endpoint: mock.endpoint, authFile },
-  });
+  const f = await agentFixture();
+  // The team's own T3 connection, as Connect T3 leaves it.
+  const authFile = connectTeam(f, mock.endpoint);
   try {
     const execution = await f.execution();
     const url = f.path + '/executions/' + execution.id + '/native';
@@ -123,19 +135,14 @@ await test('MOCK HTTP: private credential/issuer/environment failures return gen
     assert.equal(mock.requests.length, 0);
   } finally {
     await f.dispose();
-    files.cleanup();
     await mock.close();
   }
 });
 
 await test('MOCK SDK/HTTP: official protocol reads only two tools, validates returned link and hides upstream auth/status errors', async () => {
   const mock = await mockNativeServer();
-  const files = fixture();
-  const authFile = join(files.directory, 'MOCK-observer.json');
-  saveCredential(authFile, mock.credential);
-  const f = await agentFixture({
-    nativeT3: { endpoint: mock.endpoint, authFile },
-  });
+  const f = await agentFixture();
+  saveCredential(connectTeam(f, mock.endpoint), mock.credential);
   try {
     const execution = f.store.agents.correlate(
       f.principal,
@@ -236,7 +243,6 @@ await test('MOCK SDK/HTTP: official protocol reads only two tools, validates ret
     }
   } finally {
     await f.dispose();
-    files.cleanup();
     await mock.close();
   }
 });

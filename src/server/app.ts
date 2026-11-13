@@ -4,7 +4,7 @@ import { registerTasks } from './tasks.js';
 import { registerCommunication } from './communication.js';
 import { registerAgents } from './agents.js';
 import { defaultHub, registerConnect, type Hub } from './connect.js';
-import { managedDirectory } from '../inbox/managed.js';
+import { managedDirectory, t3AuthFile } from '../inbox/managed.js';
 import { credentialMark, resolvePrincipal } from './principals.js';
 import { IdentityError } from '../domain/agents.js';
 import { z } from 'zod';
@@ -230,7 +230,7 @@ export async function createApp(
   registerConnect(app, store, hub);
   registerCommunication(app, store);
   registerTasks(app, store);
-  registerWorkspace(app, store, config);
+  registerWorkspace(app, store, t3AuthFile(hub.directory));
   await registerWeb(app);
   await app.register((protectedApi, _options, done) => {
     protectedApi.get('/api/me', (request) => {
