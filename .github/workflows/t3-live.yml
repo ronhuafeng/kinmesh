@@ -23,7 +23,7 @@ jobs:
     needs: authorize-dispatch
     # Dedicated trusted runner configured by owner with private OAuth files outside the checkout.
     # Never expose its credentials to automatic PR events or unreviewed code.
-    # Owner must prepare KINMESH_RELEASE_LIVE=1 + KINMESH_RELEASE_CONFIG per docs/release-check.md.
+    # Owner must prepare KINMESH_RELEASE_LIVE=1 + KINMESH_RELEASE_CONFIG per docs/operations.md (Release check).
     runs-on: [self-hosted, kinmesh-t3-acceptance]
     steps:
       # Check the requested ref before checking out or executing repository code.
