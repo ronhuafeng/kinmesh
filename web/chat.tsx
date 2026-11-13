@@ -3,12 +3,13 @@ import { z } from 'zod';
 import type { Agent } from '../src/domain/agents.js';
 import type { Message } from '../src/domain/communication.js';
 import type { WorkspaceSnapshot } from '../src/workspace/contracts.js';
-import { value } from './api.js';
+import { useAction, value } from './api.js';
 import { ActionForm, Field } from './forms.js';
 import { authorName } from './names.js';
 import { Avatar, shortTime, wakeOf } from './ui.js';
 import { DeliveryLine } from './deliveries.js';
 import { Markdown } from './markdown.js';
+import { PlusIcon } from './icons.js';
 import { ReplyOrigin, answerOnly } from './replies.js';
 import type { DeliveryView } from './deliveries.js';
 
@@ -236,6 +237,71 @@ function Composer({
     </div>
   );
 }
+/** A topic starts from a "+" after the topics: one field, Enter creates it. */
+function NewTopic({
+  channelPath,
+  onDone,
+}: {
+  channelPath: string;
+  onDone: () => void;
+}) {
+  const action = useAction();
+  const [open, setOpen] = useState(false);
+  if (!open)
+    return (
+      <button
+        type="button"
+        className="quiet icon-button topic-add"
+        aria-label="Start a topic"
+        title="Start a topic"
+        onClick={() => {
+          setOpen(true);
+        }}
+      >
+        <PlusIcon />
+      </button>
+    );
+  return (
+    <form
+      className="topic-new"
+      aria-label="New topic"
+      onSubmit={(event) => {
+        event.preventDefault();
+        const title = value(new FormData(event.currentTarget), 'title').trim();
+        if (!title || action.disabled) return;
+        void action.send(channelPath + '/topics', { title }).then((ok) => {
+          if (!ok) return;
+          setOpen(false);
+          onDone();
+        });
+      }}
+    >
+      <input
+        name="title"
+        aria-label="Topic title"
+        placeholder="New topic"
+        maxLength={160}
+        required
+        autoFocus
+        disabled={action.busy}
+        onKeyDown={(event) => {
+          if (event.key !== 'Escape') return;
+          event.preventDefault();
+          setOpen(false);
+        }}
+        onBlur={(event) => {
+          if (!event.currentTarget.value.trim() && !action.error)
+            setOpen(false);
+        }}
+      />
+      {action.error && (
+        <span className="topic-error" role="alert">
+          {action.error}
+        </span>
+      )}
+    </form>
+  );
+}
 /** Remembers which messages were already shown so new arrivals can be marked. */
 function useArrivals(channelId: string, messages: ChatMessage[], me: string) {
   const seen = useRef<{ channel: string; ids: Set<string> } | null>(null);
@@ -371,21 +437,8 @@ export function Chat({
               More topics
             </button>
           )}
+          <NewTopic channelPath={channelPath} onDone={onDone} />
         </div>
-        <details className="create-panel topic-create">
-          <summary>Start a topic</summary>
-          <ActionForm
-            title="New topic"
-            path={channelPath + '/topics'}
-            submit="Create topic"
-            build={(f) => ({ title: value(f, 'title') })}
-            onDone={onDone}
-          >
-            <Field label="Topic title">
-              <input name="title" required maxLength={160} />
-            </Field>
-          </ActionForm>
-        </details>
         <div className="leave-channel">
           <ActionForm
             title="Channel membership"

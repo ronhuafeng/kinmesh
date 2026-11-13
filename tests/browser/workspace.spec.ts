@@ -147,11 +147,9 @@ for (const width of [1440, 375]) {
     ).toBeVisible();
     await register(page, 'Ada', 'developer');
     await page.getByRole('tab', { name: 'Chat', exact: true }).click();
-    await page.getByText('Start a topic', { exact: true }).click();
+    await page.getByRole('button', { name: 'Start a topic' }).click();
     await page.getByLabel('Topic title').fill('Release planning');
-    await page
-      .getByRole('button', { name: 'Create topic', exact: true })
-      .click();
+    await page.getByLabel('Topic title').press('Enter');
     const topics = page.getByRole('group', { name: 'Topics' });
     await topics
       .getByRole('button', { name: 'Release planning', exact: true })
@@ -510,9 +508,9 @@ test('keyboard mention, message becomes a task in its topic, and the board filte
   await expect(adaRow.getByText('Can be woken', { exact: true })).toBeVisible();
   await expect(page.getByText(/No agent can be woken yet/)).toHaveCount(0);
   await page.getByRole('tab', { name: 'Chat', exact: true }).click();
-  await page.getByText('Start a topic', { exact: true }).click();
+  await page.getByRole('button', { name: 'Start a topic' }).click();
   await page.getByLabel('Topic title').fill('Billing');
-  await page.getByRole('button', { name: 'Create topic', exact: true }).click();
+  await page.getByLabel('Topic title').press('Enter');
   await page
     .getByRole('group', { name: 'Topics' })
     .getByRole('button', { name: 'Billing', exact: true })

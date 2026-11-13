@@ -1038,15 +1038,35 @@ button.person[aria-pressed='true'] {
   border-color: transparent;
   background: transparent;
 }
-.topic-create {
-  margin: 0;
+.topic-pills {
+  align-items: center;
 }
-.topic-create > summary {
-  padding: 0.25rem 0;
-  font-size: 0.85rem;
+/* "+" is a pill-sized circle at the end of the topics. */
+.topic-pills button.topic-add {
+  display: inline-grid;
+  place-items: center;
+  width: 1.75rem;
+  height: 1.75rem;
+  padding: 0;
+  border-style: dashed;
 }
-.topic-create[open] {
-  flex-basis: 100%;
+/* The new topic is typed in place, shaped like the pill it becomes. */
+.topic-new {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+.topic-new input {
+  width: 11rem;
+  min-height: 0;
+  height: 1.75rem;
+  padding: 0 0.8rem;
+  border-radius: 999px;
+  font-size: 0.82rem;
+}
+.topic-error {
+  font-size: 0.78rem;
+  color: var(--danger);
 }
 .messages {
   list-style: none;
@@ -3193,15 +3213,8 @@ button.icon-button:hover:not(:disabled) {
     margin-top: auto;
   }
 }
-/* Start a topic and Leave channel: one line, one size. */
 .topic-bar {
   align-items: center;
-}
-.topic-bar .create-panel > summary {
-  /* Same type, same box: they read as one row of controls. */
-  font-size: 0.82rem;
-  line-height: 1.75rem;
-  padding: 0;
 }
 /* Sidebar rows share one inner right edge for counts and icons, and the
    human row has the same (invisible) border as the agent rows. */
