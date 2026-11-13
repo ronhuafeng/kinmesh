@@ -381,13 +381,8 @@ export function App() {
           }
         >
           <aside className="sidebar">
+            {/* One row says whose workspace this is; search sits right under it. */}
             <div className="sidebar-top">
-              <a className="brand" href="/" aria-label="Kinmesh home">
-                <span className="brand-mark" aria-hidden="true">
-                  k
-                </span>
-                <span>kinmesh</span>
-              </a>
               <button
                 type="button"
                 className="team-name"
@@ -399,11 +394,9 @@ export function App() {
                 <span className="team-icon" aria-hidden="true">
                   {data.team.name.slice(0, 1).toUpperCase()}
                 </span>
-                <div>
-                  <strong>{data.team.name}</strong>
-                  <small>Team workspace</small>
-                </div>
+                <strong>{data.team.name}</strong>
               </button>
+              <CommandPalette commands={commands} />
             </div>
             <button
               className="needs-you"
@@ -532,11 +525,8 @@ export function App() {
                   setFocus({ kind: 'settings' });
                 }}
               >
-                <Avatar kind="human" name={data.human.username} />
-                <span>
-                  {data.human.username}
-                  <small>Human owner</small>
-                </span>
+                <Avatar kind="human" name={data.human.username} size="sm" />
+                <span>{data.human.username}</span>
               </button>
               <button
                 className="quiet"
@@ -600,7 +590,6 @@ export function App() {
                   </Tabs.Trigger>
                   <Tabs.Trigger value="team">Team</Tabs.Trigger>
                 </Tabs.List>
-                <CommandPalette commands={commands} />
                 {/* Healthy is silent: the pill appears only when something is off. */}
                 {connection !== 'ready' && (
                   <div className="connection" data-state={connection}>
