@@ -576,9 +576,8 @@ test('complete real two-agent workflow, Human rework/acceptance, recovery and au
     enter('native-read-only-oauth');
     const read = await native.oauth(true);
     assert.ok(!read.tokens.scope?.split(' ').includes('orchestration:operate'));
-    // Supply the independent Read only observer before the product starts its managed worker.
-    await hub.process?.stop();
-    await hub.start();
+    // The harness reads T3 with its own Read only grant; the product checks
+    // runs through the team's connection made with Connect T3.
     store = openStore(hub.database);
     db = new Database(hub.database, { readonly: true });
     await connectRead(read);

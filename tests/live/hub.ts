@@ -87,12 +87,6 @@ export class Hub {
       KINMESH_SESSION_KEY: this.session,
       KINMESH_ORIGIN: this.origin,
       KINMESH_PORT: new URL(this.origin).port,
-      ...(existsSync(join(this.root, 'read-only.json'))
-        ? {
-            KINMESH_T3_ENDPOINT: this.native.endpoint,
-            KINMESH_T3_AUTH_FILE: join(this.root, 'read-only.json'),
-          }
-        : {}),
     };
     this.process = new Process(
       'npm',

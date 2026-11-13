@@ -55,6 +55,13 @@ export function managedRepository(
       owner(p, teamId);
       return connection(teamId);
     },
+    /**
+     * The one T3 a team uses, for reads the caller has already authorized
+     * (the workspace snapshot, checking a run): no secrets in the row.
+     */
+    teamConnection(teamId: TeamId) {
+      return connection(teamId);
+    },
     saveConnection(
       p: Principal,
       teamId: TeamId,

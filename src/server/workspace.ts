@@ -6,7 +6,6 @@ import { IdentityError } from '../domain/agents.js';
 import { TopicId, memberKey } from '../domain/communication.js';
 import { INBOX_LIVENESS_MS } from '../domain/inbox.js';
 import type { Store } from '../persistence/store.js';
-import type { Config } from './config.js';
 import { loadCredential } from '../adapters/t3/oauth.js';
 import { readNativeExecution } from '../workspace/native.js';
 import { WorkspaceSnapshot, executionEvent } from '../workspace/contracts.js';
@@ -19,10 +18,14 @@ const Query = z.strictObject({
   topicsCursor: z.string().min(1).max(2048).optional(),
   channelsCursor: z.string().min(1).max(2048).optional(),
 });
+/**
+ * `t3CredentialFile` is the team's T3 credential, the one approved in the
+ * workspace: checking a run reads T3 through the same connection agents use.
+ */
 export function registerWorkspace(
   app: FastifyInstance,
   store: Store,
-  config: Config,
+  t3CredentialFile: string,
 ) {
   app.get(
     '/api/teams/:teamId/agents/:agentId/executions/:executionId/native',
@@ -46,10 +49,11 @@ export function registerWorkspace(
         executionId,
       );
       try {
-        if (!config.nativeT3) throw new Error('Unavailable');
+        const connection = store.managed.teamConnection(teamId);
+        if (!connection) throw new Error('Unavailable');
         const credential = loadCredential(
-          config.nativeT3.authFile,
-          config.nativeT3.endpoint,
+          t3CredentialFile,
+          connection.endpoint,
         );
         if (credential.environmentId !== correlation.reference.environmentId)
           throw new Error('Unavailable');
@@ -189,11 +193,11 @@ export function registerWorkspace(
         )
         .map((q) => ({ agentId: q.agentId, queued: q.count })),
     };
+    const t3 = store.managed.teamConnection(teamId);
+    const t3Origin = t3 ? new URL(t3.endpoint).origin : null;
     return WorkspaceSnapshot.parse({
       observedAt: new Date(now).toISOString(),
-      nativeT3Origin: config.nativeT3
-        ? new URL(config.nativeT3.endpoint).origin
-        : null,
+      nativeT3Origin: t3Origin,
       human,
       team: membership.team,
       channels,
