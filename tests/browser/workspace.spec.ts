@@ -270,9 +270,13 @@ test('two independent task cards: real agent handoff, human review, acceptance a
     await betaPage
       .getByRole('button', { name: 'Request rework', exact: true })
       .click();
+    // Sent back, the task's progress returns to Working. The acceptor can
+    // still ask for rework, so the button rightly stays.
     await expect(
-      betaPage.getByRole('button', { name: 'Request rework', exact: true }),
-    ).toHaveCount(0);
+      betaPage
+        .getByRole('list', { name: 'Task progress' })
+        .locator('[aria-current="step"]'),
+    ).toHaveText('Working');
     await backToBoard(page);
     // Sent back is still Working, and the card says so in words.
     await expect(inStage(page, 'Working', 'Ship beta')).toBeVisible();
