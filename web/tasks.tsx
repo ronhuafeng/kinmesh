@@ -14,7 +14,7 @@ import type { WorkspaceSnapshot } from '../src/workspace/contracts.js';
 import { api, Offline, value } from './api.js';
 import { ActionForm, Field, Notice, SubmitGroup } from './forms.js';
 import { DeliveryLine, taskDeliveries } from './deliveries.js';
-import { age, Avatar, Drawer, shortTime, StatusChip } from './ui.js';
+import { ago, Avatar, Drawer, shortTime, StatusChip } from './ui.js';
 import type { Status } from './ui.js';
 
 export function memberFrom(value: string): Member | null {
@@ -54,6 +54,8 @@ export type StageId = 'proposed' | 'working' | 'review' | 'sign-off' | 'done';
 export const stages: readonly {
   id: StageId;
   label: string;
+  /** For the narrow progress bar in the task drawer. */
+  short?: string;
   /** Reuses the status colour token of the stage's main status. */
   tone: Status;
   statuses: readonly Status[];
@@ -79,6 +81,7 @@ export const stages: readonly {
   {
     id: 'sign-off',
     label: 'Human sign-off',
+    short: 'Sign-off',
     tone: 'awaiting-human',
     statuses: ['awaiting-human'],
   },
@@ -117,7 +120,7 @@ function Lifecycle({ status }: { status: Status }) {
           }
           aria-current={index === current ? 'step' : undefined}
         >
-          <span>{stage.label}</span>
+          <span title={stage.label}>{stage.short ?? stage.label}</span>
         </li>
       ))}
     </ol>
@@ -708,17 +711,24 @@ function TaskCard({
   onOpen: () => void;
 }) {
   const ask = humanAsk(task, data);
+  const card = useRef<HTMLElement | null>(null);
+  // The open task's card stays in view beside its drawer (once, on opening).
+  useEffect(() => {
+    if (selected)
+      card.current?.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+  }, [selected]);
   return (
     <article
       className="task-card"
+      ref={(el) => {
+        card.current = el;
+        // Lets a status change travel between columns as one element.
+        el?.style.setProperty('view-transition-name', 'task-' + task.id);
+      }}
       data-status={task.state.status}
       data-ask={ask ? 'true' : undefined}
       data-selected={selected ? 'true' : undefined}
       aria-label={task.title}
-      ref={(el) => {
-        // Lets a status change travel between columns as one element.
-        el?.style.setProperty('view-transition-name', 'task-' + task.id);
-      }}
     >
       <header>
         <span className="task-number">#{task.position}</span>
@@ -745,13 +755,7 @@ function TaskCard({
           <MemberAvatar member={task.state.reviewer} data={data} />
         </span>
         <small>
-          {task.criteria.length === 1
-            ? '1 criterion'
-            : `${String(task.criteria.length)} criteria`}
-          {' · '}
-          <time dateTime={task.updatedAt} title="Last change">
-            {age(task.updatedAt)}
-          </time>
+          <time dateTime={task.updatedAt}>updated {ago(task.updatedAt)}</time>
         </small>
       </footer>
     </article>
