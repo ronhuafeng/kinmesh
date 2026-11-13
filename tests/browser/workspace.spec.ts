@@ -1307,7 +1307,7 @@ test('the owner renames the team and changes the password; other sessions end', 
   await other.close();
 });
 
-test('ambiguous login retry retains original request and login completion after switching to setup', async ({
+test('ambiguous login retry retains original request; setup is not offered once a team exists', async ({
   page,
   hub,
 }) => {
@@ -1350,10 +1350,10 @@ test('ambiguous login retry retains original request and login completion after 
   await expect(
     page.getByRole('button', { name: 'Retry same action' }),
   ).toBeVisible();
-  await page.getByRole('tab', { name: 'First owner setup' }).click();
+  // A team exists, so setup is not offered at all.
   await expect(
-    page.getByRole('button', { name: 'Create owner and team' }),
-  ).toBeDisabled();
+    page.getByRole('tab', { name: 'First owner setup' }),
+  ).toHaveCount(0);
   expect(attempts).toBe(1);
   await page.getByRole('button', { name: 'Retry same action' }).click();
   await expect(page.getByRole('heading', { name: '# general' })).toBeVisible();

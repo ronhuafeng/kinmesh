@@ -3124,6 +3124,9 @@ button.icon-button:hover:not(:disabled) {
 .delivery > .link-button {
   flex: 1 1 0;
   min-width: 0;
+  /* The sentence starts right after its dot, never centred away from it. */
+  text-align: left;
+  justify-content: flex-start;
 }
 .sidebar button.sidebar-menu {
   display: none;
@@ -3166,4 +3169,66 @@ button.icon-button:hover:not(:disabled) {
 }
 .team-sketch {
   padding-bottom: 1rem;
+}
+/* ------------------------------------------------------------------
+ * Alignment and balance (measured, not eyeballed)
+ * ------------------------------------------------------------------ */
+/* Every block in the main column starts at the same left edge: a message's
+   hover padding hangs outside it rather than indenting the avatar. */
+.messages > li {
+  margin-inline: -0.5rem;
+}
+/* The chat fills the window: messages settle above a composer that sits at
+   the bottom, as in any conversation, instead of floating mid-page. */
+@media (min-width: 721px) {
+  .workspace-tabs > .view-content {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+  }
+  .view-content > [role='tabpanel'][data-state='active'] {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+  }
+  .view-content .conversation {
+    flex: 1;
+  }
+  .conversation > .messages {
+    margin-top: auto;
+  }
+}
+/* Start a topic and Channel details: one line, one size. */
+.topic-bar {
+  align-items: center;
+}
+.topic-bar .create-panel > summary,
+.topic-bar .channel-details > summary {
+  /* Same type, same box: they read as one row of controls. */
+  font-size: 0.82rem;
+  line-height: 1.75rem;
+  padding: 0;
+}
+/* Sidebar rows share one inner right edge for counts and icons, and the
+   human row has the same (invisible) border as the agent rows. */
+.nav-heading {
+  /* The rows below have a 1px border; match their inner edge. */
+  padding: 0 calc(0.6rem + 1px);
+}
+span.person {
+  border: 1px solid transparent;
+}
+.person {
+  padding-inline: 0.6rem;
+}
+.account > button.icon-button {
+  margin-right: 0.25rem;
+}
+/* Board columns are one row of equal height. */
+.board {
+  align-items: stretch;
+}
+/* Settings: no rule after the last section. */
+.settings-form:last-child {
+  border-bottom: 0;
 }
