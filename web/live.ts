@@ -24,7 +24,7 @@ export interface Live extends Reading {
   reads: Record<PageResource, number>;
 }
 export const LiveContext = createContext<Live>({
-  reads: { t3: 0, runs: 0 },
+  reads: { t3: 0, runs: 0, grants: 0 },
   begin: () => undefined,
   settle: () => undefined,
   drop: () => undefined,
@@ -43,6 +43,7 @@ export function useRevisions(readWorkspace: () => void) {
   const [reads, setReads] = useState<Record<PageResource, number>>({
     t3: 0,
     runs: 0,
+    grants: 0,
   });
   const readAgain = useCallback(
     (resource: Resource) => {
@@ -85,7 +86,7 @@ export function useRevisions(readWorkspace: () => void) {
   );
   /** The person asked to read everything on screen again. */
   const readAll = useCallback(() => {
-    setReads((r) => ({ t3: r.t3 + 1, runs: r.runs + 1 }));
+    setReads((r) => ({ t3: r.t3 + 1, runs: r.runs + 1, grants: r.grants + 1 }));
   }, []);
   const live = useMemo<Live>(
     () => ({ reads, begin, settle, drop }),

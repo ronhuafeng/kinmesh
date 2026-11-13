@@ -444,8 +444,10 @@ export class Hub {
             token,
             ...(existsSync(managed) ? [loadAgentToken(managed)] : []),
           ];
-          const grants = z
-            .array(Grant.omit({ agentId: true, teamId: true }))
+          const { grants } = z
+            .object({
+              grants: z.array(Grant.omit({ agentId: true, teamId: true })),
+            })
             .parse(
               await this.api(
                 `/api/teams/${this.teamId}/agents/${profile.id}/grants`,

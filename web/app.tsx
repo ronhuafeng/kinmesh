@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { flushSync } from 'react-dom';
 import * as Tabs from '@radix-ui/react-tabs';
-import { AgentId, ChannelId, TaskId } from '../src/domain/contracts.js';
-import { Revisions, pageParam } from '../src/workspace/events.js';
+import { ChannelId, TaskId } from '../src/domain/contracts.js';
+import { PageRef, Revisions, pageParam } from '../src/workspace/events.js';
 import { LiveContext, useRevisions } from './live.js';
 import { Agent } from '../src/domain/agents.js';
 import { TopicId } from '../src/domain/communication.js';
@@ -339,14 +339,22 @@ export function App() {
     };
   }, []);
   // The hub says when what is on screen has changed; nothing is polled.
-  const agentOnScreen = view === 'agent' ? agentId : null;
+  // A page on top shows more than the place; the worker page covers the rest.
+  const pageOnScreen = useMemo(() => {
+    const page = PageRef.safeParse(
+      focus?.kind === 'worker'
+        ? { kind: 'worker', id: focus.id }
+        : view === 'agent'
+          ? { kind: 'agent', id: agentId }
+          : null,
+    );
+    return page.success ? pageParam(page.data) : null;
+  }, [focus, view, agentId]);
   const live = status !== 'signedout' && loadedPlace === place;
   useEffect(() => {
     if (!live) return;
     const query = new URLSearchParams(place);
-    const agent = AgentId.safeParse(agentOnScreen);
-    if (agent.success)
-      query.set('page', pageParam({ kind: 'agent', id: agent.data }));
+    if (pageOnScreen) query.set('page', pageOnScreen);
     const events = new EventSource('/api/events?' + query.toString());
     let lost = false;
     events.addEventListener('revisions', (event) => {
@@ -373,7 +381,7 @@ export function App() {
       events.close();
       window.removeEventListener('online', refresh);
     };
-  }, [live, place, agentOnScreen, refresh, receive, streamTry]);
+  }, [live, place, pageOnScreen, refresh, receive, streamTry]);
   // While the hub cannot be reached, nothing can say it is back: ask again.
   useEffect(() => {
     if (status !== 'offline') return;

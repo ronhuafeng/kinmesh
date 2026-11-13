@@ -8,18 +8,22 @@ import { Revision, WorkspaceQuery } from './contracts.js';
  * - `workspace`: `GET /api/workspace?{place}`
  * - `t3`: `GET /api/teams/:teamId/t3`
  * - `runs`: `GET /api/agui/:teamId/:agentId`
+ * - `grants`: `GET /api/teams/:teamId/agents/:agentId/grants`
  */
-export const Resource = z.enum(['workspace', 't3', 'runs']);
+export const Resource = z.enum(['workspace', 't3', 'runs', 'grants']);
 export type Resource = z.infer<typeof Resource>;
 
 /** A page open on top of the place, which shows more than the workspace. */
 export const PageRef = z.discriminatedUnion('kind', [
   z.strictObject({ kind: z.literal('agent'), id: AgentId }),
+  /** The page for running an agent's worker yourself. */
+  z.strictObject({ kind: z.literal('worker'), id: AgentId }),
 ]);
 export type PageRef = z.infer<typeof PageRef>;
 /** The resources each page adds to the workspace. */
 const PAGE_RESOURCES = {
   agent: ['t3', 'runs'],
+  worker: ['grants'],
 } as const satisfies Record<PageRef['kind'], readonly Resource[]>;
 
 /** What one stream watches: the place on screen, and the page open on it. */
@@ -55,6 +59,7 @@ export const Revisions = z
     workspace: Revision.optional(),
     t3: Revision.optional(),
     runs: Revision.optional(),
+    grants: Revision.optional(),
   })
   .refine((revisions) => Object.keys(revisions).length > 0);
 export type Revisions = z.infer<typeof Revisions>;
