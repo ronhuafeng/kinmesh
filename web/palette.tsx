@@ -1,4 +1,5 @@
 import { useEffect, useId, useRef, useState } from 'react';
+import { SearchIcon } from './icons.js';
 
 export interface Command {
   id: string;
@@ -64,7 +65,10 @@ export function CommandPalette({ commands }: { commands: Command[] }) {
         aria-keyshortcuts="Meta+K Control+K"
         onClick={open}
       >
-        <span>Jump to…</span>
+        <span className="with-icon">
+          <SearchIcon />
+          Jump to…
+        </span>
         <kbd>⌘K</kbd>
       </button>
       <dialog
