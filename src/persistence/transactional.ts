@@ -1,13 +1,24 @@
 import { createHash } from 'node:crypto';
-import { and, eq } from 'drizzle-orm';
+import { and, eq, sql } from 'drizzle-orm';
 import type { BetterSQLite3Database } from 'drizzle-orm/better-sqlite3';
 import { z } from 'zod';
 import * as s from './schema.js';
 import { IdentityError } from '../domain/agents.js';
 import { PageInput, pageOf } from '../domain/communication.js';
+import type { Reference } from '../domain/execution.js';
 const decode = (value: string): unknown => JSON.parse(value);
 export const fingerprint = (value: unknown) =>
   createHash('sha256').update(JSON.stringify(value)).digest('hex');
+/** Evaluate time inside SQLite, including after waiting for another writer. */
+export const sqliteNow = sql`cast(unixepoch('subsec') * 1000 as integer)`;
+/** The persisted key of one native execution (thread, or exact run). */
+export const referenceKey = (ref: Reference) =>
+  fingerprint([
+    ref.backend,
+    ref.environmentId,
+    ref.threadId,
+    ref.runId ?? null,
+  ]);
 export function transactional(db: BetterSQLite3Database<typeof s>) {
   function atomic<T>(action: () => T): T {
     try {

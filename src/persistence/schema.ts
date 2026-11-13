@@ -8,6 +8,7 @@ import {
   uniqueIndex,
   foreignKey,
   index,
+  blob,
 } from 'drizzle-orm/sqlite-core';
 
 export const humans = sqliteTable(
@@ -130,6 +131,28 @@ export const agents = sqliteTable(
       'agent_memory_bound',
       sql`${t.memoryLocation} IS NULL OR length(${t.memoryLocation}) BETWEEN 1 AND 1024`,
     ),
+  ],
+);
+/** An agent's picture: a small raster image, set by the owner or the agent. */
+export const agentAvatars = sqliteTable(
+  'agent_avatars',
+  {
+    agentId: text('agent_id').primaryKey(),
+    teamId: text('team_id').notNull(),
+    mime: text('mime').notNull(),
+    bytes: blob('bytes', { mode: 'buffer' }).notNull(),
+    updatedAt: text('updated_at').notNull(),
+  },
+  (t) => [
+    foreignKey({
+      columns: [t.agentId, t.teamId],
+      foreignColumns: [agents.id, agents.teamId],
+    }).onDelete('cascade'),
+    check(
+      'agent_avatar_mime',
+      sql`${t.mime} IN ('image/png','image/jpeg','image/webp')`,
+    ),
+    check('agent_avatar_size', sql`length(${t.bytes}) BETWEEN 1 AND 131072`),
   ],
 );
 export const agentGrants = sqliteTable(

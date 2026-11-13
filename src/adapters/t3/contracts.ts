@@ -15,6 +15,14 @@ export const Status = z.enum([
   'cancelled',
   'rolled_back',
 ]);
+/** A run in one of these does nothing more. */
+export const TERMINAL: ReadonlySet<string> = new Set([
+  'completed',
+  'failed',
+  'cancelled',
+  'interrupted',
+  'rolled_back',
+]);
 /** Oldest T3 whose MCP contract and native idempotency the adapter was verified against. */
 export const MIN_T3_VERSION = [0, 1, 5] as const;
 /**
@@ -114,6 +122,25 @@ export const Read = z.object({
   nextPosition: z.number().int().nonnegative().nullable(),
   hasMore: z.boolean(),
 });
+/**
+ * The exact run a reference names, as T3 reports it: a run outside the
+ * returned window is 'unobserved', never the thread's latest status. The
+ * model is the run's when T3 returned it, else the thread's.
+ */
+export function selectRun(read: z.infer<typeof Read>, runId?: string) {
+  const run =
+    runId === undefined
+      ? undefined
+      : read.recentRuns.find((r) => r.runId === runId);
+  const status =
+    runId === undefined ? read.thread.status : (run?.status ?? 'unobserved');
+  return {
+    status,
+    terminal: TERMINAL.has(status),
+    providerId: run?.providerInstanceId ?? read.thread.providerInstanceId,
+    modelId: run?.model ?? read.thread.model,
+  };
+}
 export const Waited = z.object({
   threadId: z.string(),
   runId: z.string().nullable(),
@@ -160,6 +187,16 @@ const Envelope = z.object({
     .optional(),
 });
 const NativeFailure = z.object({ code: z.string() });
+/** Every tool the execution backend calls; connect validates exactly these. */
+export const EXECUTION_TOOLS = [
+  't3_environment_read',
+  'orchestrator_capabilities',
+  't3_thread_launch',
+  't3_thread_read',
+  't3_thread_send',
+  't3_thread_wait',
+  't3_thread_interrupt',
+] as const;
 export class ValidatedTools {
   private readonly validators = new Map<
     string,
@@ -168,32 +205,15 @@ export class ValidatedTools {
   constructor(
     readonly wire: Wire,
     discovered: unknown,
-    names: readonly string[] = [
-      't3_environment_read',
-      'orchestrator_capabilities',
-      't3_thread_launch',
-      't3_thread_read',
-      't3_thread_send',
-      't3_thread_wait',
-      't3_thread_interrupt',
-      't3_thread_organize',
-    ],
+    names: readonly string[] = EXECUTION_TOOLS,
   ) {
     const tools = ToolList.parse(discovered).tools;
     const ajv = new Ajv({ strict: false, allErrors: false });
     for (const name of names) {
       const tool = tools.find((t) => t.name === name);
-      if (
-        tool === undefined ||
-        (tool.outputSchema === undefined && name !== 't3_thread_organize')
-      )
+      if (tool?.outputSchema === undefined)
         throw new ExecutionFailure('incompatible');
-      // T3 0.1.5 omits the union outputSchema on organize. Archive returns its documented dispatch sequence.
-      const output =
-        tool.outputSchema ??
-        z.toJSONSchema(z.object({ sequence: z.number().int().nonnegative() }), {
-          target: 'draft-7',
-        });
+      const output = tool.outputSchema;
       if (
         ['t3_thread_launch', 't3_thread_send', 't3_thread_interrupt'].includes(
           name,

@@ -1,16 +1,13 @@
-import type { FastifyInstance, FastifyRequest } from 'fastify';
+import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { TeamId, ChannelId } from '../domain/contracts.js';
 import { IdentityError } from '../domain/agents.js';
 import { PageInput } from '../domain/communication.js';
 import { TaskId, TaskCreate, TaskCommand } from '../domain/tasks.js';
 import type { Store } from '../persistence/store.js';
+import { principal } from './principals.js';
 const ChannelPath = z.object({ teamId: TeamId, channelId: ChannelId });
 const TaskPath = ChannelPath.extend({ taskId: TaskId });
-function principal(request: FastifyRequest) {
-  if (request.principal === null) throw new IdentityError(401);
-  return request.principal;
-}
 export function registerTasks(app: FastifyInstance, store: Store) {
   const base = '/api/teams/:teamId/channels/:channelId/tasks';
   app.post(base, (request, reply) => {

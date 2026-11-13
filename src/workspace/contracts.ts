@@ -4,7 +4,7 @@ import { StateSnapshotEventSchema } from '@ag-ui/core/schemas';
 import { Agent, Correlation, RuntimeEvent } from '../domain/agents.js';
 import { Reference } from '../domain/execution.js';
 import { nativeThreadUrl } from './links.js';
-import { Status } from '../adapters/t3/contracts.js';
+import { Status, TERMINAL } from '../adapters/t3/contracts.js';
 import { Human, Team, AgentId, ChannelId } from '../domain/contracts.js';
 import {
   ChannelView,
@@ -107,6 +107,10 @@ export const WorkspaceSnapshot = z.strictObject({
   teamMcp: z
     .array(z.strictObject({ agentId: AgentId, lastSeenAt: z.iso.datetime() }))
     .max(100),
+  /** Agents with a picture; the image itself is fetched by its own URL. */
+  avatars: z
+    .array(z.strictObject({ agentId: AgentId, updatedAt: z.iso.datetime() }))
+    .max(100),
   messages: pageOf(Message),
   topics: pageOf(Topic),
   tasks: pageOf(Task),
@@ -161,18 +165,9 @@ export const NativeObservation = z
       nativeThreadUrl(value.verifiedUrl, value.reference) !== null,
     { message: 'Invalid native thread URL' },
   )
-  .refine(
-    (value) =>
-      value.terminal ===
-      [
-        'completed',
-        'failed',
-        'cancelled',
-        'interrupted',
-        'rolled_back',
-      ].includes(value.status),
-    { message: 'Inconsistent native terminal state' },
-  );
+  .refine((value) => value.terminal === TERMINAL.has(value.status), {
+    message: 'Inconsistent native terminal state',
+  });
 export type NativeObservation = z.infer<typeof NativeObservation>;
 
 /** Bind every response to the immutable association requested by the browser. */

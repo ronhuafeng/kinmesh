@@ -16,9 +16,12 @@ import {
   INBOX_HEARTBEAT_MS,
   Result,
   NativeTerminalNotice,
+  inboxIntent,
+  type BlockedReason,
   type Claim,
+  type DeliveryReason,
 } from '../domain/inbox.js';
-import { Binding, type WorkerConfig } from './config.js';
+import { WorkerBinding, type WorkerConfig } from './config.js';
 import { agentTokenFile, managedDirectory, t3AuthFile } from './managed.js';
 import type { BackendFactory } from './t3.js';
 
@@ -31,7 +34,7 @@ export async function assistantResult(
 ): Promise<
   | { kind: 'result'; result: Result }
   | { kind: 'terminal-notice'; notice: NativeTerminalNotice }
-  | { kind: 'waiting' | 'uncertain'; reason: string }
+  | { kind: 'waiting' | 'uncertain'; reason: DeliveryReason }
 > {
   let after: number | undefined;
   let selected: Observation['history'][number] | undefined;
@@ -60,11 +63,9 @@ export async function assistantResult(
             ? 'human-or-approval-wait'
             : 'execution-active',
       };
-    if (!['succeeded', 'failed', 'stopped'].includes(observation.state))
-      return { kind: 'uncertain', reason: 'terminal-unmapped' };
     const state = observation.state;
     if (state !== 'succeeded' && state !== 'failed' && state !== 'stopped')
-      throw new ExecutionFailure('incompatible');
+      return { kind: 'uncertain', reason: 'terminal-unmapped' };
     if (terminal !== undefined && terminal !== state)
       throw new ExecutionFailure('incompatible');
     terminal = state;
@@ -114,7 +115,7 @@ export async function assistantResult(
 export async function deliver(
   store: Store,
   claim: Claim,
-  binding: Binding,
+  binding: WorkerBinding,
   factory: BackendFactory,
   stopping: AbortSignal,
 ) {
@@ -176,10 +177,7 @@ export async function deliver(
     let row = store.inbox.get(claim.id);
     // Crash before remember() re-enters the SAME frozen intent; T3Backend returns its durable journal outcome.
     if (row.reference === null) {
-      const intent = {
-        actor: 'inbox-agent:' + claim.agentId,
-        operationKey: 'inbox:' + claim.id,
-      };
+      const intent = inboxIntent(claim.agentId, claim.id);
       const dispatch =
         row.operationId === null
           ? await handle.backend.launch(frozen.input, intent, signal)
@@ -233,20 +231,21 @@ export async function deliver(
           'invalid-input',
         ].includes(error.kind));
     try {
+      const reason: DeliveryReason | BlockedReason = blocked
+        ? error instanceof ExecutionFailure
+          ? ['permission', 'authentication'].includes(error.kind)
+            ? 'native-access'
+            : 'native-incompatible'
+          : store.inbox.blockedCause(claim, () =>
+              loadAgentToken(binding.tokenFile),
+            )
+        : stopping.aborted
+          ? 'worker-stopping'
+          : 'temporarily-unavailable';
       store.inbox.defer(
         claim,
         blocked ? 'blocked' : stage === 'execution' ? 'uncertain' : 'ready',
-        blocked
-          ? error instanceof ExecutionFailure
-            ? ['permission', 'authentication'].includes(error.kind)
-              ? 'native-access'
-              : 'native-incompatible'
-            : store.inbox.blockedCause(claim, () =>
-                loadAgentToken(binding.tokenFile),
-              )
-          : stopping.aborted
-            ? 'worker-stopping'
-            : 'temporarily-unavailable',
+        reason,
       );
     } catch {
       // Expired/superseded lease: never overwrite the successor. The persisted intent remains recoverable.
@@ -261,16 +260,17 @@ export async function deliver(
 }
 /** Ordinary independently supervised process loop, sharing SQLite capacity/leases across processes. */
 /** Bindings for agents the owner connected from the workspace. */
-export function managedBindings(store: Store, directory: string): Binding[] {
+export function managedBindings(
+  store: Store,
+  directory: string,
+): WorkerBinding[] {
   return store.managed.workerBindings().map((b) =>
-    Binding.parse({
+    WorkerBinding.parse({
       agentId: b.agentId,
       tokenFile: agentTokenFile(directory, b.agentId),
       t3Endpoint: b.endpoint,
       t3AuthFile: t3AuthFile(directory),
       isolatedProviderId: b.providerId,
-      // Not an assertion here: workspace agents run without Team MCP.
-      externalTeamMcpConfigured: true,
     }),
   );
 }
@@ -285,7 +285,7 @@ export async function runWorker(
   let initialized = false;
   const running = new Set<Promise<void>>();
   const directory = managedDirectory(config.database);
-  let bindings = new Map<AgentId, Binding>();
+  let bindings = new Map<AgentId, WorkerBinding>();
   let lastBeat = 0;
   try {
     while (!stopped()) {

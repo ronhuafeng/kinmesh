@@ -6,9 +6,9 @@ import * as s from './schema.js';
 import type { agentRepository } from './agents.js';
 import type { communicationRepository } from './communication.js';
 import type { taskRepository } from './tasks.js';
-import { fingerprint, transactional } from './transactional.js';
-import { sqliteNow } from './inbox-enqueue.js';
-import { IdentityError, type Principal, type Scope } from '../domain/agents.js';
+import { referenceKey, sqliteNow, transactional } from './transactional.js';
+import { executionScope } from './operations.js';
+import { IdentityError, type Principal } from '../domain/agents.js';
 import { AgentId, ChannelId, TeamId } from '../domain/contracts.js';
 import { OutboxFact, memberKey } from '../domain/communication.js';
 import {
@@ -21,10 +21,16 @@ import {
   PublishedOutcome,
   retryDelay,
   InboxState,
+  deliveryScopes,
+  inboxIntent,
   type BlockedReason,
+  type DeliveryReason,
 } from '../domain/inbox.js';
 import { Reference } from '../domain/execution.js';
-import { retainsExecutionResponsibility } from '../domain/tasks.js';
+import {
+  actingMember,
+  retainsExecutionResponsibility,
+} from '../domain/tasks.js';
 
 const decode = (value: string): unknown => JSON.parse(value);
 export function inboxRepository(
@@ -100,7 +106,7 @@ export function inboxRepository(
       .run();
   }
   /** Blocked → retry with the frozen intent; never a new native operation key. */
-  function reopen(id: string, reason: string) {
+  function reopen(id: string, reason: DeliveryReason) {
     const row = get(id);
     if (row.state !== 'blocked') throw new IdentityError(409);
     const changed = db
@@ -127,19 +133,13 @@ export function inboxRepository(
       c.agentId,
       'executions:write',
     );
-    agents.teamAccess(p, c.teamId, 'channels:write');
+    agents.teamAccess(p, c.teamId, ...deliveryScopes(c.taskId !== null));
     const channel = communication.channel(p, c.teamId, c.channelId);
     let task = null;
     if (c.taskId !== null) {
-      agents.teamAccess(p, c.teamId, 'tasks:write');
       task = tasks.get(p, c.teamId, c.channelId, c.taskId);
       const state = task.state;
-      const assigned =
-        state.status === 'review-requested'
-          ? state.reviewer
-          : ['in-progress', 'rework-requested'].includes(state.status)
-            ? state.owner
-            : null;
+      const assigned = actingMember(state.status, state.owner, state.reviewer);
       if (assigned?.kind !== 'agent' || assigned.id !== c.agentId) {
         const row = get(c.id);
         const frozen =
@@ -156,11 +156,8 @@ export function inboxRepository(
         const recipient =
           fact.kind !== 'task.changed'
             ? null
-            : fact.taskStatus === 'review-requested'
-              ? fact.reviewer
-              : ['in-progress', 'rework-requested'].includes(fact.taskStatus)
-                ? fact.owner
-                : null;
+            : actingMember(fact.taskStatus, fact.owner, fact.reviewer);
+        const intent = inboxIntent(c.agentId, c.id);
         const dispatched =
           frozen !== null &&
           db
@@ -170,13 +167,13 @@ export function inboxRepository(
               and(
                 eq(
                   s.executionOperations.scope,
-                  fingerprint([
+                  executionScope(
                     frozen.execution.endpoint,
                     frozen.execution.environmentId,
-                  ]),
+                  ),
                 ),
-                eq(s.executionOperations.actor, 'inbox-agent:' + c.agentId),
-                eq(s.executionOperations.operationKey, 'inbox:' + c.id),
+                eq(s.executionOperations.actor, intent.actor),
+                eq(s.executionOperations.operationKey, intent.operationKey),
                 eq(s.executionOperations.tool, 't3_thread_launch'),
                 inArray(s.executionOperations.phase, [
                   'dispatching',
@@ -369,13 +366,14 @@ export function inboxRepository(
           // (nothing journaled: the journal is written before dispatch) is
           // frozen again under the current authority, e.g. after the owner
           // reconnects T3 with the access the first attempt lacked.
+          const intent = inboxIntent(c.agentId, c.id);
           const journaled = db
             .select({ id: s.executionOperations.id })
             .from(s.executionOperations)
             .where(
               and(
-                eq(s.executionOperations.actor, 'inbox-agent:' + c.agentId),
-                eq(s.executionOperations.operationKey, 'inbox:' + c.id),
+                eq(s.executionOperations.actor, intent.actor),
+                eq(s.executionOperations.operationKey, intent.operationKey),
               ),
             )
             .get();
@@ -464,12 +462,7 @@ export function inboxRepository(
                 eq(s.agentCorrelations.agentId, c.agentId),
                 eq(
                   s.agentCorrelations.referenceKey,
-                  fingerprint([
-                    result.reference.backend,
-                    result.reference.environmentId,
-                    result.reference.threadId,
-                    result.reference.runId,
-                  ]),
+                  referenceKey(result.reference),
                 ),
               ),
             )
@@ -499,12 +492,7 @@ export function inboxRepository(
                     eq(s.taskExecutions.taskId, task.id),
                     eq(
                       s.taskExecutions.referenceKey,
-                      fingerprint([
-                        result.reference.backend,
-                        result.reference.environmentId,
-                        result.reference.threadId,
-                        result.reference.runId,
-                      ]),
+                      referenceKey(result.reference),
                     ),
                   ),
                 )
@@ -524,7 +512,7 @@ export function inboxRepository(
               ? 'The run in T3 failed before writing a reply.'
               : 'The run in T3 was stopped before writing a reply.'
             : result.text;
-        const publicationReason =
+        const publicationReason: DeliveryReason =
           'kind' in result
             ? 'native-terminal-notice-published'
             : 'assistant-result-published';
@@ -573,12 +561,12 @@ export function inboxRepository(
       } catch {
         return 'credential-invalid';
       }
-      const needed: Scope[] = ['executions:write', 'channels:write'];
-      if (c.taskId !== null) needed.push('tasks:write');
       if (
         p.kind !== 'agent' ||
         p.agentId !== c.agentId ||
-        !needed.every((scope) => p.scopes.includes(scope))
+        !deliveryScopes(c.taskId !== null).every((scope) =>
+          p.scopes.includes(scope),
+        )
       )
         return 'credential-invalid';
       const joined = db
@@ -617,11 +605,7 @@ export function inboxRepository(
     ) {
       return atomic(() => {
         if (p.kind !== 'human') throw new IdentityError(403);
-        if (
-          agents.teamAccess(p, TeamId.parse(teamId), 'channels:read').role !==
-          'owner'
-        )
-          throw new IdentityError(403);
+        agents.owner(p, TeamId.parse(teamId));
         const row = db
           .select()
           .from(t)

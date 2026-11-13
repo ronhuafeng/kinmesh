@@ -13,7 +13,7 @@ import {
   CorrelationInput,
 } from './agents.js';
 import { Member, TopicId, Mutation, memberKey } from './communication.js';
-import { TaskAction } from './task-state.js';
+import { TaskAction, type TaskStatus } from './task-state.js';
 export { TaskId } from './contracts.js';
 const Note = z.string().trim().min(1).max(2000);
 const Working = {
@@ -101,6 +101,18 @@ export const Task = z
       v.state.status !== 'accepted' || v.state.acceptedBy === v.acceptorHumanId,
   );
 export type Task = z.infer<typeof Task>;
+/** Who must act on a task now: the reviewer under review, the owner while it is worked on. */
+export function actingMember(
+  status: z.infer<typeof TaskStatus>,
+  owner: Member | null,
+  reviewer: Member | null,
+) {
+  return status === 'review-requested'
+    ? reviewer
+    : status === 'in-progress' || status === 'rework-requested'
+      ? owner
+      : null;
+}
 /** Completion evidence can outlive active work, but cannot survive removal of responsibility. */
 export function retainsExecutionResponsibility(task: Task, agentId: AgentId) {
   const state = task.state;

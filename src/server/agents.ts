@@ -1,4 +1,4 @@
-import type { FastifyInstance, FastifyRequest } from 'fastify';
+import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { AgentId, TeamId } from '../domain/contracts.js';
 import {
@@ -7,21 +7,12 @@ import {
   IdentityError,
   ProfileInput,
   RuntimeEventInput,
-  type Principal,
 } from '../domain/agents.js';
 import type { Store } from '../persistence/store.js';
+import { AVATAR_LIMIT } from '../persistence/agents.js';
 import { removeAgentToken, writeAgentToken } from '../inbox/managed.js';
 import { WORKER_GRANT } from './connect.js';
-
-declare module 'fastify' {
-  interface FastifyRequest {
-    principal: Principal | null;
-  }
-}
-function principal(request: FastifyRequest) {
-  if (request.principal === null) throw new IdentityError(401);
-  return request.principal;
-}
+import { principal } from './principals.js';
 const TeamPath = z.object({ teamId: TeamId });
 const AgentPath = TeamPath.extend({ agentId: AgentId });
 const GrantPath = AgentPath.extend({ grantId: z.uuid() });
@@ -63,6 +54,40 @@ export function registerAgents(
       agentId,
       ProfileInput.parse(request.body),
     );
+  });
+  // An avatar travels as the image itself, never as JSON or a URL.
+  app.addContentTypeParser(
+    ['image/png', 'image/jpeg', 'image/webp'],
+    { parseAs: 'buffer', bodyLimit: AVATAR_LIMIT },
+    (_request, body, done) => {
+      done(null, body);
+    },
+  );
+  app.put(base + '/:agentId/avatar', { bodyLimit: AVATAR_LIMIT }, (request) => {
+    const { teamId, agentId } = AgentPath.parse(request.params);
+    if (!Buffer.isBuffer(request.body)) throw new IdentityError(400);
+    return store.agents.setAvatar(
+      principal(request),
+      teamId,
+      agentId,
+      request.body,
+    );
+  });
+  app.delete(base + '/:agentId/avatar', (request, reply) => {
+    const { teamId, agentId } = AgentPath.parse(request.params);
+    store.agents.removeAvatar(principal(request), teamId, agentId);
+    return reply.code(204).send();
+  });
+  app.get(base + '/:agentId/avatar', (request, reply) => {
+    const { teamId, agentId } = AgentPath.parse(request.params);
+    const image = store.agents.avatar(principal(request), teamId, agentId);
+    if (image === null) throw new IdentityError(404);
+    return reply
+      .header('content-type', image.mime)
+      .header('cache-control', 'private, max-age=86400')
+      .header('x-content-type-options', 'nosniff')
+      .header('content-security-policy', "default-src 'none'; sandbox")
+      .send(image.bytes);
   });
   app.post(base + '/:agentId/lifecycle', (request) => {
     const { teamId, agentId } = AgentPath.parse(request.params);

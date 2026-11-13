@@ -156,4 +156,15 @@ export const AuditEvent = z.discriminatedUnion('kind', [
     kind: z.literal('execution-associated'),
     detail: z.strictObject({ correlationId: z.uuid() }),
   }),
+  AuditBase.extend({
+    kind: z.literal('avatar-set'),
+    detail: z.strictObject({
+      mime: z.enum(['image/png', 'image/jpeg', 'image/webp']),
+      size: z.number().int().positive(),
+    }),
+  }),
+  AuditBase.extend({
+    kind: z.literal('avatar-removed'),
+    detail: z.strictObject({}),
+  }),
 ]);

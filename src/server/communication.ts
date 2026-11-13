@@ -1,7 +1,6 @@
-import type { FastifyInstance, FastifyRequest } from 'fastify';
+import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { ChannelId, TeamId } from '../domain/contracts.js';
-import { IdentityError } from '../domain/agents.js';
 import {
   ChannelInput,
   MessageId,
@@ -13,14 +12,11 @@ import {
   TopicInput,
 } from '../domain/communication.js';
 import type { Store } from '../persistence/store.js';
+import { principal } from './principals.js';
 const TeamPath = z.object({ teamId: TeamId });
 const ChannelPath = TeamPath.extend({ channelId: ChannelId });
 const TopicPath = ChannelPath.extend({ topicId: TopicId });
 const MessagePath = ChannelPath.extend({ messageId: MessageId });
-function principal(request: FastifyRequest) {
-  if (request.principal === null) throw new IdentityError(401);
-  return request.principal;
-}
 export function registerCommunication(app: FastifyInstance, store: Store) {
   const base = '/api/teams/:teamId/channels';
   const channel = base + '/:channelId';

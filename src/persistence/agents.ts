@@ -3,6 +3,7 @@ import { and, eq, isNull, sql, asc, desc } from 'drizzle-orm';
 import type { BetterSQLite3Database } from 'drizzle-orm/better-sqlite3';
 import { z } from 'zod';
 import * as s from './schema.js';
+import { referenceKey, transactional } from './transactional.js';
 import { AgentId, TeamId } from '../domain/contracts.js';
 import {
   Agent,
@@ -19,6 +20,7 @@ import {
   IdentityError,
   type RuntimeState,
 } from '../domain/agents.js';
+import { principalAuthor as author } from '../domain/tasks.js';
 
 function parseJson(value: string): unknown {
   return JSON.parse(value);
@@ -26,22 +28,23 @@ function parseJson(value: string): unknown {
 const now = () => new Date().toISOString();
 const digest = (value: string) =>
   createHash('sha256').update(value).digest('hex');
-function author(p: Principal) {
-  return p.kind === 'human'
-    ? { kind: p.kind, humanId: p.humanId }
-    : { kind: p.kind, agentId: p.agentId, grantId: p.grantId };
+/** An avatar is a small raster image; SVG and anything else is refused. */
+export const AVATAR_LIMIT = 128 * 1024;
+function avatarType(bytes: Buffer) {
+  const starts = (...b: number[]) => b.every((v, i) => bytes[i] === v);
+  if (starts(0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a))
+    return 'image/png';
+  if (starts(0xff, 0xd8, 0xff)) return 'image/jpeg';
+  if (
+    bytes.length > 12 &&
+    bytes.subarray(0, 4).toString('latin1') === 'RIFF' &&
+    bytes.subarray(8, 12).toString('latin1') === 'WEBP'
+  )
+    return 'image/webp';
+  return null;
 }
 export function agentRepository(db: BetterSQLite3Database<typeof s>) {
-  function atomic<T>(action: () => T): T {
-    try {
-      return db.transaction(action, { behavior: 'immediate' });
-    } catch (error) {
-      const sqlite = z.object({ code: z.string() }).safeParse(error);
-      if (sqlite.success && sqlite.data.code.startsWith('SQLITE_CONSTRAINT'))
-        throw new IdentityError(409);
-      throw error;
-    }
-  }
+  const { atomic } = transactional(db);
   function profile(teamId: TeamId, agentId: AgentId) {
     const row = db
       .select()
@@ -72,13 +75,28 @@ export function agentRepository(db: BetterSQLite3Database<typeof s>) {
     if (agent.lifecycle !== 'active') throw new IdentityError(401);
     return { grant, scopes: z.array(Scope).parse(parseJson(grant.scopes)) };
   }
-  function owner(p: Principal, teamId: TeamId) {
+  /**
+   * Membership of the team, holding every scope given (agents) — 401 for an
+   * unknown human or a dead grant, 403 otherwise.
+   */
+  function teamAccess(p: Principal, teamId: TeamId, ...scopes: Scope[]) {
     Principal.parse(p);
     TeamId.parse(teamId);
-    if (p.kind !== 'human') {
-      checkedGrant(p);
-      throw new IdentityError(403);
+    if (p.kind === 'agent') {
+      const current = checkedGrant(p);
+      if (
+        p.teamId !== teamId ||
+        !scopes.every((scope) => current.scopes.includes(scope))
+      )
+        throw new IdentityError(403);
+      return { role: 'agent' as const };
     }
+    const human = db
+      .select()
+      .from(s.humans)
+      .where(eq(s.humans.id, p.humanId))
+      .get();
+    if (human === undefined) throw new IdentityError(401);
     const membership = db
       .select()
       .from(s.memberships)
@@ -89,7 +107,13 @@ export function agentRepository(db: BetterSQLite3Database<typeof s>) {
         ),
       )
       .get();
-    if (membership?.role !== 'owner') throw new IdentityError(403);
+    if (membership === undefined) throw new IdentityError(403);
+    return { role: membership.role };
+  }
+  /** The team's human owner; everyone else is refused. */
+  function owner(p: Principal, teamId: TeamId) {
+    if (teamAccess(p, teamId).role !== 'owner' || p.kind !== 'human')
+      throw new IdentityError(403);
   }
   function access(
     p: Principal,
@@ -112,11 +136,24 @@ export function agentRepository(db: BetterSQLite3Database<typeof s>) {
     }
     return profile(teamId, agentId);
   }
+  /** The team owner, or the agent acting on its own profile. */
+  function self(p: Principal, teamId: TeamId, agentId: AgentId) {
+    Principal.parse(p);
+    TeamId.parse(teamId);
+    AgentId.parse(agentId);
+    if (p.kind === 'human') owner(p, teamId);
+    else {
+      checkedGrant(p);
+      if (p.teamId !== teamId || p.agentId !== agentId)
+        throw new IdentityError(403);
+    }
+    return profile(teamId, agentId);
+  }
   function audit(
     p: Principal,
     teamId: TeamId,
     agentId: AgentId,
-    kind: string,
+    kind: z.infer<typeof AuditEvent>['kind'],
     detail: unknown,
   ) {
     const event = AuditEvent.parse({
@@ -253,34 +290,8 @@ export function agentRepository(db: BetterSQLite3Database<typeof s>) {
       return principal;
     },
     authorize: access,
-    teamAccess(p: Principal, teamId: TeamId, scope: Scope) {
-      Principal.parse(p);
-      TeamId.parse(teamId);
-      if (p.kind === 'agent') {
-        const current = checkedGrant(p);
-        if (p.teamId !== teamId || !current.scopes.includes(scope))
-          throw new IdentityError(403);
-        return { role: 'agent' as const };
-      }
-      const human = db
-        .select()
-        .from(s.humans)
-        .where(eq(s.humans.id, p.humanId))
-        .get();
-      if (human === undefined) throw new IdentityError(401);
-      const membership = db
-        .select()
-        .from(s.memberships)
-        .where(
-          and(
-            eq(s.memberships.humanId, p.humanId),
-            eq(s.memberships.teamId, teamId),
-          ),
-        )
-        .get();
-      if (membership === undefined) throw new IdentityError(403);
-      return { role: membership.role };
-    },
+    teamAccess,
+    owner,
     create(p: Principal, teamId: TeamId, input: ProfileInput) {
       return atomic(() => {
         owner(p, teamId);
@@ -402,6 +413,65 @@ export function agentRepository(db: BetterSQLite3Database<typeof s>) {
         return profile(teamId, agentId);
       });
     },
+    /** Set an agent's picture: the team owner, or the agent itself. */
+    setAvatar(p: Principal, teamId: TeamId, agentId: AgentId, bytes: Buffer) {
+      return atomic(() => {
+        self(p, teamId, agentId);
+        const mime = avatarType(bytes);
+        if (mime === null || bytes.length > AVATAR_LIMIT)
+          throw new IdentityError(400);
+        const updatedAt = now();
+        db.insert(s.agentAvatars)
+          .values({ agentId, teamId, mime, bytes, updatedAt })
+          .onConflictDoUpdate({
+            target: s.agentAvatars.agentId,
+            set: { mime, bytes, updatedAt },
+          })
+          .run();
+        audit(p, teamId, agentId, 'avatar-set', { mime, size: bytes.length });
+        return { updatedAt };
+      });
+    },
+    removeAvatar(p: Principal, teamId: TeamId, agentId: AgentId) {
+      atomic(() => {
+        self(p, teamId, agentId);
+        db.delete(s.agentAvatars)
+          .where(
+            and(
+              eq(s.agentAvatars.agentId, agentId),
+              eq(s.agentAvatars.teamId, teamId),
+            ),
+          )
+          .run();
+        audit(p, teamId, agentId, 'avatar-removed', {});
+      });
+    },
+    avatar(p: Principal, teamId: TeamId, agentId: AgentId) {
+      access(p, teamId, agentId, 'agents:read');
+      const row = db
+        .select({ mime: s.agentAvatars.mime, bytes: s.agentAvatars.bytes })
+        .from(s.agentAvatars)
+        .where(
+          and(
+            eq(s.agentAvatars.agentId, agentId),
+            eq(s.agentAvatars.teamId, teamId),
+          ),
+        )
+        .get();
+      return row ?? null;
+    },
+    /** Which agents have a picture, and since when; no image bytes. */
+    avatars(p: Principal, teamId: TeamId) {
+      owner(p, teamId);
+      return db
+        .select({
+          agentId: s.agentAvatars.agentId,
+          updatedAt: s.agentAvatars.updatedAt,
+        })
+        .from(s.agentAvatars)
+        .where(eq(s.agentAvatars.teamId, teamId))
+        .all();
+    },
     lifecycle(
       p: Principal,
       teamId: TeamId,
@@ -497,14 +567,7 @@ export function agentRepository(db: BetterSQLite3Database<typeof s>) {
             id,
             agentId,
             teamId,
-            referenceKey: digest(
-              JSON.stringify([
-                ref.backend,
-                ref.environmentId,
-                ref.threadId,
-                ref.runId ?? null,
-              ]),
-            ),
+            referenceKey: referenceKey(ref),
             reference: JSON.stringify(ref),
             providerSessionId: data.providerSessionId,
             invocationId: data.invocationId,
@@ -521,7 +584,7 @@ export function agentRepository(db: BetterSQLite3Database<typeof s>) {
     /** Exact immutable association, restricted to a currently authorized human owner. */
     getCorrelation(p: Principal, teamId: TeamId, agentId: AgentId, id: string) {
       owner(p, teamId);
-      access(p, teamId, agentId, 'executions:read');
+      profile(teamId, AgentId.parse(agentId));
       return correlation(teamId, agentId, id);
     },
     correlations(p: Principal, teamId: TeamId, agentId: AgentId) {

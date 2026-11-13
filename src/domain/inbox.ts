@@ -1,8 +1,9 @@
 import { z } from 'zod';
 import { AgentId, ChannelId, TeamId, TaskId } from './contracts.js';
-import { Author } from './agents.js';
+import { Author, type Scope } from './agents.js';
 import { MessageId, TopicId, type OutboxFact } from './communication.js';
-import { Launch, Reference } from './execution.js';
+import { Launch, Reference, type Intent } from './execution.js';
+import { actingMember } from './tasks.js';
 
 export const INBOX_LEASE_MS = 180_000;
 export const INBOX_ATTEMPT_MS = 90_000;
@@ -23,7 +24,7 @@ export const InboxState = z.enum([
 ]);
 /**
  * Why a delivery is blocked, in terms of what a person can fix. The last value
- * is the cause recorded before causes were told apart, and stays readable.
+ * is the cause when none of the specific ones applies.
  */
 export const BlockedReason = z.enum([
   'agent-disabled',
@@ -35,6 +36,43 @@ export const BlockedReason = z.enum([
   'authority-or-contract-blocked',
 ]);
 export type BlockedReason = z.infer<typeof BlockedReason>;
+/** Every other reason a delivery records. Persisted: values never change. */
+export const DeliveryReason = z.enum([
+  'enqueued',
+  'claimed',
+  'undispatched-expiry',
+  'launch-frozen',
+  'launch-refrozen',
+  'execution-correlated',
+  'native-launch-uncertain',
+  'run-unobserved',
+  'human-or-approval-wait',
+  'execution-active',
+  'terminal-unmapped',
+  'assistant-result-unavailable',
+  'history-cursor-invalid',
+  'history-page-bound',
+  'worker-stopping',
+  'temporarily-unavailable',
+  'assistant-result-published',
+  'native-terminal-notice-published',
+  'operator-resume',
+  'owner-resume',
+]);
+export type DeliveryReason = z.infer<typeof DeliveryReason>;
+/**
+ * The native operation identity of a delivery's launch. Migration 0009's
+ * immutability trigger matches these exact strings.
+ */
+export const inboxIntent = (agentId: string, deliveryId: string): Intent => ({
+  actor: 'inbox-agent:' + agentId,
+  operationKey: 'inbox:' + deliveryId,
+});
+/** What an agent's grant must hold for a delivery to run and publish. */
+export const deliveryScopes = (hasTask: boolean): Scope[] =>
+  hasTask
+    ? ['executions:write', 'channels:write', 'tasks:write']
+    : ['executions:write', 'channels:write'];
 export const Delivery = z.object({
   position: z.number().int().positive(),
   id: z.uuid(),
@@ -144,12 +182,7 @@ export function wakeTargets(fact: z.infer<typeof OutboxFact>) {
       ? fact.mentions.filter((m) => m.kind === 'agent')
       : [];
   if (fact.kind !== 'task.changed') return [];
-  const target =
-    fact.taskStatus === 'review-requested'
-      ? fact.reviewer
-      : ['in-progress', 'rework-requested'].includes(fact.taskStatus)
-        ? fact.owner
-        : null;
+  const target = actingMember(fact.taskStatus, fact.owner, fact.reviewer);
   const relevant =
     ['create', 'handoff', 'request-review', 'rework'].includes(
       fact.taskAction,

@@ -1,7 +1,7 @@
 import { discoverOAuthServerInfo } from '@modelcontextprotocol/sdk/client/auth.js';
 import type { FetchLike } from '@modelcontextprotocol/sdk/shared/transport.js';
 import { Descriptor } from './contracts.js';
-import { Endpoint } from './oauth.js';
+import { Endpoint, ORCHESTRATION_SCOPES } from './oauth.js';
 import { verifiedOAuthMetadata } from './metadata.js';
 
 export const PREFLIGHT_TIMEOUT_MS = 10_000;
@@ -9,7 +9,6 @@ const MAX_BODY_BYTES = 65_536;
 const RESOURCE_PATH = '/.well-known/oauth-protected-resource';
 const METADATA_PATH = '/.well-known/oauth-authorization-server';
 const DESCRIPTOR_PATH = '/.well-known/t3/environment';
-const SCOPES = ['orchestration:read', 'orchestration:operate'];
 const rejected = () => new Error('T3 preflight rejected');
 
 /** Bound bytes before SDK JSON parsing; the fetch signal also bounds stalled bodies. */
@@ -149,7 +148,7 @@ export async function preflight(
       !metadata.grant_types_supported?.includes('authorization_code') ||
       !metadata.token_endpoint_auth_methods_supported?.includes('none') ||
       !resource.bearer_methods_supported?.includes('header') ||
-      SCOPES.some(
+      ORCHESTRATION_SCOPES.some(
         (scope) =>
           !metadata.scopes_supported?.includes(scope) ||
           !resource.scopes_supported?.includes(scope),

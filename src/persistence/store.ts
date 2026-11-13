@@ -1,9 +1,8 @@
 import { managedRepository } from './managed.js';
 import { inboxRepository } from './inbox.js';
 import { taskRepository } from './tasks.js';
-import { CommunicationFact } from '../domain/communication.js';
 import { communicationRepository } from './communication.js';
-import { max, asc } from 'drizzle-orm';
+import { asc } from 'drizzle-orm';
 import { agentRepository } from './agents.js';
 import { IdentityError } from '../domain/agents.js';
 import { operationJournal } from './operations.js';
@@ -68,11 +67,6 @@ export function openStore(path: string) {
             .run();
           const human = Human.parse({ id: randomUUID(), username });
           const team = Team.parse({ id: randomUUID(), name: teamName });
-          const channel = Channel.parse({
-            id: randomUUID(),
-            teamId: team.id,
-            name: 'general',
-          });
           tx.insert(tables.humans)
             .values({ ...human, passwordHash })
             .run();
@@ -80,48 +74,17 @@ export function openStore(path: string) {
           tx.insert(tables.memberships)
             .values({ humanId: human.id, teamId: team.id, role: 'owner' })
             .run();
-          const position =
-            (tx
-              .select({ value: max(tables.channels.position) })
-              .from(tables.channels)
-              .get()?.value ?? 0) + 1;
-          tx.insert(tables.channels)
-            .values({ ...channel, position })
-            .run();
-          tx.insert(tables.channelParticipants)
-            .values({
-              channelId: channel.id,
-              teamId: team.id,
-              memberKey: `human:${human.id}`,
-              humanId: human.id,
-              agentId: null,
-              state: 'joined',
-            })
-            .run();
-          const event = CommunicationFact.parse({
-            version: 1,
-            id: randomUUID(),
+          // The owner's first channel, made the way every channel is (nested savepoint).
+          const { id } = communicationStore.createChannel(
+            { kind: 'human', humanId: human.id },
+            team.id,
+            { operationKey: 'bootstrap.general', name: 'general' },
+          );
+          const channel = Channel.parse({
+            id,
             teamId: team.id,
-            channelId: channel.id,
-            createdAt: new Date().toISOString(),
-            author: { kind: 'human', humanId: human.id },
-            kind: 'channel.created',
-            topicId: null,
-            messageId: null,
-            mentions: [],
-            participant: null,
-            participantState: null,
-            sourceMessageId: null,
-            sourceEventId: null,
-            operationKey: 'bootstrap.general',
+            name: 'general',
           });
-          tx.insert(tables.communicationOutbox)
-            .values({
-              id: event.id,
-              channelId: channel.id,
-              fact: JSON.stringify(event),
-            })
-            .run();
           return { human, team, channel };
         },
         { behavior: 'immediate' },
@@ -153,13 +116,13 @@ export function openStore(path: string) {
         .run().changes;
       if (changed !== 1) throw new IdentityError(404);
     },
-    /** Only the team's owner renames it. */
-    renameTeam(id: HumanId, teamId: string, name: string) {
+    /** Only the team's owner renames it: the team they own. */
+    renameTeam(id: HumanId, name: string) {
       const membership = this.teamFor(id);
-      if (membership?.team.id !== teamId) throw new IdentityError(403);
+      if (membership === undefined) throw new IdentityError(403);
       db.update(tables.teams)
         .set({ name: BootstrapInput.shape.teamName.parse(name) })
-        .where(eq(tables.teams.id, teamId))
+        .where(eq(tables.teams.id, membership.team.id))
         .run();
       return Team.parse({
         ...membership.team,

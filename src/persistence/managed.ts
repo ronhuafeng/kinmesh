@@ -23,11 +23,9 @@ export function managedRepository(
 ) {
   const { atomic } = transactional(db);
   function owner(p: Principal, teamId: TeamId) {
-    if (
-      p.kind !== 'human' ||
-      agents.teamAccess(p, teamId, 'agents:read').role !== 'owner'
-    )
-      throw new IdentityError(403);
+    // Agents are refused before their grant is looked at.
+    if (p.kind !== 'human') throw new IdentityError(403);
+    agents.owner(p, teamId);
   }
   function connection(teamId: TeamId) {
     return (

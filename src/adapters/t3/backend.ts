@@ -1,4 +1,3 @@
-import { createHash } from 'node:crypto';
 import { z } from 'zod';
 import {
   Launch,
@@ -16,9 +15,13 @@ import type {
   ClaimedOperation,
   OperationJournal,
 } from '../../persistence/operations.js';
-import { EXECUTION_ATTEMPT_MS } from '../../persistence/operations.js';
+import {
+  EXECUTION_ATTEMPT_MS,
+  executionScope,
+} from '../../persistence/operations.js';
 import {
   ValidatedTools,
+  EXECUTION_TOOLS,
   Descriptor,
   Capabilities,
   Launched,
@@ -27,6 +30,7 @@ import {
   Waited,
   Interrupted,
   runnable,
+  selectRun,
   type Wire,
 } from './contracts.js';
 
@@ -39,7 +43,6 @@ const ranking = [
 export interface BackendOptions {
   endpoint: string;
   expectedEnvironmentId: string;
-  linkedEnvironmentId?: string;
   authority: string;
   scopes: readonly string[];
 }
@@ -60,22 +63,18 @@ export class T3Backend implements ExecutionBackend {
     try {
       if (!options.scopes.includes('orchestration:read'))
         throw new ExecutionFailure('permission');
-      const tools = new ValidatedTools(wire, await wire.list());
-      const primary = Descriptor.parse(
+      const tools = new ValidatedTools(
+        wire,
+        await wire.list(),
+        EXECUTION_TOOLS,
+      );
+      const descriptor = Descriptor.parse(
         await tools.call('t3_environment_read', {}),
       );
-      if (primary.environmentId !== options.expectedEnvironmentId)
-        throw new ExecutionFailure('incompatible');
-      const target = options.linkedEnvironmentId;
-      const args = target === undefined ? {} : { environmentId: target };
-      const descriptor =
-        target === undefined
-          ? primary
-          : Descriptor.parse(await tools.call('t3_environment_read', args));
-      if (target !== undefined && descriptor.environmentId !== target)
+      if (descriptor.environmentId !== options.expectedEnvironmentId)
         throw new ExecutionFailure('incompatible');
       const caps = Capabilities.parse(
-        await tools.call('orchestrator_capabilities', args),
+        await tools.call('orchestrator_capabilities', {}),
       );
       return new T3Backend(
         tools,
@@ -89,15 +88,8 @@ export class T3Backend implements ExecutionBackend {
       throw new ExecutionFailure('incompatible');
     }
   }
-  private target() {
-    return this.options.linkedEnvironmentId === undefined
-      ? {}
-      : { environmentId: this.options.linkedEnvironmentId };
-  }
   private scope() {
-    return createHash('sha256')
-      .update(JSON.stringify([this.options.endpoint, this.environmentId]))
-      .digest('hex');
+    return executionScope(this.options.endpoint, this.environmentId);
   }
   private ref(value: unknown) {
     const ref = Reference.parse(value);
@@ -126,7 +118,6 @@ export class T3Backend implements ExecutionBackend {
     if (!runnable(provider, request.mode))
       throw new ExecutionFailure('incompatible');
     return {
-      ...this.target(),
       ...(request.target.kind === 'project'
         ? {
             projectId: request.target.projectId,
@@ -164,7 +155,6 @@ export class T3Backend implements ExecutionBackend {
     return this.dispatch(
       't3_thread_send',
       {
-        ...this.target(),
         threadId: ref.threadId,
         message: text,
         mode: 'queue',
@@ -383,7 +373,6 @@ export class T3Backend implements ExecutionBackend {
       await this.tools.call(
         't3_thread_read',
         {
-          ...this.target(),
           threadId: ref.threadId,
           view: 'messages',
           limit: 100,
@@ -396,21 +385,10 @@ export class T3Backend implements ExecutionBackend {
     );
     if (result.thread.threadId !== ref.threadId)
       throw new ExecutionFailure('incompatible');
-    const run =
-      ref.runId === undefined
-        ? undefined
-        : result.recentRuns.find((r) => r.runId === ref.runId);
-    const status =
-      ref.runId === undefined
-        ? result.thread.status
-        : (run?.status ?? 'unobserved');
-    const terminal = [
-      'completed',
-      'failed',
-      'cancelled',
-      'interrupted',
-      'rolled_back',
-    ].includes(status);
+    const { status, terminal, providerId, modelId } = selectRun(
+      result,
+      ref.runId,
+    );
     const state =
       status === 'completed'
         ? 'succeeded'
@@ -429,10 +407,7 @@ export class T3Backend implements ExecutionBackend {
       reference: ref,
       state,
       backendStatus: status,
-      model: {
-        providerId: run?.providerInstanceId ?? result.thread.providerInstanceId,
-        modelId: run?.model ?? result.thread.model,
-      },
+      model: { providerId, modelId },
       terminal,
       acceptance: 'not-evaluated',
       pendingRequests: result.thread.pendingRequestCount,
@@ -458,7 +433,6 @@ export class T3Backend implements ExecutionBackend {
       await this.tools.call(
         't3_thread_wait',
         {
-          ...this.target(),
           threadId: ref.threadId,
           ...(ref.runId === undefined ? {} : { runId: ref.runId }),
           timeoutMs,
@@ -489,7 +463,6 @@ export class T3Backend implements ExecutionBackend {
     const result = await this.dispatch(
       't3_thread_interrupt',
       {
-        ...this.target(),
         threadId: ref.threadId,
         ...(ref.runId === undefined ? {} : { runId: ref.runId }),
       },

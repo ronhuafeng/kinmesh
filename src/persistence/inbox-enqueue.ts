@@ -4,8 +4,8 @@ import type { BetterSQLite3Database } from 'drizzle-orm/better-sqlite3';
 import { CHAIN_BUDGET, INBOX_TTL_MS, wakeTargets } from '../domain/inbox.js';
 import { OutboxFact } from '../domain/communication.js';
 import * as s from './schema.js';
+import { sqliteNow } from './transactional.js';
 
-export const sqliteNow = sql`cast(unixepoch('subsec') * 1000 as integer)`;
 /** Caller MUST own the fact transaction. No checkpoint or post-commit queue gap. */
 export function enqueueFact(
   db: BetterSQLite3Database<typeof s>,

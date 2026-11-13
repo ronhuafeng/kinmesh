@@ -48,15 +48,26 @@ export const Credential = z.object({
   tokens: OAuthTokensSchema,
 });
 export type Credential = z.infer<typeof Credential>;
+/** The T3 scopes Kinmesh asks for; a credential holds read and nothing else. */
+export const ORCHESTRATION_SCOPES: readonly string[] = [
+  'orchestration:read',
+  'orchestration:operate',
+];
+/** The fixed loopback OAuth redirect and the public client it registers. */
+export const CALLBACK = 'http://127.0.0.1:49871/callback';
+export const CLIENT_METADATA = {
+  client_name: 'Kinmesh external T3 adapter',
+  redirect_uris: [CALLBACK],
+  grant_types: ['authorization_code'],
+  response_types: ['code'],
+  token_endpoint_auth_method: 'none',
+};
 function approvedScopes(credential: Credential) {
   const scopes = credential.tokens.scope?.split(/\s+/) ?? [];
   if (
     credential.tokens.token_type.toLowerCase() !== 'bearer' ||
     !scopes.includes('orchestration:read') ||
-    scopes.some(
-      (scope) =>
-        !['orchestration:read', 'orchestration:operate'].includes(scope),
-    )
+    scopes.some((scope) => !ORCHESTRATION_SCOPES.includes(scope))
   )
     throw new ExecutionFailure('authentication');
 }
@@ -130,14 +141,8 @@ export function authority(credential: Credential) {
 }
 export function storedProvider(credential: Credential): OAuthClientProvider {
   return {
-    redirectUrl: 'http://127.0.0.1:49871/callback',
-    clientMetadata: {
-      client_name: 'Kinmesh external T3 adapter',
-      redirect_uris: ['http://127.0.0.1:49871/callback'],
-      grant_types: ['authorization_code'],
-      response_types: ['code'],
-      token_endpoint_auth_method: 'none',
-    },
+    redirectUrl: CALLBACK,
+    clientMetadata: CLIENT_METADATA,
     clientInformation: () => credential.client,
     tokens: () => credential.tokens,
     saveTokens: () => {

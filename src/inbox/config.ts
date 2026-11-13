@@ -8,6 +8,7 @@ import {
 import { z } from 'zod';
 import { AgentId } from '../domain/contracts.js';
 import { Endpoint } from '../adapters/t3/oauth.js';
+/** An agent the operator's configuration file binds; the operator asserts Team MCP. */
 export const Binding = z.strictObject({
   agentId: AgentId,
   tokenFile: z.string().min(1).max(4096),
@@ -16,7 +17,9 @@ export const Binding = z.strictObject({
   isolatedProviderId: z.string().min(1).max(256),
   externalTeamMcpConfigured: z.literal(true),
 });
-export type Binding = z.infer<typeof Binding>;
+/** What the worker serves an agent with, whether operator-configured or managed. */
+export const WorkerBinding = Binding.omit({ externalTeamMcpConfigured: true });
+export type WorkerBinding = z.infer<typeof WorkerBinding>;
 export const WorkerConfig = z.strictObject({
   database: z.string().min(1).max(4096),
   pollMs: z.number().int().min(100).max(30000).default(1000),
