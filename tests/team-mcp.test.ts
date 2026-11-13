@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
-import { fork, spawn } from 'node:child_process';
+import { spawn, type ChildProcess } from 'node:child_process';
 import {
   writeFileSync,
   readFileSync,
@@ -14,7 +14,6 @@ import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { loadAgentToken, TeamEndpoint } from '../src/team-mcp/client.js';
 import { LiveContext } from '../src/team-mcp/live-context.js';
-import { once } from 'node:events';
 import Database from 'better-sqlite3';
 import { StreamableHTTPError } from '@modelcontextprotocol/sdk/client/streamableHttp.js';
 import { z } from 'zod';
@@ -42,6 +41,7 @@ import {
 import { teamConfig } from '../src/team-mcp/config.js';
 import { TeamId } from '../src/domain/contracts.js';
 import { outcome } from '../src/team-mcp/tools.js';
+import { forkWorker, race } from './process-helpers.js';
 
 async function fixture() {
   const f = await taskFixture();
@@ -481,68 +481,24 @@ await test('Team MCP revocation, disable and expiry reject existing SDK connecti
 
 await test('two independent official SDK client processes race to claim through Team MCP: exactly one winner with one audit/fact', async () => {
   const f = await fixture();
-  const children: ReturnType<typeof fork>[] = [];
-  const deadline = async <T>(p: Promise<T>) => {
-    const t = AbortSignal.timeout(12000);
-    return Promise.race([
-      p,
-      new Promise<never>((_, reject) => {
-        t.addEventListener(
-          'abort',
-          () => {
-            reject(new Error('SDK worker timeout'));
-          },
-          { once: true },
-        );
-      }),
-    ]);
-  };
+  const children: ChildProcess[] = [];
   try {
     const task = f.create().task;
     for (const token of [f.writer.token, f.reviewerGrant.token])
       children.push(
-        fork(
+        forkWorker(
           new URL('./fixtures/team-mcp-claim-worker.ts', import.meta.url),
           [],
           {
-            execArgv: ['--import', 'tsx'],
-            env: {
-              ...process.env,
-              TEAM_TEST_ENDPOINT: f.endpoint,
-              TEAM_TEST_TOKEN: token,
-              TEAM_TEST_CHANNEL: f.channelId,
-              TEAM_TEST_TASK: task.id,
-            },
-            silent: true,
+            ...process.env,
+            TEAM_TEST_ENDPOINT: f.endpoint,
+            TEAM_TEST_TOKEN: token,
+            TEAM_TEST_CHANNEL: f.channelId,
+            TEAM_TEST_TASK: task.id,
           },
         ),
       );
-    for (const c of children) {
-      c.stdout?.resume();
-      c.stderr?.resume();
-    }
-    await deadline(
-      Promise.all(
-        children.map(async (c) => {
-          const msg: unknown = (await once(c, 'message'))[0];
-          assert.equal(
-            z.object({ ready: z.literal(true) }).safeParse(msg).success,
-            true,
-          );
-        }),
-      ),
-    );
-    const replies = children.map((c) => once(c, 'message'));
-    const exits = children.map((c) => once(c, 'exit'));
-    for (const c of children) c.send('go');
-    const results = await deadline(Promise.all(replies));
-    assert.deepEqual(
-      results
-        .map(([msg]) => z.object({ outcome: z.string() }).parse(msg).outcome)
-        .sort(),
-      ['conflict', 'won'],
-    );
-    await deadline(Promise.all(exits));
+    assert.deepEqual(await race(children, 12000), ['conflict', 'won']);
     assert.equal(
       f.tasks.get(f.principal, f.teamId, f.channelId, task.id).version,
       2,

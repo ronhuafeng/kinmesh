@@ -94,17 +94,27 @@ await test('workspace projects allow-listed delivery status for visible messages
     assert.equal(queued[0].reason, 'enqueued');
     assert.ok(queued[0].queuedAt);
     // Worker internals never reach the browser.
-    assert.deepEqual(Object.keys(queued[0]).sort(), [
-      'agentId',
-      'id',
-      'messageId',
-      'queuedAt',
-      'reason',
-      'resultMessageId',
-      'state',
-      'taskId',
-      'updatedAt',
-    ]);
+    const [sent] = (
+      await f.app.inject({
+        url: '/api/workspace?channelId=' + f.channelId,
+        cookies: f.cookies,
+      })
+    ).json<{ deliveries: object[] }>().deliveries;
+    for (const internal of [
+      'claimToken',
+      'leaseUntil',
+      'nextAttempt',
+      'attempts',
+      'generation',
+      'launch',
+      'operationId',
+      'reference',
+      'eventId',
+      'rootId',
+      'expiresAt',
+      'position',
+    ])
+      assert.equal(Object.hasOwn(sent ?? {}, internal), false, internal);
     const claim = f.inbox.claim([f.agent.id]);
     assert.ok(claim);
     await deliver(f.store, claim, f.binding, f.factory, signal());

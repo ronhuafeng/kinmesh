@@ -1,10 +1,8 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdirSync, readFileSync, writeFileSync, copyFileSync } from 'node:fs';
 import { join } from 'node:path';
 import Database from 'better-sqlite3';
-import { drizzle } from 'drizzle-orm/better-sqlite3';
-import { migrate } from 'drizzle-orm/better-sqlite3/migrator';
+import { migrateTo } from './migration-helpers.js';
 import { z } from 'zod';
 import { openStore } from '../src/persistence/store.js';
 import { inboxFixture } from './inbox-helpers.js';
@@ -32,35 +30,7 @@ await test('populated main/PR18 migration preserves every baseline row and activ
     );
     const lease = f.store.operations.claim(operation.id);
     assert.ok(lease);
-    const folder = join(f.directory, 'baseline-migrations');
-    mkdirSync(join(folder, 'meta'), { recursive: true });
-    const journal = z
-      .object({
-        entries: z.array(
-          z.object({ idx: z.number(), tag: z.string() }).loose(),
-        ),
-      })
-      .loose()
-      .parse(
-        JSON.parse(
-          readFileSync(
-            new URL('../drizzle/meta/_journal.json', import.meta.url),
-            'utf8',
-          ),
-        ),
-      );
-    const entries = journal.entries.filter((e) => e.idx < 6);
-    assert.equal(entries.length, 6);
-    writeFileSync(
-      join(folder, 'meta/_journal.json'),
-      JSON.stringify({ ...journal, entries }),
-    );
-    for (const e of entries)
-      copyFileSync(
-        new URL('../drizzle/' + e.tag + '.sql', import.meta.url),
-        join(folder, e.tag + '.sql'),
-      );
-    migrate(drizzle(old), { migrationsFolder: folder });
+    migrateTo(old, f.directory, 6);
     const names = z
       .array(z.object({ name: z.string() }))
       .parse(

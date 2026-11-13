@@ -1,14 +1,8 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import {
-  inspectManifest,
-  inspectSource,
-  checkRepository,
-} from '../scripts/boundaries.js';
+import { inspectManifest, inspectSource } from '../scripts/boundaries.js';
 
-await test('real repository obeys boundaries', () => {
-  assert.deepEqual(checkRepository(process.cwd()), []);
-});
+// `npm run architecture` (CI) checks the real repository; these are the checker's fixtures.
 await test('negative architecture fixtures detect static/dynamic private imports and manifest aliases', () => {
   assert.ok(
     inspectSource('src/bad.ts', 'import x from "@t3tools/core";').length > 0,

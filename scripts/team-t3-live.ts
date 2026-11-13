@@ -15,7 +15,8 @@ import {
 } from '../src/adapters/t3/oauth.js';
 import { SdkWire } from '../src/adapters/t3/sdk.js';
 import { T3Backend } from '../src/adapters/t3/backend.js';
-import { ValidatedTools } from '../src/adapters/t3/contracts.js';
+import type { ValidatedTools } from '../src/adapters/t3/contracts.js';
+import { liveTools } from './t3-live-tools.js';
 import { openStore } from '../src/persistence/store.js';
 import type { Reference } from '../src/domain/execution.js';
 
@@ -98,7 +99,7 @@ try {
     authority: authority(credential),
     scopes: credential.tokens.scope?.split(' ') ?? [],
   });
-  tools = new ValidatedTools(wire, await wire.list());
+  tools = await liveTools(wire);
   stage = 't3-provider-launch';
   // No Team MCP mutations are made by this gate; only the launched provider may perform them.
   const dispatched = await backend.launch(

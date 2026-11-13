@@ -16,7 +16,7 @@ import { Reference } from '../src/domain/execution.js';
 import { openStore } from '../src/persistence/store.js';
 import { t3Factory } from '../src/inbox/t3.js';
 import { assistantResult } from '../src/inbox/worker.js';
-import { ValidatedTools } from '../src/adapters/t3/contracts.js';
+import { liveTools } from './t3-live-tools.js';
 import { SdkWire } from '../src/adapters/t3/sdk.js';
 import { loadCredential } from '../src/adapters/t3/oauth.js';
 
@@ -255,7 +255,7 @@ try {
       wire = new SdkWire(
         loadCredential(binding.t3AuthFile, binding.t3Endpoint),
       );
-      const tools = new ValidatedTools(wire, await wire.list());
+      const tools = await liveTools(wire);
       await tools.call('t3_thread_organize', {
         threadId: reference.threadId,
         action: 'archive',

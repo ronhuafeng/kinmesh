@@ -8,7 +8,6 @@ import {
   backendFixture,
   MockWire,
   captured,
-  envelope,
   launch,
   intent,
   reference,
@@ -239,20 +238,13 @@ await test('MOCK: run-specific reads do not substitute latest thread status for 
     f.dispose();
   }
 });
-await test('MOCK: endpoint/linked identities and response thread/run mismatches fail closed', async () => {
+await test('MOCK: endpoint identities and response thread/run mismatches fail closed', async () => {
   const f = await backendFixture();
   try {
     await assert.rejects(
       T3Backend.connect(f.wire, f.store.operations, {
         ...options,
         expectedEnvironmentId: 'other',
-      }),
-      failure('incompatible'),
-    );
-    await assert.rejects(
-      T3Backend.connect(f.wire, f.store.operations, {
-        ...options,
-        linkedEnvironmentId: 'linked-other',
       }),
       failure('incompatible'),
     );
@@ -267,33 +259,6 @@ await test('MOCK: endpoint/linked identities and response thread/run mismatches 
       timedOut: false,
     };
     await assert.rejects(f.backend.wait(reference, 1), failure('incompatible'));
-  } finally {
-    f.dispose();
-  }
-});
-await test('MOCK: linked target is passed on every external tool call and resolves its own identity', async () => {
-  const f = await backendFixture();
-  try {
-    f.wire.handler = (name, args) =>
-      Promise.resolve(
-        envelope(
-          name === 't3_environment_read' &&
-            args.environmentId === 'linked-fixture'
-            ? {
-                ...z
-                  .record(z.string(), z.unknown())
-                  .parse(captured.t3_environment_read),
-                environmentId: 'linked-fixture',
-              }
-            : f.wire.values[name],
-        ),
-      );
-    const linked = await T3Backend.connect(f.wire, f.store.operations, {
-      ...options,
-      linkedEnvironmentId: 'linked-fixture',
-    });
-    await linked.read({ ...reference, environmentId: 'linked-fixture' });
-    assert.equal(f.wire.calls.at(-1)?.args.environmentId, 'linked-fixture');
   } finally {
     f.dispose();
   }

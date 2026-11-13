@@ -100,6 +100,7 @@ await test('web assets cannot shadow protected API, health or private repository
       '/src/server/app.ts',
       '/.store/kinmesh.sqlite',
       '/assets/../.env',
+      '/assets/../../.env',
     ]) {
       assert.equal((await f.app.inject({ url })).statusCode, 404);
     }

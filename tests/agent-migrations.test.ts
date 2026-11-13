@@ -1,44 +1,14 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdirSync, readFileSync, writeFileSync, copyFileSync } from 'node:fs';
-import { join } from 'node:path';
 import { randomUUID } from 'node:crypto';
 import Database from 'better-sqlite3';
-import { drizzle } from 'drizzle-orm/better-sqlite3';
-import { migrate } from 'drizzle-orm/better-sqlite3/migrator';
-import { z } from 'zod';
+import { migrateTo } from './migration-helpers.js';
 import { HumanId, TeamId } from '../src/domain/contracts.js';
 import { fixture } from './helpers.js';
 import { profileInput, grantInput, correlationInput } from './agent-helpers.js';
 
 await test('upgrade from populated foundation/adapter migrations preserves owner, operation journal and new agent state across reopen', () => {
   const f = fixture();
-  const oldFolder = join(f.directory, 'old-migrations');
-  mkdirSync(join(oldFolder, 'meta'), { recursive: true });
-  const journal = z
-    .object({
-      entries: z.array(z.object({ idx: z.number(), tag: z.string() }).loose()),
-    })
-    .loose()
-    .parse(
-      JSON.parse(
-        readFileSync(
-          new URL('../drizzle/meta/_journal.json', import.meta.url),
-          'utf8',
-        ),
-      ),
-    );
-  const oldEntries = journal.entries.filter((e) => e.idx < 2);
-  assert.equal(oldEntries.length, 2);
-  writeFileSync(
-    join(oldFolder, 'meta/_journal.json'),
-    JSON.stringify({ ...journal, entries: oldEntries }),
-  );
-  for (const entry of oldEntries)
-    copyFileSync(
-      new URL('../drizzle/' + entry.tag + '.sql', import.meta.url),
-      join(oldFolder, entry.tag + '.sql'),
-    );
   const humanId = HumanId.parse(randomUUID());
   const teamId = TeamId.parse(randomUUID());
   const operationId = randomUUID();
@@ -46,7 +16,7 @@ await test('upgrade from populated foundation/adapter migrations preserves owner
   raw.pragma('foreign_keys = ON');
   raw.pragma('journal_mode = WAL');
   try {
-    migrate(drizzle(raw), { migrationsFolder: oldFolder });
+    migrateTo(raw, f.directory, 2);
     raw
       .prepare('INSERT INTO humans VALUES (?, ?, ?)')
       .run(humanId, 'old-owner', 'migration-test-only-hash');

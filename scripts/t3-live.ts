@@ -9,7 +9,8 @@ import {
 } from '../src/adapters/t3/oauth.js';
 import { SdkWire } from '../src/adapters/t3/sdk.js';
 import { nativeReadOnlyDenial } from './t3-native-denial.js';
-import { ValidatedTools, type Wire } from '../src/adapters/t3/contracts.js';
+import type { ValidatedTools, Wire } from '../src/adapters/t3/contracts.js';
+import { liveTools } from './t3-live-tools.js';
 import { T3Backend } from '../src/adapters/t3/backend.js';
 import { openStore } from '../src/persistence/store.js';
 import {
@@ -66,7 +67,7 @@ try {
     scopes: credential.tokens.scope?.split(' ') ?? [],
   };
   const backend = await T3Backend.connect(wire, store.operations, options);
-  tools = new ValidatedTools(wire, await wire.list());
+  tools = await liveTools(wire);
   const base = {
     target: { kind: 'scratch' },
     title: 'Disposable Kinmesh external MCP acceptance',

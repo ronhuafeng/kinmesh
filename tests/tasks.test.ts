@@ -1,10 +1,8 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
-import { fork } from 'node:child_process';
-import { once } from 'node:events';
 import Database from 'better-sqlite3';
-import { z } from 'zod';
+import type { z } from 'zod';
 import { HumanId } from '../src/domain/contracts.js';
 import { IdentityError } from '../src/domain/agents.js';
 import { pageOf, TaskFact } from '../src/domain/communication.js';
@@ -20,6 +18,7 @@ import {
 import { createApp } from '../src/server/app.js';
 import { key, postInput } from './communication-helpers.js';
 import { taskFixture, taskInput, commandInput } from './task-helpers.js';
+import { forkWorker, race, stop } from './process-helpers.js';
 const rejected = (status: number) => (e: unknown) =>
   e instanceof IdentityError && e.statusCode === status;
 
@@ -280,10 +279,10 @@ await test('two different authenticated agent processes race one proposed task; 
   const task = f.create().task;
   const children = [f.developerGrant.token, f.reviewerGrant.token].map(
     (token) =>
-      fork(new URL('./fixtures/task-claim-worker.ts', import.meta.url), [], {
-        execArgv: ['--import', 'tsx'],
-        stdio: ['ignore', 'ignore', 'ignore', 'ipc'],
-        env: {
+      forkWorker(
+        new URL('./fixtures/task-claim-worker.ts', import.meta.url),
+        [],
+        {
           PATH: process.env.PATH ?? '',
           TASK_TEST_DATABASE: f.dbPath,
           TASK_TEST_TOKEN: token,
@@ -291,44 +290,10 @@ await test('two different authenticated agent processes race one proposed task; 
           TASK_TEST_CHANNEL: f.channelId,
           TASK_TEST_TASK: task.id,
         },
-      }),
-  );
-  const timeout = <T>(promise: Promise<T>) =>
-    Promise.race([
-      promise,
-      new Promise<never>((_resolve, reject) => {
-        const t = setTimeout(() => {
-          reject(new Error('Worker timeout'));
-        }, 15000);
-        t.unref();
-      }),
-    ]);
-  try {
-    await timeout(
-      Promise.all(
-        children.map(async (child) => {
-          const message: unknown = (await once(child, 'message'))[0];
-          assert.equal(
-            z.object({ ready: z.literal(true) }).safeParse(message).success,
-            true,
-          );
-        }),
       ),
-    );
-    const results = children.map((child) => once(child, 'message'));
-    const exits = children.map((child) => once(child, 'exit'));
-    for (const child of children) child.send('go');
-    const replies = await timeout(Promise.all(results));
-    const outcomes = replies
-      .map((args) => {
-        const message: unknown = args[0];
-        return z
-          .object({ outcome: z.enum(['won', 'conflict', 'failed']) })
-          .parse(message).outcome;
-      })
-      .sort();
-    assert.deepEqual(outcomes, ['conflict', 'won']);
-    await timeout(Promise.all(exits));
+  );
+  try {
+    assert.deepEqual(await race(children, 15000), ['conflict', 'won']);
     const final = f.tasks.get(f.principal, f.teamId, f.channelId, task.id);
     assert.equal(final.version, 2);
     assert.ok(
@@ -350,13 +315,7 @@ await test('two different authenticated agent processes race one proposed task; 
       1,
     );
   } finally {
-    for (const child of children) {
-      if (child.exitCode === null && child.signalCode === null) {
-        const exit = once(child, 'exit');
-        child.kill('SIGKILL');
-        await exit;
-      }
-    }
+    for (const child of children) await stop(child, 'SIGKILL');
     await f.dispose();
   }
 });

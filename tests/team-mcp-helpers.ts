@@ -1,38 +1,13 @@
 import { spawn, type ChildProcess } from 'node:child_process';
-import { createServer } from 'node:net';
-import { once } from 'node:events';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js';
 import { CallToolResultSchema } from '@modelcontextprotocol/sdk/types.js';
 import type { z } from 'zod';
 import { outcome } from '../src/team-mcp/tools.js';
-export async function freePort() {
-  const server = createServer();
-  server.listen(0, '127.0.0.1');
-  await once(server, 'listening');
-  const address = server.address();
-  if (address === null || typeof address === 'string')
-    throw new Error('Port unavailable');
-  const port = address.port;
-  await new Promise<void>((resolve, reject) =>
-    server.close((e) => {
-      if (e) reject(e);
-      else resolve();
-    }),
-  );
-  return port;
-}
-export async function stop(child: ChildProcess) {
-  if (child.exitCode !== null || child.signalCode !== null) return;
-  const exit = once(child, 'exit');
-  child.kill('SIGTERM');
-  const timer = setTimeout(() => child.kill('SIGKILL'), 3000);
-  try {
-    await exit;
-  } finally {
-    clearTimeout(timer);
-  }
-}
+import { stop as stopProcess } from './process-helpers.js';
+export { freePort } from './process-helpers.js';
+export const stop = (child: ChildProcess) =>
+  stopProcess(child, 'SIGTERM', 3000);
 export async function startTeam(path: string, port: number) {
   const child = spawn(
     process.execPath,
