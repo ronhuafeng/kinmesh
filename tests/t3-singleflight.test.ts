@@ -1,6 +1,5 @@
 import { test } from 'node:test';
-import { fork } from 'node:child_process';
-import { once } from 'node:events';
+import type { ChildProcess } from 'node:child_process';
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
 import Database from 'better-sqlite3';
@@ -15,6 +14,7 @@ import {
   options,
   reference,
 } from './t3-helpers.js';
+import { forkWorker, message, stop } from './process-helpers.js';
 
 const outbound = (wire: MockWire) =>
   wire.calls.filter((c) => c.name === 't3_thread_launch');
@@ -364,46 +364,29 @@ await test(
   { timeout: 15_000 },
   async () => {
     const f = await backendFixture();
-    const children: ReturnType<typeof fork>[] = [];
+    const children: ChildProcess[] = [];
     try {
       const id = await lost(f);
       const original = f.store.operations.get(id);
       for (let n = 0; n < 2; n++) {
-        const child = fork(
+        const child = forkWorker(
           new URL('./fixtures/operation-claimant.ts', import.meta.url),
           [f.path, id],
-          {
-            execArgv: ['--import', 'tsx'],
-            stdio: ['ignore', 'ignore', 'ignore', 'ipc'],
-          },
         );
         children.push(child);
-        assert.equal(
-          (
-            await once(child, 'message', {
-              signal: AbortSignal.timeout(10_000),
-            })
-          )[0],
-          'ready',
-        );
+        assert.equal(await message(child), 'ready');
       }
-      const results = children.map((child) =>
-        once(child, 'message', { signal: AbortSignal.timeout(10_000) }),
-      );
+      const results = children.map((child) => message(child));
       for (const child of children) child.send('claim');
       const claims = await Promise.all(results);
-      assert.equal(claims.filter((r) => r[0] === 'claimed').length, 1);
-      assert.equal(claims.filter((r) => r[0] === 'busy').length, 1);
+      assert.equal(claims.filter((r) => r === 'claimed').length, 1);
+      assert.equal(claims.filter((r) => r === 'busy').length, 1);
       assert.deepEqual(await f.backend.reconcile(intent, id), {
         kind: 'uncertain',
         operationId: id,
         reason: 'in-flight',
       });
-      for (const child of children) {
-        const exited = once(child, 'exit');
-        child.kill('SIGKILL');
-        await exited;
-      }
+      for (const child of children) await stop(child, 'SIGKILL');
       f.store.close();
       const reopened = f.open();
       try {
@@ -430,12 +413,7 @@ await test(
         reopened.close();
       }
     } finally {
-      for (const child of children)
-        if (child.exitCode === null && child.signalCode === null) {
-          const exited = once(child, 'exit');
-          child.kill('SIGKILL');
-          await exited;
-        }
+      for (const child of children) await stop(child, 'SIGKILL');
       f.dispose();
     }
   },

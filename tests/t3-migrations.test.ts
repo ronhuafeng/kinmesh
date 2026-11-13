@@ -1,43 +1,13 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdirSync, readFileSync, writeFileSync, copyFileSync } from 'node:fs';
-import { join } from 'node:path';
 import { randomUUID } from 'node:crypto';
 import Database from 'better-sqlite3';
-import { drizzle } from 'drizzle-orm/better-sqlite3';
-import { migrate } from 'drizzle-orm/better-sqlite3/migrator';
-import { z } from 'zod';
+import { migrateTo } from './migration-helpers.js';
 import { fixture } from './helpers.js';
 import { reference } from './t3-helpers.js';
 
 await test('execution lease migration preserves populated legacy journal, keys, authority fingerprint and provisional/terminal outcomes', () => {
   const f = fixture();
-  const folder = join(f.directory, 'old-migrations');
-  mkdirSync(join(folder, 'meta'), { recursive: true });
-  const journal = z
-    .object({
-      entries: z.array(z.object({ idx: z.number(), tag: z.string() }).loose()),
-    })
-    .loose()
-    .parse(
-      JSON.parse(
-        readFileSync(
-          new URL('../drizzle/meta/_journal.json', import.meta.url),
-          'utf8',
-        ),
-      ),
-    );
-  const entries = journal.entries.filter((e) => e.idx < 5);
-  assert.equal(entries.length, 5);
-  writeFileSync(
-    join(folder, 'meta/_journal.json'),
-    JSON.stringify({ ...journal, entries }),
-  );
-  for (const e of entries)
-    copyFileSync(
-      new URL('../drizzle/' + e.tag + '.sql', import.meta.url),
-      join(folder, e.tag + '.sql'),
-    );
   const rows = (
     ['prepared', 'dispatching', 'uncertain', 'known', 'rejected'] as const
   ).map((phase) => ({
@@ -57,7 +27,7 @@ await test('execution lease migration preserves populated legacy journal, keys, 
   }));
   const raw = new Database(f.path);
   try {
-    migrate(drizzle(raw), { migrationsFolder: folder });
+    migrateTo(raw, f.directory, 5);
     for (const r of rows)
       raw
         .prepare(

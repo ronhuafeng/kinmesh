@@ -1,11 +1,9 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
-import { mkdirSync, readFileSync, writeFileSync, copyFileSync } from 'node:fs';
-import { join } from 'node:path';
 import Database from 'better-sqlite3';
+import { migrateTo } from './migration-helpers.js';
 import { drizzle } from 'drizzle-orm/better-sqlite3';
-import { migrate } from 'drizzle-orm/better-sqlite3/migrator';
 import { z } from 'zod';
 import { HumanId, TeamId, ChannelId } from '../src/domain/contracts.js';
 import { agentRepository } from '../src/persistence/agents.js';
@@ -20,32 +18,6 @@ import {
 
 await test('populated #1–#3 upgrade preserves identity/grant and backfills general owner membership without enrolling other members/agents', () => {
   const f = fixture();
-  const folder = join(f.directory, 'old');
-  mkdirSync(join(folder, 'meta'), { recursive: true });
-  const journal = z
-    .object({
-      entries: z.array(z.object({ idx: z.number(), tag: z.string() }).loose()),
-    })
-    .loose()
-    .parse(
-      JSON.parse(
-        readFileSync(
-          new URL('../drizzle/meta/_journal.json', import.meta.url),
-          'utf8',
-        ),
-      ),
-    );
-  const entries = journal.entries.filter((e) => e.idx < 3);
-  assert.equal(entries.length, 3);
-  writeFileSync(
-    join(folder, 'meta/_journal.json'),
-    JSON.stringify({ ...journal, entries }),
-  );
-  for (const e of entries)
-    copyFileSync(
-      new URL('../drizzle/' + e.tag + '.sql', import.meta.url),
-      join(folder, e.tag + '.sql'),
-    );
   const humanId = HumanId.parse(randomUUID()),
     memberId = HumanId.parse(randomUUID()),
     teamId = TeamId.parse(randomUUID()),
@@ -54,7 +26,7 @@ await test('populated #1–#3 upgrade preserves identity/grant and backfills gen
   const raw = new Database(f.path);
   raw.pragma('foreign_keys = ON');
   raw.pragma('journal_mode = WAL');
-  migrate(drizzle(raw), { migrationsFolder: folder });
+  migrateTo(raw, f.directory, 3);
   raw
     .prepare('INSERT INTO humans VALUES (?,?,?)')
     .run(humanId, 'owner', 'test-hash');

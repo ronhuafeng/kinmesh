@@ -19,6 +19,16 @@ import { Task } from '../../src/domain/tasks.js';
 import { WorkspaceSnapshot } from '../../src/workspace/contracts.js';
 import { type Native, models, roles, type Role } from './native.js';
 import { Process, port, ready } from './processes.js';
+import {
+  createChannel,
+  newTask,
+  onboard,
+  openAgent,
+  openTask,
+  refreshNow,
+  register,
+  untilReady,
+} from '../browser/ui.js';
 
 export class Hub {
   readonly database: string;
@@ -99,57 +109,18 @@ export class Hub {
     this.page = await context.newPage();
     const page = this.page;
     page.setDefaultTimeout(15_000);
-    await page.goto(this.origin);
-    await page.getByRole('tab', { name: 'First owner setup' }).click();
-    await page.getByLabel('Setup secret', { exact: true }).fill(this.setup);
-    await page.getByLabel('Owner username', { exact: true }).fill('ci_owner');
-    await page
-      .getByLabel('Owner password', { exact: true })
-      .fill(this.password);
-    await page.getByLabel('Team name', { exact: true }).fill('CI Team');
-    await page.getByRole('button', { name: 'Create owner and team' }).click();
-    await page
-      .getByText('Owner created. Sign in with your new credentials.')
-      .waitFor();
-    await page.getByLabel('Username', { exact: true }).fill('ci_owner');
-    await page.getByLabel('Password', { exact: true }).fill(this.password);
-    await page.getByRole('button', { name: 'Sign in', exact: true }).click();
-    await page
-      .getByRole('heading', { name: '# general', exact: true })
-      .waitFor();
-    await page.getByText('New channel', { exact: true }).click();
-    const channel = page.getByRole('form', { name: 'Create a channel' });
-    await channel.getByLabel('Channel name').fill('collaboration');
-    await channel
-      .getByRole('button', { name: 'Create channel', exact: true })
-      .click();
-    await page
-      .getByRole('navigation', { name: 'Channels' })
-      .getByRole('button', { name: 'collaboration', exact: true })
-      .click();
-    await page
-      .getByRole('heading', { name: '# collaboration', exact: true })
-      .waitFor();
+    await onboard(page, this, {
+      username: 'ci_owner',
+      password: this.password,
+      team: 'CI Team',
+    });
+    await createChannel(page, 'collaboration');
     const me = z
       .object({ human: z.object({ id: z.string() }) })
       .parse(await this.api('/api/me'));
     this.humanId = me.human.id;
-    for (const role of roles) {
-      await page.getByRole('tab', { name: 'Team', exact: true }).click();
-      const name = 'CI ' + role;
-      const form = page.getByRole('form', { name: 'Agent profile' });
-      if (!(await form.isVisible()))
-        await page.getByText('Register agent', { exact: true }).first().click();
-      await form.getByLabel('Agent name').fill(name);
-      await form.getByLabel('Role', { exact: true }).selectOption(role);
-      await form
-        .getByRole('button', { name: 'Register agent', exact: true })
-        .click();
-      await page.getByRole('heading', { name, exact: true }).waitFor();
-      await page
-        .getByRole('button', { name: `Add ${name} to channel`, exact: true })
-        .click();
-    }
+    // Registered from #collaboration, each agent joins it.
+    for (const role of roles) await register(page, 'CI ' + role, role);
     const snapshot = WorkspaceSnapshot.parse(
       await this.api(
         '/api/workspace?channelId=' +
@@ -279,38 +250,26 @@ export class Hub {
   }
   async refresh() {
     if (!this.page) throw new Error('NO_WORKSPACE');
-    await this.page.keyboard.press('ControlOrMeta+k');
-    const search = this.page.getByRole('combobox', { name: /Search/ });
-    await search.fill('refresh now');
-    await search.press('Enter');
+    await refreshNow(this.page);
   }
+  /** The agent's page; its Setup region holds the next step. */
   async openAgent(role: Role) {
     const page = this.page;
     if (!page) throw new Error('NO_WORKSPACE');
-    const close = page.getByRole('button', {
-      name: 'Close panel',
-      exact: true,
-    });
-    if (await close.isVisible()) await close.click();
-    await page.getByRole('tab', { name: 'Team', exact: true }).click();
-    await page
-      .getByRole('button', { name: `View CI ${role} activity`, exact: true })
-      .click();
-    return page
-      .getByRole('region', { name: 'CI ' + role, exact: true })
-      .getByRole('region', { name: 'Setup', exact: true });
+    return openAgent(page, 'CI ' + role);
   }
   async connectT3(reconnect = false) {
     this.native.assertOwnedServer();
     const page = this.page;
     if (!page) throw new Error('NO_WORKSPACE');
-    const setup = await this.openAgent('developer');
-    if (reconnect) {
-      await setup.getByText('More', { exact: true }).first().click();
+    const setup = (await this.openAgent('developer')).getByRole('region', {
+      name: 'Setup',
+      exact: true,
+    });
+    if (reconnect)
       await setup
         .getByRole('button', { name: 'Reconnect', exact: true })
         .click();
-    }
     const connect = setup.getByRole('group', {
       name: 'Connect T3',
       exact: true,
@@ -355,8 +314,8 @@ export class Hub {
     const credential = await this.connectT3();
     assert.equal(credential.environmentId, environmentId);
     for (const role of roles) {
-      const setup = await this.openAgent(role);
-      const form = setup.getByRole('form', {
+      const agent = await this.openAgent(role);
+      const form = agent.getByRole('form', {
         name: `Choose what CI ${role} runs on`,
       });
       const choice =
@@ -372,19 +331,16 @@ export class Hub {
       await form
         .getByRole('button', { name: 'Connect CI ' + role, exact: true })
         .click();
-      await expect(
-        setup.getByText('CI ' + role + ' is ready', { exact: true }),
-      ).toBeVisible({ timeout: 20000 });
+      if (this.page) await untilReady(this.page);
     }
     await this.page?.reload();
     for (const role of roles) {
-      const setup = await this.openAgent(role);
-      await expect(setup).toContainText(
-        'Runs on ' +
-          this.native.provider(role) +
-          ' · ' +
-          models[this.native.executor],
-      );
+      // What it runs on is said once, in About.
+      const about = (await this.openAgent(role)).getByRole('complementary', {
+        name: 'About',
+      });
+      await expect(about).toContainText(this.native.provider(role));
+      await expect(about).toContainText(models[this.native.executor]);
       const profile = Agent.parse(
         await this.api(
           `/api/teams/${this.teamId}/agents/${this.agent(role).profile.id}`,
@@ -397,19 +353,10 @@ export class Hub {
       });
     }
     assert.equal(existsSync(join(this.root, 'inbox.json')), false);
-    await this.page
-      ?.getByRole('button', { name: 'Close panel', exact: true })
-      .click();
   }
   async createTask() {
     const page = this.page;
     if (!page) throw new Error('NO_WORKSPACE');
-    await page.getByRole('tab', { name: 'Board', exact: true }).click();
-    await page
-      .locator('summary')
-      .filter({ hasText: /^Create task$/ })
-      .click();
-    const form = page.getByRole('form', { name: 'New task' });
     page.on('request', (request) => {
       if (
         request.method() === 'POST' &&
@@ -418,29 +365,17 @@ export class Hub {
       )
         this.createdInput = request.postDataJSON() as unknown;
     });
-    await form.getByLabel('Task title').fill(this.title);
-    await form
-      .getByLabel('Description', { exact: true })
-      .fill(
-        `Use only Team MCP; no shell or file operations. Discover tools through the MCP catalog and use its fully qualified kinmesh tool names. Do not inspect local configuration. Read the task, channel messages, and decision history through Team MCP before publishing. Compare Inbox agentId with the current owner/reviewer to identify your role. Developer: publish one artifact containing ${this.marker} and 7 x 8 = 56. Follow the latest Human rework note; version the artifact. Use team_messages_send with mentions [], topicId null, sourceMessageId null and sourceEventId from this Inbox event. Use stable operation keys derived from task ID and version. Read the task again, then team_task_handoff in mode review to the assigned reviewer with current expectedVersion and the actual artifact message reference. Reviewer: independently read actual channel artifacts and task history, check criteria and latest Human rework note, publish an evidence-based review, read current task, then team_task_review approve or rework with current expectedVersion. Never accept a task. Return a concise actual assistant response.`,
-      );
-    await form
-      .getByLabel('Acceptance criteria (one per line)')
-      .fill(
-        `Artifact contains ${this.marker}\nArtifact states 7 x 8 = 56\nIndependent review; final acceptance belongs to Human`,
-      );
-    await form
-      .getByLabel('Owner', { exact: true })
-      .selectOption('agent:' + this.agent('developer').profile.id);
-    await form
-      .getByLabel('Reviewer', { exact: true })
-      .selectOption('agent:' + this.agent('reviewer').profile.id);
-    await form
-      .getByRole('button', { name: 'Create task', exact: true })
-      .click();
-    await page
-      .getByRole('article', { name: this.title, exact: true })
-      .waitFor();
+    await newTask(page, {
+      title: this.title,
+      description: `Use only Team MCP; no shell or file operations. Discover tools through the MCP catalog and use its fully qualified kinmesh tool names. Do not inspect local configuration. Read the task, channel messages, and decision history through Team MCP before publishing. Compare Inbox agentId with the current owner/reviewer to identify your role. Developer: publish one artifact containing ${this.marker} and 7 x 8 = 56. Follow the latest Human rework note; version the artifact. Use team_messages_send with mentions [], topicId null, sourceMessageId null and sourceEventId from this Inbox event. Use stable operation keys derived from task ID and version. Read the task again, then team_task_handoff in mode review to the assigned reviewer with current expectedVersion and the actual artifact message reference. Reviewer: independently read actual channel artifacts and task history, check criteria and latest Human rework note, publish an evidence-based review, read current task, then team_task_review approve or rework with current expectedVersion. Never accept a task. Return a concise actual assistant response.`,
+      criteria: [
+        `Artifact contains ${this.marker}`,
+        'Artifact states 7 x 8 = 56',
+        'Independent review; final acceptance belongs to Human',
+      ],
+      owner: 'agent:' + this.agent('developer').profile.id,
+      reviewer: 'agent:' + this.agent('reviewer').profile.id,
+    });
     const tasks = z
       .object({ items: z.array(Task) })
       .parse(
@@ -462,23 +397,15 @@ export class Hub {
     const page = this.page;
     if (!page) throw new Error('NO_WORKSPACE');
     await this.refresh();
-    await page.getByRole('tab', { name: 'Board', exact: true }).click();
-    const close = page.getByRole('button', {
-      name: 'Close panel',
-      exact: true,
-    });
-    if (await close.isVisible()) await close.click();
-    const card = page.getByRole('article', { name: this.title, exact: true });
-    await card.getByRole('button', { name: this.title, exact: true }).click();
-    const drawer = page.getByRole('region', { name: this.title, exact: true });
-    await drawer
+    const task = await openTask(page, this.title);
+    await task
       .getByLabel('Decision note')
       .fill(
         action === 'rework'
           ? this.reworkNote
           : 'Test Human accepts the actual verified second artifact after independent review.',
       );
-    await drawer
+    await task
       .getByRole('button', {
         name: action === 'rework' ? 'Request rework' : 'Accept task',
         exact: true,

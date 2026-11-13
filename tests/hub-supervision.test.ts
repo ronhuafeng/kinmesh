@@ -25,6 +25,7 @@ import { managedDirectory, writeAgentToken } from '../src/inbox/managed.js';
 import { postInput } from './communication-helpers.js';
 import { Message } from '../src/domain/communication.js';
 import { WORKER_SHUTDOWN_MS } from '../src/inbox/lifecycle.js';
+import { deadline, freePort } from './process-helpers.js';
 
 const root = fileURLToPath(new URL('../', import.meta.url));
 async function until<T>(
@@ -39,21 +40,6 @@ async function until<T>(
     await delay(40);
   }
   throw new Error('Subprocess fixture deadline');
-}
-async function freePort() {
-  const server = createServer();
-  await new Promise<void>((done, reject) => {
-    server.once('error', reject);
-    server.listen(0, '127.0.0.1', done);
-  });
-  const address = server.address();
-  assert.ok(address && typeof address !== 'string');
-  await new Promise<void>((done) => {
-    server.close(() => {
-      done();
-    });
-  });
-  return address.port;
 }
 // Only descendants of our disposable test process are inspected; no production PID claims.
 function descendants(pid: number): number[] {
@@ -262,21 +248,6 @@ async function fixture(database?: string) {
       rmSync(directory, { recursive: true, force: true });
     },
   };
-}
-async function deadline<T>(promise: Promise<T>, ms: number) {
-  let timer: NodeJS.Timeout | undefined;
-  try {
-    return await Promise.race([
-      promise,
-      new Promise<never>((_done, reject) => {
-        timer = setTimeout(() => {
-          reject(new Error('Process close deadline'));
-        }, ms);
-      }),
-    ]);
-  } finally {
-    clearTimeout(timer);
-  }
 }
 
 await test(

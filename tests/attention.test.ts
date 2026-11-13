@@ -5,15 +5,30 @@ import { inboxFixture } from './inbox-helpers.js';
 import { key, postInput } from './communication-helpers.js';
 
 type Fixture = Awaited<ReturnType<typeof inboxFixture>>;
+const raw = async (f: Fixture, channelId: string) =>
+  (
+    await f.app.inject({
+      url: '/api/workspace?channelId=' + channelId,
+      cookies: f.cookies,
+    })
+  ).json<{ attention: { unstuck: object[] } }>();
 const snapshot = async (f: Fixture, channelId: string) =>
-  WorkspaceSnapshot.parse(
-    (
-      await f.app.inject({
-        url: '/api/workspace?channelId=' + channelId,
-        cookies: f.cookies,
-      })
-    ).json<unknown>(),
-  );
+  WorkspaceSnapshot.parse(await raw(f, channelId));
+/** Inbox row columns a worker owns; none may reach the browser. */
+const WORKER_INTERNALS = [
+  'claimToken',
+  'leaseUntil',
+  'nextAttempt',
+  'attempts',
+  'generation',
+  'launch',
+  'operationId',
+  'reference',
+  'eventId',
+  'rootId',
+  'expiresAt',
+  'position',
+];
 const elsewhere = (f: Fixture) =>
   f.comm.createChannel(f.principal, f.teamId, {
     operationKey: key(),
@@ -86,19 +101,9 @@ await test('blocked deliveries and unwakeable agents are listed without worker i
     assert.equal(item?.id, claim.id);
     assert.equal(item.channelId, f.channelId);
     assert.equal(item.state, 'blocked');
-    assert.deepEqual(Object.keys(item).sort(), [
-      'agentId',
-      'channelId',
-      'channelName',
-      'id',
-      'messageId',
-      'queuedAt',
-      'reason',
-      'resultMessageId',
-      'state',
-      'taskId',
-      'updatedAt',
-    ]);
+    const [sent] = (await raw(f, other)).attention.unstuck;
+    for (const internal of WORKER_INTERNALS)
+      assert.equal(Object.hasOwn(sent ?? {}, internal), false, internal);
     f.comm.membership(
       f.principal,
       f.teamId,

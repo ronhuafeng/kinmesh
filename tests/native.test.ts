@@ -82,8 +82,9 @@ await test('captured v0.1.5 Run1 completed and Run2 interrupted remain distinct 
   );
   assert.equal(missing.status, 'unobserved');
   assert.equal(missing.terminal, false);
-  assert.equal(missing.providerId, null);
-  assert.equal(missing.modelId, null);
+  // T3 still reports the thread's model when the run is outside the window.
+  assert.equal(missing.providerId, raw.thread.providerInstanceId);
+  assert.equal(missing.modelId, raw.thread.model);
   assert.throws(() =>
     projectNativeRead(
       raw,

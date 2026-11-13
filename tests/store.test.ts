@@ -1,5 +1,5 @@
 import { test } from 'node:test';
-import { once } from 'node:events';
+import { forkWorker, message, stop } from './process-helpers.js';
 import assert from 'node:assert/strict';
 import Database from 'better-sqlite3';
 import { fixture } from './helpers.js';
@@ -98,32 +98,14 @@ await test('database rejects invalid role, orphan membership, duplicate channel,
 });
 
 await test('WAL recovers committed bootstrap and discards an interrupted writer transaction', async () => {
-  const { fork } = await import('node:child_process');
   const f = fixture();
-  const child = fork(
+  const child = forkWorker(
     new URL('./fixtures/crash-writer.ts', import.meta.url),
     [f.path],
-    {
-      execArgv: ['--import', 'tsx'],
-      stdio: ['ignore', 'ignore', 'ignore', 'ipc'],
-    },
   );
   try {
-    await Promise.race([
-      once(child, 'message'),
-      once(child, 'exit').then(() => {
-        throw new Error('Writer exited before transaction');
-      }),
-      new Promise<never>((_resolve, reject) => {
-        const timer = setTimeout(() => {
-          reject(new Error('Writer timeout'));
-        }, 10000);
-        timer.unref();
-      }),
-    ]);
-    const exited = once(child, 'exit');
-    child.kill('SIGKILL');
-    await exited;
+    await message(child);
+    await stop(child, 'SIGKILL');
     const recovered = f.open();
     try {
       const owner = recovered.credentials('owner');
@@ -134,11 +116,7 @@ await test('WAL recovers committed bootstrap and discards an interrupted writer 
       recovered.close();
     }
   } finally {
-    if (child.exitCode === null && child.signalCode === null) {
-      const exited = once(child, 'exit');
-      child.kill('SIGKILL');
-      await exited;
-    }
+    await stop(child, 'SIGKILL');
     f.cleanup();
   }
 });

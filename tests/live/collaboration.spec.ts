@@ -32,9 +32,10 @@ import { SdkWire } from '../../src/adapters/t3/sdk.js';
 import { T3Backend } from '../../src/adapters/t3/backend.js';
 import { authority, type Credential } from '../../src/adapters/t3/oauth.js';
 import {
-  ValidatedTools,
+  type ValidatedTools,
   Capabilities,
 } from '../../src/adapters/t3/contracts.js';
+import { liveTools } from '../../scripts/t3-live-tools.js';
 import {
   Reference,
   ExecutionFailure,
@@ -126,7 +127,7 @@ test('complete real two-agent workflow, Human rework/acceptance, recovery and au
       authority: authority(credential),
       scopes: credential.tokens.scope?.split(' ') ?? [],
     });
-    tools = new ValidatedTools(wire, await wire.list());
+    tools = await liveTools(wire);
   }
   async function activityFor(ref: Reference): Promise<Activity> {
     if (!tools) throw new Error('NATIVE_AUDIT_REQUIRED');

@@ -1,22 +1,8 @@
 import { spawn, execFileSync, type ChildProcess } from 'node:child_process';
 import { openSync, closeSync } from 'node:fs';
-import { createServer } from 'node:net';
 import { setTimeout as delay } from 'node:timers/promises';
 
-export async function port() {
-  const server = createServer();
-  await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
-  const address = server.address();
-  if (!address || typeof address === 'string')
-    throw new Error('PORT_UNAVAILABLE');
-  await new Promise<void>((resolve, reject) =>
-    server.close((e) => {
-      if (e) reject(e);
-      else resolve();
-    }),
-  );
-  return address.port;
-}
+export { freePort as port } from '../process-helpers.js';
 
 export class Process {
   child: ChildProcess | undefined;

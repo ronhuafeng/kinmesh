@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { fork, spawn, type ChildProcess } from 'node:child_process';
+import { spawn, type ChildProcess } from 'node:child_process';
 import { once } from 'node:events';
 import { setTimeout as delay } from 'node:timers/promises';
 import { writeFileSync } from 'node:fs';
@@ -12,12 +12,7 @@ import { Correlation } from '../src/domain/agents.js';
 import { reference } from './t3-helpers.js';
 import { inboxFixture, due, fixtureResult } from './inbox-helpers.js';
 import { postInput } from './communication-helpers.js';
-async function stop(child: ChildProcess, signal: NodeJS.Signals = 'SIGTERM') {
-  if (child.exitCode !== null || child.signalCode !== null) return;
-  const exited = once(child, 'close', { signal: AbortSignal.timeout(10000) });
-  child.kill(signal);
-  await exited;
-}
+import { forkWorker, message, stop } from './process-helpers.js';
 async function until(predicate: () => boolean) {
   const deadline = Date.now() + 10000;
   while (!predicate()) {
@@ -26,11 +21,10 @@ async function until(predicate: () => boolean) {
   }
 }
 function worker(path: string, mode = 'normal') {
-  return fork(
-    new URL('./fixtures/inbox-worker.ts', import.meta.url),
-    [path, mode],
-    { execArgv: ['--import', 'tsx'], stdio: ['ignore', 'pipe', 'pipe', 'ipc'] },
-  );
+  return forkWorker(new URL('./fixtures/inbox-worker.ts', import.meta.url), [
+    path,
+    mode,
+  ]);
 }
 await test(
   'MOCK: two independent worker processes race one inbox; SIGKILL leases recover with same native key and stale fence',
@@ -50,10 +44,7 @@ await test(
       for (let i = 0; i < 2; i++) {
         const c = worker(f.configPath, 'hold');
         children.push(c);
-        assert.equal(
-          (await once(c, 'message', { signal: AbortSignal.timeout(10000) }))[0],
-          'ready',
-        );
+        assert.equal(await message(c), 'ready');
       }
       await until(
         () =>
@@ -102,7 +93,7 @@ await test(
       );
       const recovery = worker(f.configPath);
       children.push(recovery);
-      await once(recovery, 'message', { signal: AbortSignal.timeout(10000) });
+      await message(recovery);
       await until(() => f.inbox.get(stale.id).state === 'acked');
       await stop(recovery);
       assert.equal(

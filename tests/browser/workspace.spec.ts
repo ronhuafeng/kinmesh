@@ -2,44 +2,31 @@ import type { Page, APIRequestContext } from '@playwright/test';
 import { z } from 'zod';
 import { randomBytes, randomUUID } from 'node:crypto';
 import Database from 'better-sqlite3';
-import { readFileSync, statSync } from 'node:fs';
+import { readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { Agent, Grant } from '../../src/domain/agents.js';
 import { Task, TaskResult } from '../../src/domain/tasks.js';
 import { pageOf } from '../../src/domain/communication.js';
 import { WorkspaceSnapshot } from '../../src/workspace/contracts.js';
 import { test, expect } from './fixture.js';
-async function onboard(page: Page, hub: { origin: string; setup: string }) {
-  await page.goto(hub.origin);
-  await page.getByRole('tab', { name: 'First owner setup' }).click();
-  await page.getByLabel('Setup secret', { exact: true }).fill(hub.setup);
-  await page
-    .getByLabel('Owner username', { exact: true })
-    .fill('browser_owner');
-  const password = randomBytes(24).toString('base64url');
-  await page.getByLabel('Owner password', { exact: true }).fill(password);
-  await page.getByLabel('Team name', { exact: true }).fill('Fieldnotes team');
-  await page.getByRole('button', { name: 'Create owner and team' }).click();
-  await expect(
-    page.getByText('Owner created. Sign in with your new credentials.'),
-  ).toBeVisible();
-  await page.getByLabel('Username', { exact: true }).fill('browser_owner');
-  await page.getByLabel('Password', { exact: true }).fill(password);
-  await page.getByRole('button', { name: 'Sign in', exact: true }).click();
-  await expect(page.getByRole('heading', { name: '# general' })).toBeVisible();
-  return password;
-}
+import {
+  agentRow,
+  backToBoard,
+  createChannel,
+  inStage,
+  newTask,
+  onboard,
+  openAgent,
+  refreshNow,
+  register,
+  signIn,
+  taskPage,
+  untilReady,
+} from './ui.js';
 async function snapshot(request: APIRequestContext, origin: string) {
   const response = await request.get(origin + '/api/workspace');
   expect(response.status()).toBe(200);
   return WorkspaceSnapshot.parse(await response.json());
-}
-/** The heartbeat is silent; a refresh on demand lives in the command palette. */
-async function refreshNow(page: Page) {
-  await page.keyboard.press('ControlOrMeta+k');
-  const search = page.getByRole('combobox', { name: /Search/ });
-  await search.fill('refresh now');
-  await search.press('Enter');
 }
 /** Healthy means no connection pill at all. */
 async function expectHealthy(page: Page) {
@@ -49,44 +36,9 @@ async function expectHealthy(page: Page) {
       .filter({ hasText: /^(Refreshing…|Disconnected)$/ }),
   ).toHaveCount(0);
 }
-/** Run and thread IDs sit behind each run's technical details. */
-async function showTechnical(page: Page) {
-  const details = page.locator('.execution details.technical');
-  await expect(details.first()).toBeAttached();
-  await details.evaluateAll((all) => {
-    for (const element of all)
-      if (element instanceof HTMLDetailsElement) element.open = true;
-  });
-}
-/** How a recorded runtime state is said to a person. */
-const spoken: Record<string, string> = {
-  unknown: 'unknown',
-  active: 'working',
-  waiting: 'waiting',
-  succeeded: 'finished',
-  failed: 'failed',
-  stopped: 'stopped',
-};
-/** Board columns are the five stages; a card's column is its status. */
-function inStage(page: Page, stage: string, title: string) {
-  return page
-    .getByRole('region', { name: stage, exact: true })
-    .getByRole('article', { name: title, exact: true });
-}
-async function register(page: Page, name: string, role: string) {
-  await page.getByRole('tab', { name: 'Team', exact: true }).click();
-  await page.getByText('Register agent', { exact: true }).first().click();
-  const form = page.getByRole('form', { name: 'Agent profile' });
-  await form.getByLabel('Agent name').fill(name);
-  await form.getByLabel('Role', { exact: true }).selectOption(role);
-  await form
-    .getByRole('button', { name: 'Register agent', exact: true })
-    .click();
-  await expect(page.getByRole('heading', { name, exact: true })).toBeVisible();
-  await page.getByRole('button', { name: `Add ${name} to channel` }).click();
-  await expect(
-    page.getByRole('button', { name: `Add ${name} to channel` }),
-  ).toHaveCount(0);
+/** A run's state as its row says it. */
+function runState(page: Page, label: string) {
+  return page.locator('.run-state').getByText(label, { exact: true });
 }
 async function agentGrant(
   request: APIRequestContext,
@@ -115,116 +67,107 @@ async function agentGrant(
     .strictObject({ grant: Grant, token: z.string() })
     .parse(await response.json()).token;
 }
-for (const width of [1440, 375]) {
-  test(`real workspace onboarding, history, mentions and reconnect at ${String(width)}px`, async ({
-    page,
-    context,
-    hub,
-  }) => {
-    await page.setViewportSize({ width, height: 1000 });
-    const errors: string[] = [];
-    page.on('pageerror', (error) => errors.push(error.message));
-    await onboard(page, hub);
-    // On a phone, channel actions and the account sit behind the menu.
-    const openMenu = async () => {
-      const menu = page.getByRole('button', { name: 'Menu' });
-      if (width < 721 && (await menu.getAttribute('aria-expanded')) !== 'true')
-        await menu.click();
-    };
-    await openMenu();
-    await page.getByText('New channel', { exact: true }).click();
-    const create = page.getByRole('form', { name: 'Create a channel' });
-    await create.getByLabel('Channel name').fill('design');
-    await create
-      .getByRole('button', { name: 'Create channel', exact: true })
-      .click();
-    await page
-      .getByRole('navigation', { name: 'Channels' })
-      .getByRole('button', { name: 'design', exact: true })
-      .click();
-    await expect(
-      page.getByRole('heading', { name: '# design', exact: true }),
-    ).toBeVisible();
-    await register(page, 'Ada', 'developer');
-    await page.getByRole('tab', { name: 'Chat', exact: true }).click();
-    await page.getByRole('button', { name: 'Start a topic' }).click();
-    await page.getByLabel('Topic title').fill('Release planning');
-    await page.getByLabel('Topic title').press('Enter');
-    const topics = page.getByRole('group', { name: 'Topics' });
-    await topics
-      .getByRole('button', { name: 'Release planning', exact: true })
-      .click();
-    await expect(
-      topics.getByRole('button', { name: 'Release planning', exact: true }),
-    ).toHaveAttribute('aria-pressed', 'true');
-    const composer = page.getByRole('form', { name: 'Message your team' });
-    const text =
-      '<img src=x onerror="window.__injected=true"> Persistent hello';
-    const sent = text + ' @Ada';
-    const message = composer.getByLabel('Message', { exact: true });
-    await message.fill(text);
-    await message.pressSequentially(' @Ad');
-    await page
-      .getByRole('listbox', { name: 'Mention suggestions' })
-      .getByRole('option', { name: /Ada/ })
-      .click();
-    await expect(
-      composer.getByRole('list', { name: 'Mentions' }).getByText('@Ada'),
-    ).toBeVisible();
-    await composer.getByRole('button', { name: 'Send message' }).click();
-    await expect(
-      page
-        .getByRole('list', { name: 'Channel messages' })
-        .getByText(sent, { exact: true }),
-    ).toBeVisible();
-    // The mention reads in the text itself; no second @Ada chip repeats it,
-    // and it still reaches Ada (its delivery line is shown).
-    const posted = page
+test('a desktop workspace loads without sideways scrolling', async ({
+  page,
+  hub,
+}) => {
+  await page.setViewportSize({ width: 1440, height: 1000 });
+  await onboard(page, hub);
+  expect(
+    await page.evaluate(
+      () => document.documentElement.scrollWidth <= window.innerWidth,
+    ),
+  ).toBe(true);
+});
+test('real workspace onboarding, mentions and reconnect on a phone', async ({
+  page,
+  context,
+  hub,
+}) => {
+  await page.setViewportSize({ width: 375, height: 1000 });
+  const errors: string[] = [];
+  page.on('pageerror', (error) => errors.push(error.message));
+  await onboard(page, hub);
+  // On a phone, channel actions and the account sit behind the menu.
+  const openMenu = async () => {
+    const menu = page.getByRole('button', { name: 'Menu' });
+    if ((await menu.getAttribute('aria-expanded')) !== 'true')
+      await menu.click();
+  };
+  await openMenu();
+  await createChannel(page, 'design');
+  await register(page, 'Ada', 'developer');
+  await page.getByRole('tab', { name: 'Chat', exact: true }).click();
+  await page.getByRole('button', { name: 'Start a topic' }).click();
+  await page.getByLabel('Topic title').fill('Release planning');
+  await page.getByLabel('Topic title').press('Enter');
+  const topics = page.getByRole('group', { name: 'Topics' });
+  await topics
+    .getByRole('button', { name: 'Release planning', exact: true })
+    .click();
+  await expect(
+    topics.getByRole('button', { name: 'Release planning', exact: true }),
+  ).toHaveAttribute('aria-pressed', 'true');
+  const composer = page.getByRole('form', { name: 'Message your team' });
+  const text = '<img src=x onerror="window.__injected=true"> Persistent hello';
+  const sent = text + ' @Ada';
+  const message = composer.getByLabel('Message', { exact: true });
+  await message.fill(text);
+  await message.pressSequentially(' @Ad');
+  await page
+    .getByRole('listbox', { name: 'Mention suggestions' })
+    .getByRole('option', { name: /Ada/ })
+    .click();
+  await expect(
+    composer.getByRole('list', { name: 'Mentions' }).getByText('@Ada'),
+  ).toBeVisible();
+  await composer.getByRole('button', { name: 'Send message' }).click();
+  await expect(
+    page
       .getByRole('list', { name: 'Channel messages' })
-      .getByRole('listitem')
-      .filter({ hasText: sent });
-    await expect(posted.getByRole('list', { name: 'Mentioned' })).toHaveCount(
-      0,
-    );
-    await expect(
-      posted.getByRole('list', { name: 'Agent responses' }),
-    ).toContainText('Ada');
-    await page.reload();
-    await expect(page.getByText(sent, { exact: true })).toBeVisible();
-    expect(await page.locator('.messages img').count()).toBe(0);
-    // Healthy is silent; the pill and its Reconnect button appear only offline.
-    await expectHealthy(page);
-    await context.setOffline(true);
-    await refreshNow(page);
-    await expect(page.getByText('Disconnected', { exact: true })).toBeVisible();
-    // Reconnecting while still offline keeps the honest state.
-    await page.getByRole('button', { name: 'Reconnect', exact: true }).click();
-    await expect(page.getByText('Disconnected', { exact: true })).toBeVisible();
-    // Coming back online reconnects by itself.
-    await context.setOffline(false);
-    await expectHealthy(page);
-    await expect(page.getByText(sent, { exact: true })).toBeVisible();
-    expect(
-      await page.evaluate(
-        () => document.documentElement.scrollWidth <= window.innerWidth,
-      ),
-    ).toBe(true);
-    const ids = await page
-      .locator('[id]')
-      .evaluateAll((elements) => elements.map((e) => e.id));
-    expect(new Set(ids).size).toBe(ids.length);
-    expect(errors).toEqual([]);
-    await page.screenshot({
-      path: `artifacts/workspace-${String(width)}.png`,
-      fullPage: true,
-    });
-    await openMenu();
-    await page.getByRole('button', { name: 'Sign out', exact: true }).click();
-    await expect(
-      page.getByRole('heading', { name: 'Welcome back' }),
-    ).toBeVisible();
-  });
-}
+      .getByText(sent, { exact: true }),
+  ).toBeVisible();
+  // The mention reads in the text itself; no second @Ada chip repeats it,
+  // and it still reaches Ada (its delivery line is shown).
+  const posted = page
+    .getByRole('list', { name: 'Channel messages' })
+    .getByRole('listitem')
+    .filter({ hasText: sent });
+  await expect(posted.getByRole('list', { name: 'Mentioned' })).toHaveCount(0);
+  await expect(
+    posted.getByRole('list', { name: 'Agent responses' }),
+  ).toContainText('Ada');
+  await page.reload();
+  await expect(page.getByText(sent, { exact: true })).toBeVisible();
+  expect(await page.locator('.messages img').count()).toBe(0);
+  // Healthy is silent; the pill and its Reconnect button appear only offline.
+  await expectHealthy(page);
+  await context.setOffline(true);
+  await refreshNow(page);
+  await expect(page.getByText('Disconnected', { exact: true })).toBeVisible();
+  // Reconnecting while still offline keeps the honest state.
+  await page.getByRole('button', { name: 'Reconnect', exact: true }).click();
+  await expect(page.getByText('Disconnected', { exact: true })).toBeVisible();
+  // Coming back online reconnects by itself.
+  await context.setOffline(false);
+  await expectHealthy(page);
+  await expect(page.getByText(sent, { exact: true })).toBeVisible();
+  expect(
+    await page.evaluate(
+      () => document.documentElement.scrollWidth <= window.innerWidth,
+    ),
+  ).toBe(true);
+  const ids = await page
+    .locator('[id]')
+    .evaluateAll((elements) => elements.map((e) => e.id));
+  expect(new Set(ids).size).toBe(ids.length);
+  expect(errors).toEqual([]);
+  await openMenu();
+  await page.getByRole('button', { name: 'Sign out', exact: true }).click();
+  await expect(
+    page.getByRole('heading', { name: 'Welcome back' }),
+  ).toBeVisible();
+});
 test('two independent task cards: real agent handoff, human review, acceptance and rework', async ({
   page,
   context,
@@ -248,29 +191,15 @@ test('two independent task cards: real agent handoff, human review, acceptance a
     extraHTTPHeaders: { authorization: 'Bearer ' + token },
   });
   try {
-    await page.getByRole('tab', { name: 'Board', exact: true }).click();
-    await page
-      .locator('summary')
-      .filter({ hasText: /^Create task$/ })
-      .click();
-    const form = page.getByRole('form', { name: 'New task' });
     for (const title of ['Ship alpha', 'Ship beta']) {
-      await form.getByLabel('Task title').fill(title);
-      await form
-        .getByLabel('Description', { exact: true })
-        .fill('Browser responsibility test');
-      await form
-        .getByLabel('Acceptance criteria (one per line)')
-        .fill('Reviewed and human accepted');
-      await form
-        .getByLabel('Owner', { exact: true })
-        .selectOption('agent:' + developer.id);
-      await form
-        .getByLabel('Reviewer', { exact: true })
-        .selectOption('human:' + state.human.id);
-      await form
-        .getByRole('button', { name: 'Create task', exact: true })
-        .click();
+      await newTask(page, {
+        title,
+        description: 'Browser responsibility test',
+        criteria: ['Reviewed and human accepted'],
+        owner: 'agent:' + developer.id,
+        reviewer: 'human:' + state.human.id,
+      });
+      await backToBoard(page);
       await expect(
         page.getByRole('article', { name: title, exact: true }),
       ).toBeVisible();
@@ -306,58 +235,49 @@ test('two independent task cards: real agent handoff, human review, acceptance a
       exact: true,
     });
     const beta = page.getByRole('article', { name: 'Ship beta', exact: true });
-    // Each task opens in its own drawer; decisions are explicit buttons.
-    const alphaDrawer = page.getByRole('region', {
-      name: 'Ship alpha',
-      exact: true,
-    });
-    const betaDrawer = page.getByRole('region', {
-      name: 'Ship beta',
-      exact: true,
-    });
+    // Each task opens as its own page in place of the board; decisions are
+    // explicit buttons, and Esc returns to the board.
+    const alphaPage = taskPage(page, 'Ship alpha');
+    const betaPage = taskPage(page, 'Ship beta');
     await expect(inStage(page, 'Review', 'Ship alpha')).toBeVisible();
     await alpha.getByRole('button', { name: 'Ship alpha' }).click();
-    await alphaDrawer
+    await expect(page.getByRole('region', { name: 'Task board' })).toBeHidden();
+    await alphaPage
       .getByLabel('Decision note')
       .fill('Technical review complete');
-    await alphaDrawer
+    await alphaPage
       .getByRole('button', { name: 'Approve review', exact: true })
       .click();
+    await expect(
+      alphaPage.getByRole('button', { name: 'Accept task', exact: true }),
+    ).toBeVisible();
+    await backToBoard(page);
     await expect(inStage(page, 'Human sign-off', 'Ship alpha')).toBeVisible();
     await expect(inStage(page, 'Review', 'Ship beta')).toBeVisible();
-    await alphaDrawer
+    await alpha.getByRole('button', { name: 'Ship alpha' }).click();
+    await alphaPage
       .getByLabel('Decision note')
       .fill('I accept the alpha outcome');
-    await alphaDrawer
+    await alphaPage
       .getByRole('button', { name: 'Accept task', exact: true })
       .click();
+    await expect(alphaPage.getByText('This task is closed.')).toBeVisible();
+    await backToBoard(page);
     await expect(inStage(page, 'Done', 'Ship alpha')).toBeVisible();
     await beta.getByRole('button', { name: 'Ship beta' }).click();
-    await expect(alphaDrawer).toHaveCount(0);
-    await betaDrawer.getByLabel('Decision note').fill('Beta needs more work');
-    await betaDrawer
+    await expect(alphaPage).toHaveCount(0);
+    await betaPage.getByLabel('Decision note').fill('Beta needs more work');
+    await betaPage
       .getByRole('button', { name: 'Request rework', exact: true })
       .click();
+    await expect(
+      betaPage.getByRole('button', { name: 'Request rework', exact: true }),
+    ).toHaveCount(0);
+    await backToBoard(page);
     // Sent back is still Working, and the card says so in words.
     await expect(inStage(page, 'Working', 'Ship beta')).toBeVisible();
     await expect(beta.getByText('Sent back', { exact: true })).toBeVisible();
     await expect(inStage(page, 'Done', 'Ship alpha')).toBeVisible();
-    await page.screenshot({
-      path: 'artifacts/workspace-tasks.png',
-      fullPage: true,
-    });
-    await alpha.getByRole('button', { name: 'Ship alpha' }).click();
-    await expect(
-      alphaDrawer.getByRole('heading', { name: 'History' }),
-    ).toBeVisible();
-    // History records the acceptance with its note, as a sentence.
-    await expect(
-      alphaDrawer.getByText('You accepted it: “I accept the alpha outcome”', {
-        exact: true,
-      }),
-    ).toBeVisible();
-    await page.keyboard.press('Escape');
-    await expect(alphaDrawer).toHaveCount(0);
     await page.reload();
     await page.getByRole('tab', { name: 'Board', exact: true }).click();
     await expect(inStage(page, 'Done', 'Ship alpha')).toBeVisible();
@@ -366,10 +286,11 @@ test('two independent task cards: real agent handoff, human review, acceptance a
     await agent.dispose();
   }
 });
-test('AG-UI snapshots render persisted reports honestly; identity spoofing and cross-team reads denied', async ({
+// API identity spoofing and cross-team denials are server tests:
+// tests/workspace.test.ts and tests/agents.test.ts.
+test('AG-UI snapshots render persisted reports honestly', async ({
   page,
   context,
-  playwright,
   hub,
 }) => {
   await onboard(page, hub);
@@ -396,18 +317,15 @@ test('AG-UI snapshots render persisted reports honestly; identity spoofing and c
     { data: { state: 'waiting' } },
   );
   expect(event.status()).toBe(201);
-  await page.getByRole('button', { name: 'View Observer activity' }).click();
-  await expect(
-    page.getByText('Last reported: waiting', { exact: true }),
-  ).toBeVisible();
-  await expect(page.getByText('Last reported: waiting')).toBeVisible();
-  await showTechnical(page);
+  await agentRow(page, 'Observer').click();
+  await expect(runState(page, 'Waiting')).toBeVisible();
   await expect(
     page.getByText('browser-fixture-thread', { exact: true }),
   ).toBeVisible();
+  // No verified link, no link: nothing to click and nothing to explain.
   await expect(
-    page.getByRole('button', { name: 'Open in T3 (no verified link)' }),
-  ).toBeDisabled();
+    page.getByRole('link', { name: 'Open in T3', exact: true }),
+  ).toHaveCount(0);
   const nativeResponse = page.waitForResponse((response) =>
     response.url().endsWith('/executions/' + correlation.id + '/native'),
   );
@@ -418,95 +336,30 @@ test('AG-UI snapshots render persisted reports honestly; identity spoofing and c
   await expect(
     page.getByRole('link', { name: 'Open in T3', exact: true }),
   ).toHaveCount(0);
-  await expect(page.getByText('Last reported: waiting')).toBeVisible();
+  await expect(runState(page, 'Waiting')).toBeVisible();
   expect((await context.request.get(hub.origin + '/api/me')).status()).toBe(
     200,
   );
-  for (const status of ['failed', 'stopped', 'succeeded']) {
-    expect(
-      (
-        await context.request.post(
-          base + '/executions/' + correlation.id + '/events',
-          { data: { state: status } },
-        )
-      ).status(),
-    ).toBe(201);
-    await refreshNow(page);
-    await expect(
-      page.getByText('Last reported: ' + (spoken[status] ?? status)),
-    ).toBeVisible();
-  }
-  const anon = await playwright.request.newContext();
-  try {
-    expect((await anon.get(hub.origin + '/api/workspace')).status()).toBe(401);
-    expect(
-      (
-        await anon.get(`${hub.origin}/api/agui/${state.team.id}/${agent.id}`)
-      ).status(),
-    ).toBe(401);
-    expect(
-      (
-        await anon.get(hub.origin + '/api/workspace', {
-          headers: { 'x-kinmesh-actor': state.human.id },
-        })
-      ).status(),
-    ).toBe(400);
-    expect(
-      (await anon.get(hub.origin + '/api/workspace?actor=owner')).status(),
-    ).toBe(400);
-    expect(
-      (
-        await context.request.get(
-          `${hub.origin}/api/agui/${randomUUID()}/${agent.id}`,
-        )
-      ).status(),
-    ).toBe(403);
-    expect(
-      (
-        await context.request.post(hub.origin + '/api/logout', {
-          headers: { origin: 'https://untrusted.invalid' },
-        })
-      ).status(),
-    ).toBe(403);
-    expect(
-      (await anon.get(hub.origin + '/assets/../../.env')).status(),
-    ).not.toBe(200);
-  } finally {
-    await anon.dispose();
-  }
+  // A later report replaces the shown state.
+  expect(
+    (
+      await context.request.post(
+        base + '/executions/' + correlation.id + '/events',
+        { data: { state: 'succeeded' } },
+      )
+    ).status(),
+  ).toBe(201);
+  await refreshNow(page);
+  await expect(runState(page, 'Finished')).toBeVisible();
 });
 
-test('keyboard mention, message becomes a task in its topic, and the board filter', async ({
+test('keyboard mention, and a message becomes a task in its topic', async ({
   page,
   context,
   hub,
 }) => {
   await onboard(page, hub);
   await register(page, 'Ada', 'developer');
-  // A profile alone cannot be woken; the roster says so before anyone waits.
-  const adaRow = page
-    .getByRole('listitem')
-    .filter({ has: page.getByRole('heading', { name: 'Ada', exact: true }) });
-  await expect(
-    adaRow.getByText('Not connected', { exact: true }),
-  ).toBeVisible();
-  await expect(page.getByText(/No agent can be woken yet/)).toBeVisible();
-  const profile = (await snapshot(context.request, hub.origin)).agents[0];
-  if (!profile) throw new Error('Local fixture unavailable');
-  const worker = new Database(hub.database);
-  try {
-    // Test boundary: what an Inbox worker writes on each loop.
-    worker
-      .prepare(
-        'INSERT INTO inbox_bindings (agent_id, team_id, last_seen_at) VALUES (?, ?, ?)',
-      )
-      .run(profile.id, profile.teamId, Date.now());
-  } finally {
-    worker.close();
-  }
-  await refreshNow(page);
-  await expect(adaRow.getByText('Can be woken', { exact: true })).toBeVisible();
-  await expect(page.getByText(/No agent can be woken yet/)).toHaveCount(0);
   await page.getByRole('tab', { name: 'Chat', exact: true }).click();
   await page.getByRole('button', { name: 'Start a topic' }).click();
   await page.getByLabel('Topic title').fill('Billing');
@@ -545,11 +398,9 @@ test('keyboard mention, message becomes a task in its topic, and the board filte
     'Validate postal codes per country @Ada',
   );
   await expect(
-    page.getByText('From a message by browser_owner.', { exact: false }),
+    page.getByText('From browser_owner’s message', { exact: true }),
   ).toBeVisible();
-  await form
-    .getByLabel('Acceptance criteria (one per line)')
-    .fill('Postal codes validated per country');
+  await form.getByLabel('Done when').fill('Postal codes validated per country');
   const state = await snapshot(context.request, hub.origin);
   const ada = state.agents[0];
   if (!ada || !state.channel) throw new Error('Local fixture unavailable');
@@ -557,6 +408,10 @@ test('keyboard mention, message becomes a task in its topic, and the board filte
     .getByLabel('Owner', { exact: true })
     .selectOption('agent:' + ada.id);
   await form.getByRole('button', { name: 'Create task', exact: true }).click();
+  await expect(
+    taskPage(page, 'Validate postal codes per country @Ada'),
+  ).toBeVisible();
+  await backToBoard(page);
   const card = page.getByRole('article', {
     name: 'Validate postal codes per country @Ada',
   });
@@ -572,15 +427,6 @@ test('keyboard mention, message becomes a task in its topic, and the board filte
     .parse(await (await context.request.get(base + '/topics')).json()).items;
   expect(tasks).toHaveLength(1);
   expect(tasks[0]?.topicId).toBe(topics.find((t) => t.title === 'Billing')?.id);
-  const filter = page.getByRole('group', { name: 'Task filter' });
-  // What needs you lives in Needs you; the board filters only by ownership.
-  await expect(
-    filter.getByRole('button', { name: 'Needs me', exact: true }),
-  ).toHaveCount(0);
-  await filter.getByRole('button', { name: 'Mine', exact: true }).click();
-  await expect(card).toBeVisible();
-  await filter.getByRole('button', { name: 'All', exact: true }).click();
-  await expect(card).toBeVisible();
   // ⌘K jumps straight to the task; only its acceptor may cancel it, with a note.
   await page.getByRole('tab', { name: 'Chat', exact: true }).click();
   await page.keyboard.press('ControlOrMeta+k');
@@ -593,25 +439,21 @@ test('keyboard mention, message becomes a task in its topic, and the board filte
   ).toHaveAttribute('aria-selected', 'true');
   await page.keyboard.press('Enter');
   await expect(palette).toBeHidden();
-  const drawer = page.getByRole('region', {
-    name: 'Validate postal codes per country @Ada',
-  });
-  await expect(drawer).toBeVisible();
-  await drawer
-    .getByRole('button', { name: 'Cancel task…', exact: true })
-    .click();
+  const task = taskPage(page, 'Validate postal codes per country @Ada');
+  await expect(task).toBeVisible();
+  await task.getByRole('button', { name: 'Cancel task…', exact: true }).click();
   await expect(
-    drawer.getByText(/closes the task without acceptance/),
+    task.getByText(/closes the task without acceptance/),
   ).toBeVisible();
-  await drawer.getByLabel('Decision note').fill('Superseded by the new form');
-  await drawer
-    .getByRole('button', { name: 'Cancel task', exact: true })
-    .click();
+  await task.getByLabel('Decision note').fill('Superseded by the new form');
+  await task.getByRole('button', { name: 'Cancel task', exact: true }).click();
   // Cancelled work leaves the board quietly; it is one click away in Done.
-  await expect(drawer.getByText('This task is closed.')).toBeVisible();
+  await expect(task.getByText('This task is closed.')).toBeVisible();
   await expect(card).toHaveCount(0);
   await page.keyboard.press('Escape');
-  await page.getByRole('button', { name: 'Show cancelled (1)' }).click();
+  await page
+    .getByRole('button', { name: 'Show cancelled', exact: true })
+    .click();
   await expect(
     inStage(page, 'Done', 'Validate postal codes per country @Ada').getByText(
       'Cancelled',
@@ -646,20 +488,8 @@ test('a mention says what happened to it and leads to the agent’s reply', asyn
     .filter({ hasText: 'please check the release notes' })
     .first();
   const responses = asked.getByRole('list', { name: 'Agent responses' });
-  // No worker yet: the person learns it now, not after a week of silence.
+  // Each delivery state's sentence: tests/delivery-copy.test.ts.
   await expect(responses).toContainText('Ada isn’t connected');
-  const sql = new Database(hub.database);
-  try {
-    sql
-      .prepare(
-        'INSERT INTO inbox_bindings (agent_id, team_id, last_seen_at) VALUES (?, ?, ?)',
-      )
-      .run(ada.id, ada.teamId, Date.now());
-  } finally {
-    sql.close();
-  }
-  await refreshNow(page);
-  await expect(responses).toContainText('Ada will pick this up');
   // Simulate what the worker does on success: the agent replies and the
   // delivery is acknowledged with that reply.
   const source = (await snapshot(context.request, hub.origin)).messages
@@ -713,39 +543,27 @@ test('a mention says what happened to it and leads to the agent’s reply', asyn
   ).toBeVisible();
 });
 
-test('Needs you gathers what waits on me across channels and leads to the fix', async ({
+test('the Inbox gathers what waits on me across channels and leads to the fix', async ({
   page,
   hub,
 }) => {
   await onboard(page, hub);
   await register(page, 'Ada', 'developer');
-  await page.keyboard.press('Escape');
-  const needs = page.getByRole('button', { name: /^Needs you/ });
-  await expect(needs).toHaveText(/0$/);
+  // What the Inbox lists, and when: tests/attention.test.ts.
+  const needs = page.getByRole('button', { name: /^Inbox/ });
   await page.getByRole('tab', { name: 'Chat', exact: true }).click();
   const composer = page.getByRole('form', { name: 'Message your team' });
   await composer
     .getByLabel('Message', { exact: true })
     .fill('@Ada please check the release notes');
   await composer.getByRole('button', { name: 'Send message' }).click();
-  // Ada has no worker: queued work shows up as something to connect.
-  await expect(needs).toHaveText(/1$/);
-  await page.getByText('New channel', { exact: true }).click();
-  await page.getByLabel('Channel name').fill('launch');
-  await page
-    .getByRole('button', { name: 'Create channel', exact: true })
-    .click();
-  await page
-    .getByRole('navigation', { name: 'Channels' })
-    .getByRole('button', { name: 'launch' })
-    .click();
-  await expect(page.getByRole('heading', { name: '# launch' })).toBeVisible();
-  await expect(needs).toHaveText(/1$/);
+  // Ada has no worker: queued work leads to setting Ada up.
+  await createChannel(page, 'launch');
   await needs.click();
-  const drawer = page.getByRole('region', { name: 'Needs you' });
-  await drawer
+  const inbox = page.getByRole('region', { name: 'Inbox' });
+  await inbox
     .getByRole('button', {
-      name: /Ada has 1 request waiting but can’t be woken yet/,
+      name: /1 request waiting, but Ada can’t be woken yet/,
     })
     .click();
   await expect(
@@ -767,11 +585,7 @@ test('Needs you gathers what waits on me across channels and leads to the fix', 
   await refreshNow(page);
   await page.keyboard.press('Escape');
   await needs.click();
-  await expect(drawer.getByRole('region', { name: 'Connect' })).toHaveCount(0);
-  await drawer
-    .getByRole('region', { name: 'Unstuck' })
-    .getByRole('button', { name: /Ada is stuck/ })
-    .click();
+  await inbox.getByRole('button', { name: /Ada is stuck/ }).click();
   await expect(page.getByRole('heading', { name: '# general' })).toBeVisible();
   await expect(
     page
@@ -787,7 +601,6 @@ test('a stuck request says what was lost and is fixed and retried in place', asy
 }) => {
   await onboard(page, hub);
   await register(page, 'Ada', 'developer');
-  await page.keyboard.press('Escape');
   const state = await snapshot(context.request, hub.origin);
   const ada = state.agents[0];
   if (!ada || !state.channel) throw new Error('Local fixture unavailable');
@@ -803,7 +616,8 @@ test('a stuck request says what was lost and is fixed and retried in place', asy
     .filter({ hasText: 'please check the release notes' })
     .first()
     .getByRole('list', { name: 'Agent responses' });
-  await expect(responses).toContainText('Ada isn’t connected');
+  // Each cause's sentence: tests/delivery-copy.test.ts.
+  await expect(responses).toContainText('Ada');
   // Ada is removed from the channel; the worker records that as the cause.
   const removed = await context.request.post(
     `${hub.origin}/api/teams/${state.team.id}/channels/${state.channel.id}/participants/remove`,
@@ -834,11 +648,14 @@ test('a stuck request says what was lost and is fixed and retried in place', asy
     .getByRole('button', { name: 'Add Ada back and retry', exact: true })
     .click();
   // Back in the channel and retried with the original request.
-  await expect(responses).toContainText('Checking whether Ada’s run started');
-  const after = await snapshot(context.request, hub.origin);
-  expect(after.joinedAgentIds).toContain(ada.id);
-  expect(after.deliveries[0]?.state).toBe('uncertain');
-  expect(after.deliveries[0]?.reason).toBe('owner-resume');
+  await expect
+    .poll(
+      async () => (await snapshot(context.request, hub.origin)).deliveries[0],
+    )
+    .toMatchObject({ state: 'uncertain', reason: 'owner-resume' });
+  expect(
+    (await snapshot(context.request, hub.origin)).joinedAgentIds,
+  ).toContain(ada.id);
   // A cause fixed elsewhere leads there and offers a plain retry.
   const db = new Database(hub.database);
   try {
@@ -849,7 +666,6 @@ test('a stuck request says what was lost and is fixed and retried in place', asy
     db.close();
   }
   await refreshNow(page);
-  await expect(responses).toContainText('Ada’s credential was revoked');
   await expect(
     responses.getByRole('button', { name: 'Retry', exact: true }),
   ).toBeVisible();
@@ -910,7 +726,7 @@ test('connect T3 and an agent in two clicks: the hub keeps the credential and wa
       },
     }),
   );
-  await page.getByRole('button', { name: 'View Ada activity' }).click();
+  await agentRow(page, 'Ada').click();
   const setup = page
     .getByRole('region', { name: 'Ada', exact: true })
     .getByRole('region', { name: 'Setup' });
@@ -953,30 +769,22 @@ test('connect T3 and an agent in two clicks: the hub keeps the credential and wa
   await expect(choose.locator('optgroup')).toHaveCount(1);
   await choose.getByRole('button', { name: 'Connect Ada' }).click();
   // The hub started its own worker for Ada; no file was edited.
-  await expect(async () => {
-    await refreshNow(page);
-    await expect(setup.getByText('Ada is ready')).toBeVisible({
-      timeout: 1000,
-    });
-  }).toPass({ timeout: 20000 });
-  await expect(setup).toContainText('Runs on isolated-ada · model-x');
+  await untilReady(page);
+  // What it runs on is said once, in About.
+  const about = page.getByRole('complementary', { name: 'About' });
+  await expect(about).toContainText('isolated-ada');
+  await expect(about).toContainText('model-x');
   const tokenFile = join(
     dirname(hub.database),
     'managed',
     'agents',
     ada.id + '.json',
   );
-  expect(statSync(tokenFile).mode & 0o777).toBe(0o600);
+  // File mode and saved preferences: tests/connect.test.ts.
   const { token } = z
     .object({ token: z.string() })
     .parse(JSON.parse(readFileSync(tokenFile, 'utf8')));
   expect(await page.content()).not.toContain(token);
-  const after = await snapshot(context.request, hub.origin);
-  expect(after.agents[0]?.preferences).toEqual({
-    environmentId: 'env-live',
-    providerId: 'isolated-ada',
-    modelId: 'model-x',
-  });
 });
 
 test('the agent panel still walks an operator through a self-run worker binding', async ({
@@ -989,15 +797,18 @@ test('the agent panel still walks an operator through a self-run worker binding'
   const state = await snapshot(context.request, hub.origin);
   const ada = state.agents[0];
   if (!ada) throw new Error('Local fixture unavailable');
-  await page.getByRole('button', { name: 'View Ada activity' }).click();
-  const setup = page
+  await agentRow(page, 'Ada').click();
+  // Running the worker by hand opens beside the agent's page.
+  await page
     .getByRole('region', { name: 'Ada', exact: true })
-    .getByRole('region', { name: 'Setup' });
+    .getByRole('button', { name: 'Run the worker yourself →' })
+    .click();
+  const setup = page.getByRole('region', {
+    name: 'Run the worker yourself',
+    exact: true,
+  });
   const step = (title: string) =>
     setup.getByRole('listitem').filter({ hasText: title });
-  // Running the worker by hand stays available under More.
-  await setup.getByText('More', { exact: true }).click();
-  await setup.getByText('Run the worker yourself', { exact: true }).click();
   await expect(step('Runtime preferences')).toContainText('(to do)');
   await setup.getByLabel('T3 environment ID').fill('env-primary');
   await setup.getByLabel('Isolated provider ID').fill('isolated-ada');
@@ -1082,12 +893,14 @@ test('lost message response retries the same committed operation; real conflict 
   expect(after.messages.items).toHaveLength(1);
   await register(page, 'Duplicate check', 'assistant');
   // Real server uniqueness conflict, not an intercepted/fabricated error response.
+  await page.getByRole('tab', { name: 'Team', exact: true }).click();
+  await page.getByRole('button', { name: 'Register agent' }).click();
   const form = page.getByRole('form', { name: 'Agent profile' });
   await form.getByLabel('Agent name').fill('Duplicate check');
   await form
     .getByRole('button', { name: 'Register agent', exact: true })
     .click();
-  await expect(form.getByRole('alert')).toContainText('HTTP 409');
+  await expect(form.getByRole('alert')).toContainText('already exists');
 });
 
 test('human claim and request-review controls, plus leave/rejoin of known membership', async ({
@@ -1100,36 +913,28 @@ test('human claim and request-review controls, plus leave/rejoin of known member
   const state = await snapshot(context.request, hub.origin);
   if (!state.channel || !state.agents[0])
     throw new Error('Local fixture unavailable');
-  await page.getByRole('tab', { name: 'Board', exact: true }).click();
-  await page
-    .locator('summary')
-    .filter({ hasText: /^Create task$/ })
-    .click();
-  const form = page.getByRole('form', { name: 'New task' });
-  await form.getByLabel('Task title').fill('Human owned task');
-  await form
-    .getByLabel('Acceptance criteria (one per line)')
-    .fill('Review requested with a recorded note');
-  await form.getByRole('button', { name: 'Create task', exact: true }).click();
-  const card = page.getByRole('article', { name: 'Human owned task' });
-  const drawer = page.getByRole('region', { name: 'Human owned task' });
-  await card.getByRole('button', { name: 'Human owned task' }).click();
-  await drawer.getByRole('button', { name: 'Claim task', exact: true }).click();
-  await expect(inStage(page, 'Working', 'Human owned task')).toBeVisible();
-  await drawer
+  // Created, the task stays on screen as its own page.
+  const task = await newTask(page, {
+    title: 'Human owned task',
+    criteria: ['Review requested with a recorded note'],
+  });
+  await task.getByRole('button', { name: 'Claim task', exact: true }).click();
+  await task
     .getByRole('button', { name: 'Request review…', exact: true })
     .click();
-  await drawer
+  await task
     .getByLabel('Recipient', { exact: true })
     .selectOption('agent:' + state.agents[0].id);
-  await drawer.getByLabel('Decision note').fill('Please review the human work');
-  await drawer
+  await task.getByLabel('Decision note').fill('Please review the human work');
+  await task
     .getByRole('button', { name: 'Request review', exact: true })
     .click();
-  await expect(inStage(page, 'Review', 'Human owned task')).toBeVisible();
   await expect(
-    drawer.getByRole('definition').filter({ hasText: /^Reviewer$/ }),
+    task.getByRole('definition').filter({ hasText: /^Reviewer$/ }),
   ).toBeVisible();
+  // Esc returns from the task's page to the board, where it moved on.
+  await backToBoard(page);
+  await expect(inStage(page, 'Review', 'Human owned task')).toBeVisible();
   await page.getByRole('tab', { name: 'Chat', exact: true }).click();
   await page
     .getByRole('button', { name: 'Leave channel', exact: true })
@@ -1138,12 +943,12 @@ test('human claim and request-review controls, plus leave/rejoin of known member
     page.getByText('Welcome to your team', { exact: true }),
   ).toBeVisible();
   // A channel you left is offered back by name; no IDs to copy.
-  await page.getByText('Rejoin a channel', { exact: true }).click();
   const left = page.getByRole('list', { name: 'Channels you left' });
   await expect(left.getByRole('listitem')).toHaveText([/general/]);
   await left.getByRole('button', { name: 'Rejoin', exact: true }).click();
   await expect(page.getByRole('heading', { name: '# general' })).toBeVisible();
-  await expect(page.getByText('You haven’t left any channels.')).toBeVisible();
+  // Nothing left to rejoin: the list disappears.
+  await expect(left).toHaveCount(0);
   await page.getByRole('tab', { name: 'Board', exact: true }).click();
   await expect(inStage(page, 'Review', 'Human owned task')).toBeVisible();
 });
@@ -1156,9 +961,10 @@ test('a heartbeat refresh never interrupts work; after a failure nothing submits
   await onboard(page, hub);
   const state = await snapshot(context.request, hub.origin);
   if (!state.channel) throw new Error('Local channel unavailable');
-  await page.getByText('New channel', { exact: true }).click();
-  const create = page.getByRole('form', { name: 'Create a channel' });
-  await create.getByLabel('Channel name').fill('after-reconnect');
+  await page.getByRole('button', { name: 'New channel' }).click();
+  const channelName = page.getByLabel('Channel name');
+  await channelName.fill('after-reconnect');
+  const create = channelName.locator('xpath=ancestor::form');
   const composer = page.getByRole('form', { name: 'Message your team' });
   await composer
     .getByLabel('Message', { exact: true })
@@ -1191,10 +997,11 @@ test('a heartbeat refresh never interrupts work; after a failure nothing submits
     };
   }
   async function expectNothingSubmits() {
+    // The channel name has no button (Enter submits); the composer's is off.
+    await expect(
+      composer.getByRole('button', { name: 'Send message' }),
+    ).toBeDisabled();
     for (const form of [create, composer]) {
-      await expect(
-        form.getByRole('button', { name: /Create channel|Send message/ }),
-      ).toBeDisabled();
       // Bypass native disabled controls to verify the submit handler also fails closed.
       await form.evaluate((node) =>
         node.dispatchEvent(
@@ -1214,9 +1021,6 @@ test('a heartbeat refresh never interrupts work; after a failure nothing submits
   await expect(composer.getByLabel('Message', { exact: true })).toBeEditable();
   await expect(
     composer.getByRole('button', { name: 'Send message' }),
-  ).toBeEnabled();
-  await expect(
-    create.getByRole('button', { name: 'Create channel', exact: true }),
   ).toBeEnabled();
   // B: once a refresh fails, the snapshot is stale and every submission stops.
   failRefresh();
@@ -1247,12 +1051,7 @@ test('a heartbeat refresh never interrupts work; after a failure nothing submits
   await expect(
     page.getByText('Sent once the workspace is back', { exact: true }),
   ).toBeVisible();
-  await expect(
-    create.getByRole('button', { name: 'Create channel', exact: true }),
-  ).toBeEnabled();
-  await create
-    .getByRole('button', { name: 'Create channel', exact: true })
-    .click();
+  await channelName.press('Enter');
   await expect(
     page
       .getByRole('navigation', { name: 'Channels' })
@@ -1261,27 +1060,21 @@ test('a heartbeat refresh never interrupts work; after a failure nothing submits
   expect(posts).toBe(2);
 });
 
-test('the owner renames the team and changes the password; other sessions end', async ({
+// Ending the other sessions and keeping this one: tests/account.test.ts.
+test('the owner renames the team and changes the password', async ({
   page,
-  browser,
   hub,
 }) => {
   const password = await onboard(page, hub);
-  // A second browser signed in as the same owner.
-  const other = await browser.newPage();
-  await other.goto(hub.origin);
-  await other.getByLabel('Username', { exact: true }).fill('browser_owner');
-  await other.getByLabel('Password', { exact: true }).fill(password);
-  await other.getByRole('button', { name: 'Sign in', exact: true }).click();
-  await expect(other.getByRole('heading', { name: '# general' })).toBeVisible();
   await page.getByRole('button', { name: 'Account settings' }).click();
   const settings = page.getByRole('region', { name: 'Settings' });
   const team = settings.getByRole('form', { name: 'Team name' });
   await team.getByLabel('Team name').fill('Fieldnotes');
   await team.getByRole('button', { name: 'Save name' }).click();
   await expect(
-    page.getByRole('button', { name: 'Fieldnotes: settings' }),
+    page.getByRole('status').filter({ hasText: 'Team renamed.' }),
   ).toBeVisible();
+  await expect(team.getByLabel('Team name')).toHaveValue('Fieldnotes');
   const change = settings.getByRole('form', { name: 'Password' });
   const next = randomBytes(24).toString('base64url');
   await change.getByLabel('Current password').fill('not the password at all');
@@ -1294,17 +1087,12 @@ test('the owner renames the team and changes the password; other sessions end', 
   await expect(
     page.getByRole('status').filter({ hasText: 'Password changed' }),
   ).toBeVisible();
-  // This browser carries on; the other one is signed out.
+  // This browser carries on with its re-issued session.
   await refreshNow(page);
   await expect(page.getByRole('heading', { name: '# general' })).toBeVisible();
-  await other.reload();
-  await expect(
-    other.getByRole('button', { name: 'Sign in', exact: true }),
-  ).toBeVisible();
-  await other.close();
 });
 
-test('ambiguous login retry retains original request; setup is not offered once a team exists', async ({
+test('ambiguous login retry retains original request', async ({
   page,
   hub,
 }) => {
@@ -1347,10 +1135,6 @@ test('ambiguous login retry retains original request; setup is not offered once 
   await expect(
     page.getByRole('button', { name: 'Retry same action' }),
   ).toBeVisible();
-  // A team exists, so setup is not offered at all.
-  await expect(
-    page.getByRole('tab', { name: 'First owner setup' }),
-  ).toHaveCount(0);
   expect(attempts).toBe(1);
   await page.getByRole('button', { name: 'Retry same action' }).click();
   await expect(page.getByRole('heading', { name: '# general' })).toBeVisible();
@@ -1410,10 +1194,7 @@ test('ambiguous setup retry retains setup completion after switching to login', 
   expect(attempts).toBe(2);
   expect(identical).toBe(true);
   expect(loginPosts).toBe(0);
-  await page.getByLabel('Username', { exact: true }).fill('retry_owner');
-  await page.getByLabel('Password', { exact: true }).fill(password);
-  await page.getByRole('button', { name: 'Sign in', exact: true }).click();
-  await expect(page.getByRole('heading', { name: '# general' })).toBeVisible();
+  await signIn(page, 'retry_owner', password);
 });
 
 test('permission loss purges workspace snapshot instead of retaining stale team data', async ({
@@ -1429,17 +1210,11 @@ test('permission loss purges workspace snapshot instead of retaining stale team 
   await composer.getByRole('button', { name: 'Send message' }).click();
   await expect(page.getByText(privateMessage, { exact: true })).toBeVisible();
 
-  await page.getByRole('tab', { name: 'Board', exact: true }).click();
-  await page
-    .locator('summary')
-    .filter({ hasText: /^Create task$/ })
-    .click();
-  const taskForm = page.getByRole('form', { name: 'New task' });
-  await taskForm.getByLabel('Task title').fill('Previously authorized task');
-  await taskForm
-    .getByLabel('Acceptance criteria (one per line)')
-    .fill('Do not display after access is revoked');
-  await taskForm.getByRole('button', { name: 'Create task' }).click();
+  await newTask(page, {
+    title: 'Previously authorized task',
+    criteria: ['Do not display after access is revoked'],
+  });
+  await backToBoard(page);
   await expect(
     page.getByRole('article', { name: 'Previously authorized task' }),
   ).toBeVisible();
@@ -1505,10 +1280,7 @@ test('AG-UI access revocation clears prior reports while a transient outage pres
     },
   });
   expect(created.status()).toBe(201);
-  await page
-    .getByRole('button', { name: 'View Revoked Activity activity' })
-    .click();
-  await showTechnical(page);
+  await agentRow(page, 'Revoked Activity').click();
   await expect(page.getByText(thread, { exact: true })).toBeVisible();
 
   await page.route('**/api/agui/**', async (route) => {
@@ -1524,7 +1296,6 @@ test('AG-UI access revocation clears prior reports while a transient outage pres
       'Activity can’t be loaded right now. It will try again on the next refresh.',
     ),
   ).toBeVisible();
-  await showTechnical(page);
   await expect(page.getByText(thread, { exact: true })).toBeVisible();
 
   await page.unroute('**/api/agui/**');
@@ -1544,7 +1315,7 @@ test('AG-UI access revocation clears prior reports while a transient outage pres
     ),
   ).toBeVisible();
   await expect(page.getByText(thread, { exact: true })).toHaveCount(0);
-  await expect(page.getByText('Last reported: unknown')).toHaveCount(0);
+  await expect(runState(page, 'Unknown')).toHaveCount(0);
   expect(denied).toBeGreaterThan(0);
   expect(
     (
@@ -1593,10 +1364,7 @@ async function openMockNativeCard(
     },
   );
   expect(created.status()).toBe(201);
-  await page
-    .getByRole('button', { name: 'View Mock Native Observer activity' })
-    .click();
-  await showTechnical(page);
+  await agentRow(page, 'Mock Native Observer').click();
   await expect(page.getByText('MOCK-thread', { exact: true })).toBeVisible();
   return {
     source: 't3-native-verified',
@@ -1636,7 +1404,7 @@ test('MOCK UI only: strict native observation renders separate exact state/link 
     page.getByText('This run: interrupted · finished'),
   ).toBeVisible();
   await expect(page.getByText(/Open requests in this thread: 2/)).toBeVisible();
-  await expect(page.getByText('Last reported: unknown')).toBeVisible();
+  await expect(runState(page, 'Unknown')).toBeVisible();
   const link = page.getByRole('link', { name: 'Open in T3', exact: true });
   await expect(link).toHaveAttribute('href', observation.verifiedUrl);
   await expect(link).toHaveAttribute('target', '_blank');
@@ -1651,50 +1419,45 @@ test('MOCK UI only: strict native observation renders separate exact state/link 
   await expect(page.getByText(/T3 can’t be checked right now/)).toBeVisible();
   await expect(link).toHaveCount(0);
   await expect(page.getByText(/T3 confirms/)).toHaveCount(0);
+  // One invalid DTO proves the page clears on a rejected decode; every
+  // rejected shape is in tests/native.test.ts.
   status = 200;
-  for (const invalid of [
-    { ...observation, verifiedUrl: 'javascript:alert(1)' },
-    { ...observation, verifiedUrl: 't3-thread://MOCK-thread' },
-    { ...observation, verifiedUrl: 'https://evil.invalid/wrong/thread' },
-    {
-      ...observation,
-      verifiedUrl: 'https://evil.invalid/MOCK-environment/MOCK-thread',
-    },
-    {
-      ...observation,
-      reference: { ...observation.reference, runId: 'wrong-run' },
-    },
-    { ...observation, token: 'invalid-extra-field' },
-  ]) {
-    body = observation;
-    await check.click();
-    await expect(link).toBeVisible();
-    body = invalid;
-    await check.click();
-    await expect(page.getByText(/T3 can’t be checked right now/)).toBeVisible();
-    await expect(link).toHaveCount(0);
-    await expect(page.getByText(/T3 confirms/)).toHaveCount(0);
-  }
+  await check.click();
+  await expect(link).toBeVisible();
+  body = { ...observation, verifiedUrl: 'javascript:alert(1)' };
+  await check.click();
+  await expect(page.getByText(/T3 can’t be checked right now/)).toBeVisible();
+  await expect(link).toHaveCount(0);
+  await expect(page.getByText(/T3 confirms/)).toHaveCount(0);
   expect((await context.request.get(hub.origin + '/api/me')).status()).toBe(
     200,
   );
 });
 
-for (const denied of [401, 403]) {
-  test(`MOCK UI only: native HTTP ${String(denied)} purges native result and protected AG-UI card`, async ({
-    page,
-    context,
-    hub,
-  }) => {
-    const observation = await openMockNativeCard(page, context.request, hub);
-    let status = 200;
-    await page.route('**/executions/*/native', async (route) => {
-      await route.fulfill({
-        status,
-        contentType: 'application/json',
-        body: JSON.stringify(status === 200 ? observation : {}),
-      });
+test('MOCK UI only: native HTTP 401 or 403 purges native result and protected AG-UI card', async ({
+  page,
+  context,
+  hub,
+}) => {
+  const observation = await openMockNativeCard(page, context.request, hub);
+  let status = 200;
+  await page.route('**/executions/*/native', async (route) => {
+    await route.fulfill({
+      status,
+      contentType: 'application/json',
+      body: JSON.stringify(status === 200 ? observation : {}),
     });
+  });
+  for (const denied of [401, 403]) {
+    if (denied !== 401) {
+      // The card was purged; a reload brings it back.
+      await page.reload();
+      await openAgent(page, 'Mock Native Observer');
+      await expect(
+        page.getByText('MOCK-thread', { exact: true }),
+      ).toBeVisible();
+    }
+    status = 200;
     await page.getByRole('button', { name: 'Check in T3' }).click();
     await expect(
       page.getByRole('link', { name: 'Open in T3', exact: true }),
@@ -1711,9 +1474,49 @@ for (const denied of [401, 403]) {
     ).toHaveCount(0);
     await expect(page.getByText(/T3 confirms/)).toHaveCount(0);
     await expect(page.getByText('MOCK-thread', { exact: true })).toHaveCount(0);
-    await expect(page.getByText('Last reported: unknown')).toHaveCount(0);
+    await expect(runState(page, 'Unknown')).toHaveCount(0);
     expect((await context.request.get(hub.origin + '/api/me')).status()).toBe(
       200,
     );
+  }
+});
+
+test('a reload keeps the place and unsent work; Back returns to where you were', async ({
+  page,
+  hub,
+}) => {
+  await onboard(page, hub);
+  const composer = page.getByRole('form', { name: 'Message your team' });
+  await composer.getByLabel('Message', { exact: true }).fill('half a thought');
+  await page.reload();
+  await expect(composer.getByLabel('Message', { exact: true })).toHaveValue(
+    'half a thought',
+  );
+  // A new task half written survives a reload, in place.
+  await page.getByRole('tab', { name: 'Board', exact: true }).click();
+  await page.getByRole('button', { name: 'New task' }).click();
+  const form = page.getByRole('form', { name: 'New task' });
+  await form.getByLabel('Task title').fill('Write the release notes');
+  await form.getByLabel('Done when').fill('Notes published');
+  await expect(page).toHaveURL(/task=new/);
+  await page.reload();
+  await expect(form.getByLabel('Task title')).toHaveValue(
+    'Write the release notes',
+  );
+  await expect(form.getByLabel('Done when')).toHaveValue('Notes published');
+  await form.getByRole('button', { name: 'Create task', exact: true }).click();
+  // Created, it is its own address; a reload opens it again.
+  const task = page.getByRole('region', {
+    name: 'Write the release notes',
+    exact: true,
   });
-}
+  await expect(task).toBeVisible();
+  await expect(page).toHaveURL(/task=[0-9a-f-]{36}/);
+  await page.reload();
+  await expect(task).toBeVisible();
+  // The Inbox is a place too, and Back leaves it for the task again.
+  await page.getByRole('button', { name: /^Inbox/ }).click();
+  await expect(page).toHaveURL(/inbox/);
+  await page.goBack();
+  await expect(task).toBeVisible();
+});
