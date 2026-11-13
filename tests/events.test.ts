@@ -51,7 +51,7 @@ await test(
       assert.ok(address && typeof address === 'object');
       const origin = 'http://127.0.0.1:' + String(address.port);
       const cookie = Object.entries(f.cookies)
-        .map(([name, value]) => `${name}=${value}`)
+        .map(([name, value]) => `${name}=${encodeURIComponent(value)}`)
         .join('; ');
       const revision = async () =>
         WorkspaceSnapshot.parse(

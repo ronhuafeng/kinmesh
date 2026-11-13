@@ -346,8 +346,11 @@ export function App() {
       lost = false;
       refresh();
     };
+    // A network that comes back may not have broken the stream at all.
+    window.addEventListener('online', refresh);
     return () => {
       events.close();
+      window.removeEventListener('online', refresh);
     };
   }, [live, place, agentOnScreen, refresh]);
   const next = (key: string, cursor: string | null) => {

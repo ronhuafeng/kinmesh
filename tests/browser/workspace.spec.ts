@@ -733,7 +733,9 @@ test('connect T3 and an agent in two clicks: the hub keeps the credential and wa
   await expect(connectT3).toContainText('pairing code');
   await expect(connectT3).toContainText('Supervised');
   // Approved read-only by mistake: said plainly, before anyone waits.
+  // The mocked hub cannot push, so the test reads again in its place.
   t3 = 'read';
+  await refreshNow(page);
   const permission = setup.getByRole('group', {
     name: 'Give T3 permission to run',
   });
@@ -1323,7 +1325,12 @@ async function openMockNativeCard(
   hub: { origin: string; setup: string },
 ) {
   await page.route('**/api/workspace**', async (route) => {
-    const response = await route.fetch();
+    // A read after the test's hub has stopped is simply lost.
+    const response = await route.fetch().catch(() => null);
+    if (!response) {
+      await route.abort();
+      return;
+    }
     if (!response.ok()) {
       await route.fulfill({ response });
       return;
