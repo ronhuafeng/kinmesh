@@ -37,21 +37,6 @@ export const SignOutIcon = () => (
     <path d="M21 12H9" />
   </Icon>
 );
-export const PersonIcon = () => (
-  <Icon>
-    <circle cx="12" cy="8" r="4" />
-    <path d="M4 21a8 8 0 0 1 16 0" />
-  </Icon>
-);
-export const BotIcon = () => (
-  <Icon>
-    <rect x="4" y="8" width="16" height="12" rx="3" />
-    <path d="M12 8V4" />
-    <circle cx="12" cy="3" r="1" />
-    <path d="M9 14h.01M15 14h.01" />
-    <path d="M2 13v3M22 13v3" />
-  </Icon>
-);
 export const MenuIcon = () => (
   <Icon>
     <path d="M4 7h16M4 12h16M4 17h16" />
@@ -60,5 +45,10 @@ export const MenuIcon = () => (
 export const PlusIcon = () => (
   <Icon>
     <path d="M12 5v14M5 12h14" />
+  </Icon>
+);
+export const ArrowIcon = () => (
+  <Icon>
+    <path d="M5 12h14M13 6l6 6-6 6" />
   </Icon>
 );

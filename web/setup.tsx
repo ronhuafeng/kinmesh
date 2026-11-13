@@ -1,14 +1,14 @@
-import { useCallback, useContext, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
 import { z } from 'zod';
 import { Grant, ProfileInput } from '../src/domain/agents.js';
 import type { Agent, Scope } from '../src/domain/agents.js';
 import type { WorkspaceSnapshot } from '../src/workspace/contracts.js';
-import { api, HttpError, MutationPermission } from './api.js';
+import { api, useRequest, value } from './api.js';
 import { ActionForm, Field, Notice } from './forms.js';
-import { ago, wakeOf } from './ui.js';
+import { ago, Avatar, Page, workerConnected } from './ui.js';
 
-/** Scopes the Inbox worker needs (docs/agent-inbox.md, step 2). */
+/** Scopes the Inbox worker needs (docs/collaboration.md, Grants and scopes). */
 const WORKER_SCOPES: Scope[] = [
   'channels:read',
   'channels:write',
@@ -47,6 +47,21 @@ const Providers = z.object({
   providers: z.array(z.object({ id: z.string(), models: z.array(z.string()) })),
 });
 type Step = 'done' | 'todo' | 'manual';
+type T3Connection = NonNullable<T3Status['connection']>;
+/** Where the team's T3 is, and what it lets agents do there. */
+function t3Where(connection: T3Connection) {
+  return {
+    host: new URL(connection.endpoint).host,
+    access: connection.access === 'read' ? 'read only' : 'supervised',
+  };
+}
+/** The worker Kinmesh runs for this agent, if it runs one. */
+function managedOf(data: WorkspaceSnapshot, agentId: string) {
+  return data.managed.find((m) => m.agentId === agentId) ?? null;
+}
+/** A setup request; a conflict means the page is behind what changed. */
+const useSetupRequest = () =>
+  useRequest({ 409: 'That no longer applies; the panel shows what changed.' });
 
 function usable(grant: ListedGrant, scopes: Scope[]) {
   return (
@@ -82,12 +97,20 @@ function Row({
   );
 }
 /** Copy with visible feedback; clipboard access can be refused. */
-function CopyButton({ text, label }: { text: string; label: string }) {
+function CopyButton({
+  text,
+  label,
+  className = 'secondary',
+}: {
+  text: string;
+  label: string;
+  className?: string;
+}) {
   const [done, setDone] = useState<'' | 'Copied' | 'Copy failed'>('');
   return (
     <button
       type="button"
-      className="secondary"
+      className={className}
       onClick={() => {
         navigator.clipboard.writeText(text).then(
           () => {
@@ -144,39 +167,8 @@ function TokenOnce({
     </div>
   );
 }
-/** One request at a time, with a plain error; the caller decides what follows. */
-function useRequest() {
-  const permitted = useContext(MutationPermission);
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState('');
-  const run = useCallback(
-    async (path: string, body?: unknown) => {
-      if (!permitted || busy) return undefined;
-      setBusy(true);
-      setError('');
-      try {
-        return await api(path, {
-          method: 'POST',
-          headers: { 'content-type': 'application/json' },
-          body: JSON.stringify(body ?? {}),
-        });
-      } catch (cause) {
-        setError(
-          cause instanceof HttpError && cause.status === 409
-            ? 'That no longer applies; the panel shows what changed.'
-            : 'That did not go through. Nothing was changed; try again.',
-        );
-        return undefined;
-      } finally {
-        setBusy(false);
-      }
-    },
-    [permitted, busy],
-  );
-  return { run, busy, error, permitted };
-}
 /** The team's T3 connection; polled while the owner approves it in T3. */
-function useT3(teamId: string) {
+export function useT3(teamId: string) {
   const [status, setStatus] = useState<T3Status | null>(null);
   const load = useCallback(() => {
     void api(`/api/teams/${teamId}/t3`)
@@ -221,7 +213,7 @@ function ConnectT3({
   reload: () => void;
   agentName: string;
 }) {
-  const { run, busy, error, permitted } = useRequest();
+  const { send, busy, error, permitted } = useSetupRequest();
   const [approval, setApproval] = useState<string | null>(null);
   const [local, setLocal] = useState<string | null | undefined>(undefined);
   const [other, setOther] = useState(false);
@@ -240,7 +232,7 @@ function ConnectT3({
   const readOnly = connection?.access === 'read';
   const waiting = t3?.signIn === 'waiting' && approval !== null;
   const start = (endpoint: string) => {
-    void run(`/api/teams/${teamId}/t3/connect`, {
+    void send(`/api/teams/${teamId}/t3/connect`, {
       endpoint,
       replace: connection !== null,
     }).then((raw) => {
@@ -290,9 +282,8 @@ function ConnectT3({
           className="t3-connect"
           onSubmit={(event) => {
             event.preventDefault();
-            const typed = new FormData(event.currentTarget).get('endpoint');
-            const endpoint =
-              askForUrl && typeof typed === 'string' ? typed.trim() : local;
+            const typed = value(new FormData(event.currentTarget), 'endpoint');
+            const endpoint = askForUrl ? typed.trim() : local;
             if (endpoint) start(endpoint);
           }}
         >
@@ -347,7 +338,7 @@ function ChooseModel({
   onDone: () => void;
   onCancel?: () => void;
 }) {
-  const { run, busy, error, permitted } = useRequest();
+  const { send, busy, error, permitted } = useSetupRequest();
   const [offered, setOffered] = useState<
     z.infer<typeof Providers>['providers'] | 'unavailable' | null
   >(null);
@@ -376,14 +367,11 @@ function ChooseModel({
         onSubmit={(event) => {
           event.preventDefault();
           const form = new FormData(event.currentTarget);
-          const read = (key: string) => {
-            const v = form.get(key);
-            return typeof v === 'string' ? v.trim() : '';
-          };
+          const read = (key: string) => value(form, key).trim();
           const [providerId = '', modelId = ''] = read('model').includes('\n')
             ? read('model').split('\n')
             : [read('providerId'), read('modelId')];
-          void run(`/api/teams/${data.team.id}/agents/${agent.id}/connect`, {
+          void send(`/api/teams/${data.team.id}/agents/${agent.id}/connect`, {
             providerId,
             modelId,
           }).then((ok) => {
@@ -440,12 +428,6 @@ function ChooseModel({
             </select>
           </Field>
         )}
-        {Array.isArray(offered) && offered.length > 0 && (
-          <p className="muted">
-            Only models T3 can run now are listed. A provider switched off in T3
-            appears once it’s on.
-          </p>
-        )}
         <div className="token-actions">
           <button
             type="submit"
@@ -474,27 +456,25 @@ function ChooseModel({
  * Without it the agent still answers; its reply comes back as a message.
  */
 function TeamMcp({ agent, data }: { agent: Agent; data: WorkspaceSnapshot }) {
-  const { run, busy, error, permitted } = useRequest();
+  const { send, busy, error, permitted } = useSetupRequest();
   const [token, setToken] = useState<string | null>(null);
   const seen = data.teamMcp.find((p) => p.agentId === agent.id)?.lastSeenAt;
   return (
-    <div className="more-section">
-      <p className="muted">
-        {agent.name} answers without this. To let it also read the channel, take
-        tasks and hand them on while it works, give its T3 provider Kinmesh’s
-        Team MCP (<code>{TEAM_MCP_URL}</code> by default) and a credential of
-        its own. Kinmesh never changes T3’s settings.
-      </p>
-      {seen && (
-        <p className="muted">
-          {agent.name} last reached Team MCP {ago(seen)}.
-        </p>
-      )}
+    <div className="about-mcp">
+      <dl>
+        <dt>Team MCP</dt>
+        <dd>{seen ? `reached ${ago(seen)}` : 'not set up'}</dd>
+      </dl>
       {token ? (
         <TokenOnce
           token={token}
           agent={agent}
-          where={`Paste it into ${agent.name}’s provider in T3 as its Team MCP bearer token.`}
+          where={
+            <>
+              Paste it into {agent.name}’s provider in T3 as the bearer token
+              for Team MCP at <code>{TEAM_MCP_URL}</code>.
+            </>
+          }
           onDismiss={() => {
             setToken(null);
           }}
@@ -505,7 +485,7 @@ function TeamMcp({ agent, data }: { agent: Agent; data: WorkspaceSnapshot }) {
           className="secondary"
           disabled={!permitted || busy || agent.lifecycle !== 'active'}
           onClick={() => {
-            void run(`/api/teams/${data.team.id}/agents/${agent.id}/grants`, {
+            void send(`/api/teams/${data.team.id}/agents/${agent.id}/grants`, {
               label: 'Team MCP',
               scopes: TEAM_MCP_SCOPES,
               lifetimeSeconds: 90 * 86400,
@@ -536,7 +516,7 @@ function OwnWorker({
   managedGrantId: string | null;
   onDone: () => void;
 }) {
-  const { run, busy, error, permitted } = useRequest();
+  const { send, busy, error, permitted } = useSetupRequest();
   const base = `/api/teams/${data.team.id}/agents/${agent.id}`;
   const [grants, setGrants] = useState<ListedGrant[] | null>(null);
   const [token, setToken] = useState<string | null>(null);
@@ -553,7 +533,7 @@ function OwnWorker({
   }, [base]);
   useEffect(load, [load]);
   const mutate = (path: string, body?: unknown) => {
-    void run(path, body).then((raw) => {
+    void send(path, body).then((raw) => {
       if (raw === undefined) return;
       if (raw !== null) setToken(Issued.parse(raw).token);
       load();
@@ -613,10 +593,7 @@ function OwnWorker({
               onDone();
             }}
             build={(f) => {
-              const read = (key: string) => {
-                const v = f.get(key);
-                return typeof v === 'string' && v.trim() ? v.trim() : null;
-              };
+              const read = (key: string) => value(f, key).trim() || null;
               return ProfileInput.parse({
                 name: agent.name,
                 role: agent.role,
@@ -673,10 +650,6 @@ function OwnWorker({
         )}
         {!credential && !token && (
           <>
-            <p className="muted">
-              A {LIFETIME_DAYS}-day credential with exactly the scopes the Inbox
-              worker uses.
-            </p>
             <button
               type="button"
               disabled={!permitted || busy || agent.lifecycle !== 'active'}
@@ -706,7 +679,7 @@ function OwnWorker({
                         : 'expired'}
                   </span>
                   {live && (
-                    <span className="grant-actions">
+                    <span>
                       {/* The hub rotates its own credential by reconnecting. */}
                       {!hubs && (
                         <button
@@ -760,26 +733,27 @@ function OwnWorker({
 }
 /**
  * The agent's setup shows one thing at a time: the next step, or, once the
- * agent can be woken, a single line saying so. Everything else is in More.
+ * agent can be woken, a single line saying so. Every other fact is in About.
  */
 export function AgentSetup({
   agent,
   data,
+  t3,
   channelPath,
   onDone,
 }: {
   agent: Agent;
   data: WorkspaceSnapshot;
+  t3: ReturnType<typeof useT3>;
   channelPath: string | null;
   onDone: () => void;
 }) {
-  const t3 = useT3(data.team.id);
-  const { run, busy, error, permitted } = useRequest();
+  const { send, busy, error, permitted } = useSetupRequest();
   const [changing, setChanging] = useState(false);
   const [reconnecting, setReconnecting] = useState(false);
   const joined = data.joinedAgentIds.includes(agent.id);
-  const awake = wakeOf(data.wake, agent.id).connected;
-  const managed = data.managed.find((m) => m.agentId === agent.id) ?? null;
+  const awake = workerConnected(data.wake, agent.id);
+  const managed = managedOf(data, agent.id);
   const connection = t3.status?.connection ?? null;
   const t3Ready = connection !== null && connection.access !== 'read';
   const connectedAt = connection?.connectedAt;
@@ -820,21 +794,39 @@ export function AgentSetup({
           : {})}
       />
     );
+  const where = connection && t3Where(connection);
+  const t3Line = where && (
+    <span className="muted">
+      T3 {where.host} ({where.access})
+    </span>
+  );
   return (
     <section className="agent-setup" aria-label="Setup">
-      {next ?? (
+      {next ? (
+        <>
+          {next}
+          {t3Ready && !reconnecting && (
+            <p className="setup-t3">
+              {t3Line}{' '}
+              <button
+                type="button"
+                className="link-button"
+                onClick={() => {
+                  setReconnecting(true);
+                }}
+              >
+                Reconnect
+              </button>
+            </p>
+          )}
+        </>
+      ) : (
         <div className="setup-status" data-ready={awake ? 'true' : undefined}>
           <span className="setup-mark" aria-hidden="true" />
           <p>
             <strong>
-              {awake
-                ? `${agent.name} is ready`
-                : `Starting ${agent.name}’s worker…`}
+              {awake ? 'Ready to answer' : 'Starting the worker…'}
             </strong>
-            <span className="muted">
-              {' '}
-              Runs on {managed?.providerId} · {agent.preferences.modelId}
-            </span>
           </p>
           <span className="setup-actions">
             <button
@@ -848,10 +840,19 @@ export function AgentSetup({
             </button>
             <button
               type="button"
+              className="link-button"
+              onClick={() => {
+                setReconnecting(true);
+              }}
+            >
+              Reconnect
+            </button>
+            <button
+              type="button"
               className="link-button subtle-danger"
               disabled={!permitted || busy}
               onClick={() => {
-                void run(base + '/disconnect').then((ok) => {
+                void send(base + '/disconnect').then((ok) => {
                   if (ok !== undefined) onDone();
                 });
               }}
@@ -877,44 +878,191 @@ export function AgentSetup({
           />
         </div>
       )}
-      <details className="setup-details">
-        <summary>More</summary>
-        {connection && (
-          <div className="more-section">
-            <p className="muted">
-              T3: {new URL(connection.endpoint).host} ·{' '}
-              {connection.access === 'read' ? 'read only' : 'supervised'}
-              {t3Ready && !reconnecting && (
-                <>
-                  {' · '}
-                  <button
-                    type="button"
-                    className="link-button"
-                    onClick={() => {
-                      setReconnecting(true);
-                    }}
-                  >
-                    Reconnect
-                  </button>
-                </>
-              )}
-            </p>
-          </div>
-        )}
-        <details className="setup-details">
-          <summary>Let {agent.name} act in Kinmesh while it works</summary>
-          <TeamMcp agent={agent} data={data} />
-        </details>
-        <details className="setup-details own-worker">
-          <summary>Run the worker yourself</summary>
-          <OwnWorker
-            agent={agent}
-            data={data}
-            managedGrantId={managed?.grantId ?? null}
-            onDone={onDone}
-          />
-        </details>
-      </details>
     </section>
+  );
+}
+/** A square, small picture from any image the browser can read. */
+async function avatarFrom(file: File): Promise<Blob> {
+  const bitmap = await createImageBitmap(file);
+  const side = Math.min(bitmap.width, bitmap.height);
+  const canvas = document.createElement('canvas');
+  canvas.width = 256;
+  canvas.height = 256;
+  const context = canvas.getContext('2d');
+  if (!context) throw new Error('No canvas');
+  context.drawImage(
+    bitmap,
+    (bitmap.width - side) / 2,
+    (bitmap.height - side) / 2,
+    side,
+    side,
+    0,
+    0,
+    256,
+    256,
+  );
+  bitmap.close();
+  for (const quality of [0.86, 0.7, 0.5]) {
+    const blob = await new Promise<Blob | null>((done) => {
+      canvas.toBlob(done, 'image/webp', quality);
+    });
+    if (blob?.type === 'image/webp' && blob.size <= 120 * 1024) return blob;
+  }
+  const png = await new Promise<Blob | null>((done) => {
+    canvas.toBlob(done, 'image/png');
+  });
+  if (!png || png.size > 120 * 1024) throw new Error('Too large');
+  return png;
+}
+/** The agent's face: click it to choose a picture. */
+function AvatarPicker({
+  agent,
+  data,
+  onDone,
+}: {
+  agent: Agent;
+  data: WorkspaceSnapshot;
+  onDone: () => void;
+}) {
+  const picture = useRequest(
+    {},
+    'That picture didn’t go through. Try another one.',
+  );
+  const file = useRef<HTMLInputElement>(null);
+  const has = data.avatars.some((a) => a.agentId === agent.id);
+  const path = `/api/teams/${data.team.id}/agents/${agent.id}/avatar`;
+  const send = (body: Blob | undefined, method: 'PUT' | 'DELETE') =>
+    picture.send(path, body, method).then((done) => {
+      if (done !== undefined) onDone();
+    });
+  return (
+    <div className="avatar-picker">
+      <button
+        type="button"
+        className="avatar-change"
+        aria-label={`Change ${agent.name}’s picture`}
+        title="Change picture"
+        disabled={picture.disabled}
+        onClick={() => file.current?.click()}
+      >
+        <Avatar kind="agent" name={agent.name} id={agent.id} size="xl" />
+      </button>
+      <input
+        ref={file}
+        type="file"
+        accept="image/*"
+        hidden
+        onChange={(event) => {
+          const chosen = event.currentTarget.files?.[0];
+          event.currentTarget.value = '';
+          if (!chosen) return;
+          void avatarFrom(chosen).then(
+            (blob) => send(blob, 'PUT'),
+            () => {
+              picture.setError('That file isn’t a picture Kinmesh can use.');
+            },
+          );
+        }}
+      />
+      {has && (
+        <button
+          type="button"
+          className="link-button subtle-danger"
+          disabled={picture.disabled}
+          onClick={() => {
+            void send(undefined, 'DELETE');
+          }}
+        >
+          Remove picture
+        </button>
+      )}
+      {picture.error && <Notice>{picture.error}</Notice>}
+    </div>
+  );
+}
+/**
+ * Everything else about the agent, every value in sight. The hand-run worker
+ * is a task of its own, so it opens as its own page.
+ */
+export function AgentAbout({
+  agent,
+  data,
+  t3,
+  onOwnWorker,
+  onDone,
+}: {
+  agent: Agent;
+  data: WorkspaceSnapshot;
+  t3: ReturnType<typeof useT3>;
+  onOwnWorker: () => void;
+  onDone: () => void;
+}) {
+  const managed = managedOf(data, agent.id);
+  const awake = workerConnected(data.wake, agent.id);
+  const connection = t3.status?.connection ?? null;
+  const where = connection && t3Where(connection);
+  const provider = managed?.providerId ?? agent.preferences.providerId;
+  return (
+    <aside className="agent-about" aria-label="About">
+      <AvatarPicker agent={agent} data={data} onDone={onDone} />
+      <dl>
+        <dt>Provider</dt>
+        <dd>{provider ?? 'not chosen'}</dd>
+        <dt>Model</dt>
+        <dd>{agent.preferences.modelId ?? 'not chosen'}</dd>
+        <dt>T3</dt>
+        <dd>{where ? `${where.host} · ${where.access}` : 'not connected'}</dd>
+        <dt>Worker</dt>
+        <dd>
+          {managed ? 'run by Kinmesh' : awake ? 'run by you' : 'not running'}
+        </dd>
+      </dl>
+      <TeamMcp agent={agent} data={data} />
+      <dl>
+        <dt>Agent ID</dt>
+        <dd className="agent-id">
+          <code className="reference" title={agent.id}>
+            {agent.id}
+          </code>
+          <CopyButton text={agent.id} label="Copy" className="link-button" />
+        </dd>
+        <dt>Memory</dt>
+        <dd>{agent.memoryLocation ?? 'none'}</dd>
+      </dl>
+      <button
+        type="button"
+        className="link-button about-link"
+        onClick={onOwnWorker}
+      >
+        Run the worker yourself →
+      </button>
+    </aside>
+  );
+}
+/** Running the worker by hand is a task of its own, on a page of its own. */
+export function OwnWorkerPage({
+  agent,
+  data,
+  onClose,
+  onDone,
+}: {
+  agent: Agent;
+  data: WorkspaceSnapshot;
+  onClose: () => void;
+  onDone: () => void;
+}) {
+  const managed = managedOf(data, agent.id);
+  return (
+    <Page label="Run the worker yourself" onClose={onClose}>
+      <div className="page-body">
+        <h2>Run {agent.name}’s worker yourself</h2>
+        <OwnWorker
+          agent={agent}
+          data={data}
+          managedGrantId={managed?.grantId ?? null}
+          onDone={onDone}
+        />
+      </div>
+    </Page>
   );
 }

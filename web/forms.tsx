@@ -1,6 +1,8 @@
 import { useContext, useId, useRef, isValidElement, cloneElement } from 'react';
 import type { ReactNode } from 'react';
-import { MutationPermission, useAction } from './api.js';
+import { MutationPermission, useAction, value } from './api.js';
+import { PlusIcon } from './icons.js';
+/** A labelled input; a hint is said in the input itself, as its placeholder. */
 export function Field({
   label,
   hint,
@@ -11,21 +13,16 @@ export function Field({
   children: ReactNode;
 }) {
   const id = useId();
-  if (!isValidElement<{ id?: string; 'aria-describedby'?: string }>(children))
+  if (!isValidElement<{ id?: string; placeholder?: string }>(children))
     throw new Error('Field requires one input');
   return (
     <div className="field">
       <div className="field-label">
         <label htmlFor={id}>{label}</label>
-        {hint && (
-          <small className="hint" id={id + '-hint'}>
-            {hint}
-          </small>
-        )}
       </div>
       {cloneElement(children, {
         id,
-        ...(hint ? { 'aria-describedby': id + '-hint' } : {}),
+        ...(hint && !children.props.placeholder ? { placeholder: hint } : {}),
       })}
     </div>
   );
@@ -55,6 +52,7 @@ export function Notice({ children }: { children: ReactNode }) {
     </p>
   );
 }
+/** A form that sends one action; its title names it for screen readers. */
 export function ActionForm({
   title,
   path,
@@ -64,6 +62,7 @@ export function ActionForm({
   submit,
   keyed = true,
   method = 'POST',
+  onResult,
 }: {
   title: string;
   /** A function path lets one form route each submit button to its own endpoint. */
@@ -76,14 +75,15 @@ export function ActionForm({
   keyed?: boolean;
   /** PUT replaces a whole resource, such as an agent profile. */
   method?: 'POST' | 'PUT';
+  /** The server's answer, for a form that goes on to show what it made. */
+  onResult?: (raw: unknown) => void;
 }) {
   const action = useAction();
-  const id = useId();
   const formRef = useRef<HTMLFormElement>(null);
   return (
     <form
       ref={formRef}
-      aria-labelledby={id}
+      aria-label={title}
       className="action-form"
       onSubmit={(event) => {
         event.preventDefault();
@@ -102,7 +102,7 @@ export function ActionForm({
           const body = build(data);
           const target = typeof path === 'string' ? path : path(data);
           void action
-            .send(target, body, keyed, {}, undefined, method)
+            .send(target, body, keyed, {}, undefined, method, onResult)
             .then((ok) => {
               if (ok) {
                 form.reset();
@@ -114,7 +114,6 @@ export function ActionForm({
         }
       }}
     >
-      <h3 id={id}>{title}</h3>
       {/* Inputs stay editable during a background refresh; only sending is paused. */}
       <fieldset disabled={action.busy || action.uncertain}>
         {children}
@@ -140,6 +139,91 @@ export function ActionForm({
         >
           Retry same action
         </button>
+      )}
+    </form>
+  );
+}
+/** A "+" that starts something new beside the list it belongs to. */
+export function AddButton({
+  label,
+  onClick,
+  className = '',
+}: {
+  label: string;
+  onClick: () => void;
+  className?: string;
+}) {
+  return (
+    <button
+      type="button"
+      className={'quiet icon-button add-button ' + className}
+      aria-label={label}
+      title={label}
+      onClick={onClick}
+    >
+      <PlusIcon />
+    </button>
+  );
+}
+/**
+ * One field typed in place: Enter creates, Esc or leaving it empty closes.
+ * For things that need only a name (a topic, a channel).
+ */
+export function InlineField({
+  name,
+  label,
+  placeholder,
+  maxLength,
+  path,
+  className = '',
+  onClose,
+  onDone,
+}: {
+  name: string;
+  label: string;
+  placeholder: string;
+  maxLength: number;
+  path: string;
+  className?: string;
+  onClose: () => void;
+  onDone: () => void;
+}) {
+  const action = useAction();
+  return (
+    <form
+      className={'inline-field ' + className}
+      onSubmit={(event) => {
+        event.preventDefault();
+        const text = value(new FormData(event.currentTarget), name).trim();
+        if (!text || action.disabled) return;
+        void action.send(path, { [name]: text }).then((ok) => {
+          if (!ok) return;
+          onClose();
+          onDone();
+        });
+      }}
+    >
+      <input
+        name={name}
+        aria-label={label}
+        placeholder={placeholder}
+        maxLength={maxLength}
+        required
+        autoFocus
+        disabled={action.busy}
+        onKeyDown={(event) => {
+          if (event.key !== 'Escape') return;
+          event.preventDefault();
+          onClose();
+        }}
+        onBlur={(event) => {
+          if (!event.currentTarget.value.trim() && !action.error) onClose();
+        }}
+      />
+      {action.error && (
+        <span className="inline-error" role="alert">
+          {action.error}
+        </span>
       )}
     </form>
   );

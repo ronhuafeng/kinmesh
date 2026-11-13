@@ -1,15 +1,13 @@
 import type { WorkspaceSnapshot } from '../src/workspace/contracts.js';
 import { BlockedReason } from '../src/domain/inbox.js';
+import type { DeliveryReason } from '../src/domain/inbox.js';
 import { useAction } from './api.js';
 import { Notice } from './forms.js';
-import { ago, wakeOf } from './ui.js';
+import { memberName } from './names.js';
+import { ago, workerConnected } from './ui.js';
 
 export type DeliveryView = WorkspaceSnapshot['deliveries'][number];
 type Tone = 'queued' | 'active' | 'waiting' | 'done' | 'problem';
-/**
- * What a delivery means to the person who asked, in their words. The machine
- * state and reason stay available as a tooltip for whoever operates Kinmesh.
- */
 /** How long an answer took, the way a person would say it. */
 export function took(from: string, to: string) {
   const seconds = (Date.parse(to) - Date.parse(from)) / 1000;
@@ -40,12 +38,18 @@ function blockedText(reason: string, name: string) {
       return `${name} is stuck: Kinmesh or T3 refused the request`;
   }
 }
+/**
+ * What a delivery means to the person who asked, in their words. The machine
+ * state and reason stay available as a tooltip for whoever operates Kinmesh.
+ */
 export function deliveryText(
   d: DeliveryView,
   name: string,
   connected: boolean,
 ): { text: string; tone: Tone } {
   const since = d.queuedAt ? ` · ${ago(d.queuedAt)}` : '';
+  // Reasons come from one vocabulary, so a misspelt one fails to compile.
+  const because = (reason: DeliveryReason) => d.reason === reason;
   switch (d.state) {
     case 'ready':
       if (!connected)
@@ -53,12 +57,11 @@ export function deliveryText(
           text: `${name} isn’t connected, so nothing has picked this up yet`,
           tone: 'problem',
         };
-      return d.reason === 'temporarily-unavailable'
+      return because('temporarily-unavailable')
         ? { text: `${name} will retry when T3 is reachable`, tone: 'waiting' }
         : { text: `${name} will pick this up${since}`, tone: 'queued' };
     case 'waiting':
-      return d.reason === 'human-or-approval-wait' ||
-        d.reason === 'approval-required'
+      return because('human-or-approval-wait')
         ? { text: `${name} is waiting for an approval in T3`, tone: 'waiting' }
         : { text: `${name} is working on it`, tone: 'active' };
     case 'uncertain':
@@ -78,7 +81,7 @@ export function deliveryText(
     case 'blocked':
       return { text: blockedText(d.reason, name), tone: 'problem' };
     case 'expired':
-      return d.reason === 'undispatched-expiry'
+      return because('undispatched-expiry')
         ? { text: `${name} never picked this up`, tone: 'problem' }
         : { text: `${name}’s request expired`, tone: 'problem' };
   }
@@ -99,12 +102,10 @@ export function DeliveryLine({
   openAgent?: (agentId: string) => void;
   onDone: () => void;
 }) {
-  const name =
-    data.agents.find((a) => a.id === delivery.agentId)?.name ?? 'The agent';
   const { text, tone } = deliveryText(
     delivery,
-    name,
-    wakeOf(data.wake, delivery.agentId).connected,
+    memberName({ kind: 'agent', id: delivery.agentId }, data),
+    workerConnected(data.wake, delivery.agentId),
   );
   const reply = delivery.resultMessageId;
   const onPage =
@@ -161,7 +162,7 @@ export function Recovery({
   const action = useAction();
   const team = `/api/teams/${data.team.id}`;
   const agentId = delivery.agentId;
-  const name = data.agents.find((a) => a.id === agentId)?.name ?? 'the agent';
+  const name = memberName({ kind: 'agent', id: agentId }, data);
   const retry = () =>
     action.send(`${team}/deliveries/${delivery.id}/resume`, {}).then((ok) => {
       if (ok) onDone();
@@ -253,14 +254,10 @@ export function Recovery({
       )}
       {action.error && <Notice>{action.error}</Notice>}
       {reason === null && (
-        <details className="technical">
-          <summary>Technical details</summary>
-          <p>
-            The cause was not recorded. An operator on the worker machine can
-            inspect it and resume with the original intent:
-          </p>
+        <p className="muted recovery-operator">
+          The cause wasn’t recorded. On the worker machine, resume it with{' '}
           <code>npm run inbox:worker -- resume {delivery.id}</code>
-        </details>
+        </p>
       )}
     </div>
   );

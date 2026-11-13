@@ -31,16 +31,83 @@ export async function api(
   if (!response.ok) throw new HttpError(response.status);
   return response.status === 204 ? null : response.json();
 }
+/** A form field's text, or '' when it is missing or a file. */
 export const value = (form: FormData, key: string) => {
   const entry = form.get(key);
   return typeof entry === 'string' ? entry : '';
 };
+/**
+ * One request without an operation key: JSON by default, a picture as its
+ * own bytes, and nothing at all for a DELETE.
+ */
+export function request(
+  path: string,
+  body: unknown = {},
+  method: 'POST' | 'PUT' | 'DELETE' = 'POST',
+) {
+  return api(
+    path,
+    body instanceof Blob
+      ? { method, headers: { 'content-type': body.type }, body }
+      : method === 'DELETE'
+        ? { method }
+        : {
+            method,
+            headers: { 'content-type': 'application/json' },
+            body: JSON.stringify(body),
+          },
+  );
+}
+/**
+ * Unkeyed requests, one at a time, with what went wrong in the person's
+ * terms (by HTTP status, else the fallback). Each resolves to the server's
+ * answer (null for no content), or undefined when it failed or wasn't sent;
+ * the caller decides what follows.
+ */
+export function useRequest(
+  messages: Partial<Record<number, string>> = {},
+  fallback = 'That did not go through. Nothing was changed; try again.',
+) {
+  const permitted = useContext(MutationPermission);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
+  const running = useRef(false);
+  async function run<T>(work: () => Promise<T>): Promise<T | undefined> {
+    if (!permitted || running.current) return undefined;
+    running.current = true;
+    setBusy(true);
+    setError('');
+    try {
+      return await work();
+    } catch (cause) {
+      setError(
+        (cause instanceof HttpError ? messages[cause.status] : undefined) ??
+          fallback,
+      );
+      return undefined;
+    } finally {
+      running.current = false;
+      setBusy(false);
+    }
+  }
+  return {
+    busy,
+    error,
+    setError,
+    permitted,
+    disabled: !permitted || busy,
+    run,
+    send: (...args: Parameters<typeof request>) => run(() => request(...args)),
+  };
+}
 interface Pending {
   path: string;
   body: string;
   headers: Record<string, string>;
   method: 'POST' | 'PUT';
   onSuccess?: () => void;
+  /** The server's answer, for a caller that goes on to show what it made. */
+  onResult?: (raw: unknown) => void;
 }
 /** A lost response keeps the exact command/key in memory for an explicit retry. Never auto-resend. */
 export function useAction() {
@@ -63,8 +130,9 @@ export function useAction() {
     running.current = true;
     setBusy(true);
     setError('');
+    let result: unknown;
     try {
-      await api(command.path, {
+      result = await api(command.path, {
         method: command.method,
         body: command.body,
         headers: command.headers,
@@ -93,6 +161,7 @@ export function useAction() {
       setBusy(false);
     }
     command.onSuccess?.();
+    command.onResult?.(result);
     return true;
   }
   return {
@@ -116,6 +185,7 @@ export function useAction() {
       extraHeaders: Record<string, string> = {},
       onSuccess?: () => void,
       method: 'POST' | 'PUT' = 'POST',
+      onResult?: (raw: unknown) => void,
     ) {
       if (pending.current) return false;
       return perform({
@@ -126,6 +196,7 @@ export function useAction() {
         ),
         headers: { 'content-type': 'application/json', ...extraHeaders },
         ...(onSuccess ? { onSuccess } : {}),
+        ...(onResult ? { onResult } : {}),
       });
     },
     async retry() {

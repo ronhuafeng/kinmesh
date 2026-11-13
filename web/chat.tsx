@@ -3,13 +3,13 @@ import { z } from 'zod';
 import type { Agent } from '../src/domain/agents.js';
 import type { Message } from '../src/domain/communication.js';
 import type { WorkspaceSnapshot } from '../src/workspace/contracts.js';
-import { useAction, value } from './api.js';
-import { ActionForm, Field } from './forms.js';
-import { authorName } from './names.js';
-import { Avatar, shortTime, wakeOf } from './ui.js';
+import { value } from './api.js';
+import { ActionForm, AddButton, Field, InlineField } from './forms.js';
+import { joinedAgents, memberName } from './names.js';
+import { Avatar, Presence, shortTime, workerConnected } from './ui.js';
+import { keep, kept } from './session.js';
 import { DeliveryLine } from './deliveries.js';
 import { Markdown } from './markdown.js';
-import { PlusIcon } from './icons.js';
 import { ReplyOrigin, answerOnly } from './replies.js';
 import type { DeliveryView } from './deliveries.js';
 
@@ -70,6 +70,7 @@ function Composer({
       caret,
       'end',
     );
+    keep(draftKey, el.value);
     el.focus();
     setChips((old) =>
       old.some((c) => c.id === agent.id) ? old : [...old, agent].slice(0, 20),
@@ -77,6 +78,9 @@ function Composer({
     setQuery(null);
   }
   const narrow = window.matchMedia('(max-width: 720px)').matches;
+  // What was typed and not sent survives a reload, per channel.
+  const draftKey = 'message:' + channelPath;
+  const unsent = kept(draftKey);
   return (
     <div className="composer">
       <ActionForm
@@ -86,6 +90,7 @@ function Composer({
         onDone={() => {
           setChips([]);
           setQuery(null);
+          keep(draftKey, null);
           onDone();
         }}
         build={(f) => {
@@ -143,13 +148,14 @@ function Composer({
                     choose(agent);
                   }}
                 >
-                  <Avatar kind="agent" name={agent.name} size="sm" />
+                  <Avatar
+                    kind="agent"
+                    name={agent.name}
+                    id={agent.id}
+                    size="sm"
+                  />
                   <span className="person-name">{agent.name}</span>
-                  <small>
-                    {connected(agent.id)
-                      ? 'Agent · ' + agent.role
-                      : 'Not connected · won’t wake'}
-                  </small>
+                  <Presence online={connected(agent.id)} dot />
                 </li>
               ))}
             </ul>
@@ -177,7 +183,11 @@ function Composer({
                 channelName +
                 (narrow ? '' : ' — @ to mention, ⌘/Ctrl+Enter to send')
               }
-              onInput={track}
+              defaultValue={typeof unsent === 'string' ? unsent : ''}
+              onInput={(e) => {
+                keep(draftKey, e.currentTarget.value || null);
+                track();
+              }}
               onClick={track}
               onBlur={() => {
                 setQuery(null);
@@ -245,62 +255,39 @@ function NewTopic({
   channelPath: string;
   onDone: () => void;
 }) {
-  const action = useAction();
   const [open, setOpen] = useState(false);
-  if (!open)
-    return (
-      <button
-        type="button"
-        className="quiet icon-button topic-add"
-        aria-label="Start a topic"
-        title="Start a topic"
-        onClick={() => {
-          setOpen(true);
-        }}
-      >
-        <PlusIcon />
-      </button>
-    );
-  return (
-    <form
-      className="topic-new"
-      aria-label="New topic"
-      onSubmit={(event) => {
-        event.preventDefault();
-        const title = value(new FormData(event.currentTarget), 'title').trim();
-        if (!title || action.disabled) return;
-        void action.send(channelPath + '/topics', { title }).then((ok) => {
-          if (!ok) return;
-          setOpen(false);
-          onDone();
-        });
+  return open ? (
+    <InlineField
+      name="title"
+      label="Topic title"
+      placeholder="New topic"
+      maxLength={160}
+      path={channelPath + '/topics'}
+      className="pill"
+      onClose={() => {
+        setOpen(false);
       }}
-    >
-      <input
-        name="title"
-        aria-label="Topic title"
-        placeholder="New topic"
-        maxLength={160}
-        required
-        autoFocus
-        disabled={action.busy}
-        onKeyDown={(event) => {
-          if (event.key !== 'Escape') return;
-          event.preventDefault();
-          setOpen(false);
-        }}
-        onBlur={(event) => {
-          if (!event.currentTarget.value.trim() && !action.error)
-            setOpen(false);
-        }}
-      />
-      {action.error && (
-        <span className="topic-error" role="alert">
-          {action.error}
-        </span>
-      )}
-    </form>
+      onDone={onDone}
+    />
+  ) : (
+    <AddButton
+      label="Start a topic"
+      className="topic-add"
+      onClick={() => {
+        setOpen(true);
+      }}
+    />
   );
+}
+/** Scrolls to a message and flashes it, so the eye finds it. */
+export function showMessage(id: string) {
+  const target = document.getElementById('message-' + id);
+  if (!target) return;
+  target.scrollIntoView({ block: 'center', behavior: 'smooth' });
+  target.dataset.flash = 'true';
+  setTimeout(() => {
+    delete target.dataset.flash;
+  }, 1600);
 }
 /** Remembers which messages were already shown so new arrivals can be marked. */
 function useArrivals(channelId: string, messages: ChatMessage[], me: string) {
@@ -360,9 +347,6 @@ export function Chat({
     data.human.id,
   );
   if (!channel) return null;
-  const joinedAgents = data.agents.filter((a) =>
-    data.joinedAgentIds.includes(a.id),
-  );
   // Mention deliveries under each asking message, and the way back from a reply.
   const asked = new Map<string, DeliveryView[]>();
   const replyTo = new Map<string, string>();
@@ -373,28 +357,17 @@ export function Chat({
       replyTo.set(d.resultMessageId, d.messageId);
   }
   const origin = new Map(data.replies.map((r) => [r.messageId, r]));
-  const mentionName = (member: ChatMessage['mentions'][number]) =>
-    member.kind === 'agent'
-      ? (data.agents.find((a) => a.id === member.id)?.name ?? 'Agent')
-      : 'Human member';
   // A mention already written as @Name in the text needs no second chip.
   const unwritten = (m: ChatMessage) =>
-    m.mentions.filter((member) => !m.body.includes('@' + mentionName(member)));
+    m.mentions.filter(
+      (member) => !m.body.includes('@' + memberName(member, data)),
+    );
   const replySource = (id: string) => {
     const source = messages.find((m) => m.id === id);
     if (!source) return 'an earlier message';
     const flat = source.body.replace(/\s+/g, ' ').trim();
     const text = flat.length > 80 ? flat.slice(0, 77) + '…' : flat;
-    return `${authorName(source.author, data)}: ${text}`;
-  };
-  const jump = (id: string) => {
-    const target = document.getElementById('message-' + id);
-    if (!target) return;
-    target.scrollIntoView({ block: 'center', behavior: 'smooth' });
-    target.dataset.flash = 'true';
-    setTimeout(() => {
-      delete target.dataset.flash;
-    }, 1600);
+    return `${memberName(source.author, data)}: ${text}`;
   };
   const topicTitle = (id: string) =>
     data.topics.items.find((t) => t.id === id)?.title ?? 'Topic';
@@ -464,7 +437,7 @@ export function Chat({
             Date.parse(m.createdAt) - Date.parse(previous.createdAt) <
               5 * 60_000 &&
             divider !== m.id;
-          const name = authorName(m.author, data);
+          const name = memberName(m.author, data);
           const agent =
             m.author.kind === 'agent'
               ? data.agents.find(
@@ -484,7 +457,11 @@ export function Chat({
                   New since {shortTime(m.createdAt)}
                 </div>
               )}
-              <Avatar kind={m.author.kind} name={name} />
+              <Avatar
+                kind={m.author.kind}
+                name={name}
+                {...(m.author.kind === 'agent' ? { id: m.author.agentId } : {})}
+              />
               <div className="message-body">
                 <header>
                   {agent ? (
@@ -500,7 +477,6 @@ export function Chat({
                   ) : (
                     <strong>{name}</strong>
                   )}
-                  {agent && <span className="author-role">{agent.role}</span>}
                   <time dateTime={m.createdAt}>{shortTime(m.createdAt)}</time>
                   {m.topicId && (
                     <small className="topic-tag">{topicTitle(m.topicId)}</small>
@@ -511,7 +487,7 @@ export function Chat({
                     type="button"
                     className="reply-to link-button"
                     onClick={() => {
-                      jump(replyTo.get(m.id) ?? '');
+                      showMessage(replyTo.get(m.id) ?? '');
                     }}
                   >
                     <span aria-hidden="true">↩</span>{' '}
@@ -531,7 +507,7 @@ export function Chat({
                         className="mention-chip"
                         data-kind={member.kind}
                       >
-                        @{mentionName(member)}
+                        @{memberName(member, data)}
                       </li>
                     ))}
                   </ul>
@@ -544,7 +520,7 @@ export function Chat({
                         delivery={d}
                         data={data}
                         channelId={data.channel?.id ?? ''}
-                        onReply={jump}
+                        onReply={showMessage}
                         openAgent={openAgent}
                         onDone={onDone}
                       />
@@ -568,13 +544,9 @@ export function Chat({
         })}
       </ol>
       {messages.length === 0 && (
-        <div className="empty">
-          <h3>No messages yet</h3>
-          <p>
-            Start the conversation, or type @ to bring an agent in. Any message
-            can become a task.
-          </p>
-        </div>
+        <p className="board-empty">
+          No messages yet. Type @ to bring an agent in.
+        </p>
       )}
       {data.messages.nextCursor && (
         <button
@@ -591,8 +563,8 @@ export function Chat({
         channelName={channel.name}
         channelPath={channelPath}
         topicId={topic}
-        agents={joinedAgents}
-        connected={(id) => wakeOf(data.wake, id).connected}
+        agents={joinedAgents(data)}
+        connected={(id) => workerConnected(data.wake, id)}
         onDone={onDone}
       />
     </div>

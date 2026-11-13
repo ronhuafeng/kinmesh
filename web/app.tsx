@@ -1,32 +1,41 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { flushSync } from 'react-dom';
 import * as Tabs from '@radix-ui/react-tabs';
-import { ChannelId } from '../src/domain/contracts.js';
+import { ChannelId, TaskId } from '../src/domain/contracts.js';
+import { Agent } from '../src/domain/agents.js';
 import { TopicId } from '../src/domain/communication.js';
 import { WorkspaceSnapshot } from '../src/workspace/contracts.js';
 import { Auth } from './auth.js';
-import { api, HttpError, MutationPermission, Offline, value } from './api.js';
-import { ActionForm, Field, Notice } from './forms.js';
-import { AgentDrawer, Team } from './agents.js';
-import { Chat } from './chat.js';
-import { Board, draftFromMessage, humanAsk, TaskDrawer } from './tasks.js';
-import type { BoardFilter, TaskDraft } from './tasks.js';
-import { Avatar, plural, statusLabel, wakeOf } from './ui.js';
-import { CommandPalette } from './palette.js';
-import { NeedsDrawer, attentionCount } from './needs.js';
-import { SettingsDrawer } from './settings.js';
+import { api, HttpError, MutationPermission, Offline } from './api.js';
+import { ActionForm, AddButton, InlineField, Notice } from './forms.js';
+import { AgentPage, Team } from './agents.js';
+import { OwnWorkerPage } from './setup.js';
+import { Chat, showMessage } from './chat.js';
 import {
-  BotIcon,
-  InboxIcon,
-  MenuIcon,
-  PersonIcon,
-  SignOutIcon,
-} from './icons.js';
+  Board,
+  blankDraft,
+  draftFromMessage,
+  humanAsk,
+  keepDraft,
+  keptDraft,
+  NewTaskPage,
+  statusLabel,
+  TaskPage,
+} from './tasks.js';
+import type { TaskDraft } from './tasks.js';
+import { joinedAgents } from './names.js';
+import { Avatar, AvatarImages, Presence, workerConnected } from './ui.js';
+import { CommandPalette } from './palette.js';
+import { InboxPage, attentionCount } from './inbox.js';
+import { SettingsPage } from './settings.js';
+import { InboxIcon, MenuIcon, SignOutIcon } from './icons.js';
 import type { Command } from './palette.js';
-type View = 'chat' | 'board' | 'team';
+/** Tabs, plus one agent's own page reached from them. */
+type View = 'chat' | 'board' | 'team' | 'agent';
+type Tab = Exclude<View, 'agent'>;
 type Focus =
-  | { kind: 'task' | 'agent'; id: string }
-  | { kind: 'needs' | 'settings' }
+  | { kind: 'task' | 'worker'; id: string }
+  | { kind: 'inbox' | 'settings' }
   | null;
 /** True when a refresh moved at least one visible task to another status. */
 function statusesMoved(
@@ -52,21 +61,93 @@ function animate(update: () => void) {
     flushSync(update);
   });
 }
-function initialSelection() {
+/**
+ * Where you are, as the address says it, so a reload or a shared link opens
+ * the same place: the channel and topic, the view, an agent's page, a task
+ * (or "new"), the Inbox, Settings, or a hand-run worker.
+ */
+function readRoute() {
   const query = new URLSearchParams(window.location.search);
-  return {
-    channel: ChannelId.safeParse(query.get('channel')).success
-      ? (query.get('channel') ?? '')
-      : '',
-    topic: TopicId.safeParse(query.get('topic')).success
-      ? (query.get('topic') ?? '')
-      : '',
+  const valid =
+    (parse: { safeParse: (v: unknown) => { success: boolean } }) =>
+    (key: string) => {
+      const value = query.get(key);
+      return value !== null && parse.safeParse(value).success ? value : '';
+    };
+  const agentParam = valid(Agent.shape.id);
+  const channel = valid(ChannelId)('channel');
+  const topic = valid(TopicId)('topic');
+  const worker = agentParam('worker');
+  const task = query.get('task');
+  let agent = agentParam('agent');
+  let view: View =
+    query.get('view') === 'board'
+      ? 'board'
+      : query.get('view') === 'team'
+        ? 'team'
+        : 'chat';
+  let focus: Focus = null;
+  let draft: TaskDraft | null = null;
+  if (task === 'new') {
+    view = 'board';
+    draft = keptDraft()?.draft ?? blankDraft(topic || null);
+  } else if (task !== null && TaskId.safeParse(task).success) {
+    view = 'board';
+    focus = { kind: 'task', id: task };
+  } else if (worker) {
+    view = 'agent';
+    agent = worker;
+    focus = { kind: 'worker', id: worker };
+  } else if (query.has('inbox')) focus = { kind: 'inbox' };
+  else if (query.has('settings')) focus = { kind: 'settings' };
+  if (agent && !worker) view = 'agent';
+  return { channel, topic, view, agent, focus, draft };
+}
+/** The address for a place; the inverse of readRoute. */
+function routeUrl(place: {
+  channel: string;
+  topic: string;
+  view: View;
+  agent: string;
+  focus: Focus;
+  newTask: boolean;
+}) {
+  const query = new URLSearchParams();
+  if (place.channel) query.set('channel', place.channel);
+  if (place.topic) query.set('topic', place.topic);
+  if (place.focus?.kind === 'task') query.set('task', place.focus.id);
+  else if (place.newTask) query.set('task', 'new');
+  else if (place.focus?.kind === 'worker') query.set('worker', place.focus.id);
+  else if (place.focus?.kind === 'inbox') query.set('inbox', '');
+  else if (place.focus?.kind === 'settings') query.set('settings', '');
+  else if (place.view === 'agent' && place.agent)
+    query.set('agent', place.agent);
+  else if (place.view === 'board' || place.view === 'team')
+    query.set('view', place.view);
+  const search = query.toString().replace(/=(?=&|$)/g, '');
+  return '/' + (search ? '?' + search : '');
+}
+/** Two addresses are the same place when only the topic differs. */
+function samePlace(a: string, b: string) {
+  const strip = (url: string) => {
+    const parsed = new URL(url, window.location.origin);
+    parsed.searchParams.delete('topic');
+    return parsed.search;
   };
+  return strip(a) === strip(b);
 }
 export function App() {
-  const [selection, setSelection] = useState(initialSelection);
-  // Phone only: channel actions and the account fold behind a menu button.
+  const [initial] = useState(readRoute);
+  const [selection, setSelection] = useState({
+    channel: initial.channel,
+    topic: initial.topic,
+  });
+  // The agent whose page is open, and the tab Esc returns to from it.
+  const [agentId, setAgentId] = useState(initial.agent);
+  const [backTo, setBackTo] = useState<Tab>('team');
+  // Phone only: channel actions and the account sit behind a menu button.
   const [menuOpen, setMenuOpen] = useState(false);
+  const [addingChannel, setAddingChannel] = useState(false);
   const [data, setData] = useState<WorkspaceSnapshot | null>(null);
   const [status, setStatus] = useState<
     'loading' | 'ready' | 'offline' | 'signedout'
@@ -80,11 +161,14 @@ export function App() {
   const [revision, setRevision] = useState(0);
   const [manual, setManual] = useState(false);
   const [slow, setSlow] = useState(false);
-  const [view, setView] = useState<View>('chat');
+  const [view, setView] = useState<View>(initial.view);
   const [cursors, setCursors] = useState<Record<string, string>>({});
-  const [focus, setFocus] = useState<Focus>(null);
-  const [filter, setFilter] = useState<BoardFilter>('all');
-  const [draft, setDraft] = useState<TaskDraft | null>(null);
+  const [focus, setFocus] = useState<Focus>(initial.focus);
+  const [draft, setDraft] = useState<TaskDraft | null>(initial.draft);
+  // A new task in progress is kept in this tab until created or dropped.
+  useEffect(() => {
+    keepDraft(draft);
+  }, [draft]);
   const [toast, setToast] = useState<{ id: number; message: string } | null>(
     null,
   );
@@ -98,10 +182,28 @@ export function App() {
     };
   }, [toast]);
   const shown = useRef<WorkspaceSnapshot | null>(null);
-  const viewRef = useRef(view);
-  useEffect(() => {
-    viewRef.current = view;
-  }, [view]);
+  /**
+   * Signed out, or access lost: nothing protected stays on screen, and no
+   * channel or page identifiers are left for whoever signs in next.
+   */
+  const toSignedOut = useCallback((message: string) => {
+    shown.current = null;
+    setData(null);
+    setFocus(null);
+    setDraft(null);
+    setSelection((previous) =>
+      !previous.channel && !previous.topic
+        ? previous
+        : { channel: '', topic: '' },
+    );
+    setView('chat');
+    setCursors((previous) =>
+      Object.keys(previous).length === 0 ? previous : {},
+    );
+    setError(message);
+    setLastOk(false);
+    setStatus('signedout');
+  }, []);
   const refresh = useCallback(() => {
     setRevision((n) => n + 1);
   }, []);
@@ -128,14 +230,6 @@ export function App() {
     const query = new URLSearchParams(cursors);
     if (selection.channel) query.set('channelId', selection.channel);
     if (selection.topic) query.set('topicId', selection.topic);
-    const displayed = new URLSearchParams();
-    if (selection.channel) displayed.set('channel', selection.channel);
-    if (selection.topic) displayed.set('topic', selection.topic);
-    window.history.replaceState(
-      null,
-      '',
-      '/' + (displayed.size ? '?' + displayed.toString() : ''),
-    );
     setStatus((previous) => (previous === 'signedout' ? previous : 'loading'));
     void api('/api/workspace?' + query.toString(), {
       signal: controller.signal,
@@ -150,8 +244,12 @@ export function App() {
           setLastOk(true);
           setError('');
         };
-        // Cards travel to their new column; other refreshes stay instant.
-        if (viewRef.current === 'board' && statusesMoved(shown.current, next))
+        // Cards on screen travel to their new column; other refreshes stay
+        // instant.
+        if (
+          document.querySelector('.board') &&
+          statusesMoved(shown.current, next)
+        )
           animate(apply);
         else apply();
       })
@@ -162,22 +260,7 @@ export function App() {
           (cause.status === 401 || cause.status === 403)
         ) {
           // Auth loss is not a transient outage: purge the protected snapshot.
-          shown.current = null;
-          setData(null);
-          setFocus(null);
-          setDraft(null);
-          // Drop stale channel and pagination identifiers before another user signs in.
-          setSelection((previous) => {
-            if (!previous.channel && !previous.topic) return previous;
-            return { channel: '', topic: '' };
-          });
-          setCursors((previous) => {
-            if (Object.keys(previous).length === 0) return previous;
-            return {};
-          });
-          setError(cause.status === 403 ? cause.message : '');
-          setLastOk(false);
-          setStatus('signedout');
+          toSignedOut(cause.status === 403 ? cause.message : '');
         } else {
           setError(
             cause instanceof HttpError
@@ -191,7 +274,49 @@ export function App() {
     return () => {
       controller.abort();
     };
-  }, [selection.channel, selection.topic, cursors, revision]);
+  }, [selection.channel, selection.topic, cursors, revision, toSignedOut]);
+  // The address follows the place. Going somewhere new adds a history
+  // entry, so Back returns; a topic switch only rewrites the address.
+  const routed = useRef(false);
+  // A new task shares the page slot; any other page replaces it.
+  const newTask = focus === null ? draft : null;
+  useEffect(() => {
+    const next = routeUrl({
+      channel: selection.channel,
+      topic: selection.topic,
+      view,
+      agent: agentId,
+      focus,
+      newTask: newTask !== null,
+    });
+    const here = window.location.pathname + window.location.search;
+    if (next !== here) {
+      if (routed.current && !samePlace(next, here))
+        window.history.pushState(null, '', next);
+      else window.history.replaceState(null, '', next);
+    }
+    routed.current = true;
+  }, [selection.channel, selection.topic, view, agentId, focus, newTask]);
+  // Back and Forward go to the place their address names.
+  useEffect(() => {
+    const onPop = () => {
+      const place = readRoute();
+      setSelection((old) => {
+        if (old.channel === place.channel && old.topic === place.topic)
+          return old;
+        if (old.channel !== place.channel) setCursors({});
+        return { channel: place.channel, topic: place.topic };
+      });
+      setView(place.view);
+      setAgentId(place.agent);
+      setFocus(place.focus);
+      setDraft(place.draft);
+    };
+    window.addEventListener('popstate', onPop);
+    return () => {
+      window.removeEventListener('popstate', onPop);
+    };
+  }, []);
   useEffect(() => {
     if (status === 'signedout') return;
     const poll = setInterval(refresh, 15000);
@@ -207,6 +332,10 @@ export function App() {
   const selectChannel = (channel: string) => {
     setSelection({ channel, topic: '' });
     setCursors({});
+    // A channel in the sidebar leads away from any open page.
+    setFocus(null);
+    setDraft(null);
+    if (view === 'agent') setView('chat');
   };
   if (status === 'signedout')
     return (
@@ -261,43 +390,75 @@ export function App() {
   const shownChannelName = switching
     ? data.channels.items.find((c) => c.id === selection.channel)?.name
     : channel?.name;
+  const channelAgents = joinedAgents(data);
   const notify = (message: string) => {
     setToast({ id: Date.now(), message });
   };
-  const joinedAgents = data.agents.filter((a) =>
-    data.joinedAgentIds.includes(a.id),
-  );
-  const openTasks = data.tasks.items.filter(
-    (t) => t.state.status !== 'accepted' && t.state.status !== 'cancelled',
-  ).length;
   const focusedTask =
     focus?.kind === 'task' && channelPath
       ? data.tasks.items.find((t) => t.id === focus.id)
       : undefined;
-  const focusedAgent =
-    focus?.kind === 'agent'
+  const workerAgent =
+    focus?.kind === 'worker'
       ? data.agents.find((a) => a.id === focus.id)
       : undefined;
+  const avatarImages = new Map(
+    data.avatars.map((a) => [
+      a.agentId,
+      `/api/teams/${data.team.id}/agents/${a.agentId}/avatar?v=${encodeURIComponent(a.updatedAt)}`,
+    ]),
+  );
+  // An open page: a task or a new one (on the board), or the Inbox,
+  // Settings or a hand-run worker (on no tab).
+  // A task just created is a page already, while its first refresh arrives.
+  const onBoardPage =
+    channelPath !== null && (focus?.kind === 'task' || newTask !== null);
+  const onPage =
+    onBoardPage ||
+    workerAgent !== undefined ||
+    focus?.kind === 'inbox' ||
+    focus?.kind === 'settings';
+  // A task (new or open) sits on the board; the Inbox, Settings and a
+  // hand-run worker sit on no tab. An agent's page is its own tab panel,
+  // which no trigger lights.
+  const tabValue = onBoardPage ? 'board' : onPage ? 'page' : view;
+  /** Any tab leads away from a page, even the one it sits on. */
+  const leavePage = () => {
+    setFocus(null);
+    setDraft(null);
+  };
+  const pageAgent =
+    view === 'agent' ? data.agents.find((a) => a.id === agentId) : undefined;
   const closeFocus = () => {
     setFocus(null);
   };
+  /** An agent opens as its own page; Esc returns to the tab it came from. */
   const openAgent = (id: string) => {
-    setFocus({ kind: 'agent', id });
+    if (view !== 'agent') setBackTo(view);
+    setAgentId(id);
+    setView('agent');
+    setFocus(null);
   };
   const openTask = (id: string) => {
     setView('board');
     setFocus({ kind: 'task', id });
   };
-  /** Open a task in any joined channel; the drawer appears once it loads. */
+  /** Open a task in any joined channel; its page appears once it loads. */
   const openTaskIn = (channelId: string, id: string) => {
     if (channelId !== channel?.id) selectChannel(channelId);
     openTask(id);
   };
-  const needs = attentionCount(data.attention);
+  /** A new task in the topic on screen, as its own (empty) page. */
+  const startNewTask = () => {
+    setDraft(blankDraft(selection.topic || null));
+    setFocus(null);
+    setView('board');
+  };
+  const waiting = attentionCount(data.attention);
   const commands: Command[] = [
     ...data.attention.decide.map(({ task, channelName }) => ({
       id: 'ask-' + task.id,
-      group: 'Needs you',
+      group: 'Inbox',
       label: task.title,
       hint: (humanAsk(task, data) ?? 'Your decision') + ' · #' + channelName,
       run: () => {
@@ -308,7 +469,6 @@ export function App() {
       id: 'view-' + v,
       group: 'Views',
       label: v === 'chat' ? 'Chat' : v === 'board' ? 'Board' : 'Team',
-      hint: 'view',
       run: () => {
         setView(v);
       },
@@ -320,18 +480,7 @@ export function App() {
             group: 'Actions',
             label: 'New task',
             hint: channel ? '#' + channel.name : undefined,
-            run: () => {
-              setDraft({
-                id: 'new-' + String(Date.now()),
-                title: '',
-                description: '',
-                topicId: selection.topic || null,
-                sourceMessageId: null,
-                from: null,
-              });
-              setFocus(null);
-              setView('board');
-            },
+            run: startNewTask,
           },
         ]
       : []),
@@ -363,7 +512,6 @@ export function App() {
       id: 'agent-' + agent.id,
       group: 'People',
       label: agent.name,
-      hint: 'agent · ' + agent.role,
       run: () => {
         openAgent(agent.id);
       },
@@ -371,420 +519,446 @@ export function App() {
   ];
   return (
     <MutationPermission value={canAct}>
-      <Offline value={!canAct && !switching}>
-        <div
-          className="workspace-shell"
-          data-drawer={
-            focusedTask ||
-            focusedAgent ||
-            focus?.kind === 'needs' ||
-            focus?.kind === 'settings'
-              ? 'open'
-              : undefined
-          }
-        >
-          <aside className="sidebar" data-menu={menuOpen ? 'open' : undefined}>
-            {/* One row says whose workspace this is; search sits right under it. */}
-            <div className="sidebar-top">
-              <button
-                type="button"
-                className="team-name"
-                aria-label={`${data.team.name}: settings`}
-                onClick={() => {
-                  setFocus({ kind: 'settings' });
-                }}
-              >
-                <span className="team-icon" aria-hidden="true">
-                  {data.team.name.slice(0, 1).toUpperCase()}
-                </span>
-                <strong>{data.team.name}</strong>
-              </button>
-              <CommandPalette commands={commands} />
-              <button
-                type="button"
-                className="quiet icon-button sidebar-menu"
-                aria-label="Menu"
-                aria-expanded={menuOpen}
-                onClick={() => {
-                  setMenuOpen((open) => !open);
-                }}
-              >
-                <MenuIcon />
-              </button>
-            </div>
-            <button
-              className="needs-you"
-              data-count={needs > 0 ? 'true' : undefined}
-              aria-pressed={focus?.kind === 'needs'}
-              onClick={() => {
-                setFocus({ kind: 'needs' });
-              }}
+      <AvatarImages.Provider value={avatarImages}>
+        <Offline value={!canAct && !switching}>
+          <div className="workspace-shell">
+            <aside
+              className="sidebar"
+              data-menu={menuOpen ? 'open' : undefined}
             >
-              <span className="with-icon">
-                <InboxIcon />
-                Needs you
-              </span>
-              <span className="count">{needs}</span>
-            </button>
-            <nav aria-label="Channels">
-              <div className="nav-heading">
-                <h2>Channels</h2>
-                <span>{data.channels.items.length}</span>
-              </div>
-              {data.channels.items.map((c) => (
+              {/* Search first; the team's name lives in Settings. */}
+              <div className="sidebar-top">
+                <CommandPalette commands={commands} />
                 <button
-                  key={c.id}
-                  aria-current={channel?.id === c.id ? 'page' : undefined}
+                  type="button"
+                  className="quiet icon-button sidebar-menu"
+                  aria-label="Menu"
+                  aria-expanded={menuOpen}
                   onClick={() => {
-                    selectChannel(c.id);
+                    setMenuOpen((open) => !open);
                   }}
                 >
-                  <span aria-hidden="true">#</span> {c.name}
+                  <MenuIcon />
                 </button>
-              ))}
-            </nav>
-            {data.channels.nextCursor && (
+              </div>
               <button
-                className="quiet"
+                className="inbox-link"
+                data-count={waiting > 0 ? 'true' : undefined}
+                aria-pressed={focus?.kind === 'inbox'}
                 onClick={() => {
-                  next('channelsCursor', data.channels.nextCursor);
+                  setFocus({ kind: 'inbox' });
                 }}
               >
-                More channels
+                <span className="with-icon">
+                  <InboxIcon />
+                  Inbox
+                </span>
+                {/* An empty inbox needs no number. */}
+                {waiting > 0 && <span className="count">{waiting}</span>}
               </button>
-            )}
-            <div className="sidebar-actions">
-              <details>
-                <summary>New channel</summary>
-                <ActionForm
-                  title="Create a channel"
-                  path={`/api/teams/${data.team.id}/channels`}
-                  build={(f) => ({ name: value(f, 'name') })}
-                  submit="Create channel"
-                  onDone={refresh}
-                >
-                  <Field label="Channel name">
-                    <input name="name" required maxLength={80} />
-                  </Field>
-                </ActionForm>
-              </details>
-              <details>
-                <summary>Rejoin a channel</summary>
+              <nav aria-label="Channels">
+                <div className="nav-heading">
+                  <h2>Channels</h2>
+                  <AddButton
+                    label="New channel"
+                    onClick={() => {
+                      setAddingChannel(true);
+                    }}
+                  />
+                </div>
+                {data.channels.items.map((c) => (
+                  <button
+                    key={c.id}
+                    aria-current={
+                      // Only one place is current: a channel while you are
+                      // in its chat or board.
+                      channel?.id === c.id &&
+                      (tabValue === 'chat' || tabValue === 'board')
+                        ? 'page'
+                        : undefined
+                    }
+                    onClick={() => {
+                      selectChannel(c.id);
+                    }}
+                  >
+                    <span aria-hidden="true">#</span> {c.name}
+                  </button>
+                ))}
+                {addingChannel && (
+                  <InlineField
+                    name="name"
+                    label="Channel name"
+                    placeholder="channel-name"
+                    maxLength={80}
+                    path={`/api/teams/${data.team.id}/channels`}
+                    className="channel-new"
+                    onClose={() => {
+                      setAddingChannel(false);
+                    }}
+                    onDone={refresh}
+                  />
+                )}
+                {/* Channels you left, only when there are any: one click back. */}
                 <LeftChannels
                   teamId={data.team.id}
                   channels={data.leftChannels}
                   onDone={selectChannel}
                 />
-              </details>
-            </div>
-            {channel && (
-              <section className="people" aria-label="People in this channel">
-                <div className="nav-heading">
-                  <h2>In this channel</h2>
-                  <span>{joinedAgents.length + 1}</span>
-                </div>
-                <ul>
-                  <li>
-                    <span className="person">
-                      <Avatar
-                        kind="human"
-                        name={data.human.username}
-                        size="sm"
-                      />
-                      <span className="person-name">{data.human.username}</span>
-                      <span className="person-kind" title="You (human)">
-                        <PersonIcon />
-                        <span className="visually-hidden">you</span>
-                      </span>
-                    </span>
-                  </li>
-                  {joinedAgents.map((agent) => (
-                    <li key={agent.id}>
-                      <button
-                        className="person"
-                        data-wake={
-                          wakeOf(data.wake, agent.id).connected ? 'on' : 'off'
-                        }
-                        title={
-                          wakeOf(data.wake, agent.id).connected
-                            ? 'Can be woken'
-                            : 'Not connected: mentions will not wake this agent'
-                        }
-                        aria-pressed={
-                          focus?.kind === 'agent' && focus.id === agent.id
-                        }
-                        onClick={() => {
-                          openAgent(agent.id);
-                        }}
-                      >
-                        <Avatar kind="agent" name={agent.name} size="sm" />
-                        <span className="person-name">{agent.name}</span>
-                        <span
-                          className="person-kind"
-                          title={`Agent · ${agent.role}`}
-                        >
-                          <BotIcon />
-                          <span className="visually-hidden">
-                            agent, {agent.role}
-                          </span>
+              </nav>
+              {data.channels.nextCursor && (
+                <button
+                  className="quiet"
+                  onClick={() => {
+                    next('channelsCursor', data.channels.nextCursor);
+                  }}
+                >
+                  More channels
+                </button>
+              )}
+              {channel && (
+                <section className="people" aria-label="People in this channel">
+                  {/* A line, not a heading: what follows plainly belongs to
+                      the channel above. */}
+                  <hr className="nav-separator" />
+                  <ul>
+                    <li>
+                      <span className="person">
+                        <Avatar
+                          kind="human"
+                          name={data.human.username}
+                          size="sm"
+                        />
+                        <span className="person-name">
+                          {data.human.username}
                         </span>
-                      </button>
+                        <Presence online dot />
+                      </span>
                     </li>
-                  ))}
-                </ul>
-                {joinedAgents.length === 0 && (
-                  <button
-                    className="link-button"
-                    onClick={() => {
-                      setView('team');
-                    }}
-                  >
-                    Invite an agent
-                  </button>
-                )}
-              </section>
-            )}
-            <div className="account">
-              <button
-                type="button"
-                className="account-open"
-                aria-label="Account settings"
-                onClick={() => {
-                  setFocus({ kind: 'settings' });
-                }}
-              >
-                <Avatar kind="human" name={data.human.username} size="sm" />
-                <span>{data.human.username}</span>
-              </button>
-              <button
-                className="quiet icon-button"
-                aria-label="Sign out"
-                title="Sign out"
-                disabled={!canAct}
-                onClick={() => {
-                  if (!canAct) return;
-                  void api('/api/logout', { method: 'POST' })
-                    .then(() => {
-                      shown.current = null;
-                      setData(null);
-                      setFocus(null);
-                      setDraft(null);
-                      setSelection({ channel: '', topic: '' });
-                      setCursors({});
-                      setStatus('signedout');
-                    })
-                    .catch(() => {
-                      setError('Sign out failed. Reconnect and try again.');
-                    });
-                }}
-              >
-                <SignOutIcon />
-              </button>
-            </div>
-          </aside>
-          <main className="workspace-main">
-            <Tabs.Root
-              className="workspace-tabs"
-              value={view}
-              // Focus returning from a drawer or the palette must not switch views.
-              activationMode="manual"
-              onValueChange={(v) => {
-                setView(v === 'board' || v === 'team' ? v : 'chat');
-              }}
-            >
-              <header className="workspace-header">
-                <div className="title-block">
-                  <h1>
-                    {shownChannelName
-                      ? '# ' + shownChannelName
-                      : switching
-                        ? 'Opening channel…'
-                        : 'Welcome to your team'}
-                  </h1>
-                  <p>
-                    {channel
-                      ? `${plural(joinedAgents.length + 1, 'member')} · ${plural(openTasks, 'open task')}`
-                      : 'Create or rejoin a channel to begin.'}
-                  </p>
-                </div>
-                {/* Views stay in reach however far the conversation scrolls. */}
-                <Tabs.List aria-label="Workspace views" className="view-switch">
-                  <Tabs.Trigger value="chat">Chat</Tabs.Trigger>
-                  <Tabs.Trigger value="board">Board</Tabs.Trigger>
-                  <Tabs.Trigger value="team">Team</Tabs.Trigger>
-                </Tabs.List>
-                {/* Healthy is silent: the pill appears only when something is off. */}
-                {connection !== 'ready' && (
-                  <div className="connection" data-state={connection}>
-                    <span className="connection-dot" aria-hidden="true" />
-                    <span role="status">
-                      {connection === 'loading'
-                        ? 'Refreshing…'
-                        : 'Disconnected'}
-                    </span>
-                    {connection === 'offline' && (
-                      <>
-                        <small>
-                          Last update{' '}
-                          {new Date(data.observedAt).toLocaleTimeString()}
-                        </small>
-                        <button className="secondary" onClick={refreshNow}>
-                          Reconnect
+                    {channelAgents.map((agent) => (
+                      <li key={agent.id}>
+                        <button
+                          className="person"
+                          aria-pressed={
+                            view === 'agent' && agentId === agent.id
+                          }
+                          onClick={() => {
+                            openAgent(agent.id);
+                          }}
+                        >
+                          <Avatar
+                            kind="agent"
+                            name={agent.name}
+                            id={agent.id}
+                            size="sm"
+                          />
+                          <span className="person-name">{agent.name}</span>
+                          <Presence
+                            online={workerConnected(data.wake, agent.id)}
+                            dot
+                          />
                         </button>
-                      </>
-                    )}
-                  </div>
-                )}
-              </header>
-              {error && (
-                <div className="stale-banner" data-state={status}>
-                  <Notice>
-                    {error}{' '}
+                      </li>
+                    ))}
+                  </ul>
+                  {channelAgents.length === 0 && (
                     <button
+                      className="link-button"
                       onClick={() => {
-                        selectChannel('');
-                        setError('');
+                        setView('team');
                       }}
                     >
-                      Return to joined channels
+                      Add an agent
                     </button>
-                  </Notice>
-                </div>
+                  )}
+                </section>
               )}
-              <fieldset
-                className="view-content"
-                data-switching={switching ? 'true' : undefined}
+              <div className="account">
+                <button
+                  type="button"
+                  className="account-open"
+                  aria-label="Account settings"
+                  onClick={() => {
+                    setFocus({ kind: 'settings' });
+                  }}
+                >
+                  <Avatar kind="human" name={data.human.username} size="sm" />
+                  <span>{data.human.username}</span>
+                </button>
+                <button
+                  className="quiet icon-button"
+                  aria-label="Sign out"
+                  title="Sign out"
+                  disabled={!canAct}
+                  onClick={() => {
+                    if (!canAct) return;
+                    void api('/api/logout', { method: 'POST' })
+                      .then(() => {
+                        toSignedOut('');
+                      })
+                      .catch(() => {
+                        setError('Sign out failed. Reconnect and try again.');
+                      });
+                  }}
+                >
+                  <SignOutIcon />
+                </button>
+              </div>
+            </aside>
+            <main className="workspace-main">
+              <Tabs.Root
+                className="workspace-tabs"
+                value={tabValue}
+                // Focus returning from a page or the palette must not switch views.
+                activationMode="manual"
+                onValueChange={(v) => {
+                  setView(v === 'board' || v === 'team' ? v : 'chat');
+                }}
               >
-                {switching && (
-                  <div className="view-skeleton" aria-hidden="true">
-                    <span className="skeleton-card" />
-                    <span className="skeleton-card" />
-                    <span className="skeleton-card" />
+                <header className="workspace-header">
+                  {/* The sidebar already shows the channel (or agent) you are
+                      in, so the page never repeats it: the title is there for
+                      screen readers only, the same on every view. */}
+                  <h1 className="visually-hidden">
+                    {pageAgent
+                      ? pageAgent.name
+                      : view === 'team'
+                        ? 'Team'
+                        : shownChannelName
+                          ? '# ' + shownChannelName
+                          : switching
+                            ? 'Opening channel…'
+                            : 'Welcome to your team'}
+                  </h1>
+                  {/* Views stay in reach however far the conversation scrolls. */}
+                  <Tabs.List
+                    aria-label="Workspace views"
+                    className="view-switch"
+                  >
+                    <Tabs.Trigger value="chat" onClick={leavePage}>
+                      Chat
+                    </Tabs.Trigger>
+                    <Tabs.Trigger value="board" onClick={leavePage}>
+                      Board
+                    </Tabs.Trigger>
+                    <Tabs.Trigger value="team" onClick={leavePage}>
+                      Team
+                    </Tabs.Trigger>
+                  </Tabs.List>
+                  {/* Healthy is silent: the pill appears only when something is off. */}
+                  {connection !== 'ready' && (
+                    <div className="connection" data-state={connection}>
+                      <span className="connection-dot" aria-hidden="true" />
+                      <span role="status">
+                        {connection === 'loading'
+                          ? 'Refreshing…'
+                          : 'Disconnected'}
+                      </span>
+                      {connection === 'offline' && (
+                        <>
+                          <small>
+                            Last update{' '}
+                            {new Date(data.observedAt).toLocaleTimeString()}
+                          </small>
+                          <button className="secondary" onClick={refreshNow}>
+                            Reconnect
+                          </button>
+                        </>
+                      )}
+                    </div>
+                  )}
+                </header>
+                {error && (
+                  <div className="stale-banner" data-state={status}>
+                    <Notice>
+                      {error}{' '}
+                      <button
+                        onClick={() => {
+                          selectChannel('');
+                          setError('');
+                        }}
+                      >
+                        Return to joined channels
+                      </button>
+                    </Notice>
                   </div>
                 )}
-                <Tabs.Content value="chat" key={channel?.id ?? 'no-channel'}>
-                  {channel && channelPath ? (
-                    <Chat
+                <fieldset
+                  className="view-content"
+                  data-switching={switching ? 'true' : undefined}
+                  data-page={onPage ? 'true' : undefined}
+                >
+                  {/* A task, a new task, the Inbox, Settings or a hand-run
+                      worker opens here, in place of the view. Unsent text
+                      survives in session storage, not in the hidden view. */}
+                  {focusedTask && channelPath && (
+                    <TaskPage
+                      key={focusedTask.id}
+                      task={focusedTask}
                       data={data}
-                      channelPath={channelPath}
-                      topic={selection.topic}
-                      onTopic={(topic) => {
-                        setSelection((old) => ({ ...old, topic }));
-                        setCursors({});
-                      }}
+                      path={channelPath + '/tasks/' + focusedTask.id}
                       onDone={refresh}
-                      next={next}
-                      firstPage={() => {
-                        setCursors({});
-                      }}
-                      pagedBack={Boolean(cursors.messagesCursor)}
-                      onMakeTask={(message) => {
-                        setDraft(draftFromMessage(message, data));
+                      onClose={closeFocus}
+                      onDecided={notify}
+                      openAgent={openAgent}
+                    />
+                  )}
+                  {workerAgent && (
+                    <OwnWorkerPage
+                      key={workerAgent.id}
+                      agent={workerAgent}
+                      data={data}
+                      onClose={closeFocus}
+                      onDone={refresh}
+                    />
+                  )}
+                  {focus?.kind === 'inbox' && (
+                    <InboxPage
+                      data={data}
+                      onClose={closeFocus}
+                      openTask={openTaskIn}
+                      openChannel={(id) => {
+                        if (id !== channel?.id) selectChannel(id);
+                        setView('chat');
                         setFocus(null);
-                        setView('board');
                       }}
                       openAgent={openAgent}
-                      onLeave={() => {
-                        selectChannel('');
-                      }}
+                      onDone={refresh}
                     />
-                  ) : (
-                    <div className="empty">
-                      <h3>No channel open</h3>
-                      <p>Choose a joined channel to read and post.</p>
+                  )}
+                  {newTask && channelPath && (
+                    <NewTaskPage
+                      draft={newTask}
+                      data={data}
+                      channelPath={channelPath}
+                      onClose={() => {
+                        setDraft(null);
+                      }}
+                      onCreated={(id) => {
+                        // The new task stays on screen, now as itself.
+                        setDraft(null);
+                        setView('board');
+                        setFocus({ kind: 'task', id });
+                        refresh();
+                      }}
+                      onNotify={notify}
+                    />
+                  )}
+                  {focus?.kind === 'settings' && (
+                    <SettingsPage
+                      data={data}
+                      onClose={closeFocus}
+                      onDone={refresh}
+                      onNotify={notify}
+                    />
+                  )}
+
+                  {switching && (
+                    <div className="view-skeleton" aria-hidden="true">
+                      <span className="skeleton-card" />
+                      <span className="skeleton-card" />
+                      <span className="skeleton-card" />
                     </div>
                   )}
-                </Tabs.Content>
-                <Tabs.Content value="board">
-                  {channelPath ? (
-                    <Board
+                  <Tabs.Content value="chat" key={channel?.id ?? 'no-channel'}>
+                    {channel && channelPath ? (
+                      <Chat
+                        data={data}
+                        channelPath={channelPath}
+                        topic={selection.topic}
+                        onTopic={(topic) => {
+                          setSelection((old) => ({ ...old, topic }));
+                          setCursors({});
+                        }}
+                        onDone={refresh}
+                        next={next}
+                        firstPage={() => {
+                          setCursors({});
+                        }}
+                        pagedBack={Boolean(cursors.messagesCursor)}
+                        onMakeTask={(message) => {
+                          setDraft(draftFromMessage(message, data));
+                          setFocus(null);
+                          setView('board');
+                        }}
+                        openAgent={openAgent}
+                        onLeave={() => {
+                          selectChannel('');
+                        }}
+                      />
+                    ) : (
+                      <div className="empty">
+                        <h3>No channel open</h3>
+                        <p>Choose a joined channel to read and post.</p>
+                      </div>
+                    )}
+                  </Tabs.Content>
+                  <Tabs.Content value="board">
+                    {channelPath ? (
+                      <Board
+                        data={data}
+                        next={() => {
+                          next('tasksCursor', data.tasks.nextCursor);
+                        }}
+                        openTask={openTask}
+                        onNewTask={startNewTask}
+                      />
+                    ) : (
+                      <div className="empty">
+                        <p>Create a channel before creating tasks.</p>
+                      </div>
+                    )}
+                  </Tabs.Content>
+                  <Tabs.Content value="team">
+                    <Team
                       data={data}
                       channelPath={channelPath}
                       onDone={refresh}
-                      next={() => {
-                        next('tasksCursor', data.tasks.nextCursor);
-                      }}
-                      openTask={openTask}
-                      selected={focusedTask?.id ?? null}
-                      filter={filter}
-                      onFilter={setFilter}
-                      draft={draft}
-                      onDraft={setDraft}
-                      onNotify={notify}
+                      openAgent={openAgent}
                     />
-                  ) : (
-                    <div className="empty">
-                      <p>Create a channel before creating tasks.</p>
-                    </div>
-                  )}
-                </Tabs.Content>
-                <Tabs.Content value="team">
-                  <Team
-                    data={data}
-                    channelPath={channelPath}
-                    onDone={refresh}
-                    openAgent={openAgent}
-                    selected={focusedAgent?.id ?? null}
-                  />
-                </Tabs.Content>
-              </fieldset>
-            </Tabs.Root>
-          </main>
-          {focusedTask && channelPath && (
-            <TaskDrawer
-              key={focusedTask.id}
-              task={focusedTask}
-              data={data}
-              path={channelPath + '/tasks/' + focusedTask.id}
-              onDone={refresh}
-              onClose={closeFocus}
-              onDecided={notify}
-              openAgent={openAgent}
-            />
-          )}
-          {focusedAgent && (
-            <AgentDrawer
-              key={focusedAgent.id}
-              agent={focusedAgent}
-              data={data}
-              channelPath={channelPath}
-              onDone={refresh}
-              onClose={closeFocus}
-            />
-          )}
-          {focus?.kind === 'needs' && (
-            <NeedsDrawer
-              data={data}
-              onClose={closeFocus}
-              openTask={openTaskIn}
-              openChannel={(id) => {
-                if (id !== channel?.id) selectChannel(id);
-                setView('chat');
-                setFocus(null);
-              }}
-              openAgent={openAgent}
-              onDone={refresh}
-            />
-          )}
-          {focus?.kind === 'settings' && (
-            <SettingsDrawer
-              data={data}
-              onClose={closeFocus}
-              onDone={refresh}
-              onNotify={notify}
-            />
-          )}
-          {toast && (
-            <div className="toast" key={toast.id} role="status">
-              {toast.message}
-            </div>
-          )}
-        </div>
-      </Offline>
+                  </Tabs.Content>
+                  <Tabs.Content value="agent">
+                    {pageAgent ? (
+                      <AgentPage
+                        key={pageAgent.id}
+                        agent={pageAgent}
+                        data={data}
+                        channelPath={channelPath}
+                        onBack={() => {
+                          setView(backTo);
+                        }}
+                        onOwnWorker={() => {
+                          setFocus({ kind: 'worker', id: pageAgent.id });
+                        }}
+                        onReply={(id) => {
+                          // The reply is in the chat; open it there and point to it.
+                          setView('chat');
+                          setTimeout(() => {
+                            showMessage(id);
+                          }, 60);
+                        }}
+                        onDone={refresh}
+                      />
+                    ) : (
+                      <div className="empty">
+                        <p>This agent isn’t in your team.</p>
+                      </div>
+                    )}
+                  </Tabs.Content>
+                </fieldset>
+              </Tabs.Root>
+            </main>
+            {toast && (
+              <div className="toast" key={toast.id} role="status">
+                {toast.message}
+              </div>
+            )}
+          </div>
+        </Offline>
+      </AvatarImages.Provider>
     </MutationPermission>
   );
 }
-/** Channels you left, each one click from rejoining. Removed ones never appear. */
+/** Channels you left, muted under the rest, each one click from rejoining. */
 function LeftChannels({
   teamId,
   channels,
@@ -794,8 +968,7 @@ function LeftChannels({
   channels: WorkspaceSnapshot['leftChannels'];
   onDone: (id: string) => void;
 }) {
-  if (channels.length === 0)
-    return <small>You haven’t left any channels.</small>;
+  if (channels.length === 0) return null;
   return (
     <ul className="left-channels" aria-label="Channels you left">
       {channels.map((c) => (
