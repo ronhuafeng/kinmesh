@@ -164,12 +164,15 @@ function MemberOptions({
   );
 }
 function MemberSelect({
+  id,
   name,
   data,
   required = false,
   empty = 'Unassigned',
   exclude = null,
 }: {
+  /** Supplied by the wrapping Field, so its label names this select. */
+  id?: string;
   name: string;
   data: WorkspaceSnapshot;
   required?: boolean;
@@ -177,7 +180,7 @@ function MemberSelect({
   exclude?: Member | null;
 }) {
   return (
-    <select name={name} required={required} defaultValue="">
+    <select id={id} name={name} required={required} defaultValue="">
       <option value="">{empty}</option>
       <MemberOptions data={data} exclude={exclude} />
     </select>

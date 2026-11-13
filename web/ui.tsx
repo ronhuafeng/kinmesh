@@ -1,4 +1,10 @@
-import { createContext, useContext, useEffect, useRef } from 'react';
+import {
+  createContext,
+  useContext,
+  useEffect,
+  useLayoutEffect,
+  useRef,
+} from 'react';
 import type { ReactNode } from 'react';
 import type { Task } from '../src/domain/tasks.js';
 
@@ -97,7 +103,8 @@ export function Page({
   useEffect(() => {
     close.current = onClose;
   }, [onClose]);
-  useEffect(() => {
+  // Listening from before the first paint: Esc works the moment the page shows.
+  useLayoutEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (
         e.key !== 'Escape' ||
