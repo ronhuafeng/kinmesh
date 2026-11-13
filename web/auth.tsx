@@ -28,26 +28,14 @@ export function Auth({ onLogin }: { onLogin: () => void }) {
           </span>
           <span>kinmesh</span>
         </a>
-        <p className="eyebrow">A shared place for thoughtful work</p>
         <h1>
           One team.
           <br />A lasting thread.
         </h1>
         <p>
-          Humans and persistent agents, one team. Keep the conversation,
-          responsibility and decisions connected.
+          People and agents in one place, with the conversation, the work and
+          the decisions kept together.
         </p>
-        <figure className="team-sketch" aria-hidden="true">
-          <span className="avatar human lg" data-initial="Y" />
-          <span className="avatar agent lg" data-initial="A" />
-          <span className="avatar agent lg" data-initial="R" />
-          <span className="avatar human lg" data-initial="M" />
-        </figure>
-        <div className="intro-note">
-          Conversations stay with your team.
-          <br />
-          Final acceptance stays with a human.
-        </div>
       </section>
       <section className="auth-card">
         <Tabs.Root value={tab} onValueChange={setTab}>

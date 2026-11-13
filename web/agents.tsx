@@ -1,6 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { ProfileInput } from '../src/domain/agents.js';
-import type { Agent } from '../src/domain/agents.js';
+import { Agent, ProfileInput } from '../src/domain/agents.js';
 import {
   decodeExecutionEvent,
   decodeNativeObservation,
@@ -10,11 +9,14 @@ import type {
   ExecutionSnapshot,
   WorkspaceSnapshot,
 } from '../src/workspace/contracts.js';
-import { api, HttpError, value } from './api.js';
-import { ActionForm, Field, Notice } from './forms.js';
-import { ago, Avatar, Drawer, shortTime, WakeLabel, wakeOf } from './ui.js';
-import { DeliveryLine, deliveryText } from './deliveries.js';
-import { AgentSetup } from './setup.js';
+import { api, HttpError, request, useRequest, value } from './api.js';
+import { ActionForm, Notice } from './forms.js';
+import { ArrowIcon, PlusIcon } from './icons.js';
+import { ago, Avatar, Page, Presence, workerConnected } from './ui.js';
+import { deliveryText, Recovery } from './deliveries.js';
+import type { DeliveryView } from './deliveries.js';
+import { AgentAbout, AgentSetup, useT3 } from './setup.js';
+import { plainLine } from './tasks.js';
 function NativeStatus({
   correlation,
   teamId,
@@ -82,17 +84,28 @@ function NativeStatus({
   const subject = correlation.reference.runId ? 'This run' : 'This thread';
   return (
     <div className="native-status">
-      <button
-        type="button"
-        className="secondary"
-        disabled={busy}
-        aria-busy={busy}
-        onClick={() => {
-          void check();
-        }}
-      >
-        Check in T3
-      </button>
+      <span className="run-actions" role="cell">
+        <button
+          type="button"
+          className="link-button"
+          disabled={busy}
+          aria-busy={busy}
+          onClick={() => {
+            void check();
+          }}
+        >
+          Check in T3
+        </button>
+        {observation?.verifiedUrl && (
+          <a
+            href={observation.verifiedUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+          >
+            Open in T3
+          </a>
+        )}
+      </span>
       <div role="status" aria-live="polite">
         {busy && <p>Checking T3…</p>}
         {error && <p>{error}</p>}
@@ -127,37 +140,17 @@ function NativeStatus({
           </>
         )}
       </div>
-      {observation?.verifiedUrl ? (
-        <a
-          href={observation.verifiedUrl}
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          Open in T3
-        </a>
-      ) : (
-        <button
-          disabled
-          title="T3 has not returned a verified link for this thread."
-        >
-          Open in T3 (no verified link)
-        </button>
-      )}
-      <p className="muted">
-        Checking is read-only. Kinmesh never guesses a T3 link, and a finished
-        run never accepts a task.
-      </p>
     </div>
   );
 }
 /** What a person calls each recorded runtime state. */
 const reported: Record<string, string> = {
-  unknown: 'unknown',
-  active: 'working',
-  waiting: 'waiting',
-  succeeded: 'finished',
-  failed: 'failed',
-  stopped: 'stopped',
+  unknown: 'Unknown',
+  active: 'Working',
+  waiting: 'Waiting',
+  succeeded: 'Finished',
+  failed: 'Failed',
+  stopped: 'Stopped',
 };
 function Activity({
   agent,
@@ -213,73 +206,81 @@ function Activity({
   }, [agent.id, teamId, revision]);
   return (
     <section className="activity" aria-label={agent.name + ' activity'}>
-      <div className="drawer-heading">
-        <h3>Activity</h3>
-      </div>
+      <h3>Runs</h3>
       {error && <Notice>{error}</Notice>}
       {snapshot && (
         <>
           {snapshot.executions.length === 0 && (
-            <p className="muted">No runs linked to {agent.name} yet.</p>
+            <p className="muted">No runs yet.</p>
           )}
-          {snapshot.executions.map((e) => {
-            const latest = e.events.at(-1);
-            const by = (kind: string) =>
-              kind === 'agent' ? agent.name : 'a person';
-            return (
-              <article
-                className="execution"
-                key={e.correlation.id}
-                data-state={latest?.state ?? 'unknown'}
-              >
-                <span className="recorded-chip">
-                  Last reported: {reported[latest?.state ?? 'unknown']}
+          {snapshot.executions.length > 0 && (
+            <div className="runs" role="table" aria-label="Runs">
+              <div className="run-head" role="row">
+                <span role="columnheader">Status</span>
+                <span role="columnheader">Time</span>
+                <span role="columnheader">By</span>
+                <span role="columnheader">T3 thread</span>
+                <span role="columnheader">T3 run</span>
+                <span role="columnheader">
+                  <span className="visually-hidden">Check</span>
                 </span>
-                <p>
-                  {latest
-                    ? `${ago(latest.createdAt)} · reported by ${by(latest.author.kind)}`
-                    : 'Nothing reported yet.'}
-                </p>
-                {e.events.length > 1 && (
-                  <ol className="timeline" aria-label="Reports">
-                    {e.events.slice(-6).map((event) => (
-                      <li key={event.id} data-state={event.state}>
-                        <time dateTime={event.createdAt}>
-                          {shortTime(event.createdAt)}
+              </div>
+              {snapshot.executions.map((e) => {
+                const latest = e.events.at(-1);
+                const by = (kind: string) =>
+                  kind === 'agent' ? agent.name : 'a person';
+                const ref = e.correlation.reference;
+                return (
+                  <div
+                    className="execution"
+                    role="row"
+                    key={e.correlation.id}
+                    data-state={latest?.state ?? 'unknown'}
+                  >
+                    <span role="cell" className="run-state">
+                      {reported[latest?.state ?? 'unknown']}
+                    </span>
+                    <span role="cell" className="run-time">
+                      {latest ? (
+                        <time
+                          dateTime={latest.createdAt}
+                          title={new Date(latest.createdAt).toLocaleString()}
+                        >
+                          {ago(latest.createdAt)}
                         </time>
-                        <span>{reported[event.state]}</span>
-                        <small>by {by(event.author.kind)}</small>
-                      </li>
-                    ))}
-                  </ol>
-                )}
-                <NativeStatus
-                  correlation={e.correlation}
-                  teamId={teamId}
-                  agentId={agent.id}
-                  onAccessLoss={loseAccess}
-                  trustedOrigin={trustedOrigin}
-                />
-                <details className="technical">
-                  <summary>Technical details</summary>
-                  <dl>
-                    <dt>Environment</dt>
-                    <dd>{e.correlation.reference.environmentId}</dd>
-                    <dt>T3 thread</dt>
-                    <dd>{e.correlation.reference.threadId}</dd>
-                    <dt>T3 run</dt>
-                    <dd>{e.correlation.reference.runId ?? 'none recorded'}</dd>
-                  </dl>
-                  <p>
-                    Linked by {e.correlation.author.kind}. Linking a run never
-                    accepts a task. Reports are AG-UI 1.0 state snapshots, read{' '}
-                    {new Date(snapshot.observedAt).toLocaleTimeString()}.
-                  </p>
-                  {e.eventsTruncated && <p>Showing the latest 100 reports.</p>}
-                </details>
-              </article>
-            );
-          })}
+                      ) : (
+                        '—'
+                      )}
+                    </span>
+                    <span role="cell" className="run-by">
+                      {latest ? 'by ' + by(latest.author.kind) : '—'}
+                    </span>
+                    <code
+                      role="cell"
+                      className="run-ref"
+                      title={`${ref.threadId} · environment ${ref.environmentId}`}
+                    >
+                      {ref.threadId}
+                    </code>
+                    <code
+                      role="cell"
+                      className="run-ref"
+                      title={ref.runId ?? undefined}
+                    >
+                      {ref.runId ?? 'none recorded'}
+                    </code>
+                    <NativeStatus
+                      correlation={e.correlation}
+                      teamId={teamId}
+                      agentId={agent.id}
+                      onAccessLoss={loseAccess}
+                      trustedOrigin={trustedOrigin}
+                    />
+                  </div>
+                );
+              })}
+            </div>
+          )}
           {snapshot.executionsTruncated && (
             <p className="muted">Showing the latest 20 runs.</p>
           )}
@@ -288,98 +289,267 @@ function Activity({
     </section>
   );
 }
-export function AgentDrawer({
+/** An agent's own page: who it is, whether it can be woken, what it did. */
+export function AgentPage({
   agent,
   data,
   channelPath,
+  onBack,
+  onReply,
+  onOwnWorker,
   onDone,
-  onClose,
 }: {
   agent: Agent;
   data: WorkspaceSnapshot;
   channelPath: string | null;
+  onBack: () => void;
+  onReply: (messageId: string) => void;
+  onOwnWorker: () => void;
   onDone: () => void;
-  onClose: () => void;
+}) {
+  const t3 = useT3(data.team.id);
+  return (
+    <Page label={agent.name} onClose={onBack} className="agent-page">
+      <div className="agent-layout">
+        <div className="agent-main">
+          <AgentSetup
+            agent={agent}
+            data={data}
+            t3={t3}
+            channelPath={channelPath}
+            onDone={onDone}
+          />
+          <Requests
+            agent={agent}
+            data={data}
+            onReply={onReply}
+            onDone={onDone}
+          />
+        </div>
+        <AgentAbout
+          agent={agent}
+          data={data}
+          t3={t3}
+          onOwnWorker={onOwnWorker}
+          onDone={onDone}
+        />
+      </div>
+      {/* The longest list, so it comes last and takes the full width. */}
+      <Activity
+        key={agent.id + (data.nativeT3Origin ?? '')}
+        agent={agent}
+        teamId={data.team.id}
+        revision={data.observedAt}
+        trustedOrigin={data.nativeT3Origin}
+      />
+    </Page>
+  );
+}
+/** What was asked of the agent here, what came of it, and where the answer is. */
+function Requests({
+  agent,
+  data,
+  onReply,
+  onDone,
+}: {
+  agent: Agent;
+  data: WorkspaceSnapshot;
+  onReply: (messageId: string) => void;
+  onDone: () => void;
 }) {
   const requests = data.deliveries
     .filter((d) => d.agentId === agent.id)
     .reverse();
-  const connected = wakeOf(data.wake, agent.id).connected;
-  const seen = new Set<string>();
-  const distinct = requests
-    .filter((d) => {
-      const text = deliveryText(d, agent.name, connected).text;
-      if (seen.has(text)) return false;
-      seen.add(text);
-      return true;
-    })
-    .slice(0, 5);
+  if (requests.length === 0) return null;
+  const connected = workerConnected(data.wake, agent.id);
+  const asked = (d: DeliveryView) => {
+    const message = data.messages.items.find((m) => m.id === d.messageId);
+    if (message) {
+      const line = plainLine(message.body.trim().split('\n')[0] ?? '');
+      return line.length > 60 ? line.slice(0, 57) + '…' : line;
+    }
+    return data.tasks.items.find((t) => t.id === d.taskId)?.title ?? null;
+  };
   return (
-    <Drawer label={agent.name} onClose={onClose} className="agent-drawer">
-      <div className="drawer-body">
-        <header className="identity">
-          <Avatar kind="agent" name={agent.name} size="lg" />
-          <div>
-            <h2>{agent.name}</h2>
-            <p>
-              <span className="role-pill">{agent.role}</span>
-              {/* Only the exception is worth saying. */}
-              {agent.lifecycle !== 'active' && (
-                <span
-                  className="lifecycle-tag"
-                  data-lifecycle={agent.lifecycle}
+    <section aria-label="Requests">
+      <h3>Requests in this channel</h3>
+      <ul className="requests">
+        {requests.slice(0, 5).map((d) => {
+          const { text, tone } = deliveryText(d, agent.name, connected);
+          // On the agent's own page its name goes without saying.
+          const outcome = text.startsWith(agent.name + ' ')
+            ? text.slice(agent.name.length + 1)
+            : text;
+          const what = asked(d);
+          const when = d.updatedAt ?? d.queuedAt;
+          const reply = d.resultMessageId;
+          const onPage =
+            reply !== null && data.messages.items.some((m) => m.id === reply);
+          return (
+            <li
+              key={d.id}
+              className="request"
+              data-tone={tone}
+              title={`${d.state} · ${d.reason}`}
+            >
+              <span className="request-text">
+                {what ? `“${what}”` : 'A request'}
+              </span>
+              <span className="request-outcome">{outcome}</span>
+              <span className="request-time">{when ? ago(when) : ''}</span>
+              {onPage ? (
+                <button
+                  type="button"
+                  className="link-button"
+                  onClick={() => {
+                    onReply(reply);
+                  }}
                 >
-                  {agent.lifecycle}
-                </span>
+                  View reply
+                </button>
+              ) : (
+                <span />
               )}
-            </p>
-            <WakeLabel wake={data.wake} agentId={agent.id} />
-          </div>
-        </header>
-        <AgentSetup
-          agent={agent}
-          data={data}
-          channelPath={channelPath}
-          onDone={onDone}
-        />
-        {requests.length > 0 && (
-          <>
-            <h3>
-              Requests in this channel{' '}
-              <span className="muted">{requests.length}</span>
-            </h3>
-            {/* Newest first, and a sentence that repeats is said once. */}
-            <ul className="deliveries" aria-label="Recent requests">
-              {distinct.map((d) => (
-                <DeliveryLine
-                  key={d.id}
-                  delivery={d}
-                  data={data}
-                  channelId={data.channel?.id ?? ''}
-                  onDone={onDone}
-                />
-              ))}
-            </ul>
-          </>
+              {d.state === 'blocked' && (
+                <div className="request-fix">
+                  <Recovery
+                    delivery={d}
+                    data={data}
+                    channelId={data.channel?.id ?? ''}
+                    onDone={onDone}
+                  />
+                </div>
+              )}
+            </li>
+          );
+        })}
+      </ul>
+    </section>
+  );
+}
+/**
+ * Register an agent in its own tile: a name and a role. Registered from a
+ * channel, it joins that channel, and its page opens on the next step.
+ */
+function RegisterAgent({
+  teamId,
+  channelPath,
+  onClose,
+  onRegistered,
+}: {
+  teamId: string;
+  channelPath: string | null;
+  onClose: () => void;
+  onRegistered: (id: string) => void;
+}) {
+  const register = useRequest(
+    { 409: 'An agent with that name already exists.' },
+    'That did not go through. Try again.',
+  );
+  const [name, setName] = useState('');
+  return (
+    <form
+      className="new-agent"
+      aria-label="Agent profile"
+      onSubmit={(event) => {
+        event.preventDefault();
+        const form = new FormData(event.currentTarget);
+        void register
+          .run(async () => {
+            const agent = Agent.parse(
+              await request(
+                `/api/teams/${teamId}/agents`,
+                ProfileInput.parse({
+                  name: value(form, 'name').trim(),
+                  role: value(form, 'role'),
+                  capabilities: [],
+                  preferences: {
+                    environmentId: null,
+                    providerId: null,
+                    modelId: null,
+                  },
+                  memoryLocation: null,
+                }),
+              ),
+            );
+            if (channelPath)
+              await request(channelPath + '/participants/invite', {
+                operationKey: crypto.randomUUID(),
+                member: { kind: 'agent', id: agent.id },
+              });
+            return agent.id;
+          })
+          .then((id) => {
+            if (id !== undefined) onRegistered(id);
+          });
+      }}
+      onKeyDown={(event) => {
+        if (event.key !== 'Escape') return;
+        event.preventDefault();
+        onClose();
+      }}
+      // Leaving an empty tile puts the "+" back.
+      onBlur={(event) => {
+        if (
+          name.trim() === '' &&
+          !event.currentTarget.contains(event.relatedTarget)
+        )
+          onClose();
+      }}
+    >
+      {/* The tile is the agent to be: its face fills in as it is named. */}
+      <span
+        className="new-agent-face"
+        data-named={name.trim() ? 'true' : undefined}
+        aria-hidden="true"
+      >
+        {name.trim() ? (
+          <Avatar kind="agent" name={name.trim()} size="xl" />
+        ) : (
+          <PlusIcon />
         )}
-        <Activity
-          key={agent.id + (data.nativeT3Origin ?? '')}
-          agent={agent}
-          teamId={data.team.id}
-          revision={data.observedAt}
-          trustedOrigin={data.nativeT3Origin}
+      </span>
+      <span className="new-agent-name">
+        <input
+          name="name"
+          aria-label="Agent name"
+          placeholder="Name"
+          required
+          maxLength={80}
+          autoFocus
+          autoComplete="off"
+          value={name}
+          onChange={(event) => {
+            setName(event.target.value);
+            register.setError('');
+          }}
         />
-        <details className="technical">
-          <summary>Technical details</summary>
-          <dl className="profile-list">
-            <dt>Agent ID</dt>
-            <dd className="reference">{agent.id}</dd>
-            <dt>Memory reference</dt>
-            <dd>{agent.memoryLocation ?? 'none'}</dd>
-          </dl>
-        </details>
-      </div>
-    </Drawer>
+        <button
+          type="submit"
+          className="icon-button confirm new-agent-go"
+          aria-label="Register agent"
+          aria-busy={register.busy}
+          disabled={register.disabled || name.trim() === ''}
+        >
+          <ArrowIcon />
+        </button>
+      </span>
+      <select
+        name="role"
+        className="new-agent-role"
+        aria-label="Role"
+        defaultValue="developer"
+      >
+        <option value="developer">Developer</option>
+        <option value="reviewer">Reviewer</option>
+        <option value="assistant">Assistant</option>
+      </select>
+      {register.error && (
+        <p className="new-agent-error" role="alert">
+          {register.error}
+        </p>
+      )}
+    </form>
   );
 }
 export function Team({
@@ -387,103 +557,53 @@ export function Team({
   channelPath,
   onDone,
   openAgent,
-  selected,
 }: {
   data: WorkspaceSnapshot;
   channelPath: string | null;
   onDone: () => void;
   openAgent: (id: string) => void;
-  selected: string | null;
 }) {
+  const [registering, setRegistering] = useState(false);
   return (
-    <section className="team-view" aria-label="Team">
-      <div className="section-heading">
-        <div>
-          <h2>Team</h2>
-          <span>
-            1 human · {data.agents.length} agents · {data.joinedAgentIds.length}{' '}
-            in this channel
+    <section aria-label="Team">
+      {/* Everyone as a tile, like a meeting's gallery: a face, a name, and
+          whether they are here. An agent's tile opens its page; the last
+          tile adds an agent. */}
+      <ul className="roster" aria-label="Team">
+        <li className="roster-tile" data-kind="human">
+          <span className="roster-person">
+            <Avatar kind="human" name={data.human.username} size="xl" />
+            <span className="roster-name">{data.human.username}</span>
+            {/* You are the one looking. */}
+            <Presence online />
           </span>
-        </div>
-      </div>
-      <details className="create-panel">
-        <summary>Register agent</summary>
-        <ActionForm
-          title="Agent profile"
-          path={`/api/teams/${data.team.id}/agents`}
-          onDone={onDone}
-          submit="Register agent"
-          keyed={false}
-          build={(f) =>
-            ProfileInput.parse({
-              name: value(f, 'name'),
-              role: value(f, 'role'),
-              capabilities: [],
-              preferences: {
-                environmentId: null,
-                providerId: null,
-                modelId: null,
-              },
-              memoryLocation: null,
-            })
-          }
-        >
-          <Field label="Agent name">
-            <input name="name" required maxLength={80} />
-          </Field>
-          <Field label="Role">
-            <select name="role">
-              <option value="developer">Developer</option>
-              <option value="reviewer">Reviewer</option>
-              <option value="assistant">Assistant</option>
-            </select>
-          </Field>
-          <p>
-            After registering, open the agent and connect it to T3, so mentions
-            can wake it.
-          </p>
-        </ActionForm>
-      </details>
-      {data.agents.length > 0 &&
-        !data.agents.some((a) => wakeOf(data.wake, a.id).connected) && (
-          <p className="roster-note">
-            No agent can be woken yet. Open one and connect it to T3, and
-            mentions will reach it.
-          </p>
-        )}
-      <ul className="roster">
-        <li className="roster-row" data-kind="human">
-          <Avatar kind="human" name={data.human.username} />
-          <div className="roster-identity">
-            <h3>{data.human.username}</h3>
-            <p>You · signs off on tasks</p>
-          </div>
         </li>
-        {data.agents.map((agent) => (
-          <li
-            key={agent.id}
-            className="roster-row"
-            data-kind="agent"
-            data-selected={agent.id === selected ? 'true' : undefined}
-            data-lifecycle={agent.lifecycle}
-          >
-            <Avatar kind="agent" name={agent.name} />
-            <div className="roster-identity">
-              <h3>{agent.name}</h3>
-              <WakeLabel wake={data.wake} agentId={agent.id} />
-              <p>
-                {agent.role}
-                {agent.lifecycle !== 'active' && ' · ' + agent.lifecycle}
-                {agent.preferences.modelId && (
-                  <span className="reference">
-                    {' '}
-                    · {agent.preferences.providerId ?? 'provider'}/
-                    {agent.preferences.modelId}
-                  </span>
-                )}
-              </p>
-            </div>
-            <div className="roster-actions">
+        {data.agents.map((agent) => {
+          const awake = workerConnected(data.wake, agent.id);
+          return (
+            <li
+              key={agent.id}
+              className="roster-tile"
+              data-kind="agent"
+              data-lifecycle={agent.lifecycle}
+            >
+              <button
+                type="button"
+                className="roster-person"
+                onClick={() => {
+                  openAgent(agent.id);
+                }}
+              >
+                <Avatar
+                  kind="agent"
+                  name={agent.name}
+                  id={agent.id}
+                  size="xl"
+                />
+                <span className="roster-name">{agent.name}</span>
+                {/* Online: a worker is connected, so a mention wakes it. */}
+                <Presence online={awake} />
+              </button>
               {/* Membership is in the sidebar; only a missing one needs a fix. */}
               {channelPath &&
                 agent.lifecycle === 'active' &&
@@ -496,25 +616,39 @@ export function Team({
                     submit={'Add ' + agent.name + ' to channel'}
                   />
                 )}
-              <button
-                className="quiet"
-                aria-label={`View ${agent.name} activity`}
-                onClick={() => {
-                  openAgent(agent.id);
-                }}
-              >
-                Open
-              </button>
-            </div>
-          </li>
-        ))}
+            </li>
+          );
+        })}
+        <li className="roster-tile roster-add">
+          {registering ? (
+            <RegisterAgent
+              teamId={data.team.id}
+              channelPath={channelPath}
+              onClose={() => {
+                setRegistering(false);
+              }}
+              onRegistered={(id) => {
+                setRegistering(false);
+                onDone();
+                openAgent(id);
+              }}
+            />
+          ) : (
+            <button
+              type="button"
+              className="roster-person"
+              aria-label="Register agent"
+              onClick={() => {
+                setRegistering(true);
+              }}
+            >
+              <span className="add-face" aria-hidden="true">
+                <PlusIcon />
+              </span>
+            </button>
+          )}
+        </li>
       </ul>
-      {data.agents.length === 0 && (
-        <div className="empty">
-          <h3>No agents yet</h3>
-          <p>Register a durable teammate, then enroll them in a channel.</p>
-        </div>
-      )}
       {data.agentsTruncated && (
         <p className="muted">
           Showing the first 100 agents. Use the owner agent API for additional
