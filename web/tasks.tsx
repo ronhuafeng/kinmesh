@@ -613,6 +613,10 @@ function DecisionPanel({
     </div>
   );
 }
+const withAgents = (status: Status) =>
+  status === 'in-progress' ||
+  status === 'review-requested' ||
+  status === 'rework-requested';
 export function TaskDrawer({
   task,
   data,
@@ -661,20 +665,22 @@ export function TaskDrawer({
             <MemberChip member={acceptor} data={data} />
           </dd>
         </dl>
-        {taskDeliveries(data, task.id).length > 0 && (
-          <ul className="deliveries" aria-label="Agent responses">
-            {taskDeliveries(data, task.id).map((d) => (
-              <DeliveryLine
-                key={d.id}
-                delivery={d}
-                data={data}
-                channelId={task.channelId}
-                {...(openAgent ? { openAgent } : {})}
-                onDone={onDone}
-              />
-            ))}
-          </ul>
-        )}
+        {/* Agent wake-ups matter only while the task is with an agent. */}
+        {withAgents(task.state.status) &&
+          taskDeliveries(data, task.id).length > 0 && (
+            <ul className="deliveries" aria-label="Agent responses">
+              {taskDeliveries(data, task.id).map((d) => (
+                <DeliveryLine
+                  key={d.id}
+                  delivery={d}
+                  data={data}
+                  channelId={task.channelId}
+                  {...(openAgent ? { openAgent } : {})}
+                  onDone={onDone}
+                />
+              ))}
+            </ul>
+          )}
         <h3>Acceptance criteria</h3>
         <ol className="criteria">
           {task.criteria.map((c) => (

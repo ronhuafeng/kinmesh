@@ -113,6 +113,13 @@ export async function createApp(
       component: 'kinmesh-team-hub',
     });
   });
+  // Whether first-owner setup is still possible, so the sign-in page offers
+  // it only then. Reveals nothing else.
+  app.get('/api/setup/status', (_request, reply) =>
+    reply
+      .header('Cache-Control', 'no-store')
+      .send({ open: !store.isBootstrapped() }),
+  );
   app.post(
     '/api/setup',
     { config: { rateLimit: { max: 5, timeWindow: '1 minute' } } },
@@ -217,9 +224,12 @@ export async function createApp(
   app.addHook('preHandler', async (request, reply) => {
     if (
       !request.url.startsWith('/api/') ||
-      ['/api/setup', '/api/login', '/api/me/password'].includes(
-        request.routeOptions.url ?? '',
-      )
+      [
+        '/api/setup',
+        '/api/setup/status',
+        '/api/login',
+        '/api/me/password',
+      ].includes(request.routeOptions.url ?? '')
     )
       return;
     request.principal = resolvePrincipal(
