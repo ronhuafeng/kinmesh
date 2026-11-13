@@ -1,6 +1,6 @@
 import { once } from 'node:events';
 import { existsSync } from 'node:fs';
-import type { FastifyInstance, FastifyRequest } from 'fastify';
+import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { AgentId, TeamId } from '../domain/contracts.js';
 import { IdentityError, type Scope } from '../domain/agents.js';
@@ -24,6 +24,7 @@ import {
   writeAgentToken,
 } from '../inbox/managed.js';
 import type { Store } from '../persistence/store.js';
+import { principal } from './principals.js';
 
 /** What the hub does on the owner's behalf; replaceable in tests. */
 export interface Hub {
@@ -58,7 +59,7 @@ export const defaultHub = (directory: string): Hub => ({
   providers: t3Providers,
   discover: discoverLocal,
 });
-/** Scopes the worker uses (docs/agent-inbox.md, step 2), for 90 days. */
+/** Scopes the worker uses (docs/collaboration.md, Grants and scopes), for 90 days. */
 export const WORKER_GRANT = {
   label: 'Inbox worker (managed)',
   scopes: [
@@ -74,10 +75,6 @@ export const WORKER_GRANT = {
 };
 const TeamPath = z.object({ teamId: TeamId });
 const AgentPath = TeamPath.extend({ agentId: AgentId });
-function principal(request: FastifyRequest) {
-  if (request.principal === null) throw new IdentityError(401);
-  return request.principal;
-}
 
 /**
  * Connect T3 and agents from the workspace: the owner approves T3 in their

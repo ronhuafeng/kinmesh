@@ -1,6 +1,11 @@
 import type { z } from 'zod';
 import { ExecutionFailure, Reference } from '../domain/execution.js';
-import { Descriptor, Read, ValidatedTools } from '../adapters/t3/contracts.js';
+import {
+  Descriptor,
+  Read,
+  ValidatedTools,
+  selectRun,
+} from '../adapters/t3/contracts.js';
 import { Endpoint, type Credential } from '../adapters/t3/oauth.js';
 import { nativeThreadUrl } from './links.js';
 import { SdkWire } from '../adapters/t3/sdk.js';
@@ -38,32 +43,16 @@ export function projectNativeRead(
   const ref = Reference.parse(reference);
   if (read.thread.threadId !== ref.threadId)
     throw new ExecutionFailure('incompatible');
-  const run =
-    ref.runId === undefined
-      ? undefined
-      : read.recentRuns.find((item) => item.runId === ref.runId);
-  const status =
-    ref.runId === undefined
-      ? read.thread.status
-      : (run?.status ?? 'unobserved');
+  const { status, terminal, providerId, modelId } = selectRun(read, ref.runId);
   return NativeObservation.parse({
     source: 't3-native-verified',
     observedAt,
     reference: ref,
     status,
-    terminal: [
-      'completed',
-      'failed',
-      'cancelled',
-      'interrupted',
-      'rolled_back',
-    ].includes(status),
+    terminal,
     threadPendingRequests: read.thread.pendingRequestCount,
-    providerId:
-      ref.runId === undefined
-        ? read.thread.providerInstanceId
-        : (run?.providerInstanceId ?? null),
-    modelId: ref.runId === undefined ? read.thread.model : (run?.model ?? null),
+    providerId,
+    modelId,
     verifiedUrl: verifiedNativeLink(read.thread.link, endpoint, ref),
   });
 }

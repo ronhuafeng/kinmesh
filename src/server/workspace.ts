@@ -222,6 +222,9 @@ export function registerWorkspace(
           agentId: row.agentId,
           lastSeenAt: new Date(row.lastSeenAt).toISOString(),
         })),
+      avatars: store.agents
+        .avatars(principal, teamId)
+        .filter((row) => known.has(AgentId.parse(row.agentId))),
       messages,
       topics: channel
         ? store.communication.topics(principal, teamId, channel.id, {

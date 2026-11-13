@@ -1,7 +1,19 @@
 import { createHash } from 'node:crypto';
+import type { FastifyRequest } from 'fastify';
 import { HumanId } from '../domain/contracts.js';
 import { IdentityError, type Principal } from '../domain/agents.js';
 import type { Store } from '../persistence/store.js';
+
+declare module 'fastify' {
+  interface FastifyRequest {
+    principal: Principal | null;
+  }
+}
+/** The caller the protected API resolved for this request. */
+export function principal(request: FastifyRequest) {
+  if (request.principal === null) throw new IdentityError(401);
+  return request.principal;
+}
 
 /** Only call with credentials from the verified session plugin or HTTP Authorization.
  * Actor labels, role messages and tool arguments are never credential inputs. */

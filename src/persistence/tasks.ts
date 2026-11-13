@@ -6,7 +6,7 @@ import { z } from 'zod';
 import * as s from './schema.js';
 import type { agentRepository } from './agents.js';
 import type { communicationRepository } from './communication.js';
-import { transactional, snapshotPage, fingerprint } from './transactional.js';
+import { transactional, snapshotPage, referenceKey } from './transactional.js';
 import type { TeamId, TaskId } from '../domain/contracts.js';
 import { HumanId, type ChannelId } from '../domain/contracts.js';
 import { IdentityError, type Principal, type Scope } from '../domain/agents.js';
@@ -44,8 +44,7 @@ export function taskRepository(
     scope: Scope = 'tasks:read',
   ) {
     communication.channel(p, teamId, channelId);
-    agents.teamAccess(p, teamId, 'tasks:read');
-    return agents.teamAccess(p, teamId, scope).role;
+    return agents.teamAccess(p, teamId, 'tasks:read', scope).role;
   }
   function row(teamId: TeamId, channelId: ChannelId, id: TaskId) {
     const value = db
@@ -100,12 +99,7 @@ export function taskRepository(
       .values({
         id: randomUUID(),
         taskId,
-        referenceKey: fingerprint([
-          reference.backend,
-          reference.environmentId,
-          reference.threadId,
-          reference.runId ?? null,
-        ]),
+        referenceKey: referenceKey(reference),
         reference: JSON.stringify(reference),
         author: JSON.stringify(principalAuthor(p)),
         createdAt: time,

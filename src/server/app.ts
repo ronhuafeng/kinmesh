@@ -17,6 +17,8 @@ import { BootstrapInput, Credentials, HumanId } from '../domain/contracts.js';
 import type { Store } from '../persistence/store.js';
 import type { Config } from './config.js';
 
+/** One KDF cost for every password hash, including the unknown-account dummy. */
+const ARGON2 = { memoryCost: 19456, timeCost: 2, parallelism: 1 };
 declare module '@fastify/secure-session' {
   interface SessionData {
     humanId: string;
@@ -50,11 +52,7 @@ export async function createApp(
     },
   });
   // A dummy hash makes unknown-account verification perform the same expensive KDF.
-  const dummyHash = await hash('unusable random account password', {
-    memoryCost: 19456,
-    timeCost: 2,
-    parallelism: 1,
-  });
+  const dummyHash = await hash('unusable random account password', ARGON2);
   app.decorateRequest('principal', null);
   app.addHook('onSend', async (_request, reply) => {
     reply.header('X-Content-Type-Options', 'nosniff');
@@ -138,11 +136,7 @@ export async function createApp(
       const input = BootstrapInput.safeParse(request.body);
       if (!input.success)
         return reply.code(400).send({ error: 'Invalid setup input' });
-      const passwordHash = await hash(input.data.password, {
-        memoryCost: 19456,
-        timeCost: 2,
-        parallelism: 1,
-      });
+      const passwordHash = await hash(input.data.password, ARGON2);
       try {
         const result = store.bootstrap(
           input.data.username,
@@ -184,13 +178,8 @@ export async function createApp(
     '/api/me/password',
     { config: { rateLimit: { max: 5, timeWindow: '1 minute' } } },
     async (request, reply) => {
-      const principal = resolvePrincipal(
-        store,
-        request.headers.authorization,
-        request.session.get('humanId'),
-        request.session.get('credential'),
-      );
-      if (principal.kind !== 'human') throw new IdentityError(403);
+      const principal = request.principal;
+      if (principal?.kind !== 'human') throw new IdentityError(403);
       const input = z
         .strictObject({
           currentPassword: Credentials.shape.password,
@@ -205,11 +194,7 @@ export async function createApp(
         !(await verify(current, input.data.currentPassword))
       )
         return reply.code(403).send({ error: 'Current password is wrong' });
-      const next = await hash(input.data.newPassword, {
-        memoryCost: 19456,
-        timeCost: 2,
-        parallelism: 1,
-      });
+      const next = await hash(input.data.newPassword, ARGON2);
       store.setPasswordHash(principal.humanId, next);
       request.session.regenerate();
       request.session.set('humanId', principal.humanId);
@@ -224,12 +209,9 @@ export async function createApp(
   app.addHook('preHandler', async (request, reply) => {
     if (
       !request.url.startsWith('/api/') ||
-      [
-        '/api/setup',
-        '/api/setup/status',
-        '/api/login',
-        '/api/me/password',
-      ].includes(request.routeOptions.url ?? '')
+      ['/api/setup', '/api/setup/status', '/api/login'].includes(
+        request.routeOptions.url ?? '',
+      )
     )
       return;
     request.principal = resolvePrincipal(
@@ -265,9 +247,7 @@ export async function createApp(
       const { name } = z
         .strictObject({ name: BootstrapInput.shape.teamName })
         .parse(request.body);
-      const team = store.teamFor(id);
-      if (!team) throw new IdentityError(403);
-      return store.renameTeam(id, team.team.id, name);
+      return store.renameTeam(id, name);
     });
     done();
   });

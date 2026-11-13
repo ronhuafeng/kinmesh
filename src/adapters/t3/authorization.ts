@@ -11,12 +11,18 @@ import type {
 } from '@modelcontextprotocol/sdk/shared/auth.js';
 import { randomBytes } from 'node:crypto';
 import { Descriptor } from './contracts.js';
-import { Credential, Endpoint } from './oauth.js';
+import {
+  CALLBACK,
+  CLIENT_METADATA,
+  Credential,
+  Endpoint,
+  ORCHESTRATION_SCOPES,
+} from './oauth.js';
 import { verifiedOAuthMetadata } from './metadata.js';
 
-export const CALLBACK = 'http://127.0.0.1:49871/callback';
+export { CALLBACK };
 export const AUTH_TIMEOUT_MS = 180_000;
-const SCOPE = 'orchestration:read orchestration:operate';
+const SCOPE = ORCHESTRATION_SCOPES.join(' ');
 const MAX_URL = 8192;
 const rejected = () => new Error('Authorization input rejected');
 
@@ -245,13 +251,7 @@ export async function authorize(
     });
     const provider: OAuthClientProvider = {
       redirectUrl: CALLBACK,
-      clientMetadata: {
-        client_name: 'Kinmesh external T3 adapter',
-        redirect_uris: [CALLBACK],
-        grant_types: ['authorization_code'],
-        response_types: ['code'],
-        token_endpoint_auth_method: 'none',
-      },
+      clientMetadata: CLIENT_METADATA,
       state: () => state,
       discoveryState: () => ({
         authorizationServerUrl: discovered.authorizationServerUrl,

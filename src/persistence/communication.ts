@@ -7,7 +7,11 @@ import type { z } from 'zod';
 import * as s from './schema.js';
 import type { agentRepository } from './agents.js';
 import type { ChannelId, TeamId } from '../domain/contracts.js';
-import { Author, IdentityError, type Principal } from '../domain/agents.js';
+import { IdentityError, type Principal } from '../domain/agents.js';
+import {
+  principalAuthor as author,
+  principalMember as member,
+} from '../domain/tasks.js';
 import {
   ChannelInput,
   ChannelView,
@@ -30,30 +34,15 @@ import {
 type ChannelId = z.infer<typeof ChannelId>;
 const decode = (value: string): unknown => JSON.parse(value);
 const now = () => new Date().toISOString();
-function member(p: Principal): Member {
-  return p.kind === 'human'
-    ? { kind: 'human', id: p.humanId }
-    : { kind: 'agent', id: p.agentId };
-}
-function author(p: Principal) {
-  return Author.parse(
-    p.kind === 'human'
-      ? { kind: 'human', humanId: p.humanId }
-      : { kind: 'agent', agentId: p.agentId, grantId: p.grantId },
-  );
-}
 export function communicationRepository(
   db: BetterSQLite3Database<typeof s>,
   agents: ReturnType<typeof agentRepository>,
 ) {
   const { atomic, receipt } = transactional(db);
   function team(p: Principal, teamId: TeamId, write = false) {
-    agents.teamAccess(p, teamId, 'channels:read');
-    return agents.teamAccess(
-      p,
-      teamId,
-      write ? 'channels:write' : 'channels:read',
-    );
+    return write
+      ? agents.teamAccess(p, teamId, 'channels:read', 'channels:write')
+      : agents.teamAccess(p, teamId, 'channels:read');
   }
   function access(
     p: Principal,
@@ -92,11 +81,8 @@ export function communicationRepository(
     };
   }
   function owner(p: Principal, teamId: TeamId, channelId?: ChannelId) {
-    const role =
-      channelId === undefined
-        ? team(p, teamId, true).role
-        : access(p, teamId, channelId, true).role;
-    if (role !== 'owner' || p.kind !== 'human') throw new IdentityError(403);
+    if (channelId !== undefined) access(p, teamId, channelId, true);
+    agents.owner(p, teamId);
   }
   function participantView(
     teamId: TeamId,

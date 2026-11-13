@@ -3,6 +3,7 @@ import { and, eq, or, lte, gt, sql } from 'drizzle-orm';
 import type { BetterSQLite3Database } from 'drizzle-orm/better-sqlite3';
 import { z } from 'zod';
 import * as schema from './schema.js';
+import { fingerprint, sqliteNow as now } from './transactional.js';
 import { Reference, Intent, ExecutionFailure } from '../domain/execution.js';
 
 const Row = z.object({
@@ -30,13 +31,14 @@ export type ClaimedOperation = z.infer<typeof Claimed>;
 // SDK mutations default to 30s; an entire attempt is capped at 60s. No lease renewal.
 export const EXECUTION_LEASE_MS = 120_000;
 export const EXECUTION_ATTEMPT_MS = 60_000;
+/** The journal scope of one T3 environment behind one endpoint. */
+export const executionScope = (endpoint: string, environmentId: string) =>
+  fingerprint([endpoint, environmentId]);
 export function operationJournal(db: BetterSQLite3Database<typeof schema>) {
   const table = schema.executionOperations;
   function get(id: string) {
     return Row.parse(db.select().from(table).where(eq(table.id, id)).get());
   }
-  // Evaluate expiry inside SQLite, including after waiting for another writer.
-  const now = sql`cast(unixepoch('subsec') * 1000 as integer)`;
   function fence(row: ClaimedOperation) {
     return and(
       eq(table.id, row.id),

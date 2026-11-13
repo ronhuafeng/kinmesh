@@ -8,9 +8,9 @@ import { T3Backend } from '../adapters/t3/backend.js';
 import { SdkWire } from '../adapters/t3/sdk.js';
 import { authority, loadCredential } from '../adapters/t3/oauth.js';
 import type { Store } from '../persistence/store.js';
-import type { Binding } from './config.js';
+import type { WorkerBinding } from './config.js';
 export type BackendFactory = (
-  binding: Binding,
+  binding: WorkerBinding,
   profile: Agent,
   signal: AbortSignal,
 ) => Promise<{
@@ -21,13 +21,8 @@ export type BackendFactory = (
 export function t3Factory(store: Store): BackendFactory {
   return async (binding, profile, signal) => {
     signal.throwIfAborted();
+    // The worker holds the profile to this credential's environment and the binding's provider.
     const credential = loadCredential(binding.t3AuthFile, binding.t3Endpoint);
-    if (
-      profile.preferences.environmentId !== credential.environmentId ||
-      profile.preferences.providerId !== binding.isolatedProviderId ||
-      profile.preferences.modelId === null
-    )
-      throw new ExecutionFailure('incompatible');
     const wire = new SdkWire(credential);
     try {
       const discovered = await wire.list().catch((error: unknown) => {
