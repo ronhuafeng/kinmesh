@@ -175,9 +175,11 @@ it is the authority. Use the custom property for its role, never a raw colour.
   decision or a problem; the row opens where it is resolved (task, channel or agent).
   A row leaves when its cause is resolved; there is nothing to dismiss. Expired
   deliveries are not listed; they stay on their message's delivery line.
-- **Settings**: your own row among the sidebar's people opens it; the account is not
-  shown anywhere else. The owner renames the team (everyone sees the name) and changes
-  their password with the current one; that signs out every other session.
+- **Settings**: your own row among the sidebar's people opens your page; the account
+  is not shown anywhere else. Like an agent's About: your face and name, then one row
+  per fact typed in place — the team name (everyone sees it) and your password (the
+  current one, then the new) — each confirmed by the round arrow. A changed password
+  signs out every other session.
 - **Sign out**: the power icon at the far right of the header.
 - **Connection pill**: absent while healthy; dot + "Refreshing… / Disconnected" with
   last time and **Reconnect**; offline turns into a full-width stale banner. **Refresh

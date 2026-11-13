@@ -1,9 +1,15 @@
+import { useState } from 'react';
 import type { WorkspaceSnapshot } from '../src/workspace/contracts.js';
 import { useRequest, value } from './api.js';
-import { Field, Notice } from './forms.js';
-import { Page } from './ui.js';
+import { Notice } from './forms.js';
+import { ArrowIcon } from './icons.js';
+import { Avatar, Page } from './ui.js';
 
-/** The team's name and the owner's password: the two things only you set. */
+/**
+ * Your own page: your face and name, then the two things only you set, as
+ * facts typed in place. Each confirms with the round arrow once there is
+ * something to confirm.
+ */
 export function SettingsPage({
   data,
   onClose,
@@ -21,16 +27,21 @@ export function SettingsPage({
     403: 'That isn’t your current password.',
     429: 'Too many tries. Wait a minute, then try again.',
   });
+  const [name, setName] = useState(data.team.name);
+  const [current, setCurrent] = useState('');
+  const [next, setNext] = useState('');
   return (
     <Page label="Settings" onClose={onClose}>
-      <div className="page-body">
-        <h2>Settings</h2>
+      <div className="page-body you">
+        <div className="you-face">
+          <Avatar kind="human" name={data.human.username} size="xl" />
+          <strong>{data.human.username}</strong>
+        </div>
         <form
-          className="settings-form"
+          className="you-row"
           aria-label="Team name"
           onSubmit={(event) => {
             event.preventDefault();
-            const name = value(new FormData(event.currentTarget), 'name');
             void team
               .send('/api/team', { name: name.trim() }, 'PUT')
               .then((ok) => {
@@ -40,71 +51,112 @@ export function SettingsPage({
               });
           }}
         >
-          <h3>Team</h3>
-          <Field label="Team name">
+          <span className="you-label" aria-hidden="true">
+            Team
+          </span>
+          <span className="you-value">
             <input
               name="name"
+              aria-label="Team name"
               required
               maxLength={80}
               autoComplete="organization"
-              defaultValue={data.team.name}
+              value={name}
+              onChange={(event) => {
+                setName(event.target.value);
+                team.setError('');
+              }}
             />
-          </Field>
-          <button type="submit" disabled={team.disabled}>
-            {team.busy ? 'Saving…' : 'Save name'}
-          </button>
+            <button
+              type="submit"
+              className="icon-button confirm"
+              aria-label="Save name"
+              aria-busy={team.busy}
+              disabled={
+                team.disabled ||
+                name.trim() === '' ||
+                name.trim() === data.team.name
+              }
+            >
+              <ArrowIcon />
+            </button>
+          </span>
           {team.error && <Notice>{team.error}</Notice>}
         </form>
         <form
-          className="settings-form"
+          className="you-row"
           aria-label="Password"
           onSubmit={(event) => {
             event.preventDefault();
-            const form = event.currentTarget;
-            const fields = new FormData(form);
             void password
               .send('/api/me/password', {
-                currentPassword: value(fields, 'currentPassword'),
-                newPassword: value(fields, 'newPassword'),
+                currentPassword: value(
+                  new FormData(event.currentTarget),
+                  'currentPassword',
+                ),
+                newPassword: next,
               })
               .then((ok) => {
                 if (ok === undefined) return;
-                form.reset();
+                setCurrent('');
+                setNext('');
                 onNotify('Password changed. Other sessions were signed out.');
               });
           }}
         >
-          <h3>Password</h3>
-          {/* Lets a password manager tie the new password to this account. */}
-          <input
-            type="text"
-            name="username"
-            autoComplete="username"
-            value={data.human.username}
-            readOnly
-            hidden
-          />
-          <Field label="Current password">
+          <span className="you-label" aria-hidden="true">
+            Password
+          </span>
+          <span className="you-value you-stack">
+            {/* Lets a password manager tie the new password to this account. */}
+            <input
+              type="text"
+              name="username"
+              autoComplete="username"
+              value={data.human.username}
+              readOnly
+              hidden
+            />
             <input
               name="currentPassword"
               type="password"
+              aria-label="Current password"
+              placeholder="Current password"
               required
               autoComplete="current-password"
+              value={current}
+              onChange={(event) => {
+                setCurrent(event.target.value);
+                password.setError('');
+              }}
             />
-          </Field>
-          <Field label="New password" hint="15–128 characters">
-            <input
-              name="newPassword"
-              type="password"
-              required
-              minLength={15}
-              maxLength={128}
-              autoComplete="new-password"
-            />
-          </Field>
-          <button type="submit" disabled={password.disabled}>
-            {password.busy ? 'Changing…' : 'Change password'}
-          </button>
+            <span className="you-value">
+              <input
+                name="newPassword"
+                type="password"
+                aria-label="New password"
+                placeholder="New password · 15–128 characters"
+                required
+                minLength={15}
+                maxLength={128}
+                autoComplete="new-password"
+                value={next}
+                onChange={(event) => {
+                  setNext(event.target.value);
+                  password.setError('');
+                }}
+              />
+              <button
+                type="submit"
+                className="icon-button confirm"
+                aria-label="Change password"
+                aria-busy={password.busy}
+                disabled={password.disabled || current === '' || next === ''}
+              >
+                <ArrowIcon />
+              </button>
+            </span>
+          </span>
           {password.error && <Notice>{password.error}</Notice>}
         </form>
       </div>

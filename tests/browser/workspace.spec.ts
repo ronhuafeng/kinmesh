@@ -1075,7 +1075,7 @@ test('the owner renames the team and changes the password', async ({
   // You are one of the people; your row opens your settings.
   await page
     .getByRole('region', { name: 'People in this channel' })
-    .getByRole('button', { name: 'browser_owner', exact: true })
+    .getByRole('button', { name: /^browser_owner/ })
     .click();
   const settings = page.getByRole('region', { name: 'Settings' });
   const team = settings.getByRole('form', { name: 'Team name' });

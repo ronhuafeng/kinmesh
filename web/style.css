@@ -1985,18 +1985,64 @@ button.reply-to {
   font-size: 0.7rem;
   color: var(--ink-subtle);
 }
-.settings-form {
+/* Your page: your face, then facts typed in place, one per row. */
+.you {
+  gap: 0;
+}
+.you-face {
   display: grid;
+  justify-items: center;
   gap: 0.6rem;
-  justify-items: start;
-  padding-bottom: 1rem;
+  padding: 1rem 0 1.5rem;
   border-bottom: 1px solid var(--hairline);
 }
-.settings-form .field {
-  justify-self: stretch;
+.you-face strong {
+  font-size: 1.05rem;
 }
-/* Compact sidebar: search first, you in one row at the bottom; your name
-   opens Settings. */
+.you-row {
+  display: grid;
+  grid-template-columns: 8rem minmax(0, 1fr);
+  align-items: baseline;
+  gap: 0.5rem 1rem;
+  padding: 1rem 0;
+  border-bottom: 1px solid var(--hairline);
+}
+.you-row > .notice {
+  grid-column: 2;
+  margin: 0;
+}
+.you-value {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  min-width: 0;
+}
+.you-stack {
+  display: grid;
+  gap: 0.75rem;
+}
+/* Every field ends on one edge; the round confirm sits past it. */
+.you-stack > input {
+  margin-right: 2.25rem;
+}
+.you-value input {
+  flex: 1;
+  width: auto;
+  min-width: 0;
+  min-height: 0;
+  padding: 0.3rem 0;
+  border: 0;
+  border-bottom: 1px solid var(--hairline);
+  border-radius: 0;
+  background: transparent;
+  color: var(--ink);
+  font: inherit;
+}
+.you-value input:focus {
+  border-bottom-color: var(--primary);
+}
+/* Compact sidebar: search first; your own row among the people opens your
+   page. */
 .sidebar-top {
   display: grid;
   gap: 0.6rem;
@@ -2108,15 +2154,6 @@ button.icon-button.confirm:disabled {
     display: none;
   }
 }
-/* Settings sections read as sections, not as another field label. */
-.settings-form h3 {
-  margin: 0.75rem 0 0.1rem;
-  font-family: var(--mono);
-  font-size: 0.7rem;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  color: var(--ink-muted);
-}
 /* ------------------------------------------------------------------
  * Alignment and balance (measured, not eyeballed)
  * ------------------------------------------------------------------ */
@@ -2160,10 +2197,6 @@ button.icon-button.confirm:disabled {
 }
 span.person {
   border: 1px solid transparent;
-}
-/* Settings: no rule after the last section. */
-.settings-form:last-child {
-  border-bottom: 0;
 }
 /* Channels: "+" in the heading; a new name is typed where it will appear. */
 .nav-heading button.add-button {
@@ -3035,7 +3068,8 @@ button.inbox-main:focus-visible::after {
 }
 .task-criteria h3,
 .task-history h3,
-.task-side dt {
+.task-side dt,
+.you-label {
   margin: 0;
   font-family: var(--mono);
   font-size: 0.7rem;
@@ -3374,6 +3408,8 @@ button.new-agent-go {
 .task-title .title-input:focus-visible,
 .task-page .description-input:focus,
 .task-page .description-input:focus-visible,
+.you-value input:focus,
+.you-value input:focus-visible,
 .person-picker select:focus,
 .new-agent-role:focus {
   outline: none;
