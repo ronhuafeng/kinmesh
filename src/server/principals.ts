@@ -1,13 +1,22 @@
+import { createHash } from 'node:crypto';
 import { HumanId } from '../domain/contracts.js';
 import { IdentityError, type Principal } from '../domain/agents.js';
 import type { Store } from '../persistence/store.js';
 
 /** Only call with credentials from the verified session plugin or HTTP Authorization.
  * Actor labels, role messages and tool arguments are never credential inputs. */
+/**
+ * What a session remembers of the password it was signed in with. Changing
+ * the password changes it, which ends every other session.
+ */
+export function credentialMark(passwordHash: string) {
+  return createHash('sha256').update(passwordHash).digest('base64url');
+}
 export function resolvePrincipal(
   store: Store,
   authorization: string | undefined,
   sessionHumanId: unknown,
+  sessionMark?: unknown,
 ): Principal {
   const human = HumanId.safeParse(sessionHumanId);
   if (authorization !== undefined) {
@@ -17,7 +26,9 @@ export function resolvePrincipal(
     if (bearer === undefined) throw new IdentityError(401);
     return store.agents.resolveToken(bearer);
   }
-  if (!human.success || store.human(human.data) === undefined)
+  if (!human.success) throw new IdentityError(401);
+  const hash = store.passwordHash(human.data);
+  if (hash === undefined || sessionMark !== credentialMark(hash))
     throw new IdentityError(401);
   return { kind: 'human', humanId: human.data };
 }

@@ -5,7 +5,8 @@ import { registerCommunication } from './communication.js';
 import { registerAgents } from './agents.js';
 import { defaultHub, registerConnect, type Hub } from './connect.js';
 import { managedDirectory } from '../inbox/managed.js';
-import { resolvePrincipal } from './principals.js';
+import { credentialMark, resolvePrincipal } from './principals.js';
+import { IdentityError } from '../domain/agents.js';
 import { z } from 'zod';
 import Fastify from 'fastify';
 import secureSession from '@fastify/secure-session';
@@ -19,6 +20,8 @@ import type { Config } from './config.js';
 declare module '@fastify/secure-session' {
   interface SessionData {
     humanId: string;
+    /** Mark of the password this session signed in with. */
+    credential: string;
   }
 }
 export async function createApp(
@@ -165,7 +168,46 @@ export async function createApp(
         return reply.code(401).send({ error: 'Invalid credentials' });
       request.session.regenerate();
       request.session.set('humanId', account.id);
+      request.session.set('credential', credentialMark(account.passwordHash));
       return { authenticated: true };
+    },
+  );
+  // Change your own password. Every other session ends; this one continues.
+  app.post(
+    '/api/me/password',
+    { config: { rateLimit: { max: 5, timeWindow: '1 minute' } } },
+    async (request, reply) => {
+      const principal = resolvePrincipal(
+        store,
+        request.headers.authorization,
+        request.session.get('humanId'),
+        request.session.get('credential'),
+      );
+      if (principal.kind !== 'human') throw new IdentityError(403);
+      const input = z
+        .strictObject({
+          currentPassword: Credentials.shape.password,
+          newPassword: Credentials.shape.password,
+        })
+        .safeParse(request.body);
+      if (!input.success)
+        return reply.code(400).send({ error: 'Invalid password input' });
+      const current = store.passwordHash(principal.humanId);
+      if (
+        current === undefined ||
+        !(await verify(current, input.data.currentPassword))
+      )
+        return reply.code(403).send({ error: 'Current password is wrong' });
+      const next = await hash(input.data.newPassword, {
+        memoryCost: 19456,
+        timeCost: 2,
+        parallelism: 1,
+      });
+      store.setPasswordHash(principal.humanId, next);
+      request.session.regenerate();
+      request.session.set('humanId', principal.humanId);
+      request.session.set('credential', credentialMark(next));
+      return reply.code(204).send();
     },
   );
   app.post('/api/logout', (request, reply) => {
@@ -175,13 +217,16 @@ export async function createApp(
   app.addHook('preHandler', async (request, reply) => {
     if (
       !request.url.startsWith('/api/') ||
-      ['/api/setup', '/api/login'].includes(request.routeOptions.url ?? '')
+      ['/api/setup', '/api/login', '/api/me/password'].includes(
+        request.routeOptions.url ?? '',
+      )
     )
       return;
     request.principal = resolvePrincipal(
       store,
       request.headers.authorization,
       request.session.get('humanId'),
+      request.session.get('credential'),
     );
     if (
       !request.url.startsWith('/api/teams/') &&
@@ -203,6 +248,16 @@ export async function createApp(
     protectedApi.get('/api/team', (request, reply) => {
       const team = store.teamFor(HumanId.parse(request.session.get('humanId')));
       return team ?? reply.code(403).send({ error: 'Membership required' });
+    });
+    // The owner renames the team; the name is what everyone sees.
+    protectedApi.put('/api/team', (request) => {
+      const id = HumanId.parse(request.session.get('humanId'));
+      const { name } = z
+        .strictObject({ name: BootstrapInput.shape.teamName })
+        .parse(request.body);
+      const team = store.teamFor(id);
+      if (!team) throw new IdentityError(403);
+      return store.renameTeam(id, team.team.id, name);
     });
     done();
   });

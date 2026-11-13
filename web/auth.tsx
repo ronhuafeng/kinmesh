@@ -162,7 +162,12 @@ export function Auth({ onLogin }: { onLogin: () => void }) {
                   />
                 </Field>
                 <Field label="Team name">
-                  <input name="teamName" required maxLength={80} />
+                  <input
+                    name="teamName"
+                    required
+                    maxLength={80}
+                    autoComplete="organization"
+                  />
                 </Field>
                 <button type="submit">Create owner and team</button>
               </fieldset>

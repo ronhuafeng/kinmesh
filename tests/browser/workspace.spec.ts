@@ -1252,6 +1252,49 @@ test('a heartbeat refresh never interrupts work; after a failure nothing submits
   expect(posts).toBe(2);
 });
 
+test('the owner renames the team and changes the password; other sessions end', async ({
+  page,
+  browser,
+  hub,
+}) => {
+  const password = await onboard(page, hub);
+  // A second browser signed in as the same owner.
+  const other = await browser.newPage();
+  await other.goto(hub.origin);
+  await other.getByLabel('Username', { exact: true }).fill('browser_owner');
+  await other.getByLabel('Password', { exact: true }).fill(password);
+  await other.getByRole('button', { name: 'Sign in', exact: true }).click();
+  await expect(other.getByRole('heading', { name: '# general' })).toBeVisible();
+  await page.getByRole('button', { name: 'Account settings' }).click();
+  const settings = page.getByRole('region', { name: 'Settings' });
+  const team = settings.getByRole('form', { name: 'Team name' });
+  await team.getByLabel('Team name').fill('Fieldnotes');
+  await team.getByRole('button', { name: 'Save name' }).click();
+  await expect(
+    page.getByRole('button', { name: 'Fieldnotes: settings' }),
+  ).toBeVisible();
+  const change = settings.getByRole('form', { name: 'Password' });
+  const next = randomBytes(24).toString('base64url');
+  await change.getByLabel('Current password').fill('not the password at all');
+  await change.getByLabel('New password').fill(next);
+  await change.getByRole('button', { name: 'Change password' }).click();
+  await expect(change).toContainText('That isn’t your current password.');
+  await change.getByLabel('Current password').fill(password);
+  await change.getByLabel('New password').fill(next);
+  await change.getByRole('button', { name: 'Change password' }).click();
+  await expect(
+    page.getByRole('status').filter({ hasText: 'Password changed' }),
+  ).toBeVisible();
+  // This browser carries on; the other one is signed out.
+  await refreshNow(page);
+  await expect(page.getByRole('heading', { name: '# general' })).toBeVisible();
+  await other.reload();
+  await expect(
+    other.getByRole('button', { name: 'Sign in', exact: true }),
+  ).toBeVisible();
+  await other.close();
+});
+
 test('ambiguous login retry retains original request and login completion after switching to setup', async ({
   page,
   hub,

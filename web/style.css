@@ -3058,3 +3058,43 @@ button.reply-to {
 .reply-origin details.technical {
   font-family: var(--sans, inherit);
 }
+/* Settings: the team name and your account open the same quiet panel. */
+button.team-name,
+button.account-open {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  width: 100%;
+  padding: 0.25rem;
+  margin: -0.25rem;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+}
+button.team-name:hover:not(:disabled),
+button.account-open:hover:not(:disabled) {
+  background: var(--hover);
+}
+button.account-open {
+  flex: 1;
+  min-width: 0;
+  margin: 0;
+  font-weight: 600;
+  font-size: 0.9rem;
+}
+.account button.account-open {
+  font-size: 0.9rem;
+}
+.settings-form {
+  display: grid;
+  gap: 0.6rem;
+  justify-items: start;
+  padding-bottom: 1rem;
+  border-bottom: 1px solid var(--hairline);
+}
+.settings-form .field {
+  justify-self: stretch;
+}

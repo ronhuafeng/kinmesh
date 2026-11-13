@@ -14,9 +14,13 @@ import type { BoardFilter, TaskDraft } from './tasks.js';
 import { Avatar, plural, statusLabel, wakeOf } from './ui.js';
 import { CommandPalette } from './palette.js';
 import { NeedsDrawer, attentionCount } from './needs.js';
+import { SettingsDrawer } from './settings.js';
 import type { Command } from './palette.js';
 type View = 'chat' | 'board' | 'team';
-type Focus = { kind: 'task' | 'agent'; id: string } | { kind: 'needs' } | null;
+type Focus =
+  | { kind: 'task' | 'agent'; id: string }
+  | { kind: 'needs' | 'settings' }
+  | null;
 /** True when a refresh moved at least one visible task to another status. */
 function statusesMoved(
   before: WorkspaceSnapshot | null,
@@ -368,7 +372,10 @@ export function App() {
         <div
           className="workspace-shell"
           data-drawer={
-            focusedTask || focusedAgent || focus?.kind === 'needs'
+            focusedTask ||
+            focusedAgent ||
+            focus?.kind === 'needs' ||
+            focus?.kind === 'settings'
               ? 'open'
               : undefined
           }
@@ -381,7 +388,14 @@ export function App() {
                 </span>
                 <span>kinmesh</span>
               </a>
-              <div className="team-name">
+              <button
+                type="button"
+                className="team-name"
+                aria-label={`${data.team.name}: settings`}
+                onClick={() => {
+                  setFocus({ kind: 'settings' });
+                }}
+              >
                 <span className="team-icon" aria-hidden="true">
                   {data.team.name.slice(0, 1).toUpperCase()}
                 </span>
@@ -389,7 +403,7 @@ export function App() {
                   <strong>{data.team.name}</strong>
                   <small>Team workspace</small>
                 </div>
-              </div>
+              </button>
             </div>
             <button
               className="needs-you"
@@ -510,11 +524,20 @@ export function App() {
               </section>
             )}
             <div className="account">
-              <Avatar kind="human" name={data.human.username} />
-              <span>
-                {data.human.username}
-                <small>Human owner</small>
-              </span>
+              <button
+                type="button"
+                className="account-open"
+                aria-label="Account settings"
+                onClick={() => {
+                  setFocus({ kind: 'settings' });
+                }}
+              >
+                <Avatar kind="human" name={data.human.username} />
+                <span>
+                  {data.human.username}
+                  <small>Human owner</small>
+                </span>
+              </button>
               <button
                 className="quiet"
                 disabled={!canAct}
@@ -758,6 +781,14 @@ export function App() {
               }}
               openAgent={openAgent}
               onDone={refresh}
+            />
+          )}
+          {focus?.kind === 'settings' && (
+            <SettingsDrawer
+              data={data}
+              onClose={closeFocus}
+              onDone={refresh}
+              onNotify={notify}
             />
           )}
           {toast && (
