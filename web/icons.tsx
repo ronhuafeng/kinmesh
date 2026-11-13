@@ -30,11 +30,11 @@ export const InboxIcon = () => (
     <path d="M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z" />
   </Icon>
 );
-export const SignOutIcon = () => (
+/** Sign out: the power symbol. */
+export const PowerIcon = () => (
   <Icon>
-    <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
-    <path d="m16 17 5-5-5-5" />
-    <path d="M21 12H9" />
+    <path d="M12 2v10" />
+    <path d="M18.4 6.6a9 9 0 1 1-12.79.04" />
   </Icon>
 );
 export const MenuIcon = () => (

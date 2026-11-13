@@ -30,7 +30,7 @@ import { Avatar, AvatarImages, Presence, workerConnected } from './ui.js';
 import { CommandPalette } from './palette.js';
 import { InboxPage, attentionCount } from './inbox.js';
 import { SettingsPage } from './settings.js';
-import { InboxIcon, MenuIcon, SignOutIcon } from './icons.js';
+import { InboxIcon, MenuIcon, PowerIcon } from './icons.js';
 import type { Command } from './palette.js';
 /** Tabs, plus one agent's own page reached from them. */
 type View = 'chat' | 'board' | 'team' | 'agent';
@@ -147,7 +147,7 @@ export function App() {
   // The agent whose page is open, and the tab Esc returns to from it.
   const [agentId, setAgentId] = useState(initial.agent);
   const [backTo, setBackTo] = useState<Tab>('team');
-  // Phone only: channel actions and the account sit behind a menu button.
+  // Phone only: the people, you among them, sit behind a menu button.
   const [menuOpen, setMenuOpen] = useState(false);
   const [addingChannel, setAddingChannel] = useState(false);
   const [data, setData] = useState<WorkspaceSnapshot | null>(null);
@@ -685,97 +685,72 @@ export function App() {
                     More channels
                   </button>
                 )}
-                {channel && (
-                  <section
-                    className="people"
-                    aria-label="People in this channel"
-                  >
-                    {/* A line, not a heading: what follows plainly belongs to
+                <section
+                  className="people"
+                  aria-label={channel ? 'People in this channel' : 'People'}
+                >
+                  {/* A line, not a heading: what follows plainly belongs to
                       the channel above. */}
-                    <hr className="nav-separator" />
-                    <ul>
-                      <li>
-                        <span className="person">
-                          <Avatar
-                            kind="human"
-                            name={data.human.username}
-                            size="sm"
-                          />
-                          <span className="person-name">
-                            {data.human.username}
-                          </span>
-                          <Presence online dot />
-                        </span>
-                      </li>
-                      {channelAgents.map((agent) => (
-                        <li key={agent.id}>
-                          <button
-                            className="person"
-                            aria-pressed={
-                              view === 'agent' && agentId === agent.id
-                            }
-                            onClick={() => {
-                              openAgent(agent.id);
-                            }}
-                          >
-                            <Avatar
-                              kind="agent"
-                              name={agent.name}
-                              id={agent.id}
-                              size="sm"
-                            />
-                            <span className="person-name">{agent.name}</span>
-                            <Presence
-                              online={workerConnected(data.wake, agent.id)}
-                              dot
-                            />
-                          </button>
-                        </li>
-                      ))}
-                    </ul>
-                    {channelAgents.length === 0 && (
+                  <hr className="nav-separator" />
+                  <ul>
+                    <li>
+                      {/* You are one of the people; your row opens your
+                        settings, so the account is not shown twice. */}
                       <button
-                        className="link-button"
+                        className="person"
+                        aria-pressed={focus?.kind === 'settings'}
                         onClick={() => {
-                          setView('team');
+                          setFocus({ kind: 'settings' });
                         }}
                       >
-                        Add an agent
+                        <Avatar
+                          kind="human"
+                          name={data.human.username}
+                          size="sm"
+                        />
+                        <span className="person-name">
+                          {data.human.username}
+                        </span>
+                        <Presence online dot />
                       </button>
-                    )}
-                  </section>
-                )}
-                <div className="account">
-                  <button
-                    type="button"
-                    className="account-open"
-                    aria-label="Account settings"
-                    onClick={() => {
-                      setFocus({ kind: 'settings' });
-                    }}
-                  >
-                    <Avatar kind="human" name={data.human.username} size="sm" />
-                    <span>{data.human.username}</span>
-                  </button>
-                  <button
-                    className="quiet icon-button"
-                    aria-label="Sign out"
-                    title="Sign out"
-                    disabled={!canAct}
-                    onClick={() => {
-                      if (!canAct) return;
-                      void api('/api/logout', { method: 'POST' })
-                        .then(() => {
-                          toSignedOut('');
-                        })
-                        .catch(() => {
-                          setError('Sign out failed. Reconnect and try again.');
-                        });
-                    }}
-                  >
-                    <SignOutIcon />
-                  </button>
-                </div>
+                    </li>
+                    {channelAgents.map((agent) => (
+                      <li key={agent.id}>
+                        <button
+                          className="person"
+                          aria-pressed={
+                            view === 'agent' && agentId === agent.id
+                          }
+                          onClick={() => {
+                            openAgent(agent.id);
+                          }}
+                        >
+                          <Avatar
+                            kind="agent"
+                            name={agent.name}
+                            id={agent.id}
+                            size="sm"
+                          />
+                          <span className="person-name">{agent.name}</span>
+                          <Presence
+                            online={workerConnected(data.wake, agent.id)}
+                            dot
+                          />
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                  {channel && channelAgents.length === 0 && (
+                    <button
+                      className="link-button"
+                      onClick={() => {
+                        setView('team');
+                      }}
+                    >
+                      Add an agent
+                    </button>
+                  )}
+                </section>
               </aside>
               <main className="workspace-main">
                 <Tabs.Root
@@ -817,28 +792,53 @@ export function App() {
                         Team
                       </Tabs.Trigger>
                     </Tabs.List>
-                    {/* Healthy is silent: the pill appears only when something is off. */}
-                    {connection !== 'ready' && (
-                      <div className="connection" data-state={connection}>
-                        <span className="connection-dot" aria-hidden="true" />
-                        <span role="status">
-                          {connection === 'loading'
-                            ? 'Refreshing…'
-                            : 'Disconnected'}
-                        </span>
-                        {connection === 'offline' && (
-                          <>
-                            <small>
-                              Last update{' '}
-                              {new Date(data.observedAt).toLocaleTimeString()}
-                            </small>
-                            <button className="secondary" onClick={refreshNow}>
-                              Reconnect
-                            </button>
-                          </>
-                        )}
-                      </div>
-                    )}
+                    <div className="header-end">
+                      {/* Healthy is silent: the pill appears only when something is off. */}
+                      {connection !== 'ready' && (
+                        <div className="connection" data-state={connection}>
+                          <span className="connection-dot" aria-hidden="true" />
+                          <span role="status">
+                            {connection === 'loading'
+                              ? 'Refreshing…'
+                              : 'Disconnected'}
+                          </span>
+                          {connection === 'offline' && (
+                            <>
+                              <small>
+                                Last update{' '}
+                                {new Date(data.observedAt).toLocaleTimeString()}
+                              </small>
+                              <button
+                                className="secondary"
+                                onClick={refreshNow}
+                              >
+                                Reconnect
+                              </button>
+                            </>
+                          )}
+                        </div>
+                      )}
+                      <button
+                        className="quiet icon-button"
+                        aria-label="Sign out"
+                        title="Sign out"
+                        disabled={!canAct}
+                        onClick={() => {
+                          if (!canAct) return;
+                          void api('/api/logout', { method: 'POST' })
+                            .then(() => {
+                              toSignedOut('');
+                            })
+                            .catch(() => {
+                              setError(
+                                'Sign out failed. Reconnect and try again.',
+                              );
+                            });
+                        }}
+                      >
+                        <PowerIcon />
+                      </button>
+                    </div>
                   </header>
                   {error && (
                     <div className="stale-banner" data-state={status}>

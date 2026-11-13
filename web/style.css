@@ -1363,8 +1363,7 @@ body > #root > .notice {
     gap: 0.3rem;
     overflow-x: auto;
   }
-  .sidebar nav .nav-heading,
-  .people {
+  .sidebar nav .nav-heading {
     display: none;
   }
   .sidebar nav button {
@@ -1873,6 +1872,13 @@ a.button-link {
 .workspace-tabs {
   display: contents;
 }
+/* The connection pill when something is off, then sign out at the far right. */
+.header-end {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  margin-left: auto;
+}
 .workspace-header {
   position: sticky;
   top: 0;
@@ -2000,46 +2006,6 @@ button.reply-to {
   justify-content: space-between;
   background: var(--surface);
 }
-.account {
-  display: flex;
-  align-items: center;
-  gap: 0.4rem;
-  margin-top: auto;
-  padding: 0.6rem 0 0;
-  border-top: 1px solid var(--hairline);
-  font-weight: 600;
-  font-size: 0.9rem;
-}
-button.account-open {
-  display: flex;
-  flex: 1;
-  align-items: center;
-  gap: 0.6rem;
-  width: 100%;
-  min-width: 0;
-  margin: 0;
-  padding: 0.25rem 0.35rem;
-  border: 0;
-  border-radius: var(--radius-sm);
-  background: none;
-  color: inherit;
-  font: inherit;
-  text-align: left;
-}
-button.account-open:hover:not(:disabled) {
-  background: var(--hover);
-}
-button.account-open > span:last-child {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.account > button.icon-button {
-  flex: none;
-  margin-right: 0.25rem;
-  padding: 0.25rem 0.5rem;
-  font-size: 0.8rem;
-}
 @media (max-width: 720px) {
   /* The phone's sidebar is one row: search, then the menu. */
   .sidebar-top {
@@ -2048,9 +2014,6 @@ button.account-open > span:last-child {
   }
   .sidebar button.palette-trigger {
     width: auto;
-  }
-  .account {
-    margin-top: 0;
   }
 }
 /* Icons: drawn in the text colour, aligned with the label beside them. */
@@ -2140,7 +2103,8 @@ button.icon-button.confirm:disabled {
   .sidebar button.palette-trigger kbd {
     display: none;
   }
-  .sidebar:not([data-menu]) .account {
+  /* The menu opens the people, you among them. */
+  .sidebar:not([data-menu]) .people {
     display: none;
   }
 }
