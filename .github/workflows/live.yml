@@ -1,6 +1,16 @@
 name: Live collaboration
 on:
   workflow_dispatch:
+    inputs:
+      executor:
+        description: Executor to run
+        type: choice
+        options: [both, codex, grok]
+        default: both
+      through:
+        description: Stop after this stage; empty runs every stage
+        type: string
+        default: ''
 permissions:
   contents: read
 concurrency:
@@ -15,7 +25,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        executor: [codex, grok]
+        executor: ${{ fromJSON(inputs.executor == 'both' && '["codex","grok"]' || format('["{0}"]', inputs.executor)) }}
     steps:
       - name: Require owner manual dispatch on main before repository execution
         shell: bash
@@ -40,6 +50,7 @@ jobs:
       - name: Complete real collaboration, rework, recovery and authority verification
         env:
           KINMESH_LIVE_EXECUTOR: ${{ matrix.executor }}
+          KINMESH_LIVE_THROUGH: ${{ inputs.through }}
           LLM_API_KEY: ${{ secrets.LLM_API_KEY }}
           CODEX_BASE_URL: ${{ secrets.CODEX_BASE_URL }}
           GROK_BASE_URL: ${{ secrets.GROK_BASE_URL }}

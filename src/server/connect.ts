@@ -23,6 +23,7 @@ import {
   t3AuthFile,
   writeAgentToken,
 } from '../inbox/managed.js';
+import type { Changes } from './changes.js';
 import type { Store } from '../persistence/store.js';
 import { principal } from './principals.js';
 
@@ -80,7 +81,12 @@ const AgentPath = TeamPath.extend({ agentId: AgentId });
  * Connect T3 and agents from the workspace: the owner approves T3 in their
  * browser and picks a provider; the hub keeps the secrets and runs the worker.
  */
-export function registerConnect(app: FastifyInstance, store: Store, hub: Hub) {
+export function registerConnect(
+  app: FastifyInstance,
+  store: Store,
+  hub: Hub,
+  changes: Changes,
+) {
   // One sign-in at a time: the OAuth callback port is fixed.
   let flow:
     | { teamId: string; state: 'waiting' | 'failed'; stop: AbortController }
@@ -138,6 +144,7 @@ export function registerConnect(app: FastifyInstance, store: Store, hub: Hub) {
     const stop = new AbortController();
     const current = { teamId, state: 'waiting' as const, stop };
     flow = current;
+    changes.emit();
     const signal = AbortSignal.any([
       stop.signal,
       AbortSignal.timeout(AUTH_TIMEOUT_MS),
@@ -179,6 +186,7 @@ export function registerConnect(app: FastifyInstance, store: Store, hub: Hub) {
       })
       .finally(() => {
         receiver?.server.close();
+        changes.emit();
       });
     // The browser opens the approval page itself; nothing is logged.
     const location = await Promise.race([url, done]);
@@ -245,4 +253,8 @@ export function registerConnect(app: FastifyInstance, store: Store, hub: Hub) {
       return reply.code(204).send();
     },
   );
+  /** A T3 sign-in under way for the team: kept in memory, never stored. */
+  return {
+    signIn: (teamId: string) => (flow?.teamId === teamId ? flow.state : null),
+  };
 }

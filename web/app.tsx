@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { flushSync } from 'react-dom';
 import * as Tabs from '@radix-ui/react-tabs';
 import { ChannelId, TaskId } from '../src/domain/contracts.js';
@@ -157,6 +157,8 @@ export function App() {
   // the most recent refresh succeeded. Sending depends on these two facts,
   // never on whether a background request happens to be running.
   const [loadedFor, setLoadedFor] = useState<string | null>(null);
+  // The exact place (channel, topic, pages) the snapshot on screen shows.
+  const [loadedPlace, setLoadedPlace] = useState<string | null>(null);
   const [lastOk, setLastOk] = useState(false);
   const [revision, setRevision] = useState(0);
   const [manual, setManual] = useState(false);
@@ -225,13 +227,16 @@ export function App() {
       clearTimeout(timer);
     };
   }, [status, revision]);
-  useEffect(() => {
-    const controller = new AbortController();
+  const place = useMemo(() => {
     const query = new URLSearchParams(cursors);
     if (selection.channel) query.set('channelId', selection.channel);
     if (selection.topic) query.set('topicId', selection.topic);
+    return query.toString();
+  }, [cursors, selection.channel, selection.topic]);
+  useEffect(() => {
+    const controller = new AbortController();
     setStatus((previous) => (previous === 'signedout' ? previous : 'loading'));
-    void api('/api/workspace?' + query.toString(), {
+    void api('/api/workspace?' + place, {
       signal: controller.signal,
     })
       .then((raw) => {
@@ -241,6 +246,7 @@ export function App() {
           setData(next);
           setStatus('ready');
           setLoadedFor(selection.channel);
+          setLoadedPlace(place);
           setLastOk(true);
           setError('');
         };
@@ -274,7 +280,7 @@ export function App() {
     return () => {
       controller.abort();
     };
-  }, [selection.channel, selection.topic, cursors, revision, toSignedOut]);
+  }, [place, selection.channel, revision, toSignedOut]);
   // The address follows the place. Going somewhere new adds a history
   // entry, so Back returns; a topic switch only rewrites the address.
   const routed = useRef(false);
@@ -317,15 +323,33 @@ export function App() {
       window.removeEventListener('popstate', onPop);
     };
   }, []);
+  // The hub says when what is on screen has changed; nothing is polled.
+  const agentOnScreen = view === 'agent' ? agentId : null;
+  const live = status !== 'signedout' && loadedPlace === place;
   useEffect(() => {
-    if (status === 'signedout') return;
-    const poll = setInterval(refresh, 15000);
-    window.addEventListener('online', refresh);
-    return () => {
-      clearInterval(poll);
-      window.removeEventListener('online', refresh);
+    if (!live) return;
+    const query = new URLSearchParams(place);
+    if (agentOnScreen) query.set('agent', agentOnScreen);
+    if (shown.current) query.set('since', shown.current.revision);
+    const events = new EventSource('/api/events?' + query.toString());
+    let lost = false;
+    events.addEventListener('changed', refresh);
+    // The browser retries a lost stream. Reading the view now shows whether
+    // the hub is out of reach or the session has ended; it is read again
+    // once the stream is back.
+    events.onerror = () => {
+      lost = true;
+      refresh();
     };
-  }, [status === 'signedout', refresh]);
+    events.onopen = () => {
+      if (!lost) return;
+      lost = false;
+      refresh();
+    };
+    return () => {
+      events.close();
+    };
+  }, [live, place, agentOnScreen, refresh]);
   const next = (key: string, cursor: string | null) => {
     if (cursor) setCursors((old) => ({ ...old, [key]: cursor }));
   };

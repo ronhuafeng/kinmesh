@@ -203,7 +203,7 @@ Work that never froze expires after seven days. Frozen, uncertain and correlated
 
 ## Workspace snapshot
 
-`GET /api/workspace` is a human-owner read that reconstructs, from Kinmesh's own data: the team, joined and left channels, the selected channel's messages, topics and tasks, agent profiles and avatars, and channel membership of agents. It takes only bounded cursors and channel/topic selection, never an actor, and responds `Cache-Control: no-store`. Pages hold up to 100 channels and profiles and 50 messages, topics or tasks.
+`GET /api/workspace` is a human-owner read that reconstructs, from Kinmesh's own data: the team, joined and left channels, the selected channel's messages, topics and tasks, agent profiles and avatars, and channel membership of agents. It takes only bounded cursors and channel/topic selection, never an actor, and responds `Cache-Control: no-store`. Its `revision` changes exactly when what it shows changes; the read time and worker heartbeats that change nothing on screen are left out. Pages hold up to 100 channels and profiles and 50 messages, topics or tasks.
 
 It also carries:
 
@@ -216,6 +216,8 @@ It also carries:
 
 `GET /api/agui/:teamId/:memberId` returns one official AG-UI 1.0 `STATE_SNAPSHOT` event for an agent, validated on both ends with `@ag-ui/core` schemas: source `kinmesh-persisted-reports`, read time, the profile, up to 20 execution associations and 100 reports each, in persisted order. An AgentId is never an AG-UI invocation ID, and a ChannelId is never a T3 ThreadId.
 
-Both are HTTP snapshots, not run or token streams: no `RUN_STARTED`, text deltas or approval controls are synthesized. The browser polls every 15 seconds and after each action; how stale or failed refreshes appear is specified in [DESIGN.md](design/DESIGN.md#voice).
+Both are HTTP snapshots, not run or token streams: no `RUN_STARTED`, text deltas or approval controls are synthesized.
+
+`GET /api/events` is a Server-Sent Events stream for one open view: the snapshot's query, the agent page on screen (`agent`) and the revision on screen (`since`). It sends only `changed`, with no data, when what that view shows has changed, including the agent's runs and a T3 sign-in under way; the browser then reads the view again. It sends `changed` at once if `since` is already behind. Nothing is polled: the hub notices commits by the worker and Team MCP processes through SQLite's `data_version`, its own through `total_changes()`, and agents crossing the liveness window. How stale or failed reads appear is specified in [DESIGN.md](design/DESIGN.md#voice).
 
 The browser sends a new `operationKey` for each logical action and the rendered `expectedVersion` for task commands. A request whose outcome is unknown keeps its exact body and key and is retried only on request, never automatically.

@@ -311,7 +311,7 @@ export function AgentPage({
   onOwnWorker: () => void;
   onDone: () => void;
 }) {
-  const t3 = useT3(data.team.id);
+  const t3 = useT3(data.team.id, data.observedAt);
   return (
     <Page label={agent.name} onClose={onBack} className="agent-page">
       <div className="agent-layout">
