@@ -6,11 +6,15 @@ import { feishuPerson, signInAs, standInFeishu } from './feishu.js';
 import { postInput } from './communication-helpers.js';
 
 const TOKEN = 'metrics-token-for-tests-0123456789abcdef';
-async function hub(workerReady: () => boolean = () => true, rateLimit = 60) {
+async function hub(
+  workerReady: () => boolean = () => true,
+  rateLimit = 60,
+  trustedProxies: string[] = [],
+) {
   const f = fixture();
   const store = f.open();
   const app = await createApp(
-    { ...f.config, rateLimit, metricsToken: TOKEN },
+    { ...f.config, rateLimit, metricsToken: TOKEN, trustedProxies },
     store,
     workerReady,
     undefined,
@@ -122,6 +126,22 @@ await test('/metrics is for this machine, or for whoever holds its token', async
       (await from('203.0.113.5', `Bearer ${TOKEN}`)).statusCode,
       200,
     );
+  } finally {
+    await h.dispose();
+  }
+});
+
+await test('through the proxy on this machine, a client elsewhere is still refused', async () => {
+  const h = await hub(() => true, 60, ['127.0.0.1']);
+  try {
+    const via = (client: string) =>
+      h.app.inject({
+        url: '/metrics',
+        remoteAddress: '127.0.0.1',
+        headers: { 'x-forwarded-for': client },
+      });
+    assert.equal((await via('203.0.113.5')).statusCode, 403);
+    assert.equal((await via('127.0.0.1')).statusCode, 200);
   } finally {
     await h.dispose();
   }
