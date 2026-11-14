@@ -63,7 +63,10 @@ export function registerWorkspace(
         executionId,
       );
       try {
-        const connection = await store.managed.teamConnection(teamId);
+        const connection = await store.managed.teamConnection(
+          principal,
+          teamId,
+        );
         if (!connection) throw new Error('Unavailable');
         const credential = loadCredential(
           t3CredentialFile,
@@ -132,7 +135,7 @@ export function registerWorkspace(
     }
     const now = Date.now();
     const known = new Set(agents.map((agent) => agent.id));
-    const wake = (await store.inbox.liveness(teamId))
+    const wake = (await store.inboxViews.liveness(principal, teamId))
       .filter((row) => known.has(AgentId.parse(row.agentId)))
       .map((row) => ({
         agentId: row.agentId,
@@ -155,7 +158,7 @@ export function registerWorkspace(
           ...(query.tasksCursor ? { cursor: query.tasksCursor } : {}),
         })
       : { items: [], nextCursor: null };
-    // Channel access was authorized above; the projection is allow-listed.
+    // The projection is allow-listed.
     const iso = (ms: number | null) =>
       ms === null ? null : new Date(ms).toISOString();
     const project = (d: {
@@ -181,7 +184,8 @@ export function registerWorkspace(
     });
     const deliveries = channel
       ? (
-          await store.inbox.deliveriesFor(
+          await store.inboxViews.deliveriesFor(
+            principal,
             teamId,
             channel.id,
             messages.items.map((m) => m.id),
@@ -194,20 +198,20 @@ export function registerWorkspace(
     const live = new Set(wake.filter((w) => w.connected).map((w) => w.agentId));
     const attention = {
       decide: await store.tasks.waitingOn(principal, teamId),
-      unstuck: (await store.inbox.blockedIn(teamId, principal.humanId))
+      unstuck: (await store.inboxViews.blockedIn(principal, teamId))
         .filter((d) => known.has(AgentId.parse(d.agentId)))
         .map((d) => ({
           ...project(d),
           channelId: d.channelId,
           channelName: d.channelName,
         })),
-      connect: (await store.inbox.queuedPerAgent(teamId))
+      connect: (await store.inboxViews.queuedPerAgent(principal, teamId))
         .filter(
           (q) => known.has(AgentId.parse(q.agentId)) && !live.has(q.agentId),
         )
         .map((q) => ({ agentId: q.agentId, queued: q.count })),
     };
-    const t3 = await store.managed.teamConnection(teamId);
+    const t3 = await store.managed.teamConnection(principal, teamId);
     const t3Origin = t3 ? new URL(t3.endpoint).origin : null;
     return WorkspaceSnapshot.parse(
       withRevision({
@@ -215,7 +219,7 @@ export function registerWorkspace(
         nativeT3Origin: t3Origin,
         human,
         team: membership.team,
-        people: await store.people(teamId, now),
+        people: await store.people(principal, teamId, now),
         joinedHumanIds: channel
           ? await store.communication.joinedHumans(
               principal,
@@ -231,7 +235,8 @@ export function registerWorkspace(
         joinedAgentIds,
         deliveries,
         replies: channel
-          ? await store.inbox.repliesFor(
+          ? await store.inboxViews.repliesFor(
+              principal,
               teamId,
               channel.id,
               messages.items.map((m) => m.id),
@@ -239,10 +244,10 @@ export function registerWorkspace(
           : [],
         attention,
         wake,
-        managed: (await store.managed.teamBindings(teamId)).filter((b) =>
-          known.has(AgentId.parse(b.agentId)),
+        managed: (await store.managed.teamBindings(principal, teamId)).filter(
+          (b) => known.has(AgentId.parse(b.agentId)),
         ),
-        teamMcp: (await store.managed.teamMcpPresence(teamId))
+        teamMcp: (await store.managed.teamMcpPresence(principal, teamId))
           .filter((row) => known.has(AgentId.parse(row.agentId)))
           .map((row) => ({
             agentId: row.agentId,

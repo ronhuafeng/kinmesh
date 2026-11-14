@@ -53,16 +53,19 @@ await test('a running worker records liveness for its bindings and withdraws it 
       f.factory,
       stopping.signal,
       async () => {
-        seenWhileRunning = (await f.inbox.liveness(f.teamId)).map(
-          (r) => r.agentId,
-        );
+        seenWhileRunning = (
+          await f.store.inboxViews.liveness(f.principal, f.teamId)
+        ).map((r) => r.agentId);
         stopping.abort();
         return Promise.resolve();
       },
     );
     await running;
     assert.deepEqual(seenWhileRunning, [f.agent.id]);
-    assert.deepEqual(await f.inbox.liveness(f.teamId), []);
+    assert.deepEqual(
+      await f.store.inboxViews.liveness(f.principal, f.teamId),
+      [],
+    );
   } finally {
     await f.dispose();
   }
