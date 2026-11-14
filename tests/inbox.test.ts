@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import Database from 'better-sqlite3';
+import { rawDatabase } from './raw.js';
 import { randomUUID } from 'node:crypto';
 import { writeFileSync, chmodSync, symlinkSync } from 'node:fs';
 import { join } from 'node:path';
@@ -71,7 +71,7 @@ async function freeze(
 }
 await test('inbox enqueue and outbox/receipt are atomic; exact replay is once and collision fails', async () => {
   const f = await inboxFixture();
-  const raw = new Database(f.dbPath);
+  const raw = rawDatabase(f.dbPath);
   try {
     const input = postInput({
       mentions: [{ kind: 'agent', id: f.agent.id }],
@@ -86,7 +86,7 @@ await test('inbox enqueue and outbox/receipt are atomic; exact replay is once an
       (await f.comm.post(f.principal, f.teamId, f.channelId, input)).id,
       message.id,
     );
-    assert.equal(f.rows().length, 1);
+    assert.equal((await f.rows()).length, 1);
     await assert.rejects(
       () =>
         f.comm.post(f.principal, f.teamId, f.channelId, {
@@ -111,7 +111,7 @@ await test('inbox enqueue and outbox/receipt are atomic; exact replay is once an
           .get(),
       );
     const before = counts();
-    raw.exec(
+    await raw.exec(
       "CREATE TRIGGER reject_inbox BEFORE INSERT ON agent_inbox BEGIN SELECT RAISE(ABORT,'fixture'); END",
     );
     await assert.rejects(() => mention(f));
@@ -121,7 +121,7 @@ await test('inbox enqueue and outbox/receipt are atomic; exact replay is once an
     );
     assert.deepEqual(counts(), before);
   } finally {
-    raw.close();
+    await raw.close();
     await f.dispose();
   }
 });
@@ -166,12 +166,12 @@ await test('MOCK external adapter: exact-run actual assistant is attributed and 
       1,
     );
     assert.equal(
-      f.rows().length,
+      (await f.rows()).length,
       1,
       'result has no mentions, cannot wake itself',
     );
     assert.equal(await f.inbox.claim([f.agent.id]), undefined);
-    const reopened = f.open();
+    const reopened = await f.open();
     try {
       assert.equal(
         (await reopened.inbox.get(c.id)).resultMessageId,
@@ -192,7 +192,7 @@ await test('MOCK external adapter: exact-run actual assistant is attributed and 
 for (const status of ['completed', 'failed'] as const)
   await test(`MOCK SQLite recovery: an agent-prelinked exact Run publishes once after restart (${status})`, async () => {
     const f = await inboxFixture();
-    const raw = new Database(f.dbPath);
+    const raw = rawDatabase(f.dbPath);
     try {
       const task = (
         await f.create({ owner: { kind: 'agent', id: f.agent.id } })
@@ -219,8 +219,8 @@ for (const status of ['completed', 'failed'] as const)
       const terminal = assistantRead('MOCK exact-run recovered result', status);
       if (status === 'failed') terminal.items = [];
       f.wire.values.t3_thread_read = terminal;
-      due(f.dbPath);
-      const reopened = f.open();
+      await due(f.dbPath);
+      const reopened = await f.open();
       try {
         const recovered = await reopened.inbox.claim([f.agent.id]);
         assert.ok(recovered);
@@ -252,15 +252,21 @@ for (const status of ['completed', 'failed'] as const)
         assert.equal(row.launch, frozen.launch);
         assert.equal(row.reference, frozen.reference);
         assert.equal(
-          raw.prepare('SELECT count(*) FROM inbox_results').pluck().get(),
+          await raw.prepare('SELECT count(*) FROM inbox_results').pluck().get(),
           1,
         );
         assert.equal(
-          raw.prepare('SELECT task_link_id FROM inbox_results').pluck().get(),
+          await raw
+            .prepare('SELECT task_link_id FROM inbox_results')
+            .pluck()
+            .get(),
           linked.executionLink.id,
         );
         assert.equal(
-          raw.prepare('SELECT count(*) FROM agent_correlations').pluck().get(),
+          await raw
+            .prepare('SELECT count(*) FROM agent_correlations')
+            .pluck()
+            .get(),
           1,
         );
         assert.deepEqual(
@@ -299,11 +305,11 @@ for (const status of ['completed', 'failed'] as const)
         await reopened.close();
       }
     } finally {
-      raw.close();
+      await raw.close();
       await f.dispose();
     }
   });
-await test('MOCK SQLite publication reuses only the same task and exact Run, not nearby execution evidence', async () => {
+await test('MOCK publication reuses only the same task and exact Run, not nearby execution evidence', async () => {
   const f = await inboxFixture();
   try {
     const task = (await f.create({ owner: { kind: 'agent', id: f.agent.id } }))
@@ -392,7 +398,7 @@ await test('MOCK native terminal failure without assistant posts truthful notice
     assert.equal(notice.sourceEventId, c.eventId);
     assert.equal(notice.author.kind, 'agent');
     assert.equal(notice.author.agentId, f.agent.id);
-    const reopened = f.open();
+    const reopened = await f.open();
     try {
       assert.equal((await reopened.inbox.get(c.id)).state, 'acked');
       assert.equal(
@@ -486,7 +492,7 @@ for (const { failedTable, prelinked } of [
       (prelinked ? ' with prelinked Run' : ''),
     async () => {
       const f = await inboxFixture();
-      const raw = new Database(f.dbPath);
+      const raw = rawDatabase(f.dbPath);
       try {
         const task = (
           await f.create({
@@ -531,7 +537,7 @@ for (const { failedTable, prelinked } of [
           failedTable === 'inbox_history'
             ? " WHEN NEW.reason='assistant-result-published'"
             : '';
-        raw.exec(
+        await raw.exec(
           'CREATE TRIGGER reject_ack BEFORE INSERT ON ' +
             failedTable +
             condition +
@@ -547,7 +553,7 @@ for (const { failedTable, prelinked } of [
             .version,
           prelinked ? 2 : 1,
         );
-        raw.exec('DROP TRIGGER reject_ack');
+        await raw.exec('DROP TRIGGER reject_ack');
         const result = await f.inbox.ack(c, f.workerPrincipal, fixtureResult());
         assert.equal((await f.inbox.get(c.id)).resultMessageId, result.id);
         const current = await f.tasks.get(
@@ -573,11 +579,11 @@ for (const { failedTable, prelinked } of [
           IdentityError,
         );
         assert.equal(
-          raw.prepare('SELECT count(*) FROM inbox_results').pluck().get(),
+          await raw.prepare('SELECT count(*) FROM inbox_results').pluck().get(),
           1,
         );
       } finally {
-        raw.close();
+        await raw.close();
         await f.dispose();
       }
     },
@@ -593,7 +599,7 @@ for (const denied of [
 ] as const)
   await test('current dispatch authority fails closed: ' + denied, async () => {
     const f = await inboxFixture();
-    const raw = new Database(f.dbPath);
+    const raw = rawDatabase(f.dbPath);
     try {
       if (denied === 'reassigned')
         await f.create({ owner: { kind: 'agent', id: f.agent.id } });
@@ -676,11 +682,11 @@ for (const denied of [
       assert.equal((await f.inbox.get(c.id)).state, 'blocked');
       assert.equal(f.wire.calls.length, 0);
       assert.equal(
-        raw.prepare('SELECT count(*) FROM inbox_results').pluck().get(),
+        await raw.prepare('SELECT count(*) FROM inbox_results').pluck().get(),
         0,
       );
     } finally {
-      raw.close();
+      await raw.close();
       await f.dispose();
     }
   });
@@ -765,9 +771,9 @@ await test('uncertain launch uses explicit reconciliation and identical native r
     assert.ok((await f.inbox.get(c.id)).operationId);
     const first = f.wire.calls.find((c) => c.name === 't3_thread_launch')?.args
       .clientRequestId;
-    due(f.dbPath);
+    await due(f.dbPath);
     f.wire.handler = undefined;
-    const reopened = f.open();
+    const reopened = await f.open();
     try {
       const backend = await T3Backend.connect(
         f.wire,
@@ -820,9 +826,9 @@ await test('native connection unavailable keeps retryable work with bounded back
       assert.equal(row.state, 'ready');
       assert.ok(row.nextAttempt > Date.now() - 100);
       assert.equal(row.resultMessageId, null);
-      due(f.dbPath);
+      await due(f.dbPath);
     }
-    assert.equal(f.rows()[0]?.attempts, 12);
+    assert.equal((await f.rows())[0]?.attempts, 12);
     assert.equal(retryDelay(100000), 300000);
     assert.equal(f.wire.calls.length, 0);
   } finally {
@@ -831,15 +837,15 @@ await test('native connection unavailable keeps retryable work with bounded back
 });
 await test('leases fence every stale write and ACK; global capacity and per-agent order hold across connections', async () => {
   const f = await inboxFixture();
-  const other = f.open();
-  const raw = new Database(f.dbPath);
+  const other = await f.open();
+  const raw = rawDatabase(f.dbPath);
   try {
     await mention(f);
     await mention(f);
     const c = await claim(f);
     await freeze(f, c);
     assert.equal(await other.inbox.claim([f.agent.id]), undefined);
-    due(f.dbPath, true);
+    await due(f.dbPath, true);
     await assert.rejects(async () => {
       await f.inbox.remember(c, reference);
     }, IdentityError);
@@ -874,22 +880,22 @@ await test('leases fence every stale write and ACK; global capacity and per-agen
     await other.inbox.ack(next, f.workerPrincipal, fixtureResult());
     assert.ok(await f.inbox.claim([f.agent.id]));
     assert.equal(INBOX_CAPACITY, 2);
-    assert.throws(() => raw.exec('DELETE FROM inbox_history'));
-    assert.throws(() =>
+    await assert.rejects(() => raw.exec('DELETE FROM inbox_history'));
+    await assert.rejects(() =>
       raw.exec("UPDATE agent_inbox SET event_id='rewritten'"),
     );
-    assert.throws(() => raw.exec('DELETE FROM agent_inbox'));
+    await assert.rejects(() => raw.exec('DELETE FROM agent_inbox'));
   } finally {
-    raw.close();
+    await raw.close();
     await other.close();
     await f.dispose();
   }
 });
 for (const recovery of ['release', 'expired-lease'] as const)
-  await test(`MOCK SQLite recovery: resumed older delivery waits for a newer same-agent lease (${recovery})`, async () => {
+  await test(`MOCK recovery: resumed older delivery waits for a newer same-agent lease (${recovery})`, async () => {
     const f = await inboxFixture();
-    const other = f.open();
-    const raw = new Database(f.dbPath);
+    const other = await f.open();
+    const raw = rawDatabase(f.dbPath);
     try {
       await mention(f, 'Older request to recover');
       const older = await claim(f);
@@ -936,7 +942,7 @@ for (const recovery of ['release', 'expired-lease'] as const)
         await other.inbox.defer(newer, 'waiting', 'fixture-waiting');
       else {
         // Deterministic crash/clock fixture; no native T3 service or timers.
-        raw
+        await raw
           .prepare('UPDATE agent_inbox SET lease_until=1 WHERE id=?')
           .run(newer.id);
         await assert.rejects(
@@ -953,7 +959,7 @@ for (const recovery of ['release', 'expired-lease'] as const)
       assert.equal(await f.inbox.claim([f.agent.id]), undefined);
       await other.inbox.ack(recovered, f.workerPrincipal, fixtureResult());
 
-      due(f.dbPath);
+      await due(f.dbPath);
       const following = await claim(f);
       assert.equal(following.id, newer.id);
       assert.equal(following.generation, newer.generation + 1);
@@ -962,19 +968,19 @@ for (const recovery of ['release', 'expired-lease'] as const)
       assert.equal((await f.inbox.get(older.id)).state, 'acked');
       assert.equal((await f.inbox.get(newer.id)).state, 'acked');
       assert.equal(
-        raw.prepare('SELECT count(*) FROM inbox_results').pluck().get(),
+        await raw.prepare('SELECT count(*) FROM inbox_results').pluck().get(),
         2,
       );
       assert.equal(f.wire.calls.length, 0, 'Persistence-only MOCK evidence');
     } finally {
-      raw.close();
+      await raw.close();
       await other.close();
       await f.dispose();
     }
   });
 await test('agent handoffs follow trusted audit chain, one target per chain, finite budget; human intervention resets it', async () => {
   const f = await inboxFixture();
-  const raw = new Database(f.dbPath);
+  const raw = rawDatabase(f.dbPath);
   try {
     const members = [f.agent];
     for (let i = 1; i < 6; i++) {
@@ -1012,9 +1018,9 @@ await test('agent handoffs follow trusted audit chain, one target per chain, fin
         })
       ).task;
     }
-    assert.equal(f.rows().length, 5);
+    assert.equal((await f.rows()).length, 5);
     assert.deepEqual(
-      f.rows().map((r) => r.depth),
+      (await f.rows()).map((r) => r.depth),
       [0, 1, 2, 3, 4],
     );
     assert.equal(
@@ -1029,21 +1035,25 @@ await test('agent handoffs follow trusted audit chain, one target per chain, fin
       recipient: { kind: 'agent', id: f.agent.id },
       note: 'Human recovery',
     });
-    assert.equal(f.rows().length, 6);
-    assert.equal(f.rows().at(-1)?.depth, 0);
+    assert.equal((await f.rows()).length, 6);
+    assert.equal((await f.rows()).at(-1)?.depth, 0);
     await f.comm.post(
       f.agentPrincipal,
       f.teamId,
       f.channelId,
       postInput({ mentions: [{ kind: 'agent', id: f.reviewer.id }] }),
     );
-    assert.equal(f.rows().length, 6, 'agent chat cannot reset causal budget');
     assert.equal(
-      raw.prepare('SELECT count(*) FROM inbox_causes').pluck().get(),
+      (await f.rows()).length,
+      6,
+      'agent chat cannot reset causal budget',
+    );
+    assert.equal(
+      await raw.prepare('SELECT count(*) FROM inbox_causes').pluck().get(),
       7,
     );
   } finally {
-    raw.close();
+    await raw.close();
     await f.dispose();
   }
 });
@@ -1066,8 +1076,8 @@ await test('task handoff A to B then B to A is suppressed by persisted root/targ
       recipient: { kind: 'agent', id: f.agent.id },
       note: 'B to A',
     });
-    assert.equal(f.rows().length, 2);
-    assert.equal(new Set(f.rows().map((r) => r.rootId)).size, 1);
+    assert.equal((await f.rows()).length, 2);
+    assert.equal(new Set((await f.rows()).map((r) => r.rootId)).size, 1);
   } finally {
     await f.dispose();
   }
@@ -1159,9 +1169,49 @@ await test('native assistant selection refuses wrong run/tool text, preserves wa
     await f.dispose();
   }
 });
-await test('global capacity two is enforced across independent SQLite connections and distinct agents', async () => {
+await test('claimers racing on separate connections take two deliveries, for two agents, each once', async () => {
+  const f = await inboxFixture();
+  const others = await Promise.all([1, 2, 3, 4, 5].map(() => f.open()));
+  try {
+    const third = await f.store.agents.create(f.principal, f.teamId, {
+      ...profileInput,
+      name: 'Racing third',
+    });
+    await f.comm.enroll(
+      f.principal,
+      f.teamId,
+      f.channelId,
+      { operationKey: key(), member: { kind: 'agent', id: third.id } },
+      'invite',
+    );
+    const ids = [f.agent.id, f.reviewer.id, third.id];
+    for (let i = 0; i < 2; i++)
+      await f.comm.post(
+        f.principal,
+        f.teamId,
+        f.channelId,
+        postInput({ mentions: ids.map((id) => ({ kind: 'agent', id })) }),
+      );
+    // Every connection claims twice at once: twelve claims for two slots.
+    const claimed = (
+      await Promise.all(
+        [f.inbox, ...others.map((s) => s.inbox)].flatMap((inbox) => [
+          inbox.claim(ids),
+          inbox.claim(ids),
+        ]),
+      )
+    ).filter((c) => c !== undefined);
+    assert.equal(claimed.length, INBOX_CAPACITY);
+    assert.equal(new Set(claimed.map((c) => c.id)).size, INBOX_CAPACITY);
+    assert.equal(new Set(claimed.map((c) => c.agentId)).size, INBOX_CAPACITY);
+  } finally {
+    for (const s of others) await s.close();
+    await f.dispose();
+  }
+});
+await test('global capacity two is enforced across independent connections and distinct agents', async () => {
   const f = await inboxFixture(),
-    second = f.open();
+    second = await f.open();
   try {
     const third = await f.store.agents.create(f.principal, f.teamId, {
       ...profileInput,
@@ -1197,21 +1247,23 @@ await test('global capacity two is enforced across independent SQLite connection
 });
 await test('never-dispatched expiry, bounded retry history, retained facts and reserved final ACK snapshot', async () => {
   const f = await inboxFixture();
-  const raw = new Database(f.dbPath);
+  const raw = rawDatabase(f.dbPath);
   try {
     await mention(f);
-    const row = f.rows()[0];
+    const row = (await f.rows())[0];
     assert.ok(row);
     // Controlled clock fixture only: production code cannot edit expiry or source fields.
-    raw.exec('DROP TRIGGER inbox_source_immutable');
-    raw.prepare('UPDATE agent_inbox SET expires_at=1 WHERE id=?').run(row.id);
+    await raw.exec('DROP TRIGGER inbox_source_immutable');
+    await raw
+      .prepare('UPDATE agent_inbox SET expires_at=1 WHERE id=?')
+      .run(row.id);
     assert.equal(await f.inbox.claim([f.agent.id]), undefined);
     assert.equal((await f.inbox.get(row.id)).state, 'expired');
     await mention(f);
     for (let n = 0; n < 140; n++) {
       const c = await claim(f);
       await f.inbox.defer(c, 'ready', 'fixture-retry');
-      due(f.dbPath);
+      await due(f.dbPath);
     }
     const c = await claim(f);
     await freeze(f, c);
@@ -1229,12 +1281,12 @@ await test('never-dispatched expiry, bounded retry history, retained facts and r
       3,
     );
     assert.equal(
-      f.rows().length,
+      (await f.rows()).length,
       2,
       'expiry retains historical delivery and source',
     );
   } finally {
-    raw.close();
+    await raw.close();
     await f.dispose();
   }
 });
@@ -1249,7 +1301,7 @@ await test('frozen T3 endpoint/authority and Kinmesh grant cannot switch after u
           ? Promise.reject(new Error('Fixture disconnect'))
           : Promise.resolve(envelope(f.wire.values[name]));
       await deliver(f.store, c, f.binding, f.factory, signal());
-      due(f.dbPath);
+      await due(f.dbPath);
       const next = await claim(f);
       f.wire.handler = undefined;
       const identity = {
@@ -1326,7 +1378,7 @@ await test('MOCK native waiting/pending approval remains waiting across retries 
     await deliver(f.store, first, f.binding, f.factory, signal());
     assert.equal((await f.inbox.get(first.id)).state, 'waiting');
     assert.equal((await f.inbox.get(first.id)).resultMessageId, null);
-    due(f.dbPath);
+    await due(f.dbPath);
     await deliver(f.store, await claim(f), f.binding, f.factory, signal());
     assert.equal(
       f.wire.calls.filter((c) => c.name === 't3_thread_launch').length,
@@ -1338,7 +1390,7 @@ await test('MOCK native waiting/pending approval remains waiting across retries 
       'in-progress',
     );
     f.wire.values.t3_thread_read = assistantRead('Actual fixture result');
-    due(f.dbPath);
+    await due(f.dbPath);
     await deliver(f.store, await claim(f), f.binding, f.factory, signal());
     assert.equal((await f.inbox.get(first.id)).state, 'acked');
   } finally {
@@ -1347,7 +1399,7 @@ await test('MOCK native waiting/pending approval remains waiting across retries 
 });
 await test('lease lost inside publication rolls back downstream message/outbox/link and ACK together', async () => {
   const f = await inboxFixture();
-  const raw = new Database(f.dbPath);
+  const raw = rawDatabase(f.dbPath);
   try {
     await f.create({ owner: { kind: 'agent', id: f.agent.id } });
     const c = await claim(f);
@@ -1367,7 +1419,7 @@ await test('lease lost inside publication rolls back downstream message/outbox/l
           .get(),
       );
     const before = counts();
-    raw.exec(
+    await raw.exec(
       'CREATE TRIGGER fixture_lose_fence BEFORE INSERT ON inbox_results BEGIN UPDATE agent_inbox SET lease_until=1 WHERE id=NEW.delivery_id; END',
     );
     await assert.rejects(
@@ -1378,7 +1430,7 @@ await test('lease lost inside publication rolls back downstream message/outbox/l
     assert.equal((await f.inbox.get(c.id)).leaseUntil, c.leaseUntil);
     assert.equal((await f.inbox.get(c.id)).state, 'ready');
   } finally {
-    raw.close();
+    await raw.close();
     await f.dispose();
   }
 });

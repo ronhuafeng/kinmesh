@@ -1,10 +1,11 @@
 import { loadWorkerConfig } from './config.js';
 import { runWorker } from './worker.js';
 import { t3Factory } from './t3.js';
-import { openStore } from '../persistence/store.js';
+import { openStore, type Store } from '../persistence/store.js';
 import { once } from 'node:events';
 import {
-  databaseIdentity,
+  DatabaseIdentity,
+  sameDatabase,
   Initialize,
   Run,
   WORKER_SHUTDOWN_MS,
@@ -12,7 +13,7 @@ import {
 } from './lifecycle.js';
 import { reportFailure } from '../diagnostics.js';
 process.umask(0o077);
-let store: ReturnType<typeof openStore> | undefined;
+let store: Store | undefined;
 const stopping = new AbortController();
 const supervised = process.send !== undefined;
 let orphanDeadline: NodeJS.Timeout | undefined;
@@ -50,18 +51,11 @@ try {
   const path = process.env.KINMESH_INBOX_CONFIG;
   if (!initialize && !path) throw new Error('Missing configuration');
   const config = initialize?.config ?? loadWorkerConfig(path ?? '');
-  if (initialize) {
-    const identity = databaseIdentity(config.database);
-    if (
-      JSON.stringify(identity.identity) !== JSON.stringify(initialize.identity)
-    )
-      throw new Error('Database changed');
-  }
   stopping.signal.throwIfAborted();
-  store = openStore(config.database);
+  store = await openStore(config.database);
   if (initialize) {
-    const identity = databaseIdentity(config.database).identity;
-    if (JSON.stringify(identity) !== JSON.stringify(initialize.identity))
+    const identity = DatabaseIdentity.parse(await store.identity());
+    if (!sameDatabase(identity, initialize.identity))
       throw new Error('Database changed');
     // Install the command listener before notifying the parent; no claims before HTTP bind.
     const [run] = await Promise.all([

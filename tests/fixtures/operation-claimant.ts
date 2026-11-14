@@ -3,7 +3,7 @@ const path = process.argv[2];
 const id = process.argv[3];
 if (path === undefined || id === undefined)
   throw new Error('Missing fixture arguments');
-const store = openStore(path);
+const store = await openStore(path);
 process.once('message', () => {
   void store.operations.claim(id, true).then((claimed) => {
     process.send?.(claimed === undefined ? 'busy' : 'claimed');

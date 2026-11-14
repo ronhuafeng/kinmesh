@@ -13,6 +13,8 @@ import { LiveContext } from '../src/team-mcp/live-context.js';
 import { loadWorkerConfig } from '../src/inbox/config.js';
 import { loadAgentToken } from '../src/team-mcp/client.js';
 import { openStore } from '../src/persistence/store.js';
+import { DatabaseUrl } from '../src/persistence/database.js';
+import { disposableDatabase } from '../src/persistence/disposable.js';
 
 const Path = z.string().min(1).refine(isAbsolute);
 const Native = z.strictObject({
@@ -66,12 +68,8 @@ function contextAt(directory: string) {
   const path = join(directory, 'context.json');
   containedFile(directory, path);
   const context = LiveContext.parse(JSON.parse(readFileSync(path, 'utf8')));
-  if (
-    context.database !== join(directory, 'team.sqlite') ||
-    context.tokenFile !== join(directory, 'developer.json')
-  )
+  if (context.tokenFile !== join(directory, 'developer.json'))
     throw new Error('Wrong disposable context');
-  containedFile(directory, context.database, Number.MAX_SAFE_INTEGER);
   containedFile(directory, context.tokenFile);
   return context;
 }
@@ -89,13 +87,24 @@ export interface ReleaseStage {
   env: Record<string, string>;
 }
 export async function releasePlanFromEnvironment(env: NodeJS.ProcessEnv) {
-  if (env.KINMESH_RELEASE_LIVE !== '1' || !env.KINMESH_RELEASE_CONFIG)
+  if (
+    env.KINMESH_RELEASE_LIVE !== '1' ||
+    !env.KINMESH_RELEASE_CONFIG ||
+    !env.KINMESH_DATABASE_ADMIN_URL
+  )
     throw new Error(
-      'Explicit aggregate opt-in and private release configuration required',
+      'Explicit aggregate opt-in, private release configuration and a PostgreSQL admin URL required',
     );
-  return loadReleasePlan(env.KINMESH_RELEASE_CONFIG);
+  return loadReleasePlan(
+    env.KINMESH_RELEASE_CONFIG,
+    DatabaseUrl.parse(env.KINMESH_DATABASE_ADMIN_URL),
+  );
 }
-export async function loadReleasePlan(path: string): Promise<ReleaseStage[]> {
+/** Validates every stage, then makes the SDK stage's own fresh database. */
+export async function loadReleasePlan(
+  path: string,
+  adminUrl: string,
+): Promise<ReleaseStage[]> {
   privateFile(path);
   const config = ReleaseConfig.parse(JSON.parse(readFileSync(path, 'utf8')));
   privateDirectory(config.sdk.directory, 'kinmesh-t3-live-');
@@ -108,13 +117,17 @@ export async function loadReleasePlan(path: string): Promise<ReleaseStage[]> {
   containedFile(config.sdk.directory, config.sdk.readAuthFile);
   if (config.sdk.authFile === config.sdk.readAuthFile)
     throw new Error('Separate read-only grant required');
-  for (const name of ['sdk.sqlite', 'sdk-report.json'])
-    if (lstatSync(join(config.sdk.directory, name), { throwIfNoEntry: false }))
-      throw new Error('Fresh SDK outputs required');
+  if (
+    lstatSync(join(config.sdk.directory, 'sdk-report.json'), {
+      throwIfNoEntry: false,
+    })
+  )
+    throw new Error('Fresh SDK outputs required');
   const team = contextAt(config.team.directory);
   const inbox = contextAt(config.inbox.directory);
   if (
     team.endpoint === inbox.endpoint ||
+    team.database === inbox.database ||
     team.teamId === inbox.teamId ||
     team.agentId === inbox.agentId ||
     team.taskId === inbox.taskId
@@ -142,7 +155,7 @@ export async function loadReleasePlan(path: string): Promise<ReleaseStage[]> {
   // Validate both databases and grants before opening any native connection.
   await validateFixture(team, false);
   await validateFixture(inbox, true);
-  const profileStore = openStore(inbox.database);
+  const profileStore = await openStore(inbox.database);
   let modelId: string;
   try {
     const principal = await profileStore.agents.resolveToken(
@@ -164,6 +177,7 @@ export async function loadReleasePlan(path: string): Promise<ReleaseStage[]> {
   } finally {
     await profileStore.close();
   }
+  const sdkDatabase = await disposableDatabase(adminUrl, 'live');
   const common = (c: z.infer<typeof Native>) => ({
     KINMESH_T3_ENDPOINT: c.endpoint,
     KINMESH_T3_AUTH_FILE: c.authFile,
@@ -180,7 +194,7 @@ export async function loadReleasePlan(path: string): Promise<ReleaseStage[]> {
         KINMESH_T3_LIVE: '1',
         KINMESH_T3_READ_AUTH_FILE: config.sdk.readAuthFile,
         KINMESH_T3_PROVIDER: config.sdk.providerId,
-        KINMESH_T3_LIVE_DATABASE: join(config.sdk.directory, 'sdk.sqlite'),
+        KINMESH_T3_LIVE_DATABASE: sdkDatabase.url,
         KINMESH_T3_LIVE_REPORT: join(config.sdk.directory, 'sdk-report.json'),
       },
     },
@@ -219,8 +233,7 @@ export async function validateFixture(
   context: z.infer<typeof LiveContext>,
   inbox: boolean,
 ) {
-  privateFile(context.database, Number.MAX_SAFE_INTEGER);
-  const store = openStore(context.database);
+  const store = await openStore(context.database);
   try {
     const p = await store.agents.resolveToken(
       loadAgentToken(context.tokenFile),

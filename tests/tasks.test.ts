@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
-import Database from 'better-sqlite3';
+import { rawDatabase } from './raw.js';
 import type { z } from 'zod';
 import { HumanId } from '../src/domain/contracts.js';
 import { IdentityError } from '../src/domain/agents.js';
@@ -541,7 +541,7 @@ await test('external execution links are multiple immutable references and never
 
 await test("the assigned reviewer/owner and the task's acceptor control decisions, never another person of the team or a descriptive role", async () => {
   const f = await taskFixture();
-  const raw = new Database(f.dbPath);
+  const raw = rawDatabase(f.dbPath);
   try {
     let task = (await f.create({ owner: { kind: 'agent', id: f.agent.id } }))
       .task;
@@ -580,10 +580,10 @@ await test("the assigned reviewer/owner and the task's acceptor control decision
     // Another person of the team, in the channel, is not the acceptor.
     {
       const humanId = HumanId.parse(randomUUID());
-      raw
+      await raw
         .prepare('INSERT INTO humans (id, username, email) VALUES (?, ?, ?)')
         .run(humanId, 'other-person', 'other-person@example.com');
-      raw
+      await raw
         .prepare('INSERT INTO memberships VALUES (?, ?)')
         .run(humanId, f.teamId);
       await f.comm.enroll(
@@ -612,7 +612,7 @@ await test("the assigned reviewer/owner and the task's acceptor control decision
         );
     }
   } finally {
-    raw.close();
+    await raw.close();
     await f.dispose();
   }
 });
@@ -956,14 +956,14 @@ await test('strict task HTTP input, size bounds, actor spoofing and mixed author
 
 await test('task CAS, audit, link and shared outbox roll back together on injected failures and enforce immutable history', async () => {
   const f = await taskFixture();
-  const raw = new Database(f.dbPath);
+  const raw = rawDatabase(f.dbPath);
   try {
     const created = await f.create();
     const task = created.task;
     const before = (await f.comm.events(f.principal, f.teamId, f.channelId))
       .items.length;
     const command = commandInput(task, { type: 'claim' });
-    raw.exec(
+    await raw.exec(
       "CREATE TRIGGER fail_task_audit BEFORE INSERT ON task_events BEGIN SELECT RAISE(ABORT,'test rollback'); END",
     );
     await assert.rejects(() =>
@@ -978,7 +978,7 @@ await test('task CAS, audit, link and shared outbox roll back together on inject
       (await f.comm.events(f.principal, f.teamId, f.channelId)).items.length,
       before,
     );
-    raw.exec('DROP TRIGGER fail_task_audit');
+    await raw.exec('DROP TRIGGER fail_task_audit');
     const claimed = (
       await f.tasks.command(
         f.developer,
@@ -988,7 +988,7 @@ await test('task CAS, audit, link and shared outbox roll back together on inject
         command,
       )
     ).task;
-    raw.exec(
+    await raw.exec(
       "CREATE TRIGGER fail_task_outbox BEFORE INSERT ON communication_outbox BEGIN SELECT RAISE(ABORT,'test rollback'); END",
     );
     await assert.rejects(() =>
@@ -1008,8 +1008,8 @@ await test('task CAS, audit, link and shared outbox roll back together on inject
       2,
     );
     await assert.rejects(() => f.create());
-    raw.exec('DROP TRIGGER fail_task_outbox');
-    raw.exec(
+    await raw.exec('DROP TRIGGER fail_task_outbox');
+    await raw.exec(
       "CREATE TRIGGER fail_task_receipt BEFORE INSERT ON communication_operations BEGIN SELECT RAISE(ABORT,'test rollback'); END",
     );
     await assert.rejects(() =>
@@ -1019,7 +1019,7 @@ await test('task CAS, audit, link and shared outbox roll back together on inject
       (await f.tasks.get(f.principal, f.teamId, f.channelId, task.id)).version,
       2,
     );
-    raw.exec('DROP TRIGGER fail_task_receipt');
+    await raw.exec('DROP TRIGGER fail_task_receipt');
     for (const sql of [
       "UPDATE tasks SET criteria='[]'",
       'UPDATE tasks SET owner_key=NULL',
@@ -1027,14 +1027,14 @@ await test('task CAS, audit, link and shared outbox roll back together on inject
       'DELETE FROM task_events',
       'DELETE FROM tasks',
     ])
-      assert.throws(() => raw.exec(sql));
+      await assert.rejects(() => raw.exec(sql));
     const fact = (
       await f.comm.events(f.principal, f.teamId, f.channelId)
     ).items.find((e) => e.fact.id === created.eventId);
     assert.ok(fact);
     assert.equal(TaskFact.safeParse(fact.fact).success, true);
   } finally {
-    raw.close();
+    await raw.close();
     await f.dispose();
   }
 });
@@ -1049,7 +1049,7 @@ await test('task/history/execution snapshot pages are bounded and stable under i
     });
     assert.ok(first.nextCursor);
     const cursor = first.nextCursor;
-    const other = f.open();
+    const other = await f.open();
     try {
       await other.tasks.create(f.principal, f.teamId, f.channelId, taskInput());
     } finally {
@@ -1161,7 +1161,7 @@ await test('service reopen preserves task ownership/criteria/review decisions, e
     );
     const facts = await f.comm.events(f.principal, f.teamId, f.channelId);
     await f.app.close();
-    const store = f.open();
+    const store = await f.open();
     app = await createApp(f.config, store);
     const response = await app.inject({
       url: f.taskPath + '/' + task.id,

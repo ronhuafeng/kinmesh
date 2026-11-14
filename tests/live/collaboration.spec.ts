@@ -12,7 +12,7 @@ import { join } from 'node:path';
 import { randomUUID, createHash } from 'node:crypto';
 import { execFileSync } from 'node:child_process';
 import { setTimeout as delay } from 'node:timers/promises';
-import Database from 'better-sqlite3';
+import { rawDatabase, type RawDatabase } from '../raw.js';
 import { z } from 'zod';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js';
@@ -41,7 +41,7 @@ import {
   ExecutionFailure,
   type Observation,
 } from '../../src/domain/execution.js';
-import { openStore } from '../../src/persistence/store.js';
+import { openStore, type Store } from '../../src/persistence/store.js';
 import { FrozenLaunch } from '../../src/domain/inbox.js';
 import { assistantResult } from '../../src/inbox/worker.js';
 
@@ -100,8 +100,8 @@ test('complete real two-agent workflow, Human rework/acceptance, recovery and au
   const root = realpathSync(mkdtempSync(join(tmpdir(), 'kinmesh-live-')));
   const native = new Native(root, executor);
   const hub = new Hub(root, native);
-  let db: Database.Database | undefined;
-  let store: ReturnType<typeof openStore> | undefined;
+  let db: RawDatabase | undefined;
+  let store: Store | undefined;
   let wire: SdkWire | undefined;
   let backend: T3Backend | undefined;
   let tools: ValidatedTools | undefined;
@@ -137,12 +137,12 @@ test('complete real two-agent workflow, Human rework/acceptance, recovery and au
   const checks: Record<string, boolean> = {};
   evidence.checks = checks;
   evidence.hubTraffic = hub.traffic;
-  const rows = () => {
+  const rows = async () => {
     if (!db) throw new Error('DATABASE_REQUIRED');
     return z
       .array(rowSchema)
       .parse(
-        db
+        await db
           .prepare('select *from agent_inbox where task_id=? order by position')
           .all(hub.taskId),
       );
@@ -174,12 +174,12 @@ test('complete real two-agent workflow, Human rework/acceptance, recovery and au
     const results = [];
     const runIds = new Set<string>();
     const requestIds = new Set<string>();
-    for (const row of rows()) {
+    for (const row of await rows()) {
       assert.equal(row.state, 'acked');
       const binding = z
         .object({ grant_id: z.string(), provider_id: z.string() })
         .parse(
-          db
+          await db
             .prepare(
               'select grant_id,provider_id from managed_bindings where agent_id=? and team_id=?',
             )
@@ -268,9 +268,9 @@ test('complete real two-agent workflow, Human rework/acceptance, recovery and au
       const storedPublications = z
         .array(z.object({ id: z.string() }))
         .parse(
-          db
+          await db
             .prepare(
-              "select id from messages where source_event_id=? and json_extract(author,'$.agentId')=? and id<>?",
+              "select id from messages where source_event_id=? and (author::jsonb ->> 'agentId')=? and id<>?",
             )
             .all(row.event_id, row.agent_id, row.result_message_id),
         );
@@ -299,7 +299,7 @@ test('complete real two-agent workflow, Human rework/acceptance, recovery and au
           }),
         )
         .parse(
-          db
+          await db
             .prepare('select *from inbox_results where delivery_id=?')
             .all(row.id),
         );
@@ -317,7 +317,7 @@ test('complete real two-agent workflow, Human rework/acceptance, recovery and au
           body: z.string(),
         })
         .parse(
-          db
+          await db
             .prepare('select *from messages where id=?')
             .get(savedResult.message_id),
         );
@@ -336,7 +336,7 @@ test('complete real two-agent workflow, Human rework/acceptance, recovery and au
           reference: z.string(),
         })
         .parse(
-          db
+          await db
             .prepare('select *from execution_operations where operation_key=?')
             .get('inbox:' + row.id),
         );
@@ -345,10 +345,10 @@ test('complete real two-agent workflow, Human rework/acceptance, recovery and au
       requestIds.add(op.request_id);
       assert.deepEqual(JSON.parse(op.reference) as unknown, ref);
       identityLinks(
-        db
+        await db
           .prepare('select *from agent_correlations where id=?')
           .get(savedResult.correlation_id),
-        db
+        await db
           .prepare('select *from task_executions where id=?')
           .get(savedResult.task_link_id),
         {
@@ -401,12 +401,14 @@ test('complete real two-agent workflow, Human rework/acceptance, recovery and au
         (tool === 'team_task_review' ||
           (tool === 'team_messages_send' && !reviewWitnesses.has(ref.runId)))
       ) {
-        const index = rows().findIndex((candidate) => candidate.id === row.id);
+        const index = (await rows()).findIndex(
+          (candidate) => candidate.id === row.id,
+        );
         reviewProof(activity, ref.runId, {
           channelId: hub.channelId,
           taskId: hub.taskId,
           developerId: hub.agent('developer').profile.id,
-          developerEventId: rows()[index - 1]?.event_id ?? '',
+          developerEventId: (await rows())[index - 1]?.event_id ?? '',
           humanId: hub.humanId,
           marker: hub.marker,
           rework: index >= 2,
@@ -508,7 +510,7 @@ test('complete real two-agent workflow, Human rework/acceptance, recovery and au
   ) {
     const deadline = Date.now() + 10 * 60_000;
     while (Date.now() < deadline) {
-      const current = rows();
+      const current = await rows();
       for (const row of current) {
         if (row.state === 'blocked') throw new Error('INBOX_BLOCKED');
         if (row.state === 'acked' || !row.reference) continue;
@@ -521,7 +523,7 @@ test('complete real two-agent workflow, Human rework/acceptance, recovery and au
           const op = z
             .object({ request_id: z.string() })
             .parse(
-              db
+              await db
                 .prepare(
                   'select *from execution_operations where operation_key=?',
                 )
@@ -531,12 +533,12 @@ test('complete real two-agent workflow, Human rework/acceptance, recovery and au
           const worker = hub.workerPid();
           const leaseDeadline = Date.now() + 60_000;
           while (Date.now() < leaseDeadline) {
-            const candidate = rows().find(
+            const candidate = (await rows()).find(
               (candidate) => candidate.id === row.id,
             );
             if ((candidate?.lease_until ?? 0) > Date.now()) {
               process.kill(worker, 'SIGSTOP');
-              const paused = rows().find(
+              const paused = (await rows()).find(
                 (candidate) => candidate.id === row.id,
               );
               if ((paused?.lease_until ?? 0) > Date.now()) {
@@ -567,7 +569,7 @@ test('complete real two-agent workflow, Human rework/acceptance, recovery and au
       const task = z
         .object({ version: z.number(), state: z.string() })
         .parse(
-          db
+          await db
             .prepare('select version,state from tasks where id=?')
             .get(hub.taskId),
         );
@@ -608,8 +610,8 @@ test('complete real two-agent workflow, Human rework/acceptance, recovery and au
     assert.ok(!read.tokens.scope?.split(' ').includes('orchestration:operate'));
     // The harness reads T3 with its own Read only grant; the product checks
     // runs through the team's connection made with Connect T3.
-    store = openStore(hub.database);
-    db = new Database(hub.database, { readonly: true });
+    store = await openStore(hub.database);
+    db = rawDatabase(hub.database);
     await connectRead(read);
     assert.ok(tools);
     assert.ok(backend);
@@ -652,7 +654,9 @@ test('complete real two-agent workflow, Human rework/acceptance, recovery and au
     checks.workspaceOAuthModelBindingsPersisted = true;
     checks.productManagedWorkerWithoutManualConfig = true;
     assert.deepEqual(
-      db.prepare('select count(*) as n from execution_operations').get(),
+      await db
+        .prepare('select count(*)::int as n from execution_operations')
+        .get(),
       { n: 0 },
     );
     checks.noModelRunBeforeWorkspacePreflight = true;
@@ -663,13 +667,13 @@ test('complete real two-agent workflow, Human rework/acceptance, recovery and au
     await progress(3, 2, true);
     assert.equal(crashed, true);
     assert.ok(Date.now() >= originalLease);
-    const first = rows()[0];
+    const first = (await rows())[0];
     assert.ok(first);
     assert.equal(
       z
         .object({ request_id: z.string() })
         .parse(
-          db
+          await db
             .prepare('select *from execution_operations where operation_key=?')
             .get('inbox:' + first.id),
         ).request_id,
@@ -697,7 +701,7 @@ test('complete real two-agent workflow, Human rework/acceptance, recovery and au
       `/api/teams/${hub.teamId}/channels/${hub.channelId}/tasks`,
       hub.createdInput,
     );
-    assert.equal(rows().length, 2);
+    assert.equal((await rows()).length, 2);
     checks.sourceReplayDoesNotDuplicateDelivery = true;
     enter('agent-human-boundary');
     const developer = hub.agent('developer');
@@ -723,9 +727,9 @@ test('complete real two-agent workflow, Human rework/acceptance, recovery and au
     enter('t3-outage-and-human-rework');
     await native.server?.stop();
     await hub.decision('rework');
-    await until(() => rows().length === 3, 'REWORK_NOT_ENQUEUED');
+    await until(async () => (await rows()).length === 3, 'REWORK_NOT_ENQUEUED');
     await delay(2000);
-    const queued = rows()[2];
+    const queued = (await rows())[2];
     assert.ok(queued);
     assert.equal(queued.result_message_id, null);
     assert.equal(queued.reference, null);
@@ -737,7 +741,7 @@ test('complete real two-agent workflow, Human rework/acceptance, recovery and au
       async () => {
         process.kill(pausedWorker, 'SIGSTOP');
         if (
-          rows().every(
+          (await rows()).every(
             (row) => row.lease_until === 0 && row.claim_token === null,
           )
         )
@@ -749,14 +753,14 @@ test('complete real two-agent workflow, Human rework/acceptance, recovery and au
       'IDLE_WORKER_NOT_PAUSED',
       10000,
     );
-    const idle = rows().find((row) => row.id === queued.id);
+    const idle = (await rows()).find((row) => row.id === queued.id);
     assert.ok(idle);
     assert.equal(idle.launch, null);
     assert.equal(idle.reference, null);
     assert.deepEqual(
-      db
+      await db
         .prepare(
-          'select count(*) as n from execution_operations where operation_key=?',
+          'select count(*)::int as n from execution_operations where operation_key=?',
         )
         .get('inbox:' + queued.id),
       { n: 0 },
@@ -771,15 +775,15 @@ test('complete real two-agent workflow, Human rework/acceptance, recovery and au
     await connectRead(read);
     enter('second-collaboration-cycle');
     await progress(6, 4);
-    assert.equal(rows()[2]?.id, queued.id);
-    assert.equal(rows()[2]?.event_id, queued.event_id);
+    assert.equal((await rows())[2]?.id, queued.id);
+    assert.equal((await rows())[2]?.event_id, queued.event_id);
     checks.nativeOutageRetainsAndResumesHumanRework = true;
     await auditNative();
     enter('rework-artifact-and-independent-review');
     const authored = z
       .array(z.object({ author: z.string(), body: z.string() }))
       .parse(
-        db
+        await db
           .prepare(
             'select author,body from messages where channel_id=? order by position',
           )
@@ -802,7 +806,7 @@ test('complete real two-agent workflow, Human rework/acceptance, recovery and au
     await hub.process?.stop();
     await hub.start();
     assert.equal(JSON.stringify(await hub.task()), before);
-    assert.equal(rows().length, 4);
+    assert.equal((await rows()).length, 4);
     checks.hubRestartRetainsTaskAndNativeCorrelations = true;
     enter('human-acceptance');
     await hub.decision('accept');
@@ -814,7 +818,7 @@ test('complete real two-agent workflow, Human rework/acceptance, recovery and au
     const events = z
       .array(z.object({ event: z.string() }))
       .parse(
-        db
+        await db
           .prepare(
             'select event from task_events where task_id=? order by position',
           )
@@ -933,7 +937,7 @@ test('complete real two-agent workflow, Human rework/acceptance, recovery and au
     );
     checks.realAgentGrantRevocationDenied = true;
     await auditNative();
-    assert.equal(rows().length, 4);
+    assert.equal((await rows()).length, 4);
     for (const [table, expected] of [
       ['tasks', 1],
       ['agent_inbox', 4],
@@ -943,7 +947,9 @@ test('complete real two-agent workflow, Human rework/acceptance, recovery and au
     ] as const) {
       const count = z
         .object({ n: z.number() })
-        .parse(db.prepare('select count(*) as n from ' + table).get());
+        .parse(
+          await db.prepare('select count(*)::int as n from ' + table).get(),
+        );
       assert.equal(count.n, expected);
     }
     checks.noExtraFixtureTasksDeliveriesOrNativeIntents = true;
@@ -970,7 +976,7 @@ test('complete real two-agent workflow, Human rework/acceptance, recovery and au
       if (tools && db) {
         const inspector = tools;
         evidence.nativeDiagnostics = await Promise.all(
-          rows()
+          (await rows())
             .filter((row) => row.reference)
             .map(async (row) => {
               const ref = Reference.parse(
@@ -1032,7 +1038,7 @@ test('complete real two-agent workflow, Human rework/acceptance, recovery and au
     const cleanupIssues: string[] = [];
     try {
       if (db) {
-        const current = rows();
+        const current = await rows();
         evidence.correlatedNativeRuns = new Set(
           current.flatMap((row) => (row.reference ? [row.reference] : [])),
         ).size;

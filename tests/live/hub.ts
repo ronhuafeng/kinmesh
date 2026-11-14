@@ -30,9 +30,12 @@ import {
 } from '../browser/ui.js';
 import { feishuEnv } from '../helpers.js';
 import { startFeishuStandIn } from '../feishu.js';
+import { testDatabase } from '../database.js';
 
 export class Hub {
-  readonly database: string;
+  /** The hub's own disposable database, made when it first starts. */
+  database = '';
+  private owned: Awaited<ReturnType<typeof testDatabase>> | undefined;
   readonly session = randomBytes(32).toString('hex');
   origin = '';
   teamOrigin = '';
@@ -76,9 +79,7 @@ export class Hub {
   constructor(
     readonly root: string,
     readonly native: Native,
-  ) {
-    this.database = join(root, 'team.sqlite');
-  }
+  ) {}
   async api(path: string, data?: unknown) {
     const request = this.page?.request;
     if (!request) throw new Error('HUB_PAGE_REQUIRED');
@@ -102,11 +103,14 @@ export class Hub {
   async start() {
     if (!this.origin) this.origin = `http://127.0.0.1:${String(await port())}`;
     this.feishu ??= await startFeishuStandIn();
+    this.owned ??= await testDatabase();
+    this.database = this.owned.url;
     const env: NodeJS.ProcessEnv = {
       PATH: process.env.PATH,
       HOME: this.root,
       NODE_ENV: 'test',
-      KINMESH_DATABASE: this.database,
+      KINMESH_DATABASE_URL: this.database,
+      KINMESH_STATE: this.root,
       KINMESH_SESSION_KEY: this.session,
       ...feishuEnv,
       KINMESH_FEISHU_URL: this.feishu.url,
@@ -220,7 +224,8 @@ export class Hub {
       {
         PATH: process.env.PATH,
         HOME: this.root,
-        KINMESH_DATABASE: this.database,
+        KINMESH_DATABASE_URL: this.database,
+        KINMESH_STATE: this.root,
         KINMESH_TEAM_MCP_PORT: new URL(this.teamOrigin).port,
       },
       join(this.root, 'team.log'),
@@ -323,7 +328,7 @@ export class Hub {
     }
     await expect(connect).toHaveCount(0, { timeout: 15000 });
     const credential = loadCredential(
-      t3AuthFile(managedDirectory(this.database)),
+      t3AuthFile(managedDirectory(this.root)),
       this.native.endpoint,
     );
     assert.ok(
@@ -438,7 +443,7 @@ export class Hub {
     if (this.page && this.teamId) {
       for (const { profile, token } of this.agents.values()) {
         try {
-          const directory = managedDirectory(this.database);
+          const directory = managedDirectory(this.root);
           const managed = agentTokenFile(directory, profile.id);
           const tokens = [
             token,
@@ -475,6 +480,8 @@ export class Hub {
       this.team?.stop(),
       this.feishu?.close(),
     ]);
+    // Only once nothing is connected to it any more.
+    stopped.push(...(await Promise.allSettled([this.owned?.drop()])));
     return {
       grantsRevoked,
       servicesStopped: stopped.every((result) => result.status === 'fulfilled'),

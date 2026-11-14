@@ -286,7 +286,7 @@ export async function runWorker(
   const stopped = () => stopping.aborted;
   let initialized = false;
   const running = new Set<Promise<void>>();
-  const directory = managedDirectory(config.database);
+  const directory = managedDirectory(config.state);
   let bindings = new Map<AgentId, WorkerBinding>();
   let lastBeat = 0;
   try {

@@ -1,11 +1,8 @@
 # Kinmesh hub: the compiled server and the built workspace, nothing else.
-# Configuration comes from the environment; state lives in /data.
+# Configuration comes from the environment; the database is PostgreSQL at
+# KINMESH_DATABASE_URL, and the hub's own files live in /data.
 
-# Native modules (better-sqlite3) may need compiling; the tools stay here.
 FROM node:24-bookworm-slim AS toolchain
-RUN apt-get update \
-  && apt-get install -y --no-install-recommends python3 make g++ \
-  && rm -rf /var/lib/apt/lists/*
 WORKDIR /src
 COPY package.json package-lock.json ./
 
@@ -29,7 +26,7 @@ RUN find dist -name '*.d.ts' -delete \
 USER node
 ENV KINMESH_HOST=0.0.0.0 \
     KINMESH_PORT=3000 \
-    KINMESH_DATABASE=/data/kinmesh.sqlite
+    KINMESH_STATE=/data
 VOLUME ["/data"]
 EXPOSE 3000
 # Ready, not merely alive: the database answers and any worker is connected.

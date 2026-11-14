@@ -1,5 +1,6 @@
 import { isIP } from 'node:net';
 import { z } from 'zod';
+import { DatabaseUrl } from '../persistence/database.js';
 
 /** An address or a CIDR range, as a proxy may be named. */
 const ProxyAddress = z
@@ -16,7 +17,10 @@ const ProxyAddress = z
     );
   });
 const Environment = z.object({
-  KINMESH_DATABASE: z.string().min(1).default('.store/kinmesh.sqlite'),
+  /** The team's PostgreSQL. */
+  KINMESH_DATABASE_URL: DatabaseUrl,
+  /** Private files the hub keeps for its worker (tokens, T3 credential). */
+  KINMESH_STATE: z.string().min(1).default('.store'),
   KINMESH_SESSION_KEY: z.string().regex(/^[a-f0-9]{64}$/),
   KINMESH_ORIGIN: z.url().default('http://127.0.0.1:3000'),
   KINMESH_PORT: z.coerce.number().int().min(1).max(65535).default(3000),
@@ -79,7 +83,8 @@ export function loadConfig(env: NodeJS.ProcessEnv) {
   )
     throw new Error('An HTTPS origin needs KINMESH_TRUSTED_PROXIES.');
   return {
-    database: value.KINMESH_DATABASE,
+    database: value.KINMESH_DATABASE_URL,
+    state: value.KINMESH_STATE,
     sessionKey: Buffer.from(value.KINMESH_SESSION_KEY, 'hex'),
     origin: origin.origin,
     secureCookie: origin.protocol === 'https:',

@@ -1,17 +1,26 @@
 import { sql } from 'drizzle-orm';
 import {
-  sqliteTable,
+  pgTable,
   text,
   integer,
+  bigint,
+  customType,
   primaryKey,
   check,
   uniqueIndex,
+  unique,
   foreignKey,
   index,
-  blob,
-} from 'drizzle-orm/sqlite-core';
+} from 'drizzle-orm/pg-core';
 
-export const humans = sqliteTable(
+/** Bytes, as PostgreSQL keeps them. */
+const bytea = customType<{ data: Buffer }>({ dataType: () => 'bytea' });
+/** Milliseconds since the epoch: beyond 32 bits, within a JS number. */
+const millis = (name: string) => bigint(name, { mode: 'number' });
+/** Valid JSON, kept as the text it was written as. */
+const json = (column: unknown) => sql`pg_input_is_valid(${column}, 'jsonb')`;
+
+export const humans = pgTable(
   'humans',
   {
     id: text('id').primaryKey(),
@@ -35,28 +44,28 @@ export const humans = sqliteTable(
  * A sign-in under way: the digest of its one-time state, until Feishu sends
  * the browser back or ten minutes pass.
  */
-export const loginStates = sqliteTable('login_states', {
+export const loginStates = pgTable('login_states', {
   stateHash: text('state_hash').primaryKey(),
-  expiresAt: integer('expires_at').notNull(),
+  expiresAt: millis('expires_at').notNull(),
 });
 /**
  * A signed-in browser. Only the digest of its random token is kept, so a
  * copy of the database cannot be replayed as a session.
  */
-export const sessions = sqliteTable(
+export const sessions = pgTable(
   'sessions',
   {
     tokenHash: text('token_hash').primaryKey(),
     humanId: text('human_id')
       .notNull()
       .references(() => humans.id, { onDelete: 'cascade' }),
-    createdAt: integer('created_at').notNull(),
-    lastSeenAt: integer('last_seen_at').notNull(),
-    revokedAt: integer('revoked_at'),
+    createdAt: millis('created_at').notNull(),
+    lastSeenAt: millis('last_seen_at').notNull(),
+    revokedAt: millis('revoked_at'),
   },
   (t) => [index('session_human').on(t.humanId)],
 );
-export const teams = sqliteTable(
+export const teams = pgTable(
   'teams',
   {
     id: text('id').primaryKey(),
@@ -66,7 +75,7 @@ export const teams = sqliteTable(
     check('team_name_length', sql`length(trim(${t.name})) BETWEEN 1 AND 80`),
   ],
 );
-export const memberships = sqliteTable(
+export const memberships = pgTable(
   'memberships',
   {
     humanId: text('human_id')
@@ -79,7 +88,7 @@ export const memberships = sqliteTable(
   // Everyone in the organization is an equal member: there are no roles.
   (t) => [primaryKey({ columns: [t.humanId, t.teamId] })],
 );
-export const channels = sqliteTable(
+export const channels = pgTable(
   'channels',
   {
     id: text('id').primaryKey(),
@@ -91,12 +100,12 @@ export const channels = sqliteTable(
   },
   (t) => [
     uniqueIndex('channel_position').on(t.position),
-    uniqueIndex('channel_id_team').on(t.id, t.teamId),
+    unique('channel_id_team').on(t.id, t.teamId),
     uniqueIndex('channel_team_name').on(t.teamId, t.name),
     check('channel_name_length', sql`length(trim(${t.name})) BETWEEN 1 AND 80`),
   ],
 );
-export const bootstrap = sqliteTable(
+export const bootstrap = pgTable(
   'bootstrap',
   {
     singleton: integer('singleton').primaryKey(),
@@ -105,7 +114,7 @@ export const bootstrap = sqliteTable(
   (t) => [check('one_bootstrap', sql`${t.singleton} = 1`)],
 );
 
-export const executionOperations = sqliteTable(
+export const executionOperations = pgTable(
   'execution_operations',
   {
     id: text('id').primaryKey(),
@@ -123,7 +132,7 @@ export const executionOperations = sqliteTable(
     rejection: text('rejection'),
     generation: integer('generation').notNull().default(0),
     claimToken: text('claim_token'),
-    leaseUntil: integer('lease_until').notNull().default(0),
+    leaseUntil: millis('lease_until').notNull().default(0),
   },
   (t) => [
     uniqueIndex('execution_intent_scope').on(t.scope, t.actor, t.operationKey),
@@ -134,10 +143,12 @@ export const executionOperations = sqliteTable(
   ],
 );
 
-export const agents = sqliteTable(
+export const agents = pgTable(
   'agents',
   {
     id: text('id').primaryKey(),
+    /** Registration order. */
+    position: integer('position').notNull().generatedAlwaysAsIdentity(),
     teamId: text('team_id')
       .notNull()
       .references(() => teams.id),
@@ -151,13 +162,13 @@ export const agents = sqliteTable(
     updatedAt: text('updated_at').notNull(),
   },
   (t) => [
-    uniqueIndex('agent_team_identity').on(t.id, t.teamId),
+    unique('agent_team_identity').on(t.id, t.teamId),
     uniqueIndex('agent_team_name').on(t.teamId, t.name),
     check('agent_name_length', sql`length(trim(${t.name})) BETWEEN 1 AND 80`),
     check('agent_role', sql`${t.role} IN ('developer','reviewer','assistant')`),
     check('agent_lifecycle', sql`${t.lifecycle} IN ('active','disabled')`),
-    check('agent_capabilities_json', sql`json_valid(${t.capabilities})`),
-    check('agent_preferences_json', sql`json_valid(${t.preferences})`),
+    check('agent_capabilities_json', json(t.capabilities)),
+    check('agent_preferences_json', json(t.preferences)),
     check(
       'agent_memory_bound',
       sql`${t.memoryLocation} IS NULL OR length(${t.memoryLocation}) BETWEEN 1 AND 1024`,
@@ -165,13 +176,13 @@ export const agents = sqliteTable(
   ],
 );
 /** An agent's picture: a small raster image, set by the owner or the agent. */
-export const agentAvatars = sqliteTable(
+export const agentAvatars = pgTable(
   'agent_avatars',
   {
     agentId: text('agent_id').primaryKey(),
     teamId: text('team_id').notNull(),
     mime: text('mime').notNull(),
-    bytes: blob('bytes', { mode: 'buffer' }).notNull(),
+    bytes: bytea('bytes').notNull(),
     updatedAt: text('updated_at').notNull(),
   },
   (t) => [
@@ -186,7 +197,7 @@ export const agentAvatars = sqliteTable(
     check('agent_avatar_size', sql`length(${t.bytes}) BETWEEN 1 AND 131072`),
   ],
 );
-export const agentGrants = sqliteTable(
+export const agentGrants = pgTable(
   'agent_grants',
   {
     id: text('id').primaryKey(),
@@ -208,13 +219,15 @@ export const agentGrants = sqliteTable(
       foreignColumns: [agents.id, agents.teamId],
     }),
     check('grant_hash_length', sql`length(${t.tokenHash}) = 64`),
-    check('grant_scopes_json', sql`json_valid(${t.scopes})`),
+    check('grant_scopes_json', json(t.scopes)),
   ],
 );
-export const agentCorrelations = sqliteTable(
+export const agentCorrelations = pgTable(
   'agent_correlations',
   {
     id: text('id').primaryKey(),
+    /** Append order, authoritative even when timestamps tie. */
+    position: integer('position').notNull().generatedAlwaysAsIdentity(),
     agentId: text('agent_id').notNull(),
     teamId: text('team_id').notNull(),
     referenceKey: text('reference_key').notNull(),
@@ -230,11 +243,11 @@ export const agentCorrelations = sqliteTable(
       foreignColumns: [agents.id, agents.teamId],
     }),
     uniqueIndex('correlation_execution_owner').on(t.teamId, t.referenceKey),
-    check('correlation_reference_json', sql`json_valid(${t.reference})`),
-    check('correlation_author_json', sql`json_valid(${t.author})`),
+    check('correlation_reference_json', json(t.reference)),
+    check('correlation_author_json', json(t.author)),
   ],
 );
-export const agentAudit = sqliteTable(
+export const agentAudit = pgTable(
   'agent_audit',
   {
     id: text('id').primaryKey(),
@@ -250,16 +263,15 @@ export const agentAudit = sqliteTable(
       columns: [t.agentId, t.teamId],
       foreignColumns: [agents.id, agents.teamId],
     }),
-    check(
-      'audit_json',
-      sql`json_valid(${t.author}) AND json_valid(${t.detail})`,
-    ),
+    check('audit_json', sql`${json(t.author)} AND ${json(t.detail)}`),
   ],
 );
-export const agentRuntimeEvents = sqliteTable(
+export const agentRuntimeEvents = pgTable(
   'agent_runtime_events',
   {
     id: text('id').primaryKey(),
+    /** Append order, authoritative even when timestamps tie. */
+    position: integer('position').notNull().generatedAlwaysAsIdentity(),
     correlationId: text('correlation_id')
       .notNull()
       .references(() => agentCorrelations.id),
@@ -275,7 +287,7 @@ export const agentRuntimeEvents = sqliteTable(
   ],
 );
 
-export const channelParticipants = sqliteTable(
+export const channelParticipants = pgTable(
   'channel_participants',
   {
     channelId: text('channel_id').notNull(),
@@ -312,10 +324,10 @@ export const channelParticipants = sqliteTable(
     ),
   ],
 );
-export const topics = sqliteTable(
+export const topics = pgTable(
   'topics',
   {
-    position: integer('position').primaryKey({ autoIncrement: true }),
+    position: integer('position').primaryKey().generatedByDefaultAsIdentity(),
     id: text('id').notNull().unique(),
     channelId: text('channel_id')
       .notNull()
@@ -325,15 +337,15 @@ export const topics = sqliteTable(
     createdAt: text('created_at').notNull(),
   },
   (t) => [
-    uniqueIndex('topic_channel_identity').on(t.id, t.channelId),
+    unique('topic_channel_identity').on(t.id, t.channelId),
     index('topic_timeline').on(t.channelId, t.position),
     check('topic_title_bound', sql`length(trim(${t.title})) BETWEEN 1 AND 160`),
   ],
 );
-export const messages = sqliteTable(
+export const messages = pgTable(
   'messages',
   {
-    position: integer('position').primaryKey({ autoIncrement: true }),
+    position: integer('position').primaryKey().generatedByDefaultAsIdentity(),
     id: text('id').notNull().unique(),
     channelId: text('channel_id')
       .notNull()
@@ -350,13 +362,13 @@ export const messages = sqliteTable(
       columns: [t.topicId, t.channelId],
       foreignColumns: [topics.id, topics.channelId],
     }),
-    uniqueIndex('message_channel_identity').on(t.id, t.channelId),
+    unique('message_channel_identity').on(t.id, t.channelId),
     index('message_channel_timeline').on(t.channelId, t.position),
     index('message_topic_timeline').on(t.channelId, t.topicId, t.position),
     check('message_body_bound', sql`length(${t.body}) BETWEEN 1 AND 8000`),
   ],
 );
-export const messageMentions = sqliteTable(
+export const messageMentions = pgTable(
   'message_mentions',
   {
     messageId: text('message_id').notNull(),
@@ -379,10 +391,10 @@ export const messageMentions = sqliteTable(
     }),
   ],
 );
-export const communicationOutbox = sqliteTable(
+export const communicationOutbox = pgTable(
   'communication_outbox',
   {
-    position: integer('position').primaryKey({ autoIncrement: true }),
+    position: integer('position').primaryKey().generatedByDefaultAsIdentity(),
     id: text('id').notNull().unique(),
     channelId: text('channel_id')
       .notNull()
@@ -391,10 +403,10 @@ export const communicationOutbox = sqliteTable(
   },
   (t) => [
     index('outbox_channel_order').on(t.channelId, t.position),
-    check('outbox_fact_json', sql`json_valid(${t.fact})`),
+    check('outbox_fact_json', json(t.fact)),
   ],
 );
-export const communicationOperations = sqliteTable(
+export const communicationOperations = pgTable(
   'communication_operations',
   {
     scope: text('scope').notNull(),
@@ -405,10 +417,10 @@ export const communicationOperations = sqliteTable(
   (t) => [primaryKey({ columns: [t.scope, t.operationKey] })],
 );
 
-export const tasks = sqliteTable(
+export const tasks = pgTable(
   'tasks',
   {
-    position: integer('position').primaryKey({ autoIncrement: true }),
+    position: integer('position').primaryKey().generatedByDefaultAsIdentity(),
     id: text('id').notNull().unique(),
     teamId: text('team_id').notNull(),
     channelId: text('channel_id').notNull(),
@@ -438,23 +450,23 @@ export const tasks = sqliteTable(
       columns: [t.acceptorHumanId, t.teamId],
       foreignColumns: [memberships.humanId, memberships.teamId],
     }),
-    uniqueIndex('task_channel_identity').on(t.id, t.channelId),
+    unique('task_channel_identity').on(t.id, t.channelId),
     index('task_channel_order').on(t.channelId, t.position),
     check('task_version_positive', sql`${t.version}>0`),
     check(
       'task_valid_state',
-      sql`json_valid(${t.state}) AND json_extract(${t.state},'$.status') = ${t.status}`,
+      sql`${json(t.state)} AND (${t.state}::jsonb ->> 'status') = ${t.status}`,
     ),
     check(
       'task_owner_state',
-      sql`(${t.ownerKey} IS NULL AND json_extract(${t.state},'$.owner') IS NULL AND ${t.status} IN ('proposed','cancelled')) OR (${t.ownerKey} IS NOT NULL AND ${t.status} IN ('in-progress','review-requested','awaiting-human','rework-requested','accepted','cancelled') AND ${t.ownerKey} = json_extract(${t.state},'$.owner.kind') || ':' || json_extract(${t.state},'$.owner.id'))`,
+      sql`(${t.ownerKey} IS NULL AND (${t.state}::jsonb ->> 'owner') IS NULL AND ${t.status} IN ('proposed','cancelled')) OR (${t.ownerKey} IS NOT NULL AND ${t.status} IN ('in-progress','review-requested','awaiting-human','rework-requested','accepted','cancelled') AND ${t.ownerKey} = (${t.state}::jsonb -> 'owner' ->> 'kind') || ':' || (${t.state}::jsonb -> 'owner' ->> 'id'))`,
     ),
   ],
 );
-export const taskEvents = sqliteTable(
+export const taskEvents = pgTable(
   'task_events',
   {
-    position: integer('position').primaryKey({ autoIncrement: true }),
+    position: integer('position').primaryKey().generatedByDefaultAsIdentity(),
     id: text('id')
       .notNull()
       .unique()
@@ -468,13 +480,13 @@ export const taskEvents = sqliteTable(
   (t) => [
     uniqueIndex('task_revision_event').on(t.taskId, t.version),
     index('task_history_order').on(t.taskId, t.position),
-    check('task_event_json', sql`json_valid(${t.event})`),
+    check('task_event_json', json(t.event)),
   ],
 );
-export const taskExecutions = sqliteTable(
+export const taskExecutions = pgTable(
   'task_executions',
   {
-    position: integer('position').primaryKey({ autoIncrement: true }),
+    position: integer('position').primaryKey().generatedByDefaultAsIdentity(),
     id: text('id').notNull().unique(),
     taskId: text('task_id')
       .notNull()
@@ -490,7 +502,7 @@ export const taskExecutions = sqliteTable(
   ],
 );
 
-export const inboxCauses = sqliteTable(
+export const inboxCauses = pgTable(
   'inbox_causes',
   {
     eventId: text('event_id')
@@ -503,10 +515,10 @@ export const inboxCauses = sqliteTable(
   },
   (t) => [check('inbox_depth', sql`${t.depth} BETWEEN 0 AND 5`)],
 );
-export const agentInbox = sqliteTable(
+export const agentInbox = pgTable(
   'agent_inbox',
   {
-    position: integer('position').primaryKey({ autoIncrement: true }),
+    position: integer('position').primaryKey().generatedByDefaultAsIdentity(),
     id: text('id').notNull().unique(),
     eventId: text('event_id')
       .notNull()
@@ -524,10 +536,10 @@ export const agentInbox = sqliteTable(
     state: text('state').notNull(),
     generation: integer('generation').notNull().default(0),
     claimToken: text('claim_token'),
-    leaseUntil: integer('lease_until').notNull().default(0),
-    nextAttempt: integer('next_attempt').notNull(),
+    leaseUntil: millis('lease_until').notNull().default(0),
+    nextAttempt: millis('next_attempt').notNull(),
     attempts: integer('attempts').notNull().default(0),
-    expiresAt: integer('expires_at').notNull(),
+    expiresAt: millis('expires_at').notNull(),
     launch: text('launch'),
     operationId: text('operation_id'),
     reference: text('reference'),
@@ -577,21 +589,21 @@ export const agentInbox = sqliteTable(
     ),
   ],
 );
-export const inboxHistory = sqliteTable(
+export const inboxHistory = pgTable(
   'inbox_history',
   {
-    position: integer('position').primaryKey({ autoIncrement: true }),
+    position: integer('position').primaryKey().generatedByDefaultAsIdentity(),
     deliveryId: text('delivery_id')
       .notNull()
       .references(() => agentInbox.id),
     generation: integer('generation').notNull(),
     state: text('state').notNull(),
     reason: text('reason').notNull(),
-    createdAt: integer('created_at').notNull(),
+    createdAt: millis('created_at').notNull(),
   },
   (t) => [index('inbox_history_order').on(t.deliveryId, t.position)],
 );
-export const inboxResults = sqliteTable(
+export const inboxResults = pgTable(
   'inbox_results',
   {
     deliveryId: text('delivery_id')
@@ -607,15 +619,15 @@ export const inboxResults = sqliteTable(
     taskLinkId: text('task_link_id').references(() => taskExecutions.id),
     result: text('result').notNull(),
   },
-  (t) => [check('inbox_result_json', sql`json_valid(${t.result})`)],
+  (t) => [check('inbox_result_json', json(t.result))],
 );
 /** Worker liveness per configured binding: "a worker would claim this agent's wakes now". */
-export const inboxBindings = sqliteTable(
+export const inboxBindings = pgTable(
   'inbox_bindings',
   {
     agentId: text('agent_id').primaryKey(),
     teamId: text('team_id').notNull(),
-    lastSeenAt: integer('last_seen_at').notNull(),
+    lastSeenAt: millis('last_seen_at').notNull(),
   },
   (t) => [
     foreignKey({
@@ -625,19 +637,19 @@ export const inboxBindings = sqliteTable(
   ],
 );
 /** One T3 connection per team, approved by its owner from the workspace. No secrets. */
-export const t3Connections = sqliteTable('t3_connections', {
+export const t3Connections = pgTable('t3_connections', {
   teamId: text('team_id')
     .primaryKey()
     .references(() => teams.id),
   endpoint: text('endpoint').notNull(),
   environmentId: text('environment_id').notNull(),
-  connectedAt: integer('connected_at').notNull(),
+  connectedAt: millis('connected_at').notNull(),
 });
 /**
  * Agents the hub's own worker serves. The token lives in a private file named
  * by the agent ID; this row holds no secret.
  */
-export const managedBindings = sqliteTable(
+export const managedBindings = pgTable(
   'managed_bindings',
   {
     agentId: text('agent_id').primaryKey(),
@@ -646,7 +658,7 @@ export const managedBindings = sqliteTable(
       .notNull()
       .references(() => agentGrants.id),
     providerId: text('provider_id').notNull(),
-    createdAt: integer('created_at').notNull(),
+    createdAt: millis('created_at').notNull(),
   },
   (t) => [
     foreignKey({
@@ -656,12 +668,12 @@ export const managedBindings = sqliteTable(
   ],
 );
 /** Last authenticated Team MCP request per agent: evidence, never authority. */
-export const teamMcpPresence = sqliteTable(
+export const teamMcpPresence = pgTable(
   'team_mcp_presence',
   {
     agentId: text('agent_id').primaryKey(),
     teamId: text('team_id').notNull(),
-    lastSeenAt: integer('last_seen_at').notNull(),
+    lastSeenAt: millis('last_seen_at').notNull(),
   },
   (t) => [
     foreignKey({
@@ -670,3 +682,38 @@ export const teamMcpPresence = sqliteTable(
     }),
   ],
 );
+
+/**
+ * What an agent, a correlation and a runtime event are, without the order
+ * they were written in, which only sorts them.
+ */
+export const agentFields = {
+  id: agents.id,
+  teamId: agents.teamId,
+  name: agents.name,
+  role: agents.role,
+  capabilities: agents.capabilities,
+  preferences: agents.preferences,
+  memoryLocation: agents.memoryLocation,
+  lifecycle: agents.lifecycle,
+  createdAt: agents.createdAt,
+  updatedAt: agents.updatedAt,
+};
+export const correlationFields = {
+  id: agentCorrelations.id,
+  agentId: agentCorrelations.agentId,
+  teamId: agentCorrelations.teamId,
+  referenceKey: agentCorrelations.referenceKey,
+  reference: agentCorrelations.reference,
+  providerSessionId: agentCorrelations.providerSessionId,
+  invocationId: agentCorrelations.invocationId,
+  author: agentCorrelations.author,
+  createdAt: agentCorrelations.createdAt,
+};
+export const runtimeEventFields = {
+  id: agentRuntimeEvents.id,
+  correlationId: agentRuntimeEvents.correlationId,
+  state: agentRuntimeEvents.state,
+  author: agentRuntimeEvents.author,
+  createdAt: agentRuntimeEvents.createdAt,
+};

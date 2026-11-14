@@ -1,6 +1,6 @@
 import { createApp } from './app.js';
 import { loadConfig } from './config.js';
-import { openStore } from '../persistence/store.js';
+import { openStore, type Store } from '../persistence/store.js';
 import { InboxSupervisor } from './inbox-supervisor.js';
 import { once } from 'node:events';
 import { reportFailure } from '../diagnostics.js';
@@ -11,7 +11,7 @@ for (const signal of ['SIGTERM', 'SIGINT'])
   process.once(signal, () => {
     stopping.abort();
   });
-let store: ReturnType<typeof openStore> | undefined;
+let store: Store | undefined;
 let app: Awaited<ReturnType<typeof createApp>> | undefined;
 let supervisor: InboxSupervisor | undefined;
 stopping.signal.addEventListener(
@@ -30,22 +30,33 @@ try {
     process.exitCode = 1;
     stopping.abort();
   };
-  if (path !== undefined)
-    supervisor = new InboxSupervisor(path, config.database, fatal);
-  store = openStore(config.database);
+  const identify = () => {
+    if (store === undefined) throw new Error('Store not open');
+    return store.identity();
+  };
+  const supervise = (inboxConfig: string | undefined) =>
+    new InboxSupervisor(
+      inboxConfig,
+      config.database,
+      config.state,
+      identify,
+      fatal,
+    );
+  if (path !== undefined) supervisor = supervise(path);
+  store = await openStore(config.database);
   // Agents connected from the workspace need the hub's worker even without
   // an operator configuration; with none, no worker runs.
   if (
     supervisor === undefined &&
     (await store.managed.workerBindings()).length > 0
   )
-    supervisor = new InboxSupervisor(undefined, config.database, fatal);
+    supervisor = supervise(undefined);
   let starting: Promise<void> | undefined;
   const ensureWorker = () => {
     if (supervisor !== undefined || stopping.signal.aborted)
       return Promise.resolve();
     starting ??= (async () => {
-      const started = new InboxSupervisor(undefined, config.database, fatal);
+      const started = supervise(undefined);
       // Visible to shutdown at once, so a stop during start cannot orphan it.
       supervisor = started;
       try {

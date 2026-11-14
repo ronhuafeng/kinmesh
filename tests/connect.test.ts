@@ -76,7 +76,7 @@ async function connectFixture() {
       ...(headers ? { headers } : { cookies: f.cookies }),
       ...(payload ? { payload } : {}),
     });
-  const directory = managedDirectory(f.config.database);
+  const directory = managedDirectory(f.config.state);
   return {
     ...f,
     app,
@@ -390,7 +390,7 @@ await test('the hub’s worker serves a connected agent without a restart and le
       { providerId: 'isolated-dev', modelId: 'model-a' },
       WORKER_GRANT,
     );
-    writeAgentToken(managedDirectory(f.dbPath), f.agent.id, token);
+    writeAgentToken(managedDirectory(f.directory), f.agent.id, token);
     await delay(300);
     assert.deepEqual(await live(), [f.agent.id]);
     await f.store.managed.disconnect(f.principal, f.teamId, f.agent.id);

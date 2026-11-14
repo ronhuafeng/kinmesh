@@ -12,7 +12,7 @@ try {
   const email = canonicalMailbox(mailbox);
   if (email?.slice(email.lastIndexOf('@') + 1) !== config.feishu.emailDomain)
     throw new Error('Mailbox outside the organization');
-  const store = openStore(config.database);
+  const store = await openStore(config.database);
   try {
     await store.linkMailbox(username, email);
   } finally {

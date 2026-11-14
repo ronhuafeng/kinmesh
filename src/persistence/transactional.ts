@@ -1,16 +1,14 @@
 import { createHash } from 'node:crypto';
-import { and, eq, sql } from 'drizzle-orm';
-import type { BetterSQLite3Database } from 'drizzle-orm/better-sqlite3';
+import { and, eq } from 'drizzle-orm';
 import { z } from 'zod';
 import * as s from './schema.js';
 import { IdentityError } from '../domain/agents.js';
 import { PageInput, pageOf } from '../domain/communication.js';
 import type { Reference } from '../domain/execution.js';
+import type { Database } from './database.js';
 const decode = (value: string): unknown => JSON.parse(value);
 export const fingerprint = (value: unknown) =>
   createHash('sha256').update(JSON.stringify(value)).digest('hex');
-/** Evaluate time inside SQLite, including after waiting for another writer. */
-export const sqliteNow = sql`cast(unixepoch('subsec') * 1000 as integer)`;
 /** The persisted key of one native execution (thread, or exact run). */
 export const referenceKey = (ref: Reference) =>
   fingerprint([
@@ -19,26 +17,22 @@ export const referenceKey = (ref: Reference) =>
     ref.threadId,
     ref.runId ?? null,
   ]);
-export function transactional(db: BetterSQLite3Database<typeof s>) {
-  function atomic<T>(action: () => T): T {
-    try {
-      return db.transaction(action, { behavior: 'immediate' });
-    } catch (error) {
-      const code = z.object({ code: z.string() }).safeParse(error);
-      if (code.success && code.data.code.startsWith('SQLITE_CONSTRAINT'))
-        throw new IdentityError(409, { cause: error });
-      throw error;
-    }
-  }
-  function receipt<T>(
+export function transactional(d: Database) {
+  const { q, atomic } = d;
+  /**
+   * An idempotent effect: the first call with an operation key runs it and
+   * keeps its result; a retry replays that result; the same key with other
+   * input is refused. Run inside `atomic`.
+   */
+  async function receipt<T>(
     scope: string,
     operationKey: string,
     input: unknown,
     schema: z.ZodType<T>,
-    effect: () => T,
-  ): T {
+    effect: () => Promise<T>,
+  ): Promise<T> {
     const digest = fingerprint(input);
-    const old = db
+    const [old] = await q()
       .select()
       .from(s.communicationOperations)
       .where(
@@ -47,23 +41,23 @@ export function transactional(db: BetterSQLite3Database<typeof s>) {
           eq(s.communicationOperations.operationKey, operationKey),
         ),
       )
-      .get();
+      .limit(1);
     if (old !== undefined) {
       if (old.fingerprint !== digest) throw new IdentityError(409);
       return schema.parse(decode(old.result));
     }
-    const result = schema.parse(effect());
-    db.insert(s.communicationOperations)
+    const result = schema.parse(await effect());
+    await q()
+      .insert(s.communicationOperations)
       .values({
         scope,
         operationKey,
         fingerprint: digest,
         result: JSON.stringify(result),
-      })
-      .run();
+      });
     return result;
   }
-  return { atomic, receipt };
+  return { q, atomic, receipt };
 }
 const Cursor = z
   .strictObject({
@@ -73,18 +67,18 @@ const Cursor = z
     max: z.number().int().nonnegative(),
   })
   .refine((v) => v.after <= v.max);
-export function snapshotPage<T extends { position: number }>(
+export async function snapshotPage<T extends { position: number }>(
   input: PageInput,
   context: unknown,
   schema: z.ZodType<T>,
-  high: () => number,
-  select: (after: number, max: number, limit: number) => T[],
+  high: () => Promise<number>,
+  select: (after: number, max: number, limit: number) => Promise<T[]>,
 ) {
   const parsed = PageInput.parse(input);
   const binding = JSON.stringify(context);
   let after = 0;
   let maximum: number;
-  if (parsed.cursor === undefined) maximum = high();
+  if (parsed.cursor === undefined) maximum = await high();
   else {
     try {
       const cursor = Cursor.parse(
@@ -97,7 +91,7 @@ export function snapshotPage<T extends { position: number }>(
       throw new IdentityError(400);
     }
   }
-  const rows = select(after, maximum, parsed.limit + 1);
+  const rows = await select(after, maximum, parsed.limit + 1);
   const items = rows.slice(0, parsed.limit);
   const last = items.at(-1);
   const nextCursor =

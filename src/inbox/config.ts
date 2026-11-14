@@ -6,6 +6,7 @@ import {
   constants,
 } from 'node:fs';
 import { z } from 'zod';
+import { DatabaseUrl } from '../persistence/database.js';
 import { AgentId } from '../domain/contracts.js';
 import { Endpoint } from '../adapters/t3/oauth.js';
 /** An agent the operator's configuration file binds; the operator asserts Team MCP. */
@@ -21,7 +22,10 @@ export const Binding = z.strictObject({
 export const WorkerBinding = Binding.omit({ externalTeamMcpConfigured: true });
 export type WorkerBinding = z.infer<typeof WorkerBinding>;
 export const WorkerConfig = z.strictObject({
-  database: z.string().min(1).max(4096),
+  /** The team's PostgreSQL, as a connection URL. */
+  database: DatabaseUrl,
+  /** Where the hub keeps the worker's private files. */
+  state: z.string().min(1).max(4096).default('.store'),
   pollMs: z.number().int().min(100).max(30000).default(1000),
   bindings: z
     .array(Binding)

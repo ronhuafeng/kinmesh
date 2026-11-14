@@ -5,7 +5,7 @@ import { reportFailure } from '../diagnostics.js';
 process.umask(0o077);
 try {
   const config = teamConfig(process.env);
-  const app = await createTeamApp(config, openStore(config.database));
+  const app = await createTeamApp(config, await openStore(config.database));
   for (const signal of ['SIGTERM', 'SIGINT'])
     process.once(signal, () => {
       void app.close();

@@ -1,6 +1,6 @@
 import { writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import Database from 'better-sqlite3';
+import { rawDatabase } from './raw.js';
 import { z } from 'zod';
 import { Delivery, Result } from '../src/domain/inbox.js';
 import { Binding, WorkerConfig } from '../src/inbox/config.js';
@@ -32,8 +32,8 @@ export const fixtureResult = () =>
     truncated: false,
     state: 'succeeded',
   });
-export function rows(path: string) {
-  const raw = new Database(path);
+export async function rows(path: string) {
+  const raw = rawDatabase(path);
   try {
     // Drizzle's mapping is reproduced only at this test inspection boundary.
     const columns = [
@@ -64,7 +64,7 @@ export function rows(path: string) {
     return z
       .array(Delivery)
       .parse(
-        raw
+        await raw
           .prepare(
             'SELECT ' +
               columns.join(',') +
@@ -73,13 +73,13 @@ export function rows(path: string) {
           .all(),
       );
   } finally {
-    raw.close();
+    await raw.close();
   }
 }
-export function due(path: string, expiredLease = false) {
-  const raw = new Database(path);
+export async function due(path: string, expiredLease = false) {
+  const raw = rawDatabase(path);
   try {
-    raw.exec(
+    await raw.exec(
       'UPDATE agent_inbox SET next_attempt=0' +
         (expiredLease
           ? ',lease_until=CASE WHEN claim_token IS NULL THEN 0 ELSE 1 END'
@@ -87,7 +87,7 @@ export function due(path: string, expiredLease = false) {
         " WHERE state NOT IN ('acked','expired')",
     );
   } finally {
-    raw.close();
+    await raw.close();
   }
 }
 export async function inboxFixture() {
@@ -128,6 +128,7 @@ export async function inboxFixture() {
   });
   const config = WorkerConfig.parse({
     database: f.dbPath,
+    state: f.directory,
     pollMs: 100,
     bindings: [binding],
   });

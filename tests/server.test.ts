@@ -5,10 +5,10 @@ import { createApp } from '../src/server/app.js';
 import { fixture } from './helpers.js';
 import { signInAs, standInFeishu } from './feishu.js';
 
-const hub = (f: ReturnType<typeof fixture>, config = f.config) =>
+const hub = async (f: Awaited<ReturnType<typeof fixture>>, config = f.config) =>
   createApp(
     config,
-    f.open(),
+    await f.open(),
     undefined,
     undefined,
     {},
@@ -17,7 +17,7 @@ const hub = (f: ReturnType<typeof fixture>, config = f.config) =>
     },
   );
 await test('a signed-in person holds a strict, HTTP-only session that only this origin may use', async () => {
-  const f = fixture();
+  const f = await fixture();
   const app = await hub(f);
   try {
     assert.equal((await app.inject({ url: '/health' })).statusCode, 200);
@@ -101,11 +101,11 @@ await test('a signed-in person holds a strict, HTTP-only session that only this 
     assert.equal(logout.cookies[0]?.value, '');
   } finally {
     await app.close();
-    f.cleanup();
+    await f.cleanup();
   }
 });
 await test('the overall rate limit bounds every client, at the configured pace', async () => {
-  const f = fixture();
+  const f = await fixture();
   const app = await hub(f, { ...f.config, rateLimit: 3 });
   try {
     for (let i = 0; i < 3; i++)
@@ -113,11 +113,11 @@ await test('the overall rate limit bounds every client, at the configured pace',
     assert.equal((await app.inject({ url: '/health' })).statusCode, 429);
   } finally {
     await app.close();
-    f.cleanup();
+    await f.cleanup();
   }
 });
 await test('sign-in attempts are bounded per minute', async () => {
-  const f = fixture();
+  const f = await fixture();
   const app = await hub(f);
   try {
     for (let i = 0; i < 10; i++)
@@ -125,11 +125,11 @@ await test('sign-in attempts are bounded per minute', async () => {
     assert.equal((await app.inject({ url: '/login' })).statusCode, 429);
   } finally {
     await app.close();
-    f.cleanup();
+    await f.cleanup();
   }
 });
 await test('service restart preserves the person, the team and the session with the same key', async () => {
-  const f = fixture();
+  const f = await fixture();
   let app = await hub(f);
   try {
     const cookies = await signInAs(app, 'owner@example.com');
@@ -141,37 +141,37 @@ await test('service restart preserves the person, the team and the session with 
     );
   } finally {
     await app.close();
-    f.cleanup();
+    await f.cleanup();
   }
 });
 await test('health becomes unavailable when persistence cannot be queried', async () => {
-  const f = fixture();
-  const store = f.open();
+  const f = await fixture();
+  const store = await f.open();
   const app = await createApp(f.config, store);
   try {
     await store.close();
     assert.equal((await app.inject({ url: '/health' })).statusCode, 503);
   } finally {
     await app.close();
-    f.cleanup();
+    await f.cleanup();
   }
 });
 
 await test('reads reject missing membership and deleted account instead of trusting session identity alone', async () => {
-  const { default: Database } = await import('better-sqlite3');
-  const f = fixture();
+  const { rawDatabase } = await import('./raw.js');
+  const f = await fixture();
   const app = await hub(f);
   try {
     const cookies = await signInAs(app, 'owner@example.com');
-    const raw = new Database(f.path);
-    raw.pragma('foreign_keys = ON');
+    const raw = rawDatabase(f.path);
+    await raw.pragma('foreign_keys = ON');
     try {
-      raw.exec('DELETE FROM memberships');
+      await raw.exec('DELETE FROM memberships');
       assert.equal(
         (await app.inject({ url: '/api/team', cookies })).statusCode,
         403,
       );
-      raw.exec('DELETE FROM humans');
+      await raw.exec('DELETE FROM humans');
       assert.equal(
         (await app.inject({ url: '/api/me', cookies })).statusCode,
         401,
@@ -181,15 +181,15 @@ await test('reads reject missing membership and deleted account instead of trust
         401,
       );
     } finally {
-      raw.close();
+      await raw.close();
     }
   } finally {
     await app.close();
-    f.cleanup();
+    await f.cleanup();
   }
 });
 await test('request limits and schema errors do not echo submitted secrets', async () => {
-  const f = fixture();
+  const f = await fixture();
   const app = await hub(f);
   try {
     const cookies = await signInAs(app, 'owner@example.com');
@@ -219,6 +219,6 @@ await test('request limits and schema errors do not echo submitted secrets', asy
     );
   } finally {
     await app.close();
-    f.cleanup();
+    await f.cleanup();
   }
 });

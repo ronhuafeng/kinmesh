@@ -6,10 +6,10 @@ import { standInFeishu } from './feishu.js';
 
 const PROXY = '10.0.0.1';
 async function hub(trustedProxies: string[], rateLimit = 3) {
-  const f = fixture();
+  const f = await fixture();
   const app = await createApp(
     { ...f.config, rateLimit, trustedProxies },
-    f.open(),
+    await f.open(),
     undefined,
     undefined,
     {},
@@ -26,7 +26,7 @@ async function hub(trustedProxies: string[], rateLimit = 3) {
       }),
     async dispose() {
       await app.close();
-      f.cleanup();
+      await f.cleanup();
     },
   };
 }

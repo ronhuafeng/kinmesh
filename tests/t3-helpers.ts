@@ -113,8 +113,8 @@ export const reference = {
   ...(launched.runId === null ? {} : { runId: launched.runId }),
 } satisfies Reference;
 export async function backendFixture() {
-  const f = fixture();
-  const store = f.open();
+  const f = await fixture();
+  const store = await f.open();
   const wire = new MockWire();
   const backend = await T3Backend.connect(wire, store.operations, options);
   return {
@@ -124,7 +124,7 @@ export async function backendFixture() {
     backend,
     dispose: async () => {
       await store.close();
-      f.cleanup();
+      await f.cleanup();
     },
   };
 }

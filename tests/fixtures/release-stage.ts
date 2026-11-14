@@ -5,6 +5,7 @@ import { readFileSync, writeFileSync } from 'node:fs';
 import { randomUUID } from 'node:crypto';
 import { LiveContext } from '../../src/team-mcp/live-context.js';
 import { openStore } from '../../src/persistence/store.js';
+import { isDisposable } from '../../src/persistence/disposable.js';
 import { loadAgentToken } from '../../src/team-mcp/client.js';
 
 assert.equal(process.env.NODE_OPTIONS, undefined);
@@ -16,16 +17,13 @@ const scenario = process.env.FIXTURE_STAGE;
 if (scenario === 'sdk') {
   assert.equal(process.env.KINMESH_TEAM_LIVE_DIR, undefined);
   assert.equal(process.env.KINMESH_INBOX_CONFIG, undefined);
-  assert.equal(
-    process.env.KINMESH_T3_LIVE_DATABASE,
-    join(directory, 'sdk.sqlite'),
-  );
+  assert.ok(isDisposable(process.env.KINMESH_T3_LIVE_DATABASE ?? ''));
 } else {
   assert.equal(process.env.KINMESH_TEAM_LIVE_DIR, directory);
   const c = LiveContext.parse(
     JSON.parse(readFileSync(join(directory, 'context.json'), 'utf8')),
   );
-  const store = openStore(c.database);
+  const store = await openStore(c.database);
   try {
     const p = await store.agents.resolveToken(loadAgentToken(c.tokenFile));
     let task = await store.tasks.get(p, c.teamId, c.channelId, c.taskId);

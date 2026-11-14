@@ -98,7 +98,7 @@ await test('web assets cannot shadow protected API, health or private repository
     for (const url of [
       '/.env',
       '/src/server/app.ts',
-      '/.store/kinmesh.sqlite',
+      '/.store/managed/t3-auth.json',
       '/assets/../.env',
       '/assets/../../.env',
     ]) {

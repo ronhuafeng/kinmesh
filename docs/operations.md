@@ -13,7 +13,8 @@ The hub writes JSON lines to standard output: one record per failure, with its r
 | `KINMESH_SESSION_KEY`                | Required; 64 lowercase hex characters; `npm run setup` writes it to `.env`                                    |
 | `FEISHU_APP_ID`, `FEISHU_APP_SECRET` | Required; the Feishu app people sign in through; its redirect URL is `KINMESH_ORIGIN/login/callback`          |
 | `KINMESH_EMAIL_DOMAIN`               | Required; only mailboxes in this domain may sign in                                                           |
-| `KINMESH_DATABASE`                   | SQLite file (default `.store/kinmesh.sqlite`)                                                                 |
+| `KINMESH_DATABASE_URL`               | Required; the PostgreSQL database, as a `postgres://` URL; `npm run setup` writes one for compose's database  |
+| `KINMESH_STATE`                      | The hub's own files, such as the [managed directory](security.md#hub-held-worker-secrets) (default `.store`)  |
 | `KINMESH_ORIGIN`, `KINMESH_PORT`     | Public origin (an HTTPS origin, or exactly `http://127.0.0.1:<port>`) and listener port                       |
 | `KINMESH_HOST`                       | Listener address (default `127.0.0.1`); `0.0.0.0` only inside a container whose port is published to loopback |
 | `KINMESH_INBOX_CONFIG`               | Optional operator worker configuration (below)                                                                |
@@ -23,16 +24,18 @@ The hub writes JSON lines to standard output: one record per failure, with its r
 
 `npm start` reads `.env` if present; managed deployments may inject the same variables instead. Missing or malformed values fail startup.
 
+The database is PostgreSQL 17. For development, `docker compose up -d postgres` starts the one `compose.yaml` describes, on loopback port 5433 (`KINMESH_POSTGRES_PORT`) with the password `KINMESH_POSTGRES_PASSWORD` from `.env`. Any other PostgreSQL works too: give the hub a database of its own and a role that owns it. Tests start their own PostgreSQL in Docker, so running them needs Docker.
+
 ### In a container
 
-The image holds the compiled server, its migrations and the built workspace; it runs as the unprivileged `node` user, keeps its database in the `/data` volume and reports healthy only when ready (`/health`). Everything else comes from the environment. With `compose.yaml` and a `.env` beside it (never committed; `npm run setup` writes one, then add the Feishu app and domain):
+The image holds the compiled server, its migrations and the built workspace; it runs as the unprivileged `node` user, keeps its own files in the `/data` volume and reports healthy only when ready (`/health`). Everything else comes from the environment. `compose.yaml` runs it beside PostgreSQL, whose data is in the `kinmesh-postgres` volume. With a `.env` beside it (never committed; `npm run setup` writes one, then add the Feishu app and domain):
 
 ```sh
 docker compose up -d --build
 docker compose ps      # healthy once the database and worker are ready
 ```
 
-The hub is published on this machine's loopback only (`127.0.0.1:3000`), for the reverse proxy below; its proxy then reaches it from the host, so `KINMESH_TRUSTED_PROXIES` names the Docker network's gateway (for the default bridge, `172.16.0.0/12`). Back up the `kinmesh-data` volume like the database. CI builds the image on every pull request; publishing it is a separate, deliberate step.
+The hub is published on this machine's loopback only (`127.0.0.1:3000`), for the reverse proxy below; its proxy then reaches it from the host, so `KINMESH_TRUSTED_PROXIES` names the Docker network's gateway (for the default bridge, `172.16.0.0/12`). Back up the `kinmesh-data` volume with the database (below). CI builds the image on every pull request; publishing it is a separate, deliberate step.
 
 ### Behind a reverse proxy
 
@@ -74,7 +77,21 @@ A person who used Kinmesh before Feishu sign-in keeps their identity by being li
 
 No label carries anything a person wrote, a mailbox, a name or an ID.
 
-Back up the database (and its WAL) before upgrades, and never copy a live database without accounting for the WAL. The database holds prompts and team content.
+### Backup and restore
+
+Back up before every upgrade. A backup is the database and the state directory together; both hold team content and credentials. `pg_dump` takes a consistent copy of a running database:
+
+```sh
+docker compose exec -T postgres pg_dump -U kinmesh -Fc kinmesh > kinmesh.dump
+```
+
+To restore, stop the hub and every worker and Team MCP, then:
+
+```sh
+docker compose exec -T postgres pg_restore -U kinmesh -d kinmesh --clean --if-exists < kinmesh.dump
+```
+
+and put back the state directory from the same time. Never run a restored older backup against live native work without reconciling it.
 
 ## Inbox worker
 
@@ -90,7 +107,7 @@ The worker merges managed bindings with the file's on every loop; the file wins 
 
 ```json
 {
-  "database": "/private/kinmesh/team.sqlite",
+  "database": "postgres://kinmesh:…@127.0.0.1:5433/kinmesh",
   "pollMs": 1000,
   "bindings": [
     {
@@ -122,9 +139,9 @@ Run every process as the same private OS user with `umask 077`. Configuration ed
 
 ### Hub supervision
 
-The hub validates the configuration before listening. The worker's `database` must resolve to the same absolute path as `KINMESH_DATABASE`; the database's device and inode are pinned across restarts, so replacing the file means stopping everything. The hub forks `src/inbox/main.ts` without the session key, the Feishu app secret or `NODE_OPTIONS`; each startup step has a 10-second deadline, and a failed start exits 1.
+The hub validates the configuration before listening. The worker's `database` must be the same URL as `KINMESH_DATABASE_URL`; the database's name and identity are pinned across restarts, so replacing the database means stopping everything. The hub forks `src/inbox/main.ts` without the session key, the Feishu app secret or `NODE_OPTIONS`; each startup step has a 10-second deadline, and a failed start exits 1.
 
-An unexpected worker exit gets **three replacements per hub lifetime**, after 250, 500 and 1000 ms; exhausting them stops the hub with exit 1, so the outer service manager can alert and restart. `SIGTERM`/`SIGINT` stop the worker first: it gets 10 seconds to abort claims and close SQLite, then SIGKILL and five more seconds. Allow at least 20 seconds for hub shutdown. If the hub dies, the worker stops claiming and exits within 10 seconds. Native work is never interrupted by shutdown.
+An unexpected worker exit gets **three replacements per hub lifetime**, after 250, 500 and 1000 ms; exhausting them stops the hub with exit 1, so the outer service manager can alert and restart. `SIGTERM`/`SIGINT` stop the worker first: it gets 10 seconds to abort claims and close its connections, then SIGKILL and five more seconds. Allow at least 20 seconds for hub shutdown. If the hub dies, the worker stops claiming and exits within 10 seconds. Native work is never interrupted by shutdown.
 
 ### Independent supervision
 
@@ -157,7 +174,7 @@ A running worker records each bound agent in `inbox_bindings` at most every 10 s
 
 ### Scheduling and crash safety
 
-One immediate transaction claims work: global capacity **two** across all processes, the oldest outstanding delivery per agent first, a new generation and random claim token, and a **180-second** lease in SQLite time. Every later write requires the current unexpired claim. Attempts abort after 90 seconds. Retries back off 1, 2, 4… seconds up to 300 and never exhaust during outages. A killed worker leaves its lease; the next claimer waits for expiry and reconciles the same native intent (see [durable operations](t3.md#durable-operations-and-recovery)).
+One serializable transaction claims work, one claimer at a time across all processes (a transaction-scoped advisory lock): global capacity **two**, the oldest outstanding delivery per agent first, a new generation and random claim token, and a **180-second** lease in database time. Every later write requires the current unexpired claim. Attempts abort after 90 seconds. Retries back off 1, 2, 4… seconds up to 300 and never exhaust during outages. A killed worker leaves its lease; the next claimer waits for expiry and reconciles the same native intent (see [durable operations](t3.md#durable-operations-and-recovery)).
 
 To resume a blocked delivery after fixing its cause (anyone of the team can also do this from the workspace):
 
@@ -167,7 +184,7 @@ KINMESH_INBOX_CONFIG=/private/kinmesh/inbox.json npm run inbox:worker -- resume 
 
 Resume keeps the frozen intent, authority and native key. Never mint a new delivery or key to hide an ambiguous one.
 
-Delivery, source and result identities are kept forever for idempotency; per-delivery diagnostic history is capped at 128 snapshots. There is no purge or disk quota: at storage thresholds stop intake, take a consistent backup and archive the installation. Never run a restored older backup against live native work without reconciling it.
+Delivery, source and result identities are kept forever for idempotency; per-delivery diagnostic history is capped at 128 snapshots. There is no purge or disk quota: at storage thresholds stop intake, take a [backup](#backup-and-restore) and archive the installation.
 
 ## Live and native gates
 
@@ -182,19 +199,19 @@ Routine CI never runs models. These gates use real T3 and models, cost money, an
 | `npm run release:check`           | All local checks, build, audit and Chromium, then the three gates above, isolated                                                                                |
 | `npm run test:collaboration-live` | The complete product workflow in a disposable VM (the `Live collaboration` workflow)                                                                             |
 
-**`test:live`** needs `KINMESH_T3_LIVE=1`, `KINMESH_T3_ENDPOINT`, an operate grant (`KINMESH_T3_AUTH_FILE`), a separate Read only grant (`KINMESH_T3_READ_AUTH_FILE`) for the same environment, `KINMESH_T3_PROVIDER`, `KINMESH_T3_MODEL`, and private `KINMESH_T3_LIVE_DATABASE` and `KINMESH_T3_LIVE_REPORT` paths. It spends two model turns on scratch threads and archives them; cleanup failure fails the gate.
+**`test:live`** needs `KINMESH_T3_LIVE=1`, `KINMESH_T3_ENDPOINT`, an operate grant (`KINMESH_T3_AUTH_FILE`), a separate Read only grant (`KINMESH_T3_READ_AUTH_FILE`) for the same environment, `KINMESH_T3_PROVIDER`, `KINMESH_T3_MODEL`, a new, empty disposable database `KINMESH_T3_LIVE_DATABASE` (a URL whose database is named `kinmesh_live_` and 16 hex digits) and a private `KINMESH_T3_LIVE_REPORT` path. It spends two model turns on scratch threads and archives them; cleanup failure fails the gate.
 
 **`test:team-live`** needs a fixture from `npm run team:live:prepare` (below), Team MCP running on its database, a dedicated provider instance configured for that endpoint and grant, and `KINMESH_TEAM_T3_LIVE=1`, `KINMESH_TEAM_LIVE_DIR`, `KINMESH_TEAM_T3_ISOLATED_PROVIDER`, `KINMESH_T3_ENDPOINT`, `KINMESH_T3_AUTH_FILE`, `KINMESH_T3_MODEL`. It launches one provider turn; the gate itself only reads.
 
 **`test:inbox-live`** needs a fixture prepared with `KINMESH_TEAM_LIVE_SCENARIO=inbox` (which also requires `KINMESH_T3_ENVIRONMENT_ID`, `KINMESH_TEAM_T3_ISOLATED_PROVIDER` and `KINMESH_T3_MODEL`, and grants `executions:read`/`executions:write`), a worker configuration binding exactly that agent, and `KINMESH_INBOX_LIVE=1`, `KINMESH_TEAM_LIVE_DIR`, `KINMESH_INBOX_CONFIG`. Only the worker it starts dispatches.
 
-**Fixtures.** `npm run team:live:prepare` with `KINMESH_TEAM_LIVE_DIR` (a **nonexistent** `kinmesh-team-live-*` directory directly under the system temporary directory) and `KINMESH_TEAM_MCP_ENDPOINT` creates a private team, channel, Developer and Reviewer, a one-hour Developer grant (`developer.json`), a source message, an unclaimed task and `context.json`, with no T3 or model calls. Never reuse a consumed fixture.
+**Fixtures.** `npm run team:live:prepare` with `KINMESH_TEAM_LIVE_DIR` (a **nonexistent** `kinmesh-team-live-*` directory directly under the system temporary directory), `KINMESH_TEAM_MCP_ENDPOINT` and `KINMESH_DATABASE_ADMIN_URL` (a role that may create databases, on any database of that server, such as `postgres`) creates a new `kinmesh_live_…` database holding a private team, channel, Developer and Reviewer, a one-hour Developer grant (`developer.json`), a source message, an unclaimed task and `context.json`, with no T3 or model calls. Never reuse a consumed fixture.
 
-On failure, keep the fixture and inspect it through the workspace and T3 before cleanup. Afterwards stop Team MCP and workers, revoke the disposable Kinmesh and T3 grants, and remove only the directories you created. Never change shared provider settings or revoke shared grants.
+On failure, keep the fixture and inspect it through the workspace and T3 before cleanup. Afterwards stop Team MCP and workers, revoke the disposable Kinmesh and T3 grants, and remove only the directories and `kinmesh_live_` databases you created. Never change shared provider settings or revoke shared grants.
 
 ### Release check
 
-`npm run release:check` requires `KINMESH_RELEASE_LIVE=1` and an absolute `KINMESH_RELEASE_CONFIG`. It runs the three native gates with separate fixtures, grants and provider instances. Use Node 24, `umask 077`, and one OS user throughout.
+`npm run release:check` requires `KINMESH_RELEASE_LIVE=1`, an absolute `KINMESH_RELEASE_CONFIG` and `KINMESH_DATABASE_ADMIN_URL`, on which it makes the SDK stage's database. It runs the three native gates with separate fixtures, databases, grants and provider instances. Use Node 24, `umask 077`, and one OS user throughout.
 
 ```sh
 export KINMESH_T3_ENDPOINT=https://your-t3.example/mcp
@@ -203,6 +220,7 @@ export KINMESH_T3_MODEL=your-model-id
 export RELEASE_SDK_PROVIDER=dedicated-sdk-provider
 export RELEASE_TEAM_PROVIDER=dedicated-team-provider
 export RELEASE_INBOX_PROVIDER=dedicated-inbox-provider
+export KINMESH_DATABASE_ADMIN_URL=postgres://kinmesh:…@127.0.0.1:5433/postgres
 
 umask 077
 RELEASE_TMP=$(node -e 'console.log(require("node:fs").realpathSync(require("node:os").tmpdir()))')
@@ -224,9 +242,10 @@ KINMESH_TEAM_MCP_ENDPOINT=http://127.0.0.1:31002/mcp npm run team:live:prepare
 The grants expire after one hour. Start one Team MCP per fixture and keep both running:
 
 ```sh
-KINMESH_DATABASE="$RELEASE_TEAM_DIR/team.sqlite" KINMESH_TEAM_MCP_PORT=31001 \
+database() { node -p "require('$1/context.json').database"; }
+KINMESH_DATABASE_URL="$(database "$RELEASE_TEAM_DIR")" KINMESH_TEAM_MCP_PORT=31001 \
 KINMESH_TEAM_MCP_ORIGIN=http://127.0.0.1:31001 npm run team:mcp
-KINMESH_DATABASE="$RELEASE_INBOX_DIR/team.sqlite" KINMESH_TEAM_MCP_PORT=31002 \
+KINMESH_DATABASE_URL="$(database "$RELEASE_INBOX_DIR")" KINMESH_TEAM_MCP_PORT=31002 \
 KINMESH_TEAM_MCP_ORIGIN=http://127.0.0.1:31002 npm run team:mcp
 ```
 
@@ -280,7 +299,7 @@ Before any model runs, the aggregate rejects linked or non-private files, aliase
 | `Live collaboration`          | Manual dispatch on `main`             | `test:collaboration-live` for Codex and Grok, each on a fresh GitHub-hosted VM                                                           |
 | `Authenticated T3 acceptance` | Manual dispatch on `main`             | `release:check` on the owner's `kinmesh-t3-acceptance` self-hosted runner                                                                |
 
-`main` requires `foundation` and `chromium`. Routine CI has no model credentials and never starts a provider run; native DTO cases use labelled fixtures. Browser tests use real Chromium with generated secrets, no Inbox or T3 credentials, and no traces or video. A green CI run is not live evidence.
+Tests run against PostgreSQL in a Docker container that each run starts once: its migrated template is copied into a new database for every test, dropped afterwards. `main` requires `foundation` and `chromium`. Routine CI has no model credentials and never starts a provider run; native DTO cases use labelled fixtures. Browser tests use real Chromium with generated secrets, no Inbox or T3 credentials, and no traces or video. A green CI run is not live evidence.
 
 Both manual workflows check, before checkout, that the dispatcher and any rerun actor is the repository owner on `main` (and, for `Live collaboration`, a GitHub-hosted runner); the scripts check again. Neither runs on pull requests.
 

@@ -4,13 +4,14 @@ Kinmesh is a persistent workspace where people and AI agents work as one team. I
 
 ## Quick start
 
-Use **Node 24**. Running the workspace needs no T3, provider credentials or model calls.
+Use **Node 24** and Docker. Running the workspace needs no T3, provider credentials or model calls.
 
 ```sh
 npm ci
-npm run build    # the React workspace and server
-npm run setup    # writes a private .env (0600) with a session key; never overwrites
-npm start        # migrates, listens on 127.0.0.1:3000; keep it running
+npm run build                    # the React workspace and server
+npm run setup                    # writes a private .env (0600) with a session key and database password; never overwrites
+docker compose up -d postgres    # the database, on loopback
+npm start                        # migrates, listens on 127.0.0.1:3000; keep it running
 ```
 
 People sign in with Feishu. Before `npm start`, fill in the Feishu app (`FEISHU_APP_ID`, `FEISHU_APP_SECRET`) and your organization's mailbox domain (`KINMESH_EMAIL_DOMAIN`) in `.env`, register `http://127.0.0.1:3000/login/callback` as the app's redirect URL, and give the app the `contact:user.email:readonly` and `contact:user.employee:readonly` user scopes and the `tenant:tenant:readonly` app scope (for the team's name). Then open `http://127.0.0.1:3000/` and choose **Sign in with Feishu**: the first person to sign in makes the team, and everyone after joins it.

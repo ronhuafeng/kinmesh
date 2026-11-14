@@ -5,7 +5,7 @@ import { once } from 'node:events';
 import { setTimeout as delay } from 'node:timers/promises';
 import { writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import Database from 'better-sqlite3';
+import { rawDatabase } from './raw.js';
 import { z } from 'zod';
 import { Claim } from '../src/domain/inbox.js';
 import { Correlation } from '../src/domain/agents.js';
@@ -32,8 +32,7 @@ await test(
   async () => {
     const f = await inboxFixture();
     const children: ChildProcess[] = [];
-    const raw = new Database(f.dbPath);
-    raw.pragma('busy_timeout=5000');
+    const raw = rawDatabase(f.dbPath);
     try {
       await f.comm.post(
         f.principal,
@@ -47,25 +46,27 @@ await test(
         assert.equal(await message(c), 'ready');
       }
       await until(
-        () =>
-          raw
+        async () =>
+          (await raw
             .prepare('SELECT count(*) FROM execution_operations')
             .pluck()
-            .get() === 1,
+            .get()) === 1,
       );
       await until(
-        () =>
-          raw
+        async () =>
+          (await raw
             .prepare('SELECT count(*) FROM fixture_native_launches')
             .pluck()
-            .get() === 1,
+            .get()) === 1,
       );
-      const original = f.rows()[0];
+      const original = (await f.rows())[0];
       assert.ok(original);
       const stale = Claim.parse(original);
       const native = z
         .object({ request_id: z.string(), transmissions: z.number() })
-        .parse(raw.prepare('SELECT * FROM fixture_native_launches').get());
+        .parse(
+          await raw.prepare('SELECT * FROM fixture_native_launches').get(),
+        );
       assert.equal(native.transmissions, 1);
       assert.equal(
         await f.inbox.claim([f.agent.id]),
@@ -73,11 +74,11 @@ await test(
         'neither process nor third connection can steal active lease',
       );
       assert.equal(
-        raw.prepare('SELECT generation FROM agent_inbox').pluck().get(),
+        await raw.prepare('SELECT generation FROM agent_inbox').pluck().get(),
         1,
       );
       for (const c of children) await stop(c, 'SIGKILL');
-      const reopened = f.open();
+      const reopened = await f.open();
       try {
         assert.equal(
           await reopened.inbox.claim([f.agent.id]),
@@ -87,8 +88,8 @@ await test(
       } finally {
         await reopened.close();
       }
-      due(f.dbPath, true);
-      raw.exec(
+      await due(f.dbPath, true);
+      await raw.exec(
         "UPDATE execution_operations SET lease_until=1 WHERE phase='dispatching'",
       );
       const recovery = worker(f.configPath);
@@ -97,7 +98,7 @@ await test(
       await until(async () => (await f.inbox.get(stale.id)).state === 'acked');
       await stop(recovery);
       assert.equal(
-        raw
+        await raw
           .prepare('SELECT count(*) FROM fixture_native_launches')
           .pluck()
           .get(),
@@ -105,7 +106,7 @@ await test(
         'one native idempotency key across process crash',
       );
       assert.equal(
-        raw
+        await raw
           .prepare('SELECT transmissions FROM fixture_native_launches')
           .pluck()
           .get(),
@@ -113,7 +114,7 @@ await test(
         'only explicit reconciliation retransmits',
       );
       assert.equal(
-        raw
+        await raw
           .prepare('SELECT request_id FROM execution_operations')
           .pluck()
           .get(),
@@ -121,7 +122,7 @@ await test(
       );
       assert.equal((await f.inbox.get(stale.id)).generation, 3);
       assert.equal(
-        raw.prepare('SELECT count(*) FROM inbox_results').pluck().get(),
+        await raw.prepare('SELECT count(*) FROM inbox_results').pluck().get(),
         1,
       );
       await assert.rejects(async () => {
@@ -132,7 +133,7 @@ await test(
       });
     } finally {
       for (const c of children) await stop(c, 'SIGKILL');
-      raw.close();
+      await raw.close();
       await f.dispose();
     }
   },
@@ -143,8 +144,7 @@ await test(
   async () => {
     const f = await inboxFixture();
     const children: ChildProcess[] = [];
-    const raw = new Database(f.dbPath);
-    raw.pragma('busy_timeout=5000');
+    const raw = rawDatabase(f.dbPath);
     try {
       const task = (
         await f.create({ owner: { kind: 'agent', id: f.agent.id } })
@@ -152,15 +152,17 @@ await test(
       const originalWorker = worker(f.configPath, 'prelinked-hold');
       children.push(originalWorker);
       await until(
-        () =>
-          raw.prepare('SELECT count(*) FROM task_executions').pluck().get() ===
-          1,
+        async () =>
+          (await raw
+            .prepare('SELECT count(*) FROM task_executions')
+            .pluck()
+            .get()) === 1,
       );
-      const original = f.rows()[0];
+      const original = (await f.rows())[0];
       assert.ok(original);
       assert.ok(original.reference);
       const stale = Claim.parse(original);
-      const requestId: unknown = raw
+      const requestId: unknown = await raw
         .prepare('SELECT request_id FROM execution_operations')
         .pluck()
         .get();
@@ -171,7 +173,7 @@ await test(
         undefined,
         'Crash cannot release the live lease',
       );
-      due(f.dbPath, true);
+      await due(f.dbPath, true);
       const recovery = worker(f.configPath);
       children.push(recovery);
       await until(
@@ -183,37 +185,43 @@ await test(
       assert.equal(result.reference, original.reference);
       assert.equal(result.launch, original.launch);
       assert.equal(
-        raw.prepare('SELECT count(*) FROM task_executions').pluck().get(),
+        await raw.prepare('SELECT count(*) FROM task_executions').pluck().get(),
         1,
       );
       assert.equal(
-        raw.prepare('SELECT count(*) FROM inbox_results').pluck().get(),
+        await raw.prepare('SELECT count(*) FROM inbox_results').pluck().get(),
         1,
       );
       assert.equal(
-        raw.prepare('SELECT count(*) FROM agent_correlations').pluck().get(),
+        await raw
+          .prepare('SELECT count(*) FROM agent_correlations')
+          .pluck()
+          .get(),
         1,
       );
       assert.equal(
-        raw.prepare('SELECT task_link_id FROM inbox_results').pluck().get(),
-        raw.prepare('SELECT id FROM task_executions').pluck().get(),
+        await raw
+          .prepare('SELECT task_link_id FROM inbox_results')
+          .pluck()
+          .get(),
+        await raw.prepare('SELECT id FROM task_executions').pluck().get(),
       );
       assert.equal(
-        raw
+        await raw
           .prepare('SELECT request_id FROM execution_operations')
           .pluck()
           .get(),
         requestId,
       );
       assert.equal(
-        raw
+        await raw
           .prepare('SELECT count(*) FROM fixture_native_launches')
           .pluck()
           .get(),
         1,
       );
       assert.equal(
-        raw
+        await raw
           .prepare('SELECT transmissions FROM fixture_native_launches')
           .pluck()
           .get(),
@@ -242,7 +250,7 @@ await test(
       );
     } finally {
       for (const child of children) await stop(child, 'SIGKILL');
-      raw.close();
+      await raw.close();
       await f.dispose();
     }
   },
@@ -256,14 +264,13 @@ await test(
   async () => {
     const f = await inboxFixture();
     const children: ChildProcess[] = [];
-    const raw = new Database(f.dbPath);
-    raw.pragma('busy_timeout=5000');
+    const raw = rawDatabase(f.dbPath);
     try {
       await f.create({ owner: { kind: 'agent', id: f.agent.id } });
       const originalWorker = worker(f.configPath, 'publication-hold');
       children.push(originalWorker);
-      await until(() => f.rows()[0]?.reference !== null);
-      const original = f.rows()[0];
+      await until(async () => (await f.rows())[0]?.reference !== null);
+      const original = (await f.rows())[0];
       assert.ok(original?.reference);
       const stale = Claim.parse(original);
       const response = await f.app.inject({
@@ -278,12 +285,12 @@ await test(
       });
       assert.equal(response.statusCode, 201);
       const existing = Correlation.parse(response.json<unknown>());
-      const journalBefore: unknown = raw
+      const journalBefore: unknown = await raw
         .prepare('SELECT * FROM execution_operations')
         .get();
       await stop(originalWorker, 'SIGKILL');
       assert.equal(await f.inbox.claim([f.agent.id]), undefined);
-      due(f.dbPath, true);
+      await due(f.dbPath, true);
       const recovery = worker(f.configPath);
       children.push(recovery);
       await until(async () => {
@@ -305,11 +312,14 @@ await test(
         [existing],
       );
       assert.deepEqual(
-        raw.prepare('SELECT * FROM execution_operations').get(),
+        await raw.prepare('SELECT * FROM execution_operations').get(),
         journalBefore,
       );
       assert.equal(
-        raw.prepare('SELECT correlation_id FROM inbox_results').pluck().get(),
+        await raw
+          .prepare('SELECT correlation_id FROM inbox_results')
+          .pluck()
+          .get(),
         existing.id,
       );
       for (const table of [
@@ -319,14 +329,14 @@ await test(
         'fixture_native_launches',
       ])
         assert.equal(
-          raw
+          await raw
             .prepare('SELECT count(*) FROM ' + table)
             .pluck()
             .get(),
           1,
         );
       assert.equal(
-        raw
+        await raw
           .prepare('SELECT transmissions FROM fixture_native_launches')
           .pluck()
           .get(),
@@ -337,7 +347,7 @@ await test(
       );
     } finally {
       for (const child of children) await stop(child, 'SIGKILL');
-      raw.close();
+      await raw.close();
       await f.dispose();
     }
   },
@@ -383,8 +393,8 @@ await test(
         child.kill('SIGTERM');
         await exited;
         assert.ok(output.includes('Kinmesh Inbox worker stopped.'));
-        assert.equal(f.rows()[0]?.state, 'ready');
-        assert.equal(f.rows()[0]?.generation, 0);
+        assert.equal((await f.rows())[0]?.state, 'ready');
+        assert.equal((await f.rows())[0]?.generation, 0);
       }
       const bad = spawn(
         process.execPath,

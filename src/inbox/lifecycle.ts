@@ -1,23 +1,17 @@
-import { statSync, realpathSync } from 'node:fs';
 import { z } from 'zod';
 import { WorkerConfig } from './config.js';
 
-const DatabaseIdentity = z.strictObject({
-  device: z.string().regex(/^\d+$/),
-  inode: z.string().regex(/^\d+$/),
+/**
+ * Which database a process uses: its name and the object ID PostgreSQL gave
+ * it, which a dropped and recreated database does not keep.
+ */
+export const DatabaseIdentity = z.strictObject({
+  database: z.string().min(1),
+  oid: z.string().regex(/^\d+$/),
 });
-export function databaseIdentity(path: string) {
-  const canonical = realpathSync(path);
-  const stat = statSync(canonical, { bigint: true });
-  if (!stat.isFile()) throw new Error('File database required');
-  return {
-    database: canonical,
-    identity: DatabaseIdentity.parse({
-      device: String(stat.dev),
-      inode: String(stat.ino),
-    }),
-  };
-}
+export type DatabaseIdentity = z.infer<typeof DatabaseIdentity>;
+export const sameDatabase = (a: DatabaseIdentity, b: DatabaseIdentity) =>
+  a.database === b.database && a.oid === b.oid;
 export const Initialize = z.strictObject({
   type: z.literal('inbox.initialize'),
   config: WorkerConfig,

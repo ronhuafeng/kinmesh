@@ -29,7 +29,7 @@ export async function probeNative(
   credential: Credential,
   wire: Wire,
 ) {
-  const store = openStore(
+  const store = await openStore(
     stage.context?.database ?? stage.env.KINMESH_T3_LIVE_DATABASE ?? '',
   );
   try {

@@ -15,7 +15,7 @@ export async function startTeam(path: string, port: number) {
     {
       env: {
         ...process.env,
-        KINMESH_DATABASE: path,
+        KINMESH_DATABASE_URL: path,
         KINMESH_TEAM_MCP_PORT: String(port),
         KINMESH_TEAM_MCP_ORIGIN: `http://127.0.0.1:${String(port)}`,
       },

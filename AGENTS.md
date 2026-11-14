@@ -1,20 +1,20 @@
 # Working on Kinmesh
 
 Development guidelines for people and agents. Kinmesh is a persistent workspace where
-people and AI agents work together: a Fastify/SQLite team hub (`src/`), the React
+people and AI agents work together: a Fastify/PostgreSQL team hub (`src/`), the React
 workspace (`web/`), and T3 Code as the agents' runtime. Start with
 [README.md](README.md).
 
-| Code              | Responsibility                                              |
-| ----------------- | ----------------------------------------------------------- |
-| `src/domain`      | Strict TypeScript/Zod contracts and pure policy             |
-| `src/persistence` | Drizzle/SQLite state, migrations, audit, receipts, outbox   |
-| `src/server`      | Fastify HTTP, principals, authorization, worker supervision |
-| `src/inbox`       | The Inbox worker                                            |
-| `src/team-mcp`    | The standalone Team MCP service                             |
-| `src/adapters/t3` | The T3 adapter (official MCP SDK only)                      |
-| `src/workspace`   | Workspace snapshot and AG-UI contracts                      |
-| `web`             | The React workspace                                         |
+| Code              | Responsibility                                                |
+| ----------------- | ------------------------------------------------------------- |
+| `src/domain`      | Strict TypeScript/Zod contracts and pure policy               |
+| `src/persistence` | Drizzle/PostgreSQL state, migrations, audit, receipts, outbox |
+| `src/server`      | Fastify HTTP, principals, authorization, worker supervision   |
+| `src/inbox`       | The Inbox worker                                              |
+| `src/team-mcp`    | The standalone Team MCP service                               |
+| `src/adapters/t3` | The T3 adapter (official MCP SDK only)                        |
+| `src/workspace`   | Workspace snapshot and AG-UI contracts                        |
+| `web`             | The React workspace                                           |
 
 Reuse → Adapt → Extend → Build: prefer maintained libraries and supported external
 interfaces. Never import, patch or read T3 internals.

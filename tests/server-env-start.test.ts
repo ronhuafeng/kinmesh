@@ -15,12 +15,14 @@ import { setTimeout as delay } from 'node:timers/promises';
 import { z } from 'zod';
 import { freePort, stop } from './process-helpers.js';
 import { feishuEnv } from './helpers.js';
+import { testDatabase } from './database.js';
 
 await test(
   'ordinary hub startup accepts private process environment without a local .env',
   { timeout: 30000 },
   async () => {
     const directory = mkdtempSync(join(tmpdir(), 'kinmesh-env-start-'));
+    const database = await testDatabase();
     let child: ChildProcess | undefined;
     try {
       copyFileSync(resolve('package.json'), join(directory, 'package.json'));
@@ -42,7 +44,8 @@ await test(
         ...process.env,
         KINMESH_SESSION_KEY: randomBytes(32).toString('hex'),
         ...feishuEnv,
-        KINMESH_DATABASE: join(directory, 'team.sqlite'),
+        KINMESH_DATABASE_URL: database.url,
+        KINMESH_STATE: directory,
         KINMESH_ORIGIN: origin,
         KINMESH_PORT: String(port),
       };
@@ -74,6 +77,7 @@ await test(
       assert.equal(unauthenticated.status, 401);
     } finally {
       if (child !== undefined) await stop(child, 'SIGTERM', 2000);
+      await database.drop();
       rmSync(directory, { recursive: true, force: true });
     }
   },

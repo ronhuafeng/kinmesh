@@ -8,7 +8,7 @@ import { captured, schemas } from './t3-helpers.js';
 export async function mockNativeServer() {
   const calls: { name: string; args: unknown }[] = [];
   const requests: { path: string; authorization: string | undefined }[] = [];
-  const hooks: { beforeThreadRead?: () => void } = {};
+  const hooks: { beforeThreadRead?: () => Promise<void> } = {};
   const mode = {
     value: 'normal' as
       | 'normal'
@@ -46,7 +46,7 @@ export async function mockNativeServer() {
     request.on('data', (chunk: Buffer) => {
       body += chunk.toString();
     });
-    request.on('end', () => {
+    const answer = async () => {
       const rpc = z
         .object({
           id: z.union([z.string(), z.number()]).optional(),
@@ -89,7 +89,7 @@ export async function mockNativeServer() {
             content: [],
           };
         } else if (params.name === 't3_thread_read') {
-          hooks.beforeThreadRead?.();
+          await hooks.beforeThreadRead?.();
           const data = z
             .object({ thread: z.record(z.string(), z.unknown()) })
             .loose()
@@ -107,7 +107,8 @@ export async function mockNativeServer() {
       response
         .writeHead(200, { 'content-type': 'application/json' })
         .end(JSON.stringify({ jsonrpc: '2.0', id: rpc.id, result }));
-    });
+    };
+    request.on('end', () => void answer());
   });
   const capturedEnvironment = z
     .object({ environmentId: z.string() })

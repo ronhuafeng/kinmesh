@@ -40,9 +40,9 @@ export const correlationInput = {
 } as const;
 export const Issued = z.strictObject({ grant: Grant, token: z.string() });
 export async function agentFixture(overrides: Partial<Config> = {}) {
-  const f = fixture();
+  const f = await fixture();
   f.config = { ...f.config, ...overrides };
-  const store = f.open();
+  const store = await f.open();
   const app = await createApp(
     f.config,
     store,
@@ -103,7 +103,7 @@ export async function agentFixture(overrides: Partial<Config> = {}) {
     },
     async dispose() {
       await app.close();
-      f.cleanup();
+      await f.cleanup();
     },
   };
 }

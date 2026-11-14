@@ -44,7 +44,10 @@ await test('MOCK native: developer settles the exact Run after its own review ha
         .items.length,
       1,
     );
-    assert.equal(f.rows().filter((r) => r.agentId === f.reviewer.id).length, 1);
+    assert.equal(
+      (await f.rows()).filter((r) => r.agentId === f.reviewer.id).length,
+      1,
+    );
   } finally {
     await f.dispose();
   }
@@ -67,7 +70,7 @@ await test('MOCK native: retry after developer handoff reads the existing Run an
       note: 'Review the completed artifact.',
     });
     f.wire.values.t3_thread_read = assistantRead();
-    due(f.dbPath);
+    await due(f.dbPath);
     const retry = await f.inbox.claim([f.agent.id]);
     assert.ok(retry);
     await deliver(f.store, retry, f.binding, f.factory, signal());
@@ -311,7 +314,7 @@ await test('MOCK native: a known journal receipt recovers across handoff before 
     await deliver(f.store, claim, f.binding, factory, signal());
     assert.equal((await f.inbox.get(claim.id)).state, 'uncertain');
     assert.equal((await f.inbox.get(claim.id)).reference, null);
-    due(f.dbPath);
+    await due(f.dbPath);
     const retry = await f.inbox.claim([f.agent.id]);
     assert.ok(retry);
     await deliver(f.store, retry, f.binding, f.factory, signal());

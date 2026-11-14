@@ -1,6 +1,6 @@
+import type { Database } from './database.js';
 import { createHash, randomBytes, randomUUID } from 'node:crypto';
-import { and, eq, isNull, sql, asc, desc } from 'drizzle-orm';
-import type { BetterSQLite3Database } from 'drizzle-orm/better-sqlite3';
+import { and, eq, isNull, asc, desc } from 'drizzle-orm';
 import { z } from 'zod';
 import * as s from './schema.js';
 import { referenceKey, transactional } from './transactional.js';
@@ -43,14 +43,16 @@ function avatarType(bytes: Buffer) {
     return 'image/webp';
   return null;
 }
-export function agentRepository(db: BetterSQLite3Database<typeof s>) {
-  const { atomic } = transactional(db);
-  function profile(teamId: TeamId, agentId: AgentId) {
-    const row = db
-      .select()
-      .from(s.agents)
-      .where(and(eq(s.agents.id, agentId), eq(s.agents.teamId, teamId)))
-      .get();
+export function agentRepository(d: Database) {
+  const { q, atomic } = transactional(d);
+  async function profile(teamId: TeamId, agentId: AgentId) {
+    const row = (
+      await q()
+        .select(s.agentFields)
+        .from(s.agents)
+        .where(and(eq(s.agents.id, agentId), eq(s.agents.teamId, teamId)))
+        .limit(1)
+    )[0];
     if (row === undefined) throw new IdentityError(404);
     return Agent.parse({
       ...row,
@@ -58,12 +60,14 @@ export function agentRepository(db: BetterSQLite3Database<typeof s>) {
       preferences: parseJson(row.preferences),
     });
   }
-  function checkedGrant(p: Extract<Principal, { kind: 'agent' }>) {
-    const grant = db
-      .select()
-      .from(s.agentGrants)
-      .where(eq(s.agentGrants.id, p.grantId))
-      .get();
+  async function checkedGrant(p: Extract<Principal, { kind: 'agent' }>) {
+    const grant = (
+      await q()
+        .select()
+        .from(s.agentGrants)
+        .where(eq(s.agentGrants.id, p.grantId))
+        .limit(1)
+    )[0];
     if (
       grant?.agentId !== p.agentId ||
       grant.teamId !== p.teamId ||
@@ -71,7 +75,7 @@ export function agentRepository(db: BetterSQLite3Database<typeof s>) {
       grant.expiresAt <= now()
     )
       throw new IdentityError(401);
-    const agent = profile(p.teamId, p.agentId);
+    const agent = await profile(p.teamId, p.agentId);
     if (agent.lifecycle !== 'active') throw new IdentityError(401);
     return { grant, scopes: z.array(Scope).parse(parseJson(grant.scopes)) };
   }
@@ -79,11 +83,11 @@ export function agentRepository(db: BetterSQLite3Database<typeof s>) {
    * Membership of the team, holding every scope given (agents) — 401 for an
    * unknown human or a dead grant, 403 otherwise.
    */
-  function teamAccess(p: Principal, teamId: TeamId, ...scopes: Scope[]) {
+  async function teamAccess(p: Principal, teamId: TeamId, ...scopes: Scope[]) {
     Principal.parse(p);
     TeamId.parse(teamId);
     if (p.kind === 'agent') {
-      const current = checkedGrant(p);
+      const current = await checkedGrant(p);
       if (
         p.teamId !== teamId ||
         !scopes.every((scope) => current.scopes.includes(scope))
@@ -92,33 +96,37 @@ export function agentRepository(db: BetterSQLite3Database<typeof s>) {
       return { role: 'agent' as const };
     }
     // Only whether they exist: nothing else about a person is needed here.
-    const human = db
-      .select({ id: s.humans.id })
-      .from(s.humans)
-      .where(eq(s.humans.id, p.humanId))
-      .get();
+    const human = (
+      await q()
+        .select({ id: s.humans.id })
+        .from(s.humans)
+        .where(eq(s.humans.id, p.humanId))
+        .limit(1)
+    )[0];
     if (human === undefined) throw new IdentityError(401);
-    const membership = db
-      .select()
-      .from(s.memberships)
-      .where(
-        and(
-          eq(s.memberships.humanId, p.humanId),
-          eq(s.memberships.teamId, teamId),
-        ),
-      )
-      .get();
+    const membership = (
+      await q()
+        .select()
+        .from(s.memberships)
+        .where(
+          and(
+            eq(s.memberships.humanId, p.humanId),
+            eq(s.memberships.teamId, teamId),
+          ),
+        )
+        .limit(1)
+    )[0];
     if (membership === undefined) throw new IdentityError(403);
   }
   /**
    * A person of the team: any member, since everyone is equal; an agent is
    * refused.
    */
-  function person(p: Principal, teamId: TeamId) {
-    teamAccess(p, teamId);
+  async function person(p: Principal, teamId: TeamId) {
+    await teamAccess(p, teamId);
     if (p.kind !== 'human') throw new IdentityError(403);
   }
-  function access(
+  async function access(
     p: Principal,
     teamId: TeamId,
     agentId: AgentId,
@@ -127,9 +135,9 @@ export function agentRepository(db: BetterSQLite3Database<typeof s>) {
     Principal.parse(p);
     TeamId.parse(teamId);
     AgentId.parse(agentId);
-    if (p.kind === 'human') person(p, teamId);
+    if (p.kind === 'human') await person(p, teamId);
     else {
-      const current = checkedGrant(p);
+      const current = await checkedGrant(p);
       if (
         p.teamId !== teamId ||
         p.agentId !== agentId ||
@@ -140,19 +148,19 @@ export function agentRepository(db: BetterSQLite3Database<typeof s>) {
     return profile(teamId, agentId);
   }
   /** A person of the team, or the agent acting on its own profile. */
-  function self(p: Principal, teamId: TeamId, agentId: AgentId) {
+  async function self(p: Principal, teamId: TeamId, agentId: AgentId) {
     Principal.parse(p);
     TeamId.parse(teamId);
     AgentId.parse(agentId);
-    if (p.kind === 'human') person(p, teamId);
+    if (p.kind === 'human') await person(p, teamId);
     else {
-      checkedGrant(p);
+      await checkedGrant(p);
       if (p.teamId !== teamId || p.agentId !== agentId)
         throw new IdentityError(403);
     }
     return profile(teamId, agentId);
   }
-  function audit(
+  async function audit(
     p: Principal,
     teamId: TeamId,
     agentId: AgentId,
@@ -168,23 +176,26 @@ export function agentRepository(db: BetterSQLite3Database<typeof s>) {
       detail,
       createdAt: now(),
     });
-    db.insert(s.agentAudit)
+    await q()
+      .insert(s.agentAudit)
       .values({
         ...event,
         author: JSON.stringify(event.author),
         detail: JSON.stringify(event.detail),
-      })
-      .run();
+      });
   }
 
-  function issue(
+  async function issue(
     p: Principal,
     teamId: TeamId,
     agentId: AgentId,
     input: GrantInput,
   ) {
-    person(p, teamId);
-    if (p.kind !== 'human' || profile(teamId, agentId).lifecycle !== 'active')
+    await person(p, teamId);
+    if (
+      p.kind !== 'human' ||
+      (await profile(teamId, agentId)).lifecycle !== 'active'
+    )
       throw new IdentityError(409);
     const data = GrantInput.parse(input);
     const token = 'kma_' + randomBytes(32).toString('base64url');
@@ -200,63 +211,67 @@ export function agentRepository(db: BetterSQLite3Database<typeof s>) {
       ).toISOString(),
       revokedAt: null,
     };
-    db.insert(s.agentGrants)
+    await q()
+      .insert(s.agentGrants)
       .values({
         ...grant,
         tokenHash: digest(token),
         scopes: JSON.stringify(data.scopes),
         issuedBy: p.humanId,
-      })
-      .run();
-    audit(p, teamId, agentId, 'credential-issued', { grantId: grant.id });
+      });
+    await audit(p, teamId, agentId, 'credential-issued', { grantId: grant.id });
     return { grant: Grant.parse(grant), token };
   }
-  function grantFor(teamId: TeamId, agentId: AgentId, grantId: string) {
+  async function grantFor(teamId: TeamId, agentId: AgentId, grantId: string) {
     z.uuid().parse(grantId);
-    const row = db
-      .select()
-      .from(s.agentGrants)
-      .where(
-        and(
-          eq(s.agentGrants.id, grantId),
-          eq(s.agentGrants.agentId, agentId),
-          eq(s.agentGrants.teamId, teamId),
-        ),
-      )
-      .get();
+    const row = (
+      await q()
+        .select()
+        .from(s.agentGrants)
+        .where(
+          and(
+            eq(s.agentGrants.id, grantId),
+            eq(s.agentGrants.agentId, agentId),
+            eq(s.agentGrants.teamId, teamId),
+          ),
+        )
+        .limit(1)
+    )[0];
     if (row === undefined) throw new IdentityError(404);
     return row;
   }
-  function revoke(
+  async function revoke(
     p: Principal,
     teamId: TeamId,
     agentId: AgentId,
     grantId: string,
   ) {
-    person(p, teamId);
-    profile(teamId, agentId);
-    grantFor(teamId, agentId, grantId);
-    db.update(s.agentGrants)
+    await person(p, teamId);
+    await profile(teamId, agentId);
+    await grantFor(teamId, agentId, grantId);
+    await q()
+      .update(s.agentGrants)
       .set({ revokedAt: now() })
       .where(
         and(eq(s.agentGrants.id, grantId), isNull(s.agentGrants.revokedAt)),
-      )
-      .run();
-    audit(p, teamId, agentId, 'credential-revoked', { grantId });
+      );
+    await audit(p, teamId, agentId, 'credential-revoked', { grantId });
   }
-  function correlation(teamId: TeamId, agentId: AgentId, id: string) {
+  async function correlation(teamId: TeamId, agentId: AgentId, id: string) {
     z.uuid().parse(id);
-    const row = db
-      .select()
-      .from(s.agentCorrelations)
-      .where(
-        and(
-          eq(s.agentCorrelations.id, id),
-          eq(s.agentCorrelations.teamId, teamId),
-          eq(s.agentCorrelations.agentId, agentId),
-        ),
-      )
-      .get();
+    const row = (
+      await q()
+        .select(s.correlationFields)
+        .from(s.agentCorrelations)
+        .where(
+          and(
+            eq(s.agentCorrelations.id, id),
+            eq(s.agentCorrelations.teamId, teamId),
+            eq(s.agentCorrelations.agentId, agentId),
+          ),
+        )
+        .limit(1)
+    )[0];
     if (row === undefined) throw new IdentityError(404);
     return Correlation.parse({
       id: row.id,
@@ -273,13 +288,15 @@ export function agentRepository(db: BetterSQLite3Database<typeof s>) {
     });
   }
   return {
-    resolveToken(token: string): Principal {
+    async resolveToken(token: string): Promise<Principal> {
       if (!/^kma_[A-Za-z0-9_-]{43}$/.test(token)) throw new IdentityError(401);
-      const row = db
-        .select()
-        .from(s.agentGrants)
-        .where(eq(s.agentGrants.tokenHash, digest(token)))
-        .get();
+      const row = (
+        await q()
+          .select()
+          .from(s.agentGrants)
+          .where(eq(s.agentGrants.tokenHash, digest(token)))
+          .limit(1)
+      )[0];
       if (row === undefined) throw new IdentityError(401);
       const principal = Principal.parse({
         kind: 'agent',
@@ -289,15 +306,15 @@ export function agentRepository(db: BetterSQLite3Database<typeof s>) {
         scopes: parseJson(row.scopes),
       });
       if (principal.kind !== 'agent') throw new IdentityError(401);
-      checkedGrant(principal);
+      await checkedGrant(principal);
       return principal;
     },
     authorize: access,
     teamAccess,
     person,
     create(p: Principal, teamId: TeamId, input: ProfileInput) {
-      return atomic(() => {
-        person(p, teamId);
+      return atomic(async () => {
+        await person(p, teamId);
         const data = ProfileInput.parse(input);
         const agent = Agent.parse({
           ...data,
@@ -307,53 +324,54 @@ export function agentRepository(db: BetterSQLite3Database<typeof s>) {
           createdAt: now(),
           updatedAt: now(),
         });
-        db.insert(s.agents)
+        await q()
+          .insert(s.agents)
           .values({
             ...agent,
             capabilities: JSON.stringify(agent.capabilities),
             preferences: JSON.stringify(agent.preferences),
-          })
-          .run();
-        audit(p, teamId, agent.id, 'created', agent);
+          });
+        await audit(p, teamId, agent.id, 'created', agent);
         return agent;
       });
     },
     get(p: Principal, teamId: TeamId, agentId: AgentId) {
       return access(p, teamId, agentId, 'agents:read');
     },
-    list(p: Principal, teamId: TeamId) {
-      person(p, teamId);
-      return db
+    async list(p: Principal, teamId: TeamId) {
+      await person(p, teamId);
+      const rows = await q()
         .select({ id: s.agents.id })
         .from(s.agents)
         .where(eq(s.agents.teamId, teamId))
-        .all()
-        .map((r) => profile(teamId, AgentId.parse(r.id)));
+        .orderBy(asc(s.agents.position));
+      return Promise.all(rows.map((r) => profile(teamId, AgentId.parse(r.id))));
     },
     /** Bounded projection for people. Existing list/identity API contracts remain unchanged. */
     workspaceProfiles(p: Principal, teamId: TeamId) {
-      return atomic(() => {
-        person(p, teamId);
-        const rows = db
+      return atomic(async () => {
+        await person(p, teamId);
+        const rows = await q()
           .select({ id: s.agents.id })
           .from(s.agents)
           .where(eq(s.agents.teamId, teamId))
-          .orderBy(asc(sql`${s.agents}.rowid`))
-          .limit(101)
-          .all();
+          .orderBy(asc(s.agents.position))
+          .limit(101);
         return {
-          agents: rows
-            .slice(0, 100)
-            .map((row) => profile(teamId, AgentId.parse(row.id))),
+          agents: await Promise.all(
+            rows
+              .slice(0, 100)
+              .map((row) => profile(teamId, AgentId.parse(row.id))),
+          ),
           truncated: rows.length > 100,
         };
       });
     },
     /** Append order is authoritative for persisted reports, even if wall-clock timestamps tie. */
     workspaceExecutions(p: Principal, teamId: TeamId, agentId: AgentId) {
-      return atomic(() => {
-        const agent = access(p, teamId, agentId, 'executions:read');
-        const rows = db
+      return atomic(async () => {
+        const agent = await access(p, teamId, agentId, 'executions:read');
+        const rows = await q()
           .select({ id: s.agentCorrelations.id })
           .from(s.agentCorrelations)
           .where(
@@ -362,34 +380,34 @@ export function agentRepository(db: BetterSQLite3Database<typeof s>) {
               eq(s.agentCorrelations.teamId, teamId),
             ),
           )
-          .orderBy(desc(sql`${s.agentCorrelations}.rowid`))
-          .limit(21)
-          .all();
+          .orderBy(desc(s.agentCorrelations.position))
+          .limit(21);
         return {
           agent,
           executionsTruncated: rows.length > 20,
-          executions: rows.slice(0, 20).map((row) => {
-            const events = db
-              .select()
-              .from(s.agentRuntimeEvents)
-              .where(eq(s.agentRuntimeEvents.correlationId, row.id))
-              .orderBy(desc(sql`${s.agentRuntimeEvents}.rowid`))
-              .limit(101)
-              .all();
-            return {
-              correlation: correlation(teamId, agentId, row.id),
-              eventsTruncated: events.length > 100,
-              events: events
-                .slice(0, 100)
-                .reverse()
-                .map((event) =>
-                  RuntimeEvent.parse({
-                    ...event,
-                    author: parseJson(event.author),
-                  }),
-                ),
-            };
-          }),
+          executions: await Promise.all(
+            rows.slice(0, 20).map(async (row) => {
+              const events = await q()
+                .select(s.runtimeEventFields)
+                .from(s.agentRuntimeEvents)
+                .where(eq(s.agentRuntimeEvents.correlationId, row.id))
+                .orderBy(desc(s.agentRuntimeEvents.position))
+                .limit(101);
+              return {
+                correlation: await correlation(teamId, agentId, row.id),
+                eventsTruncated: events.length > 100,
+                events: events
+                  .slice(0, 100)
+                  .reverse()
+                  .map((event) =>
+                    RuntimeEvent.parse({
+                      ...event,
+                      author: parseJson(event.author),
+                    }),
+                  ),
+              };
+            }),
+          ),
         };
       });
     },
@@ -399,81 +417,85 @@ export function agentRepository(db: BetterSQLite3Database<typeof s>) {
       agentId: AgentId,
       input: ProfileInput,
     ) {
-      return atomic(() => {
-        person(p, teamId);
-        profile(teamId, agentId);
+      return atomic(async () => {
+        await person(p, teamId);
+        await profile(teamId, agentId);
         const data = ProfileInput.parse(input);
-        db.update(s.agents)
+        await q()
+          .update(s.agents)
           .set({
             ...data,
             capabilities: JSON.stringify(data.capabilities),
             preferences: JSON.stringify(data.preferences),
             updatedAt: now(),
           })
-          .where(eq(s.agents.id, agentId))
-          .run();
-        audit(p, teamId, agentId, 'updated', data);
+          .where(eq(s.agents.id, agentId));
+        await audit(p, teamId, agentId, 'updated', data);
         return profile(teamId, agentId);
       });
     },
     /** Set an agent's picture: a person of the team, or the agent itself. */
     setAvatar(p: Principal, teamId: TeamId, agentId: AgentId, bytes: Buffer) {
-      return atomic(() => {
-        self(p, teamId, agentId);
+      return atomic(async () => {
+        await self(p, teamId, agentId);
         const mime = avatarType(bytes);
         if (mime === null || bytes.length > AVATAR_LIMIT)
           throw new IdentityError(400);
         const updatedAt = now();
-        db.insert(s.agentAvatars)
+        await q()
+          .insert(s.agentAvatars)
           .values({ agentId, teamId, mime, bytes, updatedAt })
           .onConflictDoUpdate({
             target: s.agentAvatars.agentId,
             set: { mime, bytes, updatedAt },
-          })
-          .run();
-        audit(p, teamId, agentId, 'avatar-set', { mime, size: bytes.length });
+          });
+        await audit(p, teamId, agentId, 'avatar-set', {
+          mime,
+          size: bytes.length,
+        });
         return { updatedAt };
       });
     },
-    removeAvatar(p: Principal, teamId: TeamId, agentId: AgentId) {
-      atomic(() => {
-        self(p, teamId, agentId);
-        db.delete(s.agentAvatars)
+    async removeAvatar(p: Principal, teamId: TeamId, agentId: AgentId) {
+      await atomic(async () => {
+        await self(p, teamId, agentId);
+        await q()
+          .delete(s.agentAvatars)
+          .where(
+            and(
+              eq(s.agentAvatars.agentId, agentId),
+              eq(s.agentAvatars.teamId, teamId),
+            ),
+          );
+        await audit(p, teamId, agentId, 'avatar-removed', {});
+      });
+    },
+    async avatar(p: Principal, teamId: TeamId, agentId: AgentId) {
+      await access(p, teamId, agentId, 'agents:read');
+      const row = (
+        await q()
+          .select({ mime: s.agentAvatars.mime, bytes: s.agentAvatars.bytes })
+          .from(s.agentAvatars)
           .where(
             and(
               eq(s.agentAvatars.agentId, agentId),
               eq(s.agentAvatars.teamId, teamId),
             ),
           )
-          .run();
-        audit(p, teamId, agentId, 'avatar-removed', {});
-      });
-    },
-    avatar(p: Principal, teamId: TeamId, agentId: AgentId) {
-      access(p, teamId, agentId, 'agents:read');
-      const row = db
-        .select({ mime: s.agentAvatars.mime, bytes: s.agentAvatars.bytes })
-        .from(s.agentAvatars)
-        .where(
-          and(
-            eq(s.agentAvatars.agentId, agentId),
-            eq(s.agentAvatars.teamId, teamId),
-          ),
-        )
-        .get();
+          .limit(1)
+      )[0];
       return row ?? null;
     },
     /** Which agents have a picture, and since when; no image bytes. */
-    avatars(p: Principal, teamId: TeamId) {
-      person(p, teamId);
-      return db
+    async avatars(p: Principal, teamId: TeamId) {
+      await person(p, teamId);
+      return await q()
         .select({
           agentId: s.agentAvatars.agentId,
           updatedAt: s.agentAvatars.updatedAt,
         })
         .from(s.agentAvatars)
-        .where(eq(s.agentAvatars.teamId, teamId))
-        .all();
+        .where(eq(s.agentAvatars.teamId, teamId));
     },
     lifecycle(
       p: Principal,
@@ -481,34 +503,39 @@ export function agentRepository(db: BetterSQLite3Database<typeof s>) {
       agentId: AgentId,
       lifecycle: 'active' | 'disabled',
     ) {
-      return atomic(() => {
-        person(p, teamId);
-        profile(teamId, agentId);
+      return atomic(async () => {
+        await person(p, teamId);
+        await profile(teamId, agentId);
         z.enum(['active', 'disabled']).parse(lifecycle);
-        db.update(s.agents)
+        await q()
+          .update(s.agents)
           .set({ lifecycle, updatedAt: now() })
-          .where(eq(s.agents.id, agentId))
-          .run();
+          .where(eq(s.agents.id, agentId));
         if (lifecycle === 'disabled')
-          db.update(s.agentGrants)
+          await q()
+            .update(s.agentGrants)
             .set({ revokedAt: now() })
             .where(
               and(
                 eq(s.agentGrants.agentId, agentId),
                 isNull(s.agentGrants.revokedAt),
               ),
-            )
-            .run();
-        audit(p, teamId, agentId, lifecycle, {});
+            );
+        await audit(p, teamId, agentId, lifecycle, {});
         return profile(teamId, agentId);
       });
     },
     issue(p: Principal, teamId: TeamId, agentId: AgentId, input: GrantInput) {
-      return atomic(() => issue(p, teamId, agentId, input));
+      return atomic(async () => issue(p, teamId, agentId, input));
     },
-    revoke(p: Principal, teamId: TeamId, agentId: AgentId, grantId: string) {
-      atomic(() => {
-        revoke(p, teamId, agentId, grantId);
+    async revoke(
+      p: Principal,
+      teamId: TeamId,
+      agentId: AgentId,
+      grantId: string,
+    ) {
+      await atomic(async () => {
+        await revoke(p, teamId, agentId, grantId);
       });
     },
     rotate(
@@ -518,40 +545,40 @@ export function agentRepository(db: BetterSQLite3Database<typeof s>) {
       grantId: string,
       input: GrantInput,
     ) {
-      return atomic(() => {
-        person(p, teamId);
-        if (grantFor(teamId, agentId, grantId).revokedAt !== null)
+      return atomic(async () => {
+        await person(p, teamId);
+        if ((await grantFor(teamId, agentId, grantId)).revokedAt !== null)
           throw new IdentityError(409);
-        revoke(p, teamId, agentId, grantId);
+        await revoke(p, teamId, agentId, grantId);
         return issue(p, teamId, agentId, input);
       });
     },
-    grants(p: Principal, teamId: TeamId, agentId: AgentId) {
-      person(p, teamId);
-      profile(teamId, agentId);
-      return db
-        .select({
-          id: s.agentGrants.id,
-          label: s.agentGrants.label,
-          scopes: s.agentGrants.scopes,
-          createdAt: s.agentGrants.createdAt,
-          expiresAt: s.agentGrants.expiresAt,
-          revokedAt: s.agentGrants.revokedAt,
-        })
-        .from(s.agentGrants)
-        .where(
-          and(
-            eq(s.agentGrants.agentId, agentId),
-            eq(s.agentGrants.teamId, teamId),
-          ),
-        )
-        .all()
-        .map((r) =>
-          Grant.omit({ agentId: true, teamId: true }).parse({
-            ...r,
-            scopes: parseJson(r.scopes),
-          }),
-        );
+    async grants(p: Principal, teamId: TeamId, agentId: AgentId) {
+      await person(p, teamId);
+      await profile(teamId, agentId);
+      return (
+        await q()
+          .select({
+            id: s.agentGrants.id,
+            label: s.agentGrants.label,
+            scopes: s.agentGrants.scopes,
+            createdAt: s.agentGrants.createdAt,
+            expiresAt: s.agentGrants.expiresAt,
+            revokedAt: s.agentGrants.revokedAt,
+          })
+          .from(s.agentGrants)
+          .where(
+            and(
+              eq(s.agentGrants.agentId, agentId),
+              eq(s.agentGrants.teamId, teamId),
+            ),
+          )
+      ).map((r) =>
+        Grant.omit({ agentId: true, teamId: true }).parse({
+          ...r,
+          scopes: parseJson(r.scopes),
+        }),
+      );
     },
     correlate(
       p: Principal,
@@ -559,13 +586,14 @@ export function agentRepository(db: BetterSQLite3Database<typeof s>) {
       agentId: AgentId,
       input: CorrelationInput,
     ) {
-      return atomic(() => {
-        const agent = access(p, teamId, agentId, 'executions:write');
+      return atomic(async () => {
+        const agent = await access(p, teamId, agentId, 'executions:write');
         if (agent.lifecycle !== 'active') throw new IdentityError(409);
         const data = CorrelationInput.parse(input);
         const id = randomUUID();
         const ref = data.reference;
-        db.insert(s.agentCorrelations)
+        await q()
+          .insert(s.agentCorrelations)
           .values({
             id,
             agentId,
@@ -576,23 +604,27 @@ export function agentRepository(db: BetterSQLite3Database<typeof s>) {
             invocationId: data.invocationId,
             author: JSON.stringify(author(p)),
             createdAt: now(),
-          })
-          .run();
-        audit(p, teamId, agentId, 'execution-associated', {
+          });
+        await audit(p, teamId, agentId, 'execution-associated', {
           correlationId: id,
         });
         return correlation(teamId, agentId, id);
       });
     },
     /** Exact immutable association, restricted to a currently authorized person of the team. */
-    getCorrelation(p: Principal, teamId: TeamId, agentId: AgentId, id: string) {
-      person(p, teamId);
-      profile(teamId, AgentId.parse(agentId));
+    async getCorrelation(
+      p: Principal,
+      teamId: TeamId,
+      agentId: AgentId,
+      id: string,
+    ) {
+      await person(p, teamId);
+      await profile(teamId, AgentId.parse(agentId));
       return correlation(teamId, agentId, id);
     },
-    correlations(p: Principal, teamId: TeamId, agentId: AgentId) {
-      access(p, teamId, agentId, 'executions:read');
-      return db
+    async correlations(p: Principal, teamId: TeamId, agentId: AgentId) {
+      await access(p, teamId, agentId, 'executions:read');
+      const rows = await q()
         .select({ id: s.agentCorrelations.id })
         .from(s.agentCorrelations)
         .where(
@@ -601,8 +633,8 @@ export function agentRepository(db: BetterSQLite3Database<typeof s>) {
             eq(s.agentCorrelations.teamId, teamId),
           ),
         )
-        .all()
-        .map((r) => correlation(teamId, agentId, r.id));
+        .orderBy(asc(s.agentCorrelations.position));
+      return Promise.all(rows.map((r) => correlation(teamId, agentId, r.id)));
     },
     runtimeEvent(
       p: Principal,
@@ -611,10 +643,10 @@ export function agentRepository(db: BetterSQLite3Database<typeof s>) {
       id: string,
       state: z.infer<typeof RuntimeState>,
     ) {
-      return atomic(() => {
-        const agent = access(p, teamId, agentId, 'executions:write');
+      return atomic(async () => {
+        const agent = await access(p, teamId, agentId, 'executions:write');
         if (agent.lifecycle !== 'active') throw new IdentityError(409);
-        correlation(teamId, agentId, id);
+        await correlation(teamId, agentId, id);
         RuntimeEventInput.parse({ state });
         const event = {
           id: randomUUID(),
@@ -623,42 +655,47 @@ export function agentRepository(db: BetterSQLite3Database<typeof s>) {
           author: author(p),
           createdAt: now(),
         };
-        db.insert(s.agentRuntimeEvents)
-          .values({ ...event, author: JSON.stringify(event.author) })
-          .run();
+        await q()
+          .insert(s.agentRuntimeEvents)
+          .values({ ...event, author: JSON.stringify(event.author) });
         return RuntimeEvent.parse(event);
       });
     },
-    runtimeEvents(p: Principal, teamId: TeamId, agentId: AgentId, id: string) {
-      access(p, teamId, agentId, 'executions:read');
-      correlation(teamId, agentId, id);
-      return db
-        .select()
-        .from(s.agentRuntimeEvents)
-        .where(eq(s.agentRuntimeEvents.correlationId, id))
-        .all()
-        .map((r) => RuntimeEvent.parse({ ...r, author: parseJson(r.author) }));
+    async runtimeEvents(
+      p: Principal,
+      teamId: TeamId,
+      agentId: AgentId,
+      id: string,
+    ) {
+      await access(p, teamId, agentId, 'executions:read');
+      await correlation(teamId, agentId, id);
+      return (
+        await q()
+          .select(s.runtimeEventFields)
+          .from(s.agentRuntimeEvents)
+          .where(eq(s.agentRuntimeEvents.correlationId, id))
+      ).map((r) => RuntimeEvent.parse({ ...r, author: parseJson(r.author) }));
     },
-    audit(p: Principal, teamId: TeamId, agentId: AgentId) {
-      person(p, teamId);
-      profile(teamId, agentId);
-      return db
-        .select()
-        .from(s.agentAudit)
-        .where(
-          and(
-            eq(s.agentAudit.teamId, teamId),
-            eq(s.agentAudit.agentId, agentId),
-          ),
-        )
-        .all()
-        .map((r) =>
-          AuditEvent.parse({
-            ...r,
-            author: parseJson(r.author),
-            detail: parseJson(r.detail),
-          }),
-        );
+    async audit(p: Principal, teamId: TeamId, agentId: AgentId) {
+      await person(p, teamId);
+      await profile(teamId, agentId);
+      return (
+        await q()
+          .select()
+          .from(s.agentAudit)
+          .where(
+            and(
+              eq(s.agentAudit.teamId, teamId),
+              eq(s.agentAudit.agentId, agentId),
+            ),
+          )
+      ).map((r) =>
+        AuditEvent.parse({
+          ...r,
+          author: parseJson(r.author),
+          detail: parseJson(r.detail),
+        }),
+      );
     },
   };
 }

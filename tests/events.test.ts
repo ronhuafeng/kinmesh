@@ -53,7 +53,7 @@ await test(
   { timeout: 30_000 },
   async () => {
     const f = await communicationFixture();
-    const other = f.open();
+    const other = await f.open();
     try {
       await f.app.listen({ host: '127.0.0.1', port: 0 });
       const address = f.app.server.address();
@@ -110,6 +110,14 @@ await test(
       const awake = await workspace();
       await other.inbox.heartbeat([f.agent.id]);
       assert.equal(await workspace(), awake);
+      // Another process commits: the database announces it.
+      await other.communication.post(
+        f.principal,
+        f.teamId,
+        f.channelId,
+        postInput({ body: 'Posted by another process' }),
+      );
+      assert.deepEqual(await place.next(), { workspace: await workspace() });
 
       // An agent page also watches T3 and the agent's runs.
       const agent = await stream(origin, cookie, 'page=agent:' + f.agent.id);

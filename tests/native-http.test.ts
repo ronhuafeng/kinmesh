@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { chmodSync, writeFileSync } from 'node:fs';
-import Database from 'better-sqlite3';
+import { rawDatabase } from './raw.js';
 import { agentFixture, profileInput } from './agent-helpers.js';
 import { mockNativeServer } from './native-helpers.js';
 import { reference } from './t3-helpers.js';
@@ -26,19 +26,21 @@ async function connectTeam(
     endpoint,
     'env-one',
   );
-  const directory = managedDirectory(f.dbPath);
+  const directory = managedDirectory(f.directory);
   privateDirectory(directory);
   return t3AuthFile(directory);
 }
 
 /** The person leaves the team: their membership goes, nothing else. */
-function leaveTeam(path: string, humanId: string) {
-  const raw = new Database(path);
+async function leaveTeam(path: string, humanId: string) {
+  const raw = rawDatabase(path);
   try {
-    raw.pragma('foreign_keys = OFF');
-    raw.prepare('DELETE FROM memberships WHERE human_id = ?').run(humanId);
+    await raw.pragma('foreign_keys = OFF');
+    await raw
+      .prepare('DELETE FROM memberships WHERE human_id = ?')
+      .run(humanId);
   } finally {
-    raw.close();
+    await raw.close();
   }
 }
 
@@ -97,7 +99,7 @@ await test('native HTTP: without a team T3 connection it is 503 without expiring
         execution.id,
       ),
     );
-    leaveTeam(f.dbPath, f.owner.id);
+    await leaveTeam(f.dbPath, f.owner.id);
     assert.equal(
       (await f.app.inject({ url, cookies: f.cookies })).statusCode,
       403,
@@ -228,17 +230,17 @@ await test('MOCK SDK/HTTP: official protocol reads only two tools, validates ret
       mock.origin,
     );
     mock.mode.value = 'normal';
-    mock.hooks.beforeThreadRead = () => {
-      leaveTeam(f.dbPath, f.owner.id);
-    };
+    mock.hooks.beforeThreadRead = () => leaveTeam(f.dbPath, f.owner.id);
     for (const mode of ['normal', 'bad-read'] as const) {
-      const raw = new Database(f.dbPath);
+      const raw = rawDatabase(f.dbPath);
       try {
-        raw
-          .prepare('INSERT OR IGNORE INTO memberships VALUES (?, ?)')
+        await raw
+          .prepare(
+            'INSERT INTO memberships VALUES (?, ?) ON CONFLICT DO NOTHING',
+          )
           .run(f.owner.id, f.teamId);
       } finally {
-        raw.close();
+        await raw.close();
       }
       mock.mode.value = mode;
       assert.equal(

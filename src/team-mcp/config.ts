@@ -1,6 +1,7 @@
 import { z } from 'zod';
+import { DatabaseUrl } from '../persistence/database.js';
 const Environment = z.object({
-  KINMESH_DATABASE: z.string().min(1).default('.store/kinmesh.sqlite'),
+  KINMESH_DATABASE_URL: DatabaseUrl,
   KINMESH_TEAM_MCP_PORT: z.coerce
     .number()
     .int()
@@ -25,7 +26,7 @@ export function teamConfig(env: NodeJS.ProcessEnv) {
   )
     throw new Error('Invalid Team MCP origin');
   return {
-    database: data.KINMESH_DATABASE,
+    database: data.KINMESH_DATABASE_URL,
     port: data.KINMESH_TEAM_MCP_PORT,
     origin: origin.origin,
     hosts: [new URL(local).host, origin.host],

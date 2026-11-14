@@ -1,9 +1,9 @@
 import { fork, type ChildProcess } from 'node:child_process';
-import { resolve } from 'node:path';
 import { setTimeout as delay } from 'node:timers/promises';
 import { loadWorkerConfig, WorkerConfig } from '../inbox/config.js';
 import {
-  databaseIdentity,
+  sameDatabase,
+  type DatabaseIdentity,
   WorkerEvent,
   WORKER_SHUTDOWN_MS,
   type WorkerCommand,
@@ -14,7 +14,7 @@ const RESTART_DELAYS = [250, 500, 1000] as const;
 interface Child {
   process: ChildProcess;
   closed: Promise<void>;
-  identity: ReturnType<typeof databaseIdentity>['identity'];
+  identity: DatabaseIdentity;
   stopping?: Promise<void>;
 }
 
@@ -25,12 +25,17 @@ export class InboxSupervisor {
   private monitor: Promise<void> | undefined;
   private stopped: Promise<void> | undefined;
   private running = false;
-  private databaseState: ReturnType<typeof databaseIdentity> | undefined;
+  private databaseState: DatabaseIdentity | undefined;
 
-  /** Without a path, the worker serves only agents connected from the workspace. */
+  /**
+   * Without a path, the worker serves only agents connected from the
+   * workspace. `identify` names the hub's database as it is now.
+   */
   constructor(
     private readonly path: string | undefined,
     private readonly database: string,
+    private readonly state: string,
+    private readonly identify: () => Promise<DatabaseIdentity>,
     private readonly fatal: () => void,
   ) {
     this.configuration(); // Opt-in errors fail before a listener or child exists.
@@ -47,25 +52,25 @@ export class InboxSupervisor {
   private configuration() {
     const config =
       this.path === undefined
-        ? WorkerConfig.parse({ database: this.database, bindings: [] })
+        ? WorkerConfig.parse({
+            database: this.database,
+            state: this.state,
+            bindings: [],
+          })
         : loadWorkerConfig(this.path);
-    if (resolve(config.database) !== resolve(this.database))
-      throw new Error('Worker must use the hub database path');
-    return config;
+    if (config.database !== this.database)
+      throw new Error('Worker must use the hub database');
+    return { ...config, state: this.state };
   }
 
   private async launch() {
     this.stopping.signal.throwIfAborted();
     const config = this.configuration();
-    const currentDatabase = databaseIdentity(this.database);
-    this.databaseState ??= currentDatabase;
-    if (
-      currentDatabase.database !== this.databaseState.database ||
-      currentDatabase.identity.device !== this.databaseState.identity.device ||
-      currentDatabase.identity.inode !== this.databaseState.identity.inode
-    )
+    const current = await this.identify();
+    this.databaseState ??= current;
+    if (!sameDatabase(current, this.databaseState))
       throw new Error('Hub database identity changed');
-    const { database, identity } = this.databaseState;
+    const identity = this.databaseState;
     const env = { ...process.env };
     delete env.FEISHU_APP_SECRET;
     delete env.KINMESH_SESSION_KEY;
@@ -106,7 +111,7 @@ export class InboxSupervisor {
       this.reply(record, 'inbox.prepared'),
       this.send(record, {
         type: 'inbox.initialize',
-        config: { ...config, database },
+        config,
         identity,
       }),
     ]);
@@ -142,8 +147,7 @@ export class InboxSupervisor {
         finish(
           event.success &&
             event.data.type === expected &&
-            event.data.identity.device === record.identity.device &&
-            event.data.identity.inode === record.identity.inode,
+            sameDatabase(event.data.identity, record.identity),
         );
       };
       const timer = setTimeout(unavailable, STARTUP_MS);

@@ -22,7 +22,7 @@ await test(
   'AUTH MANUAL MOCK PTY: real CLI uses hidden paste with Ctrl+T disabled; official SDK alone exchanges PKCE',
   { timeout: 25000 },
   async () => {
-    const f = fixture();
+    const f = await fixture();
     let origin = '';
     let state = '';
     let challenge = '';
@@ -217,7 +217,7 @@ await test(
           done();
         });
       });
-      f.cleanup();
+      await f.cleanup();
     }
   },
 );

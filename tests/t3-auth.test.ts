@@ -35,8 +35,8 @@ await test('AUTH UNIT: transport accepts only HTTPS or loopback with no URL cred
   assert.equal(Endpoint.safeParse('http://127.0.0.1:3773/mcp').success, true);
   assert.equal(Endpoint.safeParse('https://t3.test/mcp').success, true);
 });
-await test('AUTH UNIT: credentials are private, endpoint-bound and scope-validated', () => {
-  const f = fixture();
+await test('AUTH UNIT: credentials are private, endpoint-bound and scope-validated', async () => {
+  const f = await fixture();
   const file = join(f.directory, 'oauth.json');
   try {
     saveCredential(file, credential);
@@ -71,7 +71,7 @@ await test('AUTH UNIT: credentials are private, endpoint-bound and scope-validat
     assert.throws(() => loadCredential(link, credential.endpoint));
     assert.ok(!readFileSync(file, 'utf8').includes('password'));
   } finally {
-    f.cleanup();
+    await f.cleanup();
   }
 });
 await test('AUTH UNIT: noninteractive SDK auth never silently opens consent or switches authorities', () => {

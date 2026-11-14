@@ -42,7 +42,7 @@ export async function createApp(
   } = {},
 ) {
   const hub = {
-    ...defaultHub(managedDirectory(config.database)),
+    ...defaultHub(managedDirectory(config.state)),
     ...overrides,
   };
   const app = Fastify({
