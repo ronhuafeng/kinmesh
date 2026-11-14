@@ -92,6 +92,16 @@ await test('a model chosen before a run reaches T3 is the one it launches with',
     );
     await f.inbox.defer(claim, 'ready', 'temporarily-unavailable');
     await chooseModel(f, OTHER_MODEL);
+    // T3 reports the run on the model it was launched with.
+    const read = assistantRead();
+    f.wire.values.t3_thread_read = {
+      ...read,
+      thread: { ...read.thread, model: OTHER_MODEL },
+      recentRuns: read.recentRuns.map((run) => ({
+        ...run,
+        model: OTHER_MODEL,
+      })),
+    };
     const done = await attempt(f);
     assert.equal(done.state, 'acked', done.reason);
     const [sent] = launches(f);
