@@ -562,7 +562,7 @@ await test('revoke blocks every agent profile/execution route and stale principa
       () =>
         f.store.agents.authorize(stale, f.teamId, f.agent.id, 'tasks:write'),
     ])
-      assert.throws(
+      await assert.rejects(
         action,
         (e) => e instanceof IdentityError && e.statusCode === 401,
       );
