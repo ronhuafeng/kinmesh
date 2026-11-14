@@ -162,7 +162,8 @@ it is the authority. Use the custom property for its role, never a raw colour.
 - **Task page** (new or existing, one layout): lifecycle bar; large title;
   description; on the left the decision waiting on you (orange rule), "Done when" as a
   checklist, then history as one timeline with faces and run references inline; on the
-  right owner, reviewer, acceptor and the topic.
+  right owner, reviewer, acceptor and the topic. A new task's acceptor is a picker of
+  the channel's people, starting at you; whoever it names decides.
 - **Decision**: the latest note that led here, one note field ("Note for the
   record"), the actions as buttons; disabled with a reason only when offline.
 - **Agent page**: status card with its actions, requests in this channel, About
@@ -189,7 +190,7 @@ it is the authority. Use the custom property for its role, never a raw colour.
   its author's name.
 - **Inbox**: the tab after Team, with how many things wait on you. Everything across
   the team waiting on you, one list, newest first: tasks for your sign-off, review or
-  rework; stuck deliveries; agents with queued work and no worker. A row is a face, what it is, where and when, an orange or red rule for a
+  rework; stuck deliveries you caused; agents with queued work and no worker. A row is a face, what it is, where and when, an orange or red rule for a
   decision or a problem; the row opens where it is resolved (task, channel or agent).
   A row leaves when its cause is resolved; there is nothing to dismiss. Expired
   deliveries are not listed; they stay on their message's delivery line.

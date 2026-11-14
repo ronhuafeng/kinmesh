@@ -716,10 +716,13 @@ export function inboxRepository(
       return withTimes(rows);
     },
     /**
-     * Blocked deliveries in the channels a member has joined, newest first.
-     * The caller decides who may see them; the projection is allow-listed.
+     * Blocked deliveries a person caused — the root of what woke the agent
+     * is theirs — in channels they are joined to, newest first. Anyone may
+     * resume one; each person is asked only about their own. The
+     * projection is allow-listed.
      */
-    blockedIn(teamId: string, member: string) {
+    blockedIn(teamId: string, humanId: string) {
+      const member = `human:${humanId}`;
       const rows = db
         .select({
           id: t.id,
@@ -743,7 +746,19 @@ export function inboxRepository(
             eq(s.channelParticipants.state, 'joined'),
           ),
         )
-        .where(and(eq(t.teamId, teamId), eq(t.state, 'blocked')))
+        .innerJoin(s.inboxCauses, eq(s.inboxCauses.eventId, t.eventId))
+        .innerJoin(
+          s.communicationOutbox,
+          eq(s.communicationOutbox.id, s.inboxCauses.rootId),
+        )
+        .where(
+          and(
+            eq(t.teamId, teamId),
+            eq(t.state, 'blocked'),
+            sql`json_extract(${s.communicationOutbox.fact}, '$.author.kind') = 'human'`,
+            sql`json_extract(${s.communicationOutbox.fact}, '$.author.humanId') = ${humanId}`,
+          ),
+        )
         .orderBy(sql`${t.position} DESC`)
         .limit(50)
         .all();

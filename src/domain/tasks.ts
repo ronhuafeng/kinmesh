@@ -77,8 +77,13 @@ export const TaskCreate = Mutation.extend({
   reviewer: Member.nullable(),
   sourceMessageId: z.uuid().nullable(),
   sourceEventId: z.uuid().nullable(),
+  /**
+   * Who decides on it, when a person asks it of someone else in the channel.
+   * Absent, it is whoever asked; an agent never names one.
+   */
+  acceptor: HumanId.nullable().default(null),
 });
-export type TaskCreate = z.infer<typeof TaskCreate>;
+export type TaskCreate = z.input<typeof TaskCreate>;
 export const Task = z
   .strictObject({
     id: TaskId,

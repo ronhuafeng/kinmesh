@@ -142,9 +142,12 @@ function Lifecycle({ status }: { status: Status }) {
 function MemberOptions({
   data,
   exclude = null,
+  people = false,
 }: {
   data: WorkspaceSnapshot;
   exclude?: Member | null;
+  /** People only: who may decide on a task. */
+  people?: boolean;
 }) {
   const shown = (member: Member) =>
     exclude === null || memberKey(member) !== memberKey(exclude);
@@ -161,7 +164,7 @@ function MemberOptions({
           </option>
         ))}
       {joinedAgents(data)
-        .filter((a) => shown({ kind: 'agent', id: a.id }))
+        .filter((a) => !people && shown({ kind: 'agent', id: a.id }))
         .map((a) => (
           <option value={'agent:' + a.id} key={a.id}>
             {a.name}
@@ -720,11 +723,14 @@ function PersonPicker({
   label,
   data,
   initial,
+  people = false,
 }: {
   name: string;
   label: string;
   data: WorkspaceSnapshot;
   initial: string;
+  /** Only people, and always someone: who decides on a task. */
+  people?: boolean;
 }) {
   const [chosen, setChosen] = useState(initial);
   const member = chosen ? memberFrom(chosen) : null;
@@ -745,8 +751,8 @@ function PersonPicker({
           setChosen(e.target.value);
         }}
       >
-        <option value="">Choose…</option>
-        <MemberOptions data={data} />
+        {!people && <option value="">Choose…</option>}
+        <MemberOptions data={data} people={people} />
       </select>
     </span>
   );
@@ -813,6 +819,8 @@ export function NewTaskPage({
             if (created.success) onCreated(created.data.task.id);
           }}
           build={(f) => {
+            // You decide unless you ask someone else to.
+            const chosen = memberFrom(value(f, 'acceptor'))?.id ?? null;
             const input = TaskCreate.parse({
               operationKey: crypto.randomUUID(),
               title: value(f, 'title'),
@@ -826,6 +834,7 @@ export function NewTaskPage({
               topicId: draft.topicId,
               sourceMessageId: draft.sourceMessageId,
               sourceEventId: null,
+              acceptor: chosen === data.human.id ? null : chosen,
             });
             return Object.fromEntries(
               Object.entries(input).filter(([key]) => key !== 'operationKey'),
@@ -886,9 +895,12 @@ export function NewTaskPage({
               />
             }
             acceptor={
-              <MemberChip
-                member={{ kind: 'human', id: data.human.id }}
+              <PersonPicker
+                name="acceptor"
+                label="Acceptor"
                 data={data}
+                initial={typed.acceptor ?? 'human:' + data.human.id}
+                people
               />
             }
             topic={topic?.title ?? null}
