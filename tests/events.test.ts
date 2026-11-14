@@ -1,6 +1,8 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { z } from 'zod';
+import { spawn } from 'node:child_process';
+import { once } from 'node:events';
 import {
   WorkspaceSnapshot,
   decodeExecutionEvent,
@@ -110,13 +112,24 @@ await test(
       const awake = await workspace();
       await other.inbox.heartbeat([f.agent.id]);
       assert.equal(await workspace(), awake);
-      // Another process commits: the database announces it.
-      await other.communication.post(
-        f.principal,
-        f.teamId,
-        f.channelId,
-        postInput({ body: 'Posted by another process' }),
+      // Another process commits, as the worker does: the database announces it.
+      const writer = spawn(
+        process.execPath,
+        [
+          '--import',
+          'tsx',
+          'tests/fixtures/post-message.ts',
+          f.dbPath,
+          JSON.stringify({
+            humanId: f.principal.humanId,
+            teamId: f.teamId,
+            channelId: f.channelId,
+            input: postInput({ body: 'Posted by another process' }),
+          }),
+        ],
+        { stdio: 'inherit' },
       );
+      assert.deepEqual(await once(writer, 'exit'), [0, null]);
       assert.deepEqual(await place.next(), { workspace: await workspace() });
 
       // An agent page also watches T3 and the agent's runs.
