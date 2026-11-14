@@ -535,6 +535,16 @@ export function App() {
         setError('Sign out failed. Reconnect and try again.');
       });
   };
+  const signOutEverywhere = () => {
+    if (!canAct) return;
+    void api('/api/me/sessions/end', { method: 'POST' })
+      .then(() => {
+        toSignedOut('');
+      })
+      .catch(() => {
+        setError('Signing out everywhere failed. Reconnect and try again.');
+      });
+  };
   const goHome = () => {
     selectChannel('');
     setView('chat');
@@ -1011,6 +1021,7 @@ export function App() {
                         onDone={refresh}
                         onNotify={notify}
                         {...(phone ? { onSignOut: signOut } : {})}
+                        onSignOutEverywhere={signOutEverywhere}
                       />
                     )}
 

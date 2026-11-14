@@ -9,8 +9,8 @@ import { operationJournal } from './operations.js';
 import Database from 'better-sqlite3';
 import { drizzle } from 'drizzle-orm/better-sqlite3';
 import { migrate } from 'drizzle-orm/better-sqlite3/migrator';
-import { eq, and } from 'drizzle-orm';
-import { randomUUID } from 'node:crypto';
+import { eq, and, isNull } from 'drizzle-orm';
+import { createHash, randomBytes, randomUUID } from 'node:crypto';
 import { mkdirSync, chmodSync } from 'node:fs';
 import { dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -23,8 +23,13 @@ import {
   Channel,
   Membership,
   BootstrapInput,
+  SESSION_IDLE_MS,
+  SESSION_LIFETIME_MS,
+  SESSION_TOUCH_MS,
 } from '../domain/contracts.js';
 
+const digest = (token: string) =>
+  createHash('sha256').update(token).digest('base64url');
 export function openStore(path: string) {
   mkdirSync(dirname(path), { recursive: true, mode: 0o700 });
   const sqlite = new Database(path);
@@ -105,6 +110,65 @@ export function openStore(path: string) {
         : z.object({ id: HumanId, passwordHash: z.string().min(1) }).parse(row);
     },
     /** The stored password hash, to check the current password or a session. */
+    /**
+     * Signed-in browsers. A session is a random token held only in the
+     * encrypted cookie; the database keeps its digest.
+     */
+    sessions: {
+      open(humanId: HumanId, now: number) {
+        const token = randomBytes(32).toString('base64url');
+        db.insert(tables.sessions)
+          .values({
+            tokenHash: digest(token),
+            humanId,
+            createdAt: now,
+            lastSeenAt: now,
+          })
+          .run();
+        return token;
+      },
+      /** The person a live session belongs to; undefined once it has ended. */
+      resolve(token: unknown, now: number) {
+        if (typeof token !== 'string' || token === '') return undefined;
+        const row = db
+          .select()
+          .from(tables.sessions)
+          .where(eq(tables.sessions.tokenHash, digest(token)))
+          .get();
+        if (row === undefined) return undefined;
+        if (
+          row.revokedAt !== null ||
+          now - row.lastSeenAt > SESSION_IDLE_MS ||
+          now - row.createdAt > SESSION_LIFETIME_MS
+        )
+          return undefined;
+        if (now - row.lastSeenAt >= SESSION_TOUCH_MS)
+          db.update(tables.sessions)
+            .set({ lastSeenAt: now })
+            .where(eq(tables.sessions.tokenHash, row.tokenHash))
+            .run();
+        return HumanId.parse(row.humanId);
+      },
+      revoke(token: unknown, now: number) {
+        if (typeof token !== 'string' || token === '') return;
+        db.update(tables.sessions)
+          .set({ revokedAt: now })
+          .where(eq(tables.sessions.tokenHash, digest(token)))
+          .run();
+      },
+      /** Every session of one person, as on "Sign out everywhere". */
+      revokeAll(humanId: HumanId, now: number) {
+        db.update(tables.sessions)
+          .set({ revokedAt: now })
+          .where(
+            and(
+              eq(tables.sessions.humanId, humanId),
+              isNull(tables.sessions.revokedAt),
+            ),
+          )
+          .run();
+      },
+    },
     passwordHash(id: HumanId) {
       return db
         .select({ hash: tables.humans.passwordHash })

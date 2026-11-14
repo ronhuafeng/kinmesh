@@ -3382,6 +3382,27 @@ button.new-agent-go {
   outline-offset: 2px;
   border-radius: var(--radius-sm);
 }
+/* Your page ends with signing out: this device on a phone, and every device
+ * everywhere. Quiet rows in the danger colour, no boxes. */
+.you-sign-outs {
+  display: grid;
+  justify-items: start;
+  margin-top: 0.5rem;
+}
+.you-sign-out {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.6rem 0;
+  border: 0;
+  background: none;
+  color: var(--danger);
+  font-weight: 600;
+}
+.you-sign-out:hover:not(:disabled) {
+  background: none;
+  text-decoration: underline;
+}
 /* ------------------------------------------------------------------
  * Phone: the places stack. Home is the sidebar (the channels and the
  * team); a channel or a page has the screen under a bar that leads back;
@@ -3545,23 +3566,6 @@ button.new-agent-go {
     color: #fff;
     font-size: 0.68rem;
     line-height: 1rem;
-  }
-  /* You: signing out is the last row. */
-  .you-sign-out {
-    display: flex;
-    align-items: center;
-    gap: 0.5rem;
-    justify-self: start;
-    margin-top: 0.5rem;
-    padding: 0.75rem 0;
-    border: 0;
-    background: none;
-    color: var(--danger);
-    font-weight: 600;
-  }
-  .you-sign-out:hover:not(:disabled) {
-    background: none;
-    text-decoration: underline;
   }
 }
 /* ------------------------------------------------------------------

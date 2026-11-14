@@ -7,15 +7,19 @@ import { registerCommunication } from './communication.js';
 import { registerAgents } from './agents.js';
 import { defaultHub, registerConnect, type Hub } from './connect.js';
 import { managedDirectory, t3AuthFile } from '../inbox/managed.js';
-import { credentialMark, resolvePrincipal } from './principals.js';
+import { principal, resolvePrincipal } from './principals.js';
 import { IdentityError } from '../domain/agents.js';
 import { z } from 'zod';
-import Fastify from 'fastify';
+import Fastify, { type FastifyRequest } from 'fastify';
 import secureSession from '@fastify/secure-session';
 import rateLimit from '@fastify/rate-limit';
 import { hash, verify } from '@node-rs/argon2';
 import { createHash, randomUUID, timingSafeEqual } from 'node:crypto';
-import { BootstrapInput, Credentials, HumanId } from '../domain/contracts.js';
+import {
+  BootstrapInput,
+  Credentials,
+  SESSION_LIFETIME_MS,
+} from '../domain/contracts.js';
 import type { Store } from '../persistence/store.js';
 import type { Config } from './config.js';
 import { describeFailure } from '../diagnostics.js';
@@ -24,9 +28,8 @@ import { describeFailure } from '../diagnostics.js';
 const ARGON2 = { memoryCost: 19456, timeCost: 2, parallelism: 1 };
 declare module '@fastify/secure-session' {
   interface SessionData {
-    humanId: string;
-    /** Mark of the password this session signed in with. */
-    credential: string;
+    /** The server-side session's token; the cookie carries nothing else. */
+    session: string;
   }
 }
 export async function createApp(
@@ -61,13 +64,15 @@ export async function createApp(
   await app.register(secureSession, {
     key: config.sessionKey,
     cookieName: 'kinmesh-session',
-    expiry: 3600,
+    // The server ends a session (idle, lifetime, revoked); the cookie only
+    // has to outlive it.
+    expiry: SESSION_LIFETIME_MS / 1000,
     cookie: {
       path: '/',
       httpOnly: true,
       sameSite: 'strict',
       secure: config.secureCookie,
-      maxAge: 3600,
+      maxAge: SESSION_LIFETIME_MS / 1000,
     },
   });
   // A dummy hash makes unknown-account verification perform the same expensive KDF.
@@ -200,8 +205,10 @@ export async function createApp(
       if (!valid || account === undefined)
         return reply.code(401).send({ error: 'Invalid credentials' });
       request.session.regenerate();
-      request.session.set('humanId', account.id);
-      request.session.set('credential', credentialMark(account.passwordHash));
+      request.session.set(
+        'session',
+        store.sessions.open(account.id, Date.now()),
+      );
       return { authenticated: true };
     },
   );
@@ -228,13 +235,25 @@ export async function createApp(
         return reply.code(403).send({ error: 'Current password is wrong' });
       const next = await hash(input.data.newPassword, ARGON2);
       store.setPasswordHash(principal.humanId, next);
+      store.sessions.revokeAll(principal.humanId, Date.now());
       request.session.regenerate();
-      request.session.set('humanId', principal.humanId);
-      request.session.set('credential', credentialMark(next));
+      request.session.set(
+        'session',
+        store.sessions.open(principal.humanId, Date.now()),
+      );
       return reply.code(204).send();
     },
   );
   app.post('/api/logout', (request, reply) => {
+    store.sessions.revoke(request.session.get('session'), Date.now());
+    request.session.delete();
+    return reply.code(204).send();
+  });
+  // Sign out everywhere: every session of yours ends, this one included.
+  app.post('/api/me/sessions/end', (request, reply) => {
+    const principal = request.principal;
+    if (principal?.kind !== 'human') throw new IdentityError(403);
+    store.sessions.revokeAll(principal.humanId, Date.now());
     request.session.delete();
     return reply.code(204).send();
   });
@@ -249,8 +268,7 @@ export async function createApp(
     request.principal = resolvePrincipal(
       store,
       request.headers.authorization,
-      request.session.get('humanId'),
-      request.session.get('credential'),
+      request.session.get('session'),
     );
     if (
       !request.url.startsWith('/api/teams/') &&
@@ -270,18 +288,23 @@ export async function createApp(
   );
   registerEvents(app, store, changes, { snapshot, t3Status, runs, grants });
   await registerWeb(app);
+  // The person behind the request; the pre-handler resolved their session.
+  const human = (request: FastifyRequest) => {
+    const p = principal(request);
+    if (p.kind !== 'human') throw new IdentityError(403);
+    return p.humanId;
+  };
   await app.register((protectedApi, _options, done) => {
-    protectedApi.get('/api/me', (request) => {
-      const id = HumanId.parse(request.session.get('humanId'));
-      return { human: store.human(id) };
-    });
+    protectedApi.get('/api/me', (request) => ({
+      human: store.human(human(request)),
+    }));
     protectedApi.get('/api/team', (request, reply) => {
-      const team = store.teamFor(HumanId.parse(request.session.get('humanId')));
+      const team = store.teamFor(human(request));
       return team ?? reply.code(403).send({ error: 'Membership required' });
     });
     // The owner renames the team; the name is what everyone sees.
     protectedApi.put('/api/team', (request) => {
-      const id = HumanId.parse(request.session.get('humanId'));
+      const id = human(request);
       const { name } = z
         .strictObject({ name: BootstrapInput.shape.teamName })
         .parse(request.body);

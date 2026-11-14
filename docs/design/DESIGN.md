@@ -186,7 +186,8 @@ it is the authority. Use the custom property for its role, never a raw colour.
   is not shown anywhere else, so the page has no face or name of its own. One row
   per fact typed in place — the team name (everyone sees it) and your password (the
   current one, then the new) — each confirmed by the round arrow. A changed password
-  signs out every other session.
+  signs out every other session. The page ends with **Sign out everywhere**, a quiet
+  row in the danger colour.
 - **Sign out**: the power icon at the far right of the header.
 - **Connection pill**: absent while healthy; dot + "Refreshing… / Disconnected" with
   last time and **Reconnect**; offline turns into a full-width stale banner. **Refresh
