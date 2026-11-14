@@ -70,7 +70,7 @@ await test('populated #1–#4 upgrade retains channel/message/outbox/profile/gra
       facts,
     );
     assert.equal((await store.agents.get(p, teamId, agent.id)).id, agent.id);
-    assert.throws(
+    await assert.rejects(
       async () =>
         store.tasks.list(
           await store.agents.resolveToken(oldGrant.token),

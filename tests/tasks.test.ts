@@ -206,7 +206,7 @@ await test('real task HTTP responsibility journey: human creation, developer cla
     ).items.filter((e) => e.fact.kind === 'task.changed');
     assert.equal(facts.length, 6);
     assert.equal(facts.at(-1)?.fact.sourceEventId, facts.at(-2)?.fact.id);
-    assert.throws(
+    await assert.rejects(
       () =>
         f.act(f.developer, task, {
           type: 'progress',
@@ -258,7 +258,7 @@ await test('reviewer rework, owner resubmission, human rework/cancel and explici
     ).task;
     assert.equal(task.state.owner?.id, f.reviewer.id);
     assert.equal(task.state.reviewer, null);
-    assert.throws(
+    await assert.rejects(
       () => f.act(f.developer, task, { type: 'progress', note: 'Old owner' }),
       rejected(403),
     );
@@ -269,7 +269,7 @@ await test('reviewer rework, owner resubmission, human rework/cancel and explici
       })
     ).task;
     assert.equal(task.state.status, 'cancelled');
-    assert.throws(
+    await assert.rejects(
       () => f.act(f.reviewPrincipal, task, { type: 'claim' }),
       rejected(409),
     );
@@ -350,7 +350,7 @@ await test('task operation receipts survive replay, are actor/action/target scop
       await f.tasks.create(f.principal, f.teamId, f.channelId, input),
       created,
     );
-    assert.throws(
+    await assert.rejects(
       () =>
         f.tasks.create(f.principal, f.teamId, f.channelId, {
           ...input,
@@ -376,7 +376,7 @@ await test('task operation receipts survive replay, are actor/action/target scop
       ),
       claimed,
     );
-    assert.throws(
+    await assert.rejects(
       () =>
         f.tasks.command(f.developer, f.teamId, f.channelId, created.task.id, {
           ...command,
@@ -397,7 +397,7 @@ await test('task operation receipts survive replay, are actor/action/target scop
       created.task.id,
       progress,
     );
-    assert.throws(
+    await assert.rejects(
       () =>
         f.tasks.command(f.developer, f.teamId, f.channelId, created.task.id, {
           ...progress,
@@ -425,7 +425,7 @@ await test('task operation receipts survive replay, are actor/action/target scop
       ).task.id,
       another.id,
     );
-    assert.throws(
+    await assert.rejects(
       () =>
         f.tasks.command(
           f.reviewPrincipal,
@@ -436,7 +436,7 @@ await test('task operation receipts survive replay, are actor/action/target scop
         ),
       rejected(409),
     );
-    assert.throws(
+    await assert.rejects(
       async () =>
         f.tasks.command(f.developer, f.teamId, f.channelId, created.task.id, {
           type: 'progress',
@@ -508,7 +508,7 @@ await test('external execution links are multiple immutable references and never
         .items.length,
       2,
     );
-    assert.throws(
+    await assert.rejects(
       () =>
         f.act(f.developer, task, {
           type: 'link-execution',
@@ -552,7 +552,7 @@ await test("the assigned reviewer/owner and the task's acceptor control decision
         note: 'Review',
       })
     ).task;
-    assert.throws(
+    await assert.rejects(
       () =>
         f.act(f.developer, task, {
           type: 'review',
@@ -561,7 +561,7 @@ await test("the assigned reviewer/owner and the task's acceptor control decision
         }),
       rejected(403),
     );
-    assert.throws(
+    await assert.rejects(
       () =>
         f.act(f.principal, task, {
           type: 'review',
@@ -664,11 +664,11 @@ await test('all task reads/writes enforce team/channel access; missing task IDs 
       { operationKey: key(), member: { kind: 'agent', id: f.agent.id } },
       'remove',
     );
-    assert.throws(
+    await assert.rejects(
       () => f.tasks.list(f.developer, f.teamId, f.channelId),
       rejected(404),
     );
-    assert.throws(
+    await assert.rejects(
       async () =>
         f.tasks.command(
           f.developer,
@@ -683,7 +683,7 @@ await test('all task reads/writes enforce team/channel access; missing task IDs 
       operationKey: key(),
       title: 'Different channel',
     });
-    assert.throws(() => f.create({ topicId: topic.id }), rejected(404));
+    await assert.rejects(() => f.create({ topicId: topic.id }), rejected(404));
   } finally {
     await f.dispose();
   }
@@ -763,7 +763,7 @@ await test('revocation and disable block every task route and stale principals, 
         );
     };
     await check(f.developerHeaders);
-    assert.throws(
+    await assert.rejects(
       () =>
         f.tasks.command(f.developer, f.teamId, f.channelId, task.id, command),
       rejected(401),
@@ -801,7 +801,7 @@ await test('task scope separation and filtered shared outbox prevent channel-onl
       await f.comm.events(f.principal, f.teamId, f.channelId)
     ).items.find((e) => e.fact.kind === 'task.changed');
     assert.ok(hiddenFact);
-    assert.throws(
+    await assert.rejects(
       async () =>
         f.comm.post(
           f.agentPrincipal,
@@ -828,7 +828,7 @@ await test('task scope separation and filtered shared outbox prevent channel-onl
         lifetimeSeconds: 3600,
       },
     );
-    assert.throws(
+    await assert.rejects(
       async () =>
         f.tasks.get(
           await f.store.agents.resolveToken(onlyWrite.token),
@@ -856,7 +856,7 @@ await test('task scope separation and filtered shared outbox prevent channel-onl
         lifetimeSeconds: 3600,
       },
     );
-    assert.throws(
+    await assert.rejects(
       async () =>
         f.act(await f.store.agents.resolveToken(onlyRead.token), task, {
           type: 'review',
@@ -966,7 +966,7 @@ await test('task CAS, audit, link and shared outbox roll back together on inject
     raw.exec(
       "CREATE TRIGGER fail_task_audit BEFORE INSERT ON task_events BEGIN SELECT RAISE(ABORT,'test rollback'); END",
     );
-    assert.throws(() =>
+    await assert.rejects(() =>
       f.tasks.command(f.developer, f.teamId, f.channelId, task.id, command),
     );
     assert.equal(
@@ -991,7 +991,7 @@ await test('task CAS, audit, link and shared outbox roll back together on inject
     raw.exec(
       "CREATE TRIGGER fail_task_outbox BEFORE INSERT ON communication_outbox BEGIN SELECT RAISE(ABORT,'test rollback'); END",
     );
-    assert.throws(() =>
+    await assert.rejects(() =>
       f.act(f.developer, claimed, {
         type: 'link-execution',
         reference: { backend: 't3', environmentId: 'env', threadId: 'thread' },
@@ -1007,12 +1007,12 @@ await test('task CAS, audit, link and shared outbox roll back together on inject
       (await f.tasks.get(f.principal, f.teamId, f.channelId, task.id)).version,
       2,
     );
-    assert.throws(() => f.create());
+    await assert.rejects(() => f.create());
     raw.exec('DROP TRIGGER fail_task_outbox');
     raw.exec(
       "CREATE TRIGGER fail_task_receipt BEFORE INSERT ON communication_operations BEGIN SELECT RAISE(ABORT,'test rollback'); END",
     );
-    assert.throws(() =>
+    await assert.rejects(() =>
       f.act(f.developer, claimed, { type: 'progress', note: 'Not persisted' }),
     );
     assert.equal(
@@ -1094,14 +1094,14 @@ await test('task/history/execution snapshot pages are bounded and stable under i
       ).items.length,
       3,
     );
-    assert.throws(
+    await assert.rejects(
       () =>
         f.tasks.history(f.reviewPrincipal, f.teamId, f.channelId, task.id, {
           cursor: hc,
         }),
       rejected(400),
     );
-    assert.throws(
+    await assert.rejects(
       () =>
         f.tasks.executions(f.developer, f.teamId, f.channelId, task.id, {
           cursor: hc,
@@ -1223,7 +1223,7 @@ await test('designated human can recover disabled-owner responsibility with an a
       f.agent.id,
       'disabled',
     );
-    assert.throws(
+    await assert.rejects(
       () =>
         f.act(f.developer, task, { type: 'progress', note: 'Old credential' }),
       rejected(401),
@@ -1259,7 +1259,7 @@ await test('designated human can recover disabled-owner responsibility with an a
         note: 'Resumed by new owner',
       })
     ).task;
-    assert.throws(
+    await assert.rejects(
       () =>
         f.act(f.principal, task, {
           type: 'accept',

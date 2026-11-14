@@ -87,7 +87,7 @@ await test('inbox enqueue and outbox/receipt are atomic; exact replay is once an
       message.id,
     );
     assert.equal(f.rows().length, 1);
-    assert.throws(
+    await assert.rejects(
       () =>
         f.comm.post(f.principal, f.teamId, f.channelId, {
           ...input,
@@ -114,9 +114,11 @@ await test('inbox enqueue and outbox/receipt are atomic; exact replay is once an
     raw.exec(
       "CREATE TRIGGER reject_inbox BEFORE INSERT ON agent_inbox BEGIN SELECT RAISE(ABORT,'fixture'); END",
     );
-    assert.throws(() => mention(f));
+    await assert.rejects(() => mention(f));
     assert.deepEqual(counts(), before);
-    assert.throws(() => f.create({ owner: { kind: 'agent', id: f.agent.id } }));
+    await assert.rejects(() =>
+      f.create({ owner: { kind: 'agent', id: f.agent.id } }),
+    );
     assert.deepEqual(counts(), before);
   } finally {
     raw.close();
@@ -281,7 +283,7 @@ for (const status of ['completed', 'failed'] as const)
         );
         assert.equal(current.version, linked.task.version);
         assert.equal(current.state.status, 'in-progress');
-        assert.throws(
+        await assert.rejects(
           async () =>
             reopened.inbox.ack(recovered, f.workerPrincipal, fixtureResult()),
           IdentityError,
@@ -535,7 +537,7 @@ for (const { failedTable, prelinked } of [
             condition +
             " BEGIN SELECT RAISE(ABORT,'fixture'); END",
         );
-        assert.throws(async () =>
+        await assert.rejects(async () =>
           f.inbox.ack(c, f.workerPrincipal, fixtureResult()),
         );
         assert.deepEqual(counts(), before);
@@ -566,7 +568,7 @@ for (const { failedTable, prelinked } of [
           ).items.length,
           1,
         );
-        assert.throws(
+        await assert.rejects(
           async () => f.inbox.ack(c, f.workerPrincipal, fixtureResult()),
           IdentityError,
         );
@@ -638,7 +640,7 @@ for (const denied of [
         });
       }
       if (denied === 'cross-team') {
-        assert.throws(
+        await assert.rejects(
           () =>
             f.inbox.context(
               Claim.parse({ ...c, teamId: randomUUID() }),
@@ -649,7 +651,7 @@ for (const denied of [
         return;
       }
       if (denied === 'wrong-agent') {
-        assert.throws(
+        await assert.rejects(
           () => f.inbox.context(c, f.reviewPrincipal),
           IdentityError,
         );
@@ -838,13 +840,13 @@ await test('leases fence every stale write and ACK; global capacity and per-agen
     await freeze(f, c);
     assert.equal(await other.inbox.claim([f.agent.id]), undefined);
     due(f.dbPath, true);
-    assert.throws(async () => {
+    await assert.rejects(async () => {
       await f.inbox.remember(c, reference);
     }, IdentityError);
-    assert.throws(async () => {
+    await assert.rejects(async () => {
       await f.inbox.defer(c, 'ready', 'stale');
     }, IdentityError);
-    assert.throws(
+    await assert.rejects(
       async () => f.inbox.ack(c, f.workerPrincipal, fixtureResult()),
       IdentityError,
     );
@@ -852,7 +854,7 @@ await test('leases fence every stale write and ACK; global capacity and per-agen
     assert.ok(next);
     assert.equal(next.id, c.id);
     assert.equal(next.generation, c.generation + 1);
-    assert.throws(
+    await assert.rejects(
       () =>
         f.inbox.freeze(
           c,
@@ -937,7 +939,7 @@ for (const recovery of ['release', 'expired-lease'] as const)
         raw
           .prepare('UPDATE agent_inbox SET lease_until=1 WHERE id=?')
           .run(newer.id);
-        assert.throws(
+        await assert.rejects(
           () => other.inbox.ack(newer, f.workerPrincipal, newerResult),
           IdentityError,
         );
@@ -1368,7 +1370,7 @@ await test('lease lost inside publication rolls back downstream message/outbox/l
     raw.exec(
       'CREATE TRIGGER fixture_lose_fence BEFORE INSERT ON inbox_results BEGIN UPDATE agent_inbox SET lease_until=1 WHERE id=NEW.delivery_id; END',
     );
-    assert.throws(
+    await assert.rejects(
       async () => f.inbox.ack(c, f.workerPrincipal, fixtureResult()),
       IdentityError,
     );

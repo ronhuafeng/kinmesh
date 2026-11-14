@@ -133,7 +133,7 @@ await test('team-scoped unique profile names, cross-team IDs and nonmember mutat
     );
     const teamId = TeamId.parse(randomUUID());
     raw.prepare('INSERT INTO teams VALUES (?, ?)').run(teamId, 'Other team');
-    assert.throws(
+    await assert.rejects(
       () => f.store.agents.create(f.principal, teamId, profileInput),
       (e) => e instanceof IdentityError && e.statusCode === 403,
     );
@@ -155,7 +155,7 @@ await test('team-scoped unique profile names, cross-team IDs and nonmember mutat
       profileInput,
     );
     assert.notEqual(other.id, f.agent.id);
-    assert.throws(
+    await assert.rejects(
       () => f.store.agents.get(f.principal, teamId, f.agent.id),
       (e) => e instanceof IdentityError && e.statusCode === 404,
     );
@@ -291,7 +291,7 @@ await test('agent scopes are checked from persisted grants and never confer huma
     );
     const agent = await f.store.agents.resolveToken(scoped.token);
     assert.equal(agent.kind, 'agent');
-    assert.throws(
+    await assert.rejects(
       () =>
         f.store.agents.authorize(
           { ...agent, scopes: ['tasks:write'] },
@@ -516,7 +516,7 @@ await test('execution correlations preserve multiple runs, agent provenance and 
       ...profileInput,
       name: 'Another',
     });
-    assert.throws(
+    await assert.rejects(
       () =>
         f.store.agents.correlate(
           f.principal,
@@ -655,12 +655,12 @@ await test('disable revokes all grants atomically and reactivation cannot resurr
           401,
         );
     }
-    assert.throws(
+    await assert.rejects(
       () => f.store.agents.issue(f.principal, f.teamId, f.agent.id, grantInput),
       (e) => e instanceof IdentityError && e.statusCode === 409,
     );
     await f.store.agents.lifecycle(f.principal, f.teamId, f.agent.id, 'active');
-    assert.throws(
+    await assert.rejects(
       () => f.store.agents.get(stale, f.teamId, f.agent.id),
       (e) => e instanceof IdentityError && e.statusCode === 401,
     );
@@ -774,7 +774,7 @@ await test('expiration and removed human membership are checked on every request
       (await f.app.inject({ url: f.path, headers: f.headers })).statusCode,
       401,
     );
-    assert.throws(
+    await assert.rejects(
       () => f.store.agents.get(principal, f.teamId, f.agent.id),
       (e) => e instanceof IdentityError && e.statusCode === 401,
     );
@@ -868,7 +868,7 @@ await test('audit failure rolls back profile changes, disable/revocation and rot
     raw.exec(
       "CREATE TRIGGER reject_test_audit BEFORE INSERT ON agent_audit BEGIN SELECT RAISE(ABORT, 'test rollback'); END",
     );
-    assert.throws(() =>
+    await assert.rejects(() =>
       f.store.agents.update(f.principal, f.teamId, f.agent.id, {
         ...profileInput,
         name: 'Changed',
@@ -878,14 +878,14 @@ await test('audit failure rolls back profile changes, disable/revocation and rot
       (await f.store.agents.get(f.principal, f.teamId, f.agent.id)).name,
       'Developer',
     );
-    assert.throws(() =>
+    await assert.rejects(() =>
       f.store.agents.lifecycle(f.principal, f.teamId, f.agent.id, 'disabled'),
     );
     assert.equal(
       (await f.store.agents.get(f.principal, f.teamId, f.agent.id)).lifecycle,
       'active',
     );
-    assert.throws(() =>
+    await assert.rejects(() =>
       f.store.agents.rotate(
         f.principal,
         f.teamId,
@@ -1020,7 +1020,7 @@ await test('disabled lifecycle independently blocks unrevoked grants and every p
     raw
       .prepare("UPDATE agents SET lifecycle = 'disabled' WHERE id = ?")
       .run(f.agent.id);
-    assert.throws(
+    await assert.rejects(
       () => f.store.agents.get(stale, f.teamId, f.agent.id),
       (e) => e instanceof IdentityError && e.statusCode === 401,
     );

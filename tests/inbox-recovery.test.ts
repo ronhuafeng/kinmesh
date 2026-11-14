@@ -221,7 +221,7 @@ await test('a request that never reached T3 is retried under a reconnected T3; o
     assert.equal((await f.inbox.get(claim.id)).reason, 'launch-refrozen');
     // Once an operation may exist natively, the authority is pinned for good.
     await f.inbox.remember(claim, { operationId: 'native-operation' });
-    assert.throws(
+    await assert.rejects(
       () => f.inbox.freeze(claim, f.workerPrincipal, frozen('another')),
       (error: unknown) =>
         error instanceof IdentityError && error.statusCode === 403,

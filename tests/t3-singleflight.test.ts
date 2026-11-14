@@ -18,14 +18,22 @@ import { forkWorker, message, stop } from './process-helpers.js';
 
 const outbound = (wire: MockWire) =>
   wire.calls.filter((c) => c.name === 't3_thread_launch');
+/**
+ * Holds every launch at T3 until released; `reached` settles when the first
+ * one gets there, so a test waits for that, not for a number of ticks.
+ */
 function barrier(wires: MockWire[]) {
   const gate = Promise.withResolvers<undefined>();
+  const reached = Promise.withResolvers<undefined>();
   for (const wire of wires)
     wire.handler = async (name) => {
-      if (name === 't3_thread_launch') await gate.promise;
+      if (name === 't3_thread_launch') {
+        reached.resolve(undefined);
+        await gate.promise;
+      }
       return envelope(wire.values[name]);
     };
-  return gate;
+  return { ...gate, reached: reached.promise };
 }
 async function lost(f: Awaited<ReturnType<typeof backendFixture>>) {
   f.wire.handler = (name) =>
@@ -51,7 +59,10 @@ await test('MOCK F1: two independent SQLite connections reconciling uncertain la
       T3Backend.connect(secondWire, second.operations, options),
     ]);
     for (const backend of backends) pending.push(backend.reconcile(intent, id));
-    await Promise.resolve(undefined);
+    // One reaches T3 and is held there; the other, having lost the claim,
+    // settles without sending.
+    await gate.reached;
+    await Promise.race(pending);
     assert.equal(
       wires.reduce((n, w) => n + outbound(w).length, 0),
       1,
@@ -89,6 +100,8 @@ await test('MOCK F1: reconciliation cannot resend while initial dispatch holds a
     const backend = await T3Backend.connect(wire, second.operations, options);
     const first = f.backend.launch(launch, intent);
     pending.push(first);
+    // The first dispatch is held at T3, its claim active.
+    await gate.reached;
     const db = new Database(f.path);
     const id = String(
       db.prepare('SELECT id FROM execution_operations').pluck().get(),
@@ -96,7 +109,8 @@ await test('MOCK F1: reconciliation cannot resend while initial dispatch holds a
     db.close();
     const retry = backend.reconcile(intent, id);
     pending.push(retry);
-    await Promise.resolve(undefined);
+    // Excluded by the active claim, the reconcile settles without sending.
+    await retry;
     assert.equal(
       outbound(f.wire).length + outbound(wire).length,
       1,
@@ -262,6 +276,8 @@ for (const outcome of ['known', 'rejected'] as const) {
     try {
       const backend = await T3Backend.connect(wire, second.operations, options);
       pending = f.backend.launch(launch, intent);
+      // The dispatch is at T3, holding its lease, before the lease expires.
+      await gate.reached;
       const db = new Database(f.path);
       const id = String(
         db.prepare('SELECT id FROM execution_operations').pluck().get(),
