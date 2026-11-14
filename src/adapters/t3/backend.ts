@@ -148,6 +148,7 @@ export class T3Backend implements ExecutionBackend {
     message: string,
     intent: Intent,
     signal?: AbortSignal,
+    mode: 'queue' | 'auto' = 'queue',
   ): Promise<Dispatch> {
     this.permitted();
     const ref = this.ref(reference);
@@ -157,7 +158,7 @@ export class T3Backend implements ExecutionBackend {
       {
         threadId: ref.threadId,
         message: text,
-        mode: 'queue',
+        mode: z.enum(['queue', 'auto']).parse(mode),
       },
       intent,
       signal,
@@ -415,6 +416,7 @@ export class T3Backend implements ExecutionBackend {
       pendingRequests: result.thread.pendingRequestCount,
       history: result.items.map((i) => ({
         id: i.itemId,
+        position: i.position,
         runId: i.runId,
         type: i.type,
         text: i.text,

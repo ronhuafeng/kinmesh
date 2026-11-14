@@ -56,6 +56,7 @@ export interface Observation {
   pendingRequests: number;
   history: {
     id: string;
+    position: number;
     runId: string | null;
     type: string;
     text: string | null;
@@ -91,11 +92,16 @@ export interface ExecutionBackend {
     intent: Intent,
     signal?: AbortSignal,
   ): Promise<Dispatch>;
+  /**
+   * A new message in an existing thread. `queue` waits for the thread's
+   * current turn; `auto` starts an idle thread or steers the running turn.
+   */
   send(
     reference: Reference,
     message: string,
     intent: Intent,
     signal?: AbortSignal,
+    mode?: 'queue' | 'auto',
   ): Promise<Dispatch>;
   read(
     reference: Reference,

@@ -5,6 +5,7 @@ import type { Activity } from './live/proof.js';
 
 const item: Activity['items'][number] = {
   itemId: 'item',
+  position: 0,
   runId: 'run',
   type: 'dynamic_tool',
   status: 'completed',

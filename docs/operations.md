@@ -124,7 +124,7 @@ The worker merges managed bindings with the file's on every loop; the file wins 
 
 The file is strict: `pollMs` 100–30000, at most 32 unique bindings (none is an idle worker); agents connected from the workspace add to them without limit, and one worker serves them all. It and each token file must be regular, private (0600, owned by the service user, non-executable for the config) and small; symlinks are refused. For each binding:
 
-1. Enroll the agent in its channels and set its preferences to the T3 environment ID, the isolated provider instance and an advertised model. The worker launches scratch threads in that environment.
+1. Enroll the agent in its channels and set its preferences to the T3 environment ID, the isolated provider instance and an advertised model. The worker keeps one scratch thread per agent and channel in that environment.
 2. Issue a credential with the worker scopes (the agent page's **Run the worker yourself** issues one) and save `{"token":"…"}` as `tokenFile`.
 3. Obtain an operate-scoped T3 grant with [`npm run t3:auth`](t3.md#t3-sign-in) as `t3AuthFile`.
 4. Configure the isolated provider for Team MCP through its own settings ([provider configuration](t3.md#provider-configuration)); `externalTeamMcpConfigured: true` records that you did.
@@ -174,7 +174,7 @@ A running worker records each bound agent in `inbox_bindings` at most every 10 s
 
 ### Scheduling and crash safety
 
-One serializable transaction claims work, one claimer at a time across all processes (a transaction-scoped advisory lock): global capacity **two**, the oldest outstanding delivery per agent first, a new generation and random claim token, and a **180-second** lease in database time. Every later write requires the current unexpired claim. Attempts abort after 90 seconds. Retries back off 1, 2, 4… seconds up to 300 and never exhaust during outages. A killed worker leaves its lease; the next claimer waits for expiry and reconciles the same native intent (see [durable operations](t3.md#durable-operations-and-recovery)).
+One serializable transaction claims work, one claimer at a time across all processes (a transaction-scoped advisory lock): global capacity **two**, one claim at a time per agent and channel, a delivery not yet in T3 only after the older ones of its agent and channel are, a new generation and random claim token, and a **180-second** lease in database time. Every later write requires the current unexpired claim. Attempts abort after 90 seconds. Retries back off 1, 2, 4… seconds up to 300 and never exhaust during outages. A killed worker leaves its lease; the next claimer waits for expiry and reconciles the same native intent (see [durable operations](t3.md#durable-operations-and-recovery)).
 
 To resume a blocked delivery after fixing its cause (anyone of the team can also do this from the workspace):
 
