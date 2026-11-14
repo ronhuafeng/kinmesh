@@ -94,13 +94,22 @@ async function connectFixture() {
     },
   };
 }
-const settle = () => new Promise((done) => setTimeout(done, 20));
 const Status = z.object({
   connection: z
     .object({ endpoint: z.string(), environmentId: z.string() })
     .nullable(),
   signIn: z.enum(['waiting', 'failed']).nullable(),
 });
+/** Waits until the T3 sign-in has ended, approved or not. */
+async function settle(f: Awaited<ReturnType<typeof connectFixture>>) {
+  for (;;) {
+    const status = Status.parse(
+      (await f.call('GET', f.team + '/t3')).json<unknown>(),
+    );
+    if (status.signIn !== 'waiting') return;
+    await delay(5);
+  }
+}
 
 await test('a person who did not set up the instance connects T3 and registers an agent', async () => {
   const f = await connectFixture();
@@ -115,7 +124,7 @@ await test('a person who did not set up the instance connects T3 and registers a
     });
     assert.equal(started.statusCode, 200);
     f.approve();
-    await settle();
+    await settle(f);
     assert.equal(
       Status.parse((await as('GET', f.team + '/t3')).json<unknown>()).connection
         ?.environmentId,
@@ -157,7 +166,7 @@ await test('a person connects T3 from the browser; the credential is saved priva
       409,
     );
     f.approve();
-    await settle();
+    await settle(f);
     assert.deepEqual(await status(), {
       connection: { endpoint, environmentId: 'env-live' },
       signIn: null,
@@ -196,7 +205,7 @@ await test('a person connects T3 from the browser; the credential is saved priva
     // A refused sign-in is reported, and nothing is saved.
     await f.call('POST', f.team + '/t3/connect', { endpoint, replace: true });
     f.approve(false);
-    await settle();
+    await settle(f);
     assert.equal((await status()).signIn, 'failed');
     assert.equal((await status()).connection?.environmentId, 'env-live');
   } finally {
@@ -216,7 +225,7 @@ await test('connecting an agent gives the hub’s worker a private credential th
     assert.equal((await connect()).statusCode, 409);
     await f.call('POST', f.team + '/t3/connect', { endpoint, replace: false });
     f.approve();
-    await settle();
+    await settle(f);
     const first = await connect();
     assert.equal(first.statusCode, 200);
     assert.doesNotMatch(first.body, /kma_/);
