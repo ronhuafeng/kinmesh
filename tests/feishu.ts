@@ -41,7 +41,6 @@ export const standInFeishu: Feishu = {
     return Promise.resolve({
       union,
       enterprise: mailbox,
-      email: null,
       tenant: 'stand-in',
     });
   },

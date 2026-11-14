@@ -129,29 +129,17 @@ await test('a handle is the mailbox name, numbered when taken', async () => {
   }
 });
 
-await test('only a mailbox in the organization, from a tenant, signs in', async () => {
+await test('only an enterprise mailbox in the organization, from a tenant, signs in', async () => {
   const eve = { union: 'u-eve', tenant: 't' };
   const profiles: Record<string, Awaited<ReturnType<Feishu['profile']>>> = {
-    outside: { ...eve, enterprise: 'eve@other.com', email: null },
-    lookalike: { ...eve, enterprise: 'eve@example.com.evil', email: null },
-    tenantless: {
-      ...eve,
-      enterprise: 'eve@example.com',
-      email: null,
-      tenant: '',
-    },
-    nobody: { ...eve, union: '', enterprise: 'eve@example.com', email: null },
-    personal: {
-      ...eve,
-      union: 'u-ivy',
-      enterprise: null,
-      email: 'ivy@example.com',
-    },
-    enterprise: {
-      ...eve,
-      enterprise: 'eve.work@example.com',
-      email: 'eve@example.com',
-    },
+    outside: { ...eve, enterprise: 'eve@other.com' },
+    lookalike: { ...eve, enterprise: 'eve@example.com.evil' },
+    tenantless: { ...eve, enterprise: 'eve@example.com', tenant: '' },
+    nobody: { ...eve, union: '', enterprise: 'eve@example.com' },
+    // An account with no enterprise mailbox: its own, which the person
+    // sets, is never read.
+    personal: { ...eve, enterprise: null },
+    enterprise: { ...eve, enterprise: ' Eve.Work@Example.com ' },
   };
 
   const h = await hub({
@@ -159,16 +147,17 @@ await test('only a mailbox in the organization, from a tenant, signs in', async 
     exchange: (code) => Promise.resolve(code),
     profile: (token) =>
       Promise.resolve(
-        profiles[token] ?? {
-          union: null,
-          enterprise: null,
-          email: null,
-          tenant: null,
-        },
+        profiles[token] ?? { union: null, enterprise: null, tenant: null },
       ),
   });
   try {
-    for (const code of ['outside', 'lookalike', 'tenantless', 'nobody']) {
+    for (const code of [
+      'outside',
+      'lookalike',
+      'tenantless',
+      'nobody',
+      'personal',
+    ]) {
       const { state, cookies } = await begin(h.app);
       const response = await back(
         h.app,
@@ -181,12 +170,7 @@ await test('only a mailbox in the organization, from a tenant, signs in', async 
         undefined,
       );
     }
-    // Without a Feishu enterprise mailbox, the account's own admits; the
-    // enterprise mailbox wins when there are both.
-    for (const [code, username] of [
-      ['personal', 'ivy'],
-      ['enterprise', 'eve-work'],
-    ] as const) {
+    for (const [code, username] of [['enterprise', 'eve-work']] as const) {
       const { state, cookies } = await begin(h.app);
       const response = await back(
         h.app,
@@ -393,7 +377,6 @@ await test('the Feishu client reads a profile that leaves fields out, and names 
     assert.deepEqual(profile, {
       union: 'u-ada@example.com',
       enterprise: 'ada@example.com',
-      email: undefined,
       tenant: 'stand-in',
     });
     // Feishu's own error envelope, with a 200, is still a refusal.
