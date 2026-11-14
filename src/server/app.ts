@@ -20,6 +20,7 @@ import type { Config } from './config.js';
 import { describeFailure } from '../diagnostics.js';
 import { feishuClient, type Feishu } from './feishu.js';
 import { registerLogin } from './login.js';
+import { createMetrics } from './metrics.js';
 
 declare module '@fastify/secure-session' {
   interface SessionData {
@@ -59,9 +60,11 @@ export async function createApp(
     trustProxy:
       config.trustedProxies.length > 0 ? config.trustedProxies : false,
   });
+  const metrics = createMetrics();
   await app.register(rateLimit, {
     max: config.rateLimit,
     timeWindow: '1 minute',
+    onExceeded: metrics.limited,
   });
   await app.register(secureSession, {
     key: config.sessionKey,
@@ -141,6 +144,12 @@ export async function createApp(
       return reply.code(403).send({ error: 'Origin denied' });
     }
   });
+  // Liveness: the process answers. Readiness (below): it can do its work.
+  app.get('/health/live', (_request, reply) =>
+    reply.send({ status: 'ok', component: 'kinmesh-team-hub' }),
+  );
+  // Ready: the database answers (it opens only fully migrated) and the
+  // supervised Inbox worker, when there is one, is connected.
   app.get('/health', (_request, reply) => {
     const ready = store.ready() && workerReady();
     return reply.code(ready ? 200 : 503).send({
@@ -190,7 +199,16 @@ export async function createApp(
     store,
     t3AuthFile(hub.directory),
   );
-  registerEvents(app, store, changes, { snapshot, t3Status, runs, grants });
+  const { openStreams } = registerEvents(app, store, changes, {
+    snapshot,
+    t3Status,
+    runs,
+    grants,
+  });
+  metrics.register(app, store, config.metricsToken, {
+    workerReady,
+    openStreams,
+  });
   await registerWeb(app);
   // The person behind the request; the pre-handler resolved their session.
   const human = (request: FastifyRequest) => {

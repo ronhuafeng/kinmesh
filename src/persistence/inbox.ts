@@ -764,6 +764,14 @@ export function inboxRepository(
         .all();
       return withTimes(rows);
     },
+    /** How many deliveries are in each state, across the hub. */
+    countsByState() {
+      return db
+        .select({ state: t.state, count: sql<number>`count(*)` })
+        .from(t)
+        .groupBy(t.state)
+        .all();
+    },
     /** Deliveries still waiting for a worker to pick them up, per agent. */
     queuedPerAgent(teamId: string) {
       return db

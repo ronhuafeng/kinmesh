@@ -33,6 +33,8 @@ const Environment = z.object({
     .regex(
       /^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]*[a-z0-9])?)+$/,
     ),
+  /** Lets a scraper elsewhere read /metrics; this machine needs none. */
+  KINMESH_METRICS_TOKEN: z.string().min(32).optional(),
   /** A stand-in for Feishu's hosts, for tests only. */
   KINMESH_FEISHU_URL: z.url().optional(),
   /**
@@ -75,6 +77,7 @@ export function loadConfig(env: NodeJS.ProcessEnv) {
     port: value.KINMESH_PORT,
     rateLimit: value.KINMESH_RATE_LIMIT,
     trustedProxies: value.KINMESH_TRUSTED_PROXIES,
+    metricsToken: value.KINMESH_METRICS_TOKEN ?? null,
     feishu: {
       appId: value.FEISHU_APP_ID,
       appSecret: value.FEISHU_APP_SECRET,
