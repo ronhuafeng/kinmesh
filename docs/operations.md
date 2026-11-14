@@ -18,6 +18,7 @@ The hub writes JSON lines to standard output: one record per failure, with its r
 | `KINMESH_INBOX_CONFIG`               | Optional operator worker configuration (below)                                                       |
 | `KINMESH_RATE_LIMIT`                 | Requests per minute per client (default 60); see [security](security.md)                             |
 | `KINMESH_TRUSTED_PROXIES`            | The reverse proxies, comma-separated addresses or CIDR ranges; required with an HTTPS origin         |
+| `KINMESH_METRICS_TOKEN`              | Optional; lets a scraper elsewhere read `/metrics` (at least 32 characters)                          |
 
 `npm start` reads `.env` if present; managed deployments may inject the same variables instead. Missing or malformed values fail startup.
 
@@ -40,7 +41,26 @@ with `KINMESH_ORIGIN=https://kinmesh.example.com` and `KINMESH_TRUSTED_PROXIES=1
 
 A person who used Kinmesh before Feishu sign-in keeps their identity by being linked to their mailbox before their first Feishu sign-in: `npm run link-human -- <username> <mailbox>`. Unlinked, they would sign in as someone new. Linking refuses a mailbox another person holds and a person who has already signed in with Feishu.
 
-`GET /health` returns 200 when the database is ready and, while the hub supervises a worker, that worker's loop is running; otherwise 503. It never reports T3, OAuth, Team MCP or provider health.
+### Health and metrics
+
+| Endpoint           | Answers                                                                                                                                                                                                |
+| ------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `GET /health/live` | 200 while the process answers                                                                                                                                                                          |
+| `GET /health`      | Ready: 200 when the database answers (it opens only fully migrated) and, while the hub supervises a worker, that worker's loop is running; otherwise 503. Never T3, OAuth, Team MCP or provider health |
+| `GET /metrics`     | Prometheus text, for this machine or a bearer holding `KINMESH_METRICS_TOKEN` (see [security](security.md)); 403 otherwise                                                                             |
+
+| Series                                  | Labels                      | Meaning                                       |
+| --------------------------------------- | --------------------------- | --------------------------------------------- |
+| `kinmesh_http_requests_total`           | `route`, `method`, `status` | Requests; `route` is the pattern, never an ID |
+| `kinmesh_http_request_duration_seconds` | `route`, `method`           | Latency histogram                             |
+| `kinmesh_rate_limited_total`            | `route`                     | Requests refused for a rate limit             |
+| `kinmesh_deliveries`                    | `state`                     | Inbox deliveries by state                     |
+| `kinmesh_inbox_worker_up`               |                             | 1 while the supervised worker is connected    |
+| `kinmesh_agents_awake`                  |                             | Agents a worker can wake now                  |
+| `kinmesh_event_streams`                 |                             | Open event streams                            |
+| `kinmesh_process_*`                     |                             | Node.js process: CPU, memory, event loop, GC  |
+
+No label carries anything a person wrote, a mailbox, a name or an ID.
 
 Back up the database (and its WAL) before upgrades, and never copy a live database without accounting for the WAL. The database holds prompts and team content.
 

@@ -152,4 +152,5 @@ export function registerEvents(
     open.set(end, principal.humanId);
     request.raw.on('close', end);
   });
+  return { openStreams: () => open.size };
 }
