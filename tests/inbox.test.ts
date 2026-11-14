@@ -219,7 +219,11 @@ for (const status of ['completed', 'failed'] as const)
         f,
         'A later request must not be blocked by existing evidence',
       );
-      assert.equal(await f.inbox.claim([f.agent.id]), undefined);
+      // A run already in T3 holds the agent's next message back no longer.
+      const later = await f.inbox.claim([f.agent.id]);
+      assert.ok(later);
+      assert.notEqual(later.id, first.id);
+      await f.inbox.defer(later, 'ready', 'fixture-later');
       const terminal = assistantRead('MOCK exact-run recovered result', status);
       if (status === 'failed') terminal.items = [];
       f.wire.values.t3_thread_read = terminal;
@@ -934,7 +938,7 @@ for (const recovery of ['release', 'expired-lease'] as const)
       assert.equal(await other.inbox.claim([f.agent.id]), undefined);
       assert.equal((await f.inbox.get(newer.id)).claimToken, newer.claimToken);
 
-      // The exclusion is per agent: another agent can use the remaining slot.
+      // The exclusion is per agent and channel: another agent can use the remaining slot.
       await f.comm.post(
         f.principal,
         f.teamId,
@@ -957,21 +961,26 @@ for (const recovery of ['release', 'expired-lease'] as const)
           IdentityError,
         );
       }
-      const recovered = await other.inbox.claim([f.agent.id]);
-      assert.ok(recovered);
-      assert.equal(recovered.id, older.id);
-      assert.equal(recovered.generation, older.generation + 1);
-      assert.equal(recovered.launch, frozen.launch);
-      assert.equal(recovered.reference, frozen.reference);
-      assert.equal(await f.inbox.claim([f.agent.id]), undefined);
-      await other.inbox.ack(recovered, f.workerPrincipal, fixtureResult());
-
-      await due(f.dbPath);
-      const following = await claim(f);
-      assert.equal(following.id, newer.id);
-      assert.equal(following.generation, newer.generation + 1);
-      assert.equal(following.reference, JSON.stringify(newerReference));
-      await f.inbox.ack(following, f.workerPrincipal, newerResult);
+      // Both runs are already in T3, so either may be observed first;
+      // each keeps its frozen intent and is claimed under a new generation,
+      // one at a time.
+      for (let n = 0; n < 2; n++) {
+        await due(f.dbPath);
+        const recovered = await other.inbox.claim([f.agent.id]);
+        assert.ok(recovered);
+        assert.equal(await f.inbox.claim([f.agent.id]), undefined);
+        if (recovered.id === older.id) {
+          assert.equal(recovered.generation, older.generation + 1);
+          assert.equal(recovered.launch, frozen.launch);
+          assert.equal(recovered.reference, frozen.reference);
+          await other.inbox.ack(recovered, f.workerPrincipal, fixtureResult());
+        } else {
+          assert.equal(recovered.id, newer.id);
+          assert.equal(recovered.generation, newer.generation + 1);
+          assert.equal(recovered.reference, JSON.stringify(newerReference));
+          await other.inbox.ack(recovered, f.workerPrincipal, newerResult);
+        }
+      }
       assert.equal((await f.inbox.get(older.id)).state, 'acked');
       assert.equal((await f.inbox.get(newer.id)).state, 'acked');
       assert.equal(
