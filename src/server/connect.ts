@@ -28,7 +28,7 @@ import type { Store } from '../persistence/store.js';
 import { fingerprint } from '../persistence/transactional.js';
 import { principal } from './principals.js';
 
-/** What the hub does on the owner's behalf; replaceable in tests. */
+/** What the hub does on a person's behalf; replaceable in tests. */
 export interface Hub {
   /** Private directory for managed secrets. */
   directory: string;
@@ -79,7 +79,7 @@ const TeamPath = z.object({ teamId: TeamId });
 const AgentPath = TeamPath.extend({ agentId: AgentId });
 
 /**
- * Connect T3 and agents from the workspace: the owner approves T3 in their
+ * Connect T3 and agents from the workspace: a person approves T3 in their
  * browser and picks a provider; the hub keeps the secrets and runs the worker.
  */
 export function registerConnect(
@@ -140,7 +140,7 @@ export function registerConnect(
     const { endpoint, replace } = z
       .strictObject({ endpoint: Endpoint, replace: z.boolean() })
       .parse(request.body);
-    // Owner check before any file or network access.
+    // A person of the team, checked before any file or network access.
     store.managed.connection(p, teamId);
     if (flow?.state === 'waiting') throw new IdentityError(409);
     // Never replace an approved credential without being asked to.

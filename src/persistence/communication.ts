@@ -51,7 +51,7 @@ export function communicationRepository(
     write = false,
     inactive = false,
   ) {
-    const role = team(p, teamId, write);
+    team(p, teamId, write);
     const channel = db
       .select()
       .from(s.channels)
@@ -77,12 +77,12 @@ export function communicationRepository(
     return {
       channel: ChannelView.parse(channel),
       participant,
-      role: role.role,
     };
   }
-  function owner(p: Principal, teamId: TeamId, channelId?: ChannelId) {
+  /** A person of the team, joined to the channel when one is named. */
+  function person(p: Principal, teamId: TeamId, channelId?: ChannelId) {
     if (channelId !== undefined) access(p, teamId, channelId, true);
-    agents.owner(p, teamId);
+    agents.person(p, teamId);
   }
   function participantView(
     teamId: TeamId,
@@ -302,7 +302,7 @@ export function communicationRepository(
       input: z.infer<typeof ChannelInput>,
     ) {
       return atomic(() => {
-        owner(p, teamId);
+        person(p, teamId);
         const data = ChannelInput.parse(input);
         return mutation(
           p,
@@ -470,7 +470,7 @@ export function communicationRepository(
       action: 'invite' | 'remove',
     ) {
       return atomic(() => {
-        owner(p, teamId, channelId);
+        person(p, teamId, channelId);
         const data = ParticipantInput.parse(input);
         if (
           action === 'remove' &&

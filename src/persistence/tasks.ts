@@ -44,7 +44,7 @@ export function taskRepository(
     scope: Scope = 'tasks:read',
   ) {
     communication.channel(p, teamId, channelId);
-    return agents.teamAccess(p, teamId, 'tasks:read', scope).role;
+    agents.teamAccess(p, teamId, 'tasks:read', scope);
   }
   function row(teamId: TeamId, channelId: ChannelId, id: TaskId) {
     const value = db
@@ -191,7 +191,7 @@ export function taskRepository(
       input: TaskCreate,
     ) {
       return atomic(() => {
-        const role = access(p, teamId, channelId, 'tasks:write');
+        access(p, teamId, channelId, 'tasks:write');
         const data = TaskCreate.parse(input);
         return receipt(
           JSON.stringify([
@@ -204,8 +204,9 @@ export function taskRepository(
           data,
           TaskResult,
           () => {
+            // An agent may only propose work for itself; a person may assign.
             if (
-              role !== 'owner' &&
+              p.kind !== 'human' &&
               ((data.owner !== null &&
                 memberKey(data.owner) !== memberKey(principalMember(p))) ||
                 data.reviewer !== null)
@@ -222,8 +223,10 @@ export function taskRepository(
               data.sourceMessageId,
               data.sourceEventId,
             );
+            // The person who asked decides; for an agent, a person in the
+            // channel.
             const candidate =
-              p.kind === 'human' && role === 'owner'
+              p.kind === 'human'
                 ? p.humanId
                 : db
                     .select({ id: s.memberships.humanId })
@@ -241,7 +244,6 @@ export function taskRepository(
                     .where(
                       and(
                         eq(s.memberships.teamId, teamId),
-                        eq(s.memberships.role, 'owner'),
                         eq(s.channelParticipants.channelId, channelId),
                         eq(s.channelParticipants.state, 'joined'),
                       ),
@@ -414,7 +416,7 @@ export function taskRepository(
     ) {
       return atomic(() => {
         const data = TaskCommand.parse(input);
-        const role = access(
+        access(
           p,
           teamId,
           channelId,
@@ -434,7 +436,7 @@ export function taskRepository(
           () => {
             const current = view(old);
             const time = new Date().toISOString();
-            const state = transition(current, p, data, role === 'owner', time);
+            const state = transition(current, p, data, time);
             if (data.type === 'handoff')
               target(p, teamId, channelId, data.recipient);
             if (data.type === 'request-review')

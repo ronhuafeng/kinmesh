@@ -13,7 +13,7 @@ import {
 import type { Changes } from './changes.js';
 import { resolvePrincipal } from './principals.js';
 
-type Owner = Extract<Principal, { kind: 'human' }>;
+type Person = Extract<Principal, { kind: 'human' }>;
 interface Revisioned {
   revision: string;
 }
@@ -39,11 +39,11 @@ export function registerEvents(
   changes: Changes,
   reads: {
     snapshot: (
-      principal: Owner,
+      principal: Person,
       query: WorkspaceQuery,
     ) => Revisioned & { team: { id: TeamId } };
     t3Status: (principal: Principal, teamId: TeamId) => Revisioned;
-    runs: (principal: Owner, teamId: TeamId, agentId: AgentId) => Revisioned;
+    runs: (principal: Person, teamId: TeamId, agentId: AgentId) => Revisioned;
     grants: (
       principal: Principal,
       teamId: TeamId,

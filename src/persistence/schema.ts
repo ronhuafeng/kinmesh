@@ -75,12 +75,9 @@ export const memberships = sqliteTable(
     teamId: text('team_id')
       .notNull()
       .references(() => teams.id, { onDelete: 'cascade' }),
-    role: text('role', { enum: ['owner', 'member'] }).notNull(),
   },
-  (t) => [
-    primaryKey({ columns: [t.humanId, t.teamId] }),
-    check('valid_role', sql`${t.role} IN ('owner', 'member')`),
-  ],
+  // Everyone in the organization is an equal member: there are no roles.
+  (t) => [primaryKey({ columns: [t.humanId, t.teamId] })],
 );
 export const channels = sqliteTable(
   'channels',

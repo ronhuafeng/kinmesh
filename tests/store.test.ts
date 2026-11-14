@@ -47,7 +47,7 @@ await test('deterministic migrations enable WAL and foreign keys; the team survi
     f.cleanup();
   }
 });
-await test('database rejects invalid role, orphan membership, duplicate channel, singleton and names', () => {
+await test('database rejects orphan membership, duplicate channel, singleton and names', () => {
   const f = fixture();
   const store = f.open();
   try {
@@ -60,11 +60,8 @@ await test('database rejects invalid role, orphan membership, duplicate channel,
     try {
       assert.throws(() =>
         raw
-          .prepare('INSERT INTO memberships VALUES (?, ?, ?)')
-          .run(created.human.id, 'missing', 'owner'),
-      );
-      assert.throws(() =>
-        raw.prepare('UPDATE memberships SET role = ?').run('admin'),
+          .prepare('INSERT INTO memberships VALUES (?, ?)')
+          .run(created.human.id, 'missing'),
       );
       assert.throws(() =>
         raw

@@ -16,7 +16,7 @@ import {
   executionEvent,
 } from '../workspace/contracts.js';
 
-type Owner = Extract<Principal, { kind: 'human' }>;
+type Person = Extract<Principal, { kind: 'human' }>;
 /**
  * Names what a snapshot shows. The time it was read and worker heartbeats,
  * which change nothing on screen, are left out.
@@ -89,8 +89,8 @@ export function registerWorkspace(
       }
     },
   );
-  /** What one owner's workspace shows for one place. */
-  const snapshot = (principal: Owner, query: WorkspaceQuery) => {
+  /** What one person's workspace shows for one place. */
+  const snapshot = (principal: Person, query: WorkspaceQuery) => {
     const human = store.human(principal.humanId);
     const membership = store.teamFor(principal.humanId);
     if (!human || !membership) throw new IdentityError(403);
@@ -185,7 +185,8 @@ export function registerWorkspace(
           )
           .map(project)
       : [];
-    // Only owners reach this route (teamFor), so recovery and setup items are theirs.
+    // Every member reaches this route; what waits on them is theirs: tasks
+    // they decide on, and the deliveries and setup the team shares.
     const me = memberKey({ kind: 'human', id: principal.humanId });
     const live = new Set(wake.filter((w) => w.connected).map((w) => w.agentId));
     const attention = {
@@ -256,8 +257,8 @@ export function registerWorkspace(
     );
   };
   /** An agent's runs as Kinmesh recorded them; the read time is not part of what they show. */
-  const runs = (principal: Owner, teamId: TeamId, agentId: AgentId) => {
-    // Owner membership and current identity are rechecked by each repository call.
+  const runs = (principal: Person, teamId: TeamId, agentId: AgentId) => {
+    // Membership and current identity are rechecked by each repository call.
     const executions = store.agents.workspaceExecutions(
       principal,
       teamId,

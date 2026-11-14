@@ -44,12 +44,12 @@ export function registerCommunication(app: FastifyInstance, store: Store) {
         }
       : store.communication.channels(principal(request), teamId, page);
   });
-  // Owner recovery of a blocked delivery; agents never reach it (resumeAsOwner).
+  // Recovery of a blocked delivery by any person; agents never reach it (resumeByPerson).
   app.post('/api/teams/:teamId/deliveries/:deliveryId/resume', (request) => {
     const { teamId, deliveryId } = TeamPath.extend({
       deliveryId: z.uuid(),
     }).parse(request.params);
-    return store.inbox.resumeAsOwner(
+    return store.inbox.resumeByPerson(
       principal(request),
       teamId,
       deliveryId,

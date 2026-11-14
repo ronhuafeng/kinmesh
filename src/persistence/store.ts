@@ -35,16 +35,24 @@ export function openStore(path: string) {
   mkdirSync(dirname(path), { recursive: true, mode: 0o700 });
   const sqlite = new Database(path);
   chmodSync(path, 0o600);
-  sqlite.pragma('foreign_keys = ON');
   sqlite.pragma('busy_timeout = 5000');
   sqlite.pragma('journal_mode = WAL');
   const db = drizzle(sqlite, { schema: tables });
   try {
+    // A migration that rebuilds a table drops it while others still refer to
+    // it, which SQLite allows only with foreign keys off; they cannot be
+    // switched off inside the migrations' transaction, so they are off around
+    // it, and every reference is checked before anything runs.
+    sqlite.pragma('foreign_keys = OFF');
     migrate(db, {
       migrationsFolder: fileURLToPath(
         new URL('../../drizzle', import.meta.url),
       ),
     });
+    const broken = z.array(z.unknown()).parse(sqlite.pragma('foreign_key_check'));
+    if (broken.length > 0)
+      throw new Error('Migrated database has broken references');
+    sqlite.pragma('foreign_keys = ON');
   } catch (error) {
     sqlite.close();
     throw error;
@@ -131,9 +139,8 @@ export function openStore(path: string) {
           const existing = tx.select().from(tables.teams).get();
           if (existing !== undefined) {
             const team = Team.parse(existing);
-            // Until roles go, everyone may do everything.
             tx.insert(tables.memberships)
-              .values({ humanId: human.id, teamId: team.id, role: 'owner' })
+              .values({ humanId: human.id, teamId: team.id })
               .run();
             communicationStore.welcome(human.id, team.id);
             return human;
@@ -145,7 +152,7 @@ export function openStore(path: string) {
           const team = Team.parse({ id: randomUUID(), name: 'Team' });
           tx.insert(tables.teams).values(team).run();
           tx.insert(tables.memberships)
-            .values({ humanId: human.id, teamId: team.id, role: 'owner' })
+            .values({ humanId: human.id, teamId: team.id })
             .run();
           // The first channel, made the way every channel is (nested savepoint).
           communicationStore.createChannel(
@@ -299,12 +306,7 @@ export function openStore(path: string) {
       const membership = db
         .select()
         .from(tables.memberships)
-        .where(
-          and(
-            eq(tables.memberships.humanId, id),
-            eq(tables.memberships.role, 'owner'),
-          ),
-        )
+        .where(eq(tables.memberships.humanId, id))
         .get();
       if (membership === undefined) return undefined;
       const verified = Membership.parse(membership);
@@ -338,7 +340,7 @@ export function openStore(path: string) {
           .limit(100)
           .all(),
       );
-      return { team, channels, role: verified.role };
+      return { team, channels };
     },
     ready: () => {
       try {

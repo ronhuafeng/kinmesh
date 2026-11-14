@@ -1235,7 +1235,7 @@ test('AG-UI access revocation clears prior reports while a transient outage pres
   await refreshNow(page);
   await expect(
     page.getByText(
-      'You no longer have access to this activity. Sign in again or ask the team owner.',
+      'You no longer have access to this activity. Sign in again.',
     ),
   ).toBeVisible();
   await expect(page.getByText(thread, { exact: true })).toHaveCount(0);
@@ -1396,7 +1396,7 @@ test('MOCK UI only: native HTTP 401 or 403 purges native result and protected AG
     await page.getByRole('button', { name: 'Check in T3' }).click();
     await expect(
       page.getByText(
-        'You no longer have access to this activity. Sign in again or ask the team owner.',
+        'You no longer have access to this activity. Sign in again.',
       ),
     ).toBeVisible();
     await expect(

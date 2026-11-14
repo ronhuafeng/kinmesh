@@ -174,7 +174,7 @@ function Activity({
     snapshotRequest.current?.abort();
     setSnapshot(null);
     setError(
-      'You no longer have access to this activity. Sign in again or ask the team owner.',
+      'You no longer have access to this activity. Sign in again.',
     );
   }
   useEffect(() => {
@@ -199,7 +199,7 @@ function Activity({
           // Never retain a formerly authorized execution snapshot after access loss.
           setSnapshot(null);
           setError(
-            'You no longer have access to this activity. Sign in again or ask the team owner.',
+            'You no longer have access to this activity. Sign in again.',
           );
         } else {
           // A temporary transport/server outage does not certify a new snapshot.
@@ -665,7 +665,7 @@ export function Team({
       </ul>
       {data.agentsTruncated && (
         <p className="muted">
-          Showing the first 100 agents. Use the owner agent API for additional
+          Showing the first 100 agents. Use the agent API for additional
           profiles.
         </p>
       )}

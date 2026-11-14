@@ -115,7 +115,7 @@ await test('agent schemas reject invalid bindings, unbounded memory/capabilities
   );
 });
 
-await test('team-scoped unique profile names, cross-team IDs and nonmember/nonowner mutations are denied', async () => {
+await test('team-scoped unique profile names, cross-team IDs and nonmember mutations are denied; any member manages agents', async () => {
   const f = await agentFixture();
   const raw = new Database(f.dbPath);
   raw.pragma('foreign_keys = ON');
@@ -147,43 +147,47 @@ await test('team-scoped unique profile names, cross-team IDs and nonmember/nonow
       403,
     );
     raw
-      .prepare('INSERT INTO memberships VALUES (?, ?, ?)')
-      .run(f.owner.id, teamId, 'owner');
+      .prepare('INSERT INTO memberships VALUES (?, ?)')
+      .run(f.owner.id, teamId);
     const other = f.store.agents.create(f.principal, teamId, profileInput);
     assert.notEqual(other.id, f.agent.id);
     assert.throws(
       () => f.store.agents.get(f.principal, teamId, f.agent.id),
       (e) => e instanceof IdentityError && e.statusCode === 404,
     );
+    // Anyone of the team manages agents and their credentials, not only the
+    // person who set it up.
     const memberId = HumanId.parse(randomUUID());
     raw
       .prepare('INSERT INTO humans (id, username) VALUES (?, ?)')
       .run(memberId, 'member');
     raw
-      .prepare('INSERT INTO memberships VALUES (?, ?, ?)')
-      .run(memberId, f.teamId, 'member');
+      .prepare('INSERT INTO memberships VALUES (?, ?)')
+      .run(memberId, f.teamId);
     const member: Principal = { kind: 'human', humanId: memberId };
-    for (const action of [
-      () => f.store.agents.create(member, f.teamId, profileInput),
-      () => f.store.agents.update(member, f.teamId, f.agent.id, profileInput),
-      () => f.store.agents.issue(member, f.teamId, f.agent.id, grantInput),
-      () => f.store.agents.lifecycle(member, f.teamId, f.agent.id, 'disabled'),
-      () => {
-        f.store.agents.revoke(member, f.teamId, f.agent.id, f.grant.grant.id);
-      },
-      () =>
-        f.store.agents.rotate(
-          member,
-          f.teamId,
-          f.agent.id,
-          f.grant.grant.id,
-          grantInput,
-        ),
-    ])
-      assert.throws(
-        action,
-        (e) => e instanceof IdentityError && e.statusCode === 403,
-      );
+    const theirs = f.store.agents.create(member, f.teamId, {
+      ...profileInput,
+      name: 'Member’s agent',
+    });
+    f.store.agents.update(member, f.teamId, theirs.id, {
+      ...profileInput,
+      name: 'Member’s agent',
+      capabilities: ['review'],
+    });
+    const issued = f.store.agents.issue(member, f.teamId, theirs.id, grantInput);
+    const rotated = f.store.agents.rotate(
+      member,
+      f.teamId,
+      theirs.id,
+      issued.grant.id,
+      grantInput,
+    );
+    f.store.agents.revoke(member, f.teamId, theirs.id, rotated.grant.id);
+    assert.equal(
+      f.store.agents.lifecycle(member, f.teamId, f.agent.id, 'disabled')
+        .lifecycle,
+      'disabled',
+    );
   } finally {
     raw.close();
     await f.dispose();

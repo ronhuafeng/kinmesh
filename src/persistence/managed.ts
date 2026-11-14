@@ -22,10 +22,11 @@ export function managedRepository(
   agents: ReturnType<typeof agentRepository>,
 ) {
   const { atomic } = transactional(db);
-  function owner(p: Principal, teamId: TeamId) {
+  /** A person of the team: T3 and the hub-held secrets are everyone's. */
+  function person(p: Principal, teamId: TeamId) {
     // Agents are refused before their grant is looked at.
     if (p.kind !== 'human') throw new IdentityError(403);
-    agents.owner(p, teamId);
+    agents.person(p, teamId);
   }
   function connection(teamId: TeamId) {
     return (
@@ -52,7 +53,7 @@ export function managedRepository(
   }
   return {
     connection(p: Principal, teamId: TeamId) {
-      owner(p, teamId);
+      person(p, teamId);
       return connection(teamId);
     },
     /**
@@ -69,7 +70,7 @@ export function managedRepository(
       environmentId: string,
     ) {
       atomic(() => {
-        owner(p, teamId);
+        person(p, teamId);
         const row = {
           endpoint: Endpoint.parse(endpoint),
           environmentId: z.string().min(1).max(256).parse(environmentId),
@@ -82,7 +83,7 @@ export function managedRepository(
       });
     },
     binding(p: Principal, teamId: TeamId, agentId: AgentId) {
-      owner(p, teamId);
+      person(p, teamId);
       return binding(teamId, agentId);
     },
     /** Agents of one team the hub's worker serves. */
@@ -125,7 +126,7 @@ export function managedRepository(
       input: GrantInput,
     ) {
       return atomic(() => {
-        owner(p, teamId);
+        person(p, teamId);
         const t3 = connection(teamId);
         if (t3 === null) throw new IdentityError(409);
         const providerId = Provider.parse(choice.providerId);
@@ -162,7 +163,7 @@ export function managedRepository(
     /** Stop serving the agent and revoke its worker credential. */
     disconnect(p: Principal, teamId: TeamId, agentId: AgentId) {
       return atomic(() => {
-        owner(p, teamId);
+        person(p, teamId);
         const old = binding(teamId, agentId);
         if (old === null) return false;
         agents.revoke(p, teamId, agentId, old.grantId);

@@ -30,7 +30,6 @@ export const Channel = z.strictObject({
 export const Membership = z.strictObject({
   humanId: HumanId,
   teamId: TeamId,
-  role: z.enum(['owner', 'member']),
 });
 export const TeamName = z.string().trim().min(1).max(80);
 /** A sign-in must come back from Feishu within ten minutes. */

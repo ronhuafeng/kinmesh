@@ -18,7 +18,8 @@ import { WORKER_GRANT } from '../src/server/connect.js';
 import { inboxFixture } from './inbox-helpers.js';
 import { loadAgentToken } from '../src/team-mcp/client.js';
 import { WorkspaceSnapshot } from '../src/workspace/contracts.js';
-import { agentFixture } from './agent-helpers.js';
+import { agentFixture, profileInput } from './agent-helpers.js';
+import { signInAs, standInFeishu } from './feishu.js';
 
 const endpoint = 'https://t3.test/mcp';
 const credential = Credential.parse({
@@ -33,7 +34,7 @@ const credential = Credential.parse({
 });
 const mode = (path: string) => statSync(path).mode & 0o777;
 
-/** The owner's app with a T3 that approves when told to; no network. */
+/** The team's app with a T3 that approves when told to; no network. */
 async function connectFixture() {
   const f = await agentFixture();
   let approve: (ok: boolean) => void = () => undefined;
@@ -58,7 +59,9 @@ async function connectFixture() {
       return Promise.resolve();
     },
   };
-  const app = await createApp(f.config, f.store, undefined, undefined, hub);
+  const app = await createApp(f.config, f.store, undefined, undefined, hub, {
+    feishu: standInFeishu,
+  });
   const team = `/api/teams/${f.teamId}`;
   const agentPath = `${team}/agents/${f.agent.id}`;
   const call = (
@@ -99,7 +102,36 @@ const Status = z.object({
   signIn: z.enum(['waiting', 'failed']).nullable(),
 });
 
-await test('the owner connects T3 from the browser; the credential is saved privately and never replaced silently', async () => {
+await test('a person who did not set up the instance connects T3 and registers an agent', async () => {
+  const f = await connectFixture();
+  try {
+    // Someone else in the organization, signing in after the team exists.
+    const cookies = await signInAs(f.app, 'colleague@example.com');
+    const as = (method: 'GET' | 'POST', url: string, payload?: object) =>
+      f.app.inject({ method, url, cookies, ...(payload ? { payload } : {}) });
+    const started = await as('POST', f.team + '/t3/connect', {
+      endpoint,
+      replace: false,
+    });
+    assert.equal(started.statusCode, 200);
+    f.approve();
+    await settle();
+    assert.equal(
+      Status.parse((await as('GET', f.team + '/t3')).json<unknown>())
+        .connection?.environmentId,
+      'env-live',
+    );
+    const registered = await as('POST', f.team + '/agents', {
+      ...profileInput,
+      name: 'Colleague’s agent',
+    });
+    assert.equal(registered.statusCode, 201);
+  } finally {
+    await f.dispose();
+  }
+});
+
+await test('a person connects T3 from the browser; the credential is saved privately and never replaced silently', async () => {
   const f = await connectFixture();
   try {
     const status = async () =>

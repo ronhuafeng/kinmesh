@@ -26,7 +26,18 @@ function connectTeam(
   return t3AuthFile(directory);
 }
 
-await test('native HTTP: without a team T3 connection it is 503 without expiring the owner; exact owner scope precedes availability', async () => {
+/** The person leaves the team: their membership goes, nothing else. */
+function leaveTeam(path: string, humanId: string) {
+  const raw = new Database(path);
+  try {
+    raw.pragma('foreign_keys = OFF');
+    raw.prepare('DELETE FROM memberships WHERE human_id = ?').run(humanId);
+  } finally {
+    raw.close();
+  }
+}
+
+await test('native HTTP: without a team T3 connection it is 503 without expiring the person; membership precedes availability', async () => {
   const f = await agentFixture();
   try {
     const execution = await f.execution();
@@ -81,11 +92,7 @@ await test('native HTTP: without a team T3 connection it is 503 without expiring
         execution.id,
       ),
     );
-    const raw = new Database(f.dbPath);
-    raw
-      .prepare("UPDATE memberships SET role = 'member' WHERE human_id = ?")
-      .run(f.owner.id);
-    raw.close();
+    leaveTeam(f.dbPath, f.owner.id);
     assert.equal(
       (await f.app.inject({ url, cookies: f.cookies })).statusCode,
       403,
@@ -217,21 +224,14 @@ await test('MOCK SDK/HTTP: official protocol reads only two tools, validates ret
     );
     mock.mode.value = 'normal';
     mock.hooks.beforeThreadRead = () => {
-      const raw = new Database(f.dbPath);
-      try {
-        raw
-          .prepare("UPDATE memberships SET role = 'member' WHERE human_id = ?")
-          .run(f.owner.id);
-      } finally {
-        raw.close();
-      }
+      leaveTeam(f.dbPath, f.owner.id);
     };
     for (const mode of ['normal', 'bad-read'] as const) {
       const raw = new Database(f.dbPath);
       try {
         raw
-          .prepare("UPDATE memberships SET role = 'owner' WHERE human_id = ?")
-          .run(f.owner.id);
+          .prepare('INSERT OR IGNORE INTO memberships VALUES (?, ?)')
+          .run(f.owner.id, f.teamId);
       } finally {
         raw.close();
       }
