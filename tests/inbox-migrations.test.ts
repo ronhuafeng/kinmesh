@@ -7,6 +7,26 @@ import { z } from 'zod';
 import { openStore } from '../src/persistence/store.js';
 import { inboxFixture } from './inbox-helpers.js';
 import { postInput } from './communication-helpers.js';
+/**
+ * Tables whose columns changed since this baseline: how today's rows are
+ * written into it, and what of them survives the upgrade.
+ */
+const changed: Record<string, { write: string; read: string }> = {
+  // A password hash stood in the column; the mailbox and Feishu identity
+  // arrive only from sign-in.
+  humans: {
+    write:
+      "INSERT INTO humans SELECT id, username, 'baseline-hash' FROM fixture_source.humans",
+    read: 'SELECT id, username FROM humans ORDER BY id',
+  },
+  // Everyone held a role then; there are none now.
+  memberships: {
+    write:
+      "INSERT INTO memberships SELECT human_id, team_id, 'owner' FROM fixture_source.memberships",
+    read: 'SELECT human_id, team_id FROM memberships ORDER BY human_id, team_id',
+  },
+};
+
 await test('populated main/PR18 migration preserves every baseline row and active single-flight lease; no historical auto-dispatch', async () => {
   const f = await inboxFixture();
   let upgraded: ReturnType<typeof openStore> | undefined;
@@ -45,12 +65,9 @@ await test('populated main/PR18 migration preserves every baseline row and activ
     old.prepare('ATTACH DATABASE ? AS fixture_source').run(f.dbPath);
     for (const name of names) {
       assert.match(name, /^[a-z_]+$/);
-      // People are the one table whose columns changed since this baseline;
-      // a password hash stands in for the column that held them then.
       old.exec(
-        name === 'humans'
-          ? "INSERT INTO humans SELECT id, username, 'baseline-hash' FROM fixture_source.humans"
-          : 'INSERT INTO ' + name + ' SELECT * FROM fixture_source.' + name,
+        changed[name]?.write ??
+          'INSERT INTO ' + name + ' SELECT * FROM fixture_source.' + name,
       );
     }
     old.exec('DETACH DATABASE fixture_source');
@@ -59,9 +76,8 @@ await test('populated main/PR18 migration preserves every baseline row and activ
     const after = new Database(oldPath);
     try {
       for (const name of names) {
-        // The baseline had no mailbox; one arrives only from Feishu sign-in.
-        const columns = name === 'humans' ? 'id, username' : '*';
-        const read = `SELECT ${columns} FROM ${name} ORDER BY rowid`;
+        const read =
+          changed[name]?.read ?? `SELECT * FROM ${name} ORDER BY rowid`;
         assert.deepEqual(after.prepare(read).all(), source.prepare(read).all());
       }
       assert.deepEqual(upgraded.operations.get(operation.id), lease);
