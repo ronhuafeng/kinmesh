@@ -200,6 +200,10 @@ it is the authority. Use the custom property for its role, never a raw colour.
   leaves the address, so a reload starts clean. Turning back at Feishu returns here
   silently.
 - **Sign out**: the power icon at the far right of the header.
+- **Opening the workspace**: quiet. A load that is quick shows nothing; one that takes
+  more than 0.6 s fades in the brand, "Opening your workspace…" and a skeleton board
+  (at once without motion). Only a failure says "Workspace unavailable", why, and offers
+  **Try again**.
 - **Connection pill**: absent while healthy; dot + "Refreshing… / Disconnected" with
   last time and **Reconnect**; offline turns into a full-width stale banner. **Refresh
   now** lives in the command palette (⌘K / Ctrl+K).

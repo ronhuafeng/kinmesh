@@ -451,7 +451,8 @@ export function App() {
             ))}
           </div>
         )}
-        <button onClick={refreshNow}>Try again</button>
+        {/* Only a failure offers anything to do. */}
+        {error && <button onClick={refreshNow}>Try again</button>}
       </main>
     );
   const channel = data.channel;

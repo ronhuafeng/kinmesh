@@ -1281,6 +1281,23 @@ dd {
   gap: 1rem;
   padding: 2rem clamp(1.5rem, 8vw, 8rem);
 }
+/* Opening is quiet: a quick load shows nothing; only one that takes a
+ * while fades its placeholder in. A failure shows at once. */
+.initial-state[aria-busy='true'] > * {
+  opacity: 0;
+  animation: initial-reveal 200ms var(--ease-out) 600ms forwards;
+}
+@keyframes initial-reveal {
+  to {
+    opacity: 1;
+  }
+}
+/* Without motion there is no fade, so the placeholder is simply there. */
+@media (prefers-reduced-motion: reduce) {
+  .initial-state[aria-busy='true'] > * {
+    opacity: 1;
+  }
+}
 .skeleton-board {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 220px));
