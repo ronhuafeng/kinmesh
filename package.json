@@ -35,6 +35,7 @@
     "inbox:status": "node --env-file-if-exists=.env --import tsx src/inbox/main.ts status",
     "test:inbox-live": "node --env-file-if-exists=.env --import tsx scripts/inbox-t3-live.ts",
     "test:browser": "playwright test",
+    "model:inbox": "node --import tsx tests/model/check.ts",
     "web:watch": "vite build --watch",
     "test:collaboration-live": "playwright test --config playwright.live.config.ts"
   },
