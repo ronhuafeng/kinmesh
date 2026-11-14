@@ -32,7 +32,7 @@ import {
   TaskPage,
 } from './tasks.js';
 import type { TaskDraft } from './tasks.js';
-import { joinedAgents } from './names.js';
+import { joinedAgents, otherPeople } from './names.js';
 import {
   Avatar,
   AvatarImages,
@@ -796,6 +796,21 @@ export function App() {
                         <Presence online dot />
                       </button>
                     </li>
+                    {/* Someone else has no page of their own: their row
+                        is their face, name and presence. */}
+                    {otherPeople(data).map((person) => (
+                      <li key={person.id}>
+                        <span className="person">
+                          <Avatar
+                            kind="human"
+                            name={person.username}
+                            size="sm"
+                          />
+                          <span className="person-name">{person.username}</span>
+                          <Presence online={person.online} dot />
+                        </span>
+                      </li>
+                    ))}
                     {channelAgents.map((agent) => (
                       <li key={agent.id}>
                         <button

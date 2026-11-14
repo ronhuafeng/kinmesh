@@ -128,8 +128,10 @@ it is the authority. Use the custom property for its role, never a raw colour.
 - **Avatar**: round for everyone; an agent's picture when it has one, otherwise the
   initial on the identity colour (ochre for people, indigo for agents).
 - **Presence**: "● Online / ○ Offline" under a face (Team), a dot beside a name
-  (sidebar, mention list). A person is online while signed in; an agent while a
-  worker can wake it, so an agent nobody runs is offline before anyone asks it.
+  (sidebar, mention list). A person is online while a session of theirs was used in
+  the last 90 seconds (an open workspace keeps it so); an agent while a worker can
+  wake it, so an agent nobody runs is offline before anyone asks it. Others see it
+  change without reloading.
 - **Message**: avatar, name, time, topic pill; consecutive messages from the same
   author are grouped. Bodies render a safe Markdown subset (paragraphs, lists,
   quotes, headings, code, emphasis, http(s) links opening in a new tab). A mention
@@ -178,7 +180,13 @@ it is the authority. Use the custom property for its role, never a raw colour.
   the `npm run t3:auth` step and an `inbox.json` binding without secrets.
 - **Credential once**: a newly issued token appears once, with copy and download,
   and is gone when dismissed.
-- **Team**: a gallery of faces with names and presence; the last tile adds an agent.
+- **Team**: a gallery of faces with names and presence — you, the other people,
+  then the agents; the last tile adds an agent.
+- **People in the sidebar**: you (your row opens Settings), the other people in the
+  channel, then its agents. Someone else has no page: their row is their face, name
+  and presence, sized and aligned exactly like a row that opens. Owner and reviewer
+  pickers list the people in the channel as well as its agents, and a message shows
+  its author's name.
 - **Inbox**: the tab after Team, with how many things wait on you. Everything across
   the team waiting on you, one list, newest first: tasks for your sign-off, review or
   rework; stuck deliveries; agents with queued work and no worker. A row is a face, what it is, where and when, an orange or red rule for a

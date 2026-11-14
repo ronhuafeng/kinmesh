@@ -17,7 +17,7 @@ import type { WorkspaceSnapshot } from '../src/workspace/contracts.js';
 import { api, Offline, value } from './api.js';
 import { ActionForm, Field, Notice, SubmitGroup } from './forms.js';
 import { DeliveryLine, taskDeliveries } from './deliveries.js';
-import { joinedAgents, memberName, someoneOf } from './names.js';
+import { joinedAgents, memberName, otherPeople, someoneOf } from './names.js';
 import type { Someone } from './names.js';
 import { LEGACY_FOOTER } from './replies.js';
 import { Avatar, Page, shortTime } from './ui.js';
@@ -153,6 +153,13 @@ function MemberOptions({
       {shown({ kind: 'human', id: data.human.id }) && (
         <option value={'human:' + data.human.id}>{data.human.username}</option>
       )}
+      {otherPeople(data)
+        .filter((person) => shown({ kind: 'human', id: person.id }))
+        .map((person) => (
+          <option value={'human:' + person.id} key={person.id}>
+            {person.username}
+          </option>
+        ))}
       {joinedAgents(data)
         .filter((a) => shown({ kind: 'agent', id: a.id }))
         .map((a) => (

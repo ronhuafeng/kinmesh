@@ -2151,6 +2151,8 @@ button.icon-button.confirm:disabled {
   width: 100%;
   padding: 0.35rem 0.6rem;
   font-size: 0.9rem;
+  /* A row you can't open sits exactly like one you can. */
+  line-height: 1.3;
 }
 span.person {
   border: 1px solid transparent;
@@ -3578,9 +3580,9 @@ button.new-agent-go {
   .page-bar-title {
     display: none;
   }
-  /* A finger's target: 44 px. */
+  /* A finger's target: 44 px; the people you can't open keep the rhythm. */
   .sidebar nav > button,
-  button.person {
+  .person {
     min-height: 44px;
   }
 }

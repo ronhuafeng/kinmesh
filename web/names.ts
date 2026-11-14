@@ -21,8 +21,21 @@ export function memberName(
   if (!who) return 'Unassigned';
   const { kind, id } = someoneOf(who);
   if (kind === 'human')
-    return id === data.human.id ? data.human.username : 'Human member';
+    return (
+      data.people.find((person) => person.id === id)?.username ?? 'Human member'
+    );
   return data.agents.find((agent) => agent.id === id)?.name ?? 'Agent member';
+}
+/**
+ * The other people: in the open channel when there is one, otherwise the
+ * whole team. You are not among them.
+ */
+export function otherPeople(data: WorkspaceSnapshot) {
+  return data.people.filter(
+    (person) =>
+      person.id !== data.human.id &&
+      (data.channel === null || data.joinedHumanIds.includes(person.id)),
+  );
 }
 /** The agents in the open channel. */
 export function joinedAgents(data: WorkspaceSnapshot) {

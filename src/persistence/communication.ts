@@ -1,12 +1,12 @@
 import { enqueueFact } from './inbox-enqueue.js';
 import { transactional, snapshotPage } from './transactional.js';
 import { randomUUID } from 'node:crypto';
-import { and, asc, desc, eq, gt, lte, max, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, gt, isNotNull, lte, max, sql } from 'drizzle-orm';
 import type { BetterSQLite3Database } from 'drizzle-orm/better-sqlite3';
 import type { z } from 'zod';
 import * as s from './schema.js';
 import type { agentRepository } from './agents.js';
-import type { ChannelId, HumanId, TeamId } from '../domain/contracts.js';
+import { HumanId, type ChannelId, type TeamId } from '../domain/contracts.js';
 import { IdentityError, type Principal } from '../domain/agents.js';
 import {
   principalAuthor as author,
@@ -341,6 +341,25 @@ export function communicationRepository(
             return channel;
           },
         );
+      });
+    },
+    /** The people joined to a channel the caller can read. */
+    joinedHumans(p: Principal, teamId: TeamId, channelId: ChannelId) {
+      return atomic(() => {
+        access(p, teamId, channelId);
+        return db
+          .select({ id: s.channelParticipants.humanId })
+          .from(s.channelParticipants)
+          .where(
+            and(
+              eq(s.channelParticipants.channelId, channelId),
+              eq(s.channelParticipants.state, 'joined'),
+              isNotNull(s.channelParticipants.humanId),
+            ),
+          )
+          .limit(100)
+          .all()
+          .flatMap((row) => (row.id === null ? [] : [HumanId.parse(row.id)]));
       });
     },
     /** Channels the caller left themselves (never removed ones), to rejoin. */
