@@ -3371,8 +3371,22 @@ button.new-agent-go {
   .workspace-shell {
     display: block;
   }
-  .workspace-shell:not([data-screen='home']) > .sidebar,
   .workspace-shell[data-screen='home'] > .workspace-main {
+    display: none;
+  }
+  /* Away from Home the sidebar's content goes, but search stays one key
+   * away: its dialog opens over any screen. */
+  .workspace-shell:not([data-screen='home']) > .sidebar {
+    position: absolute;
+    width: 0;
+    height: 0;
+    min-height: 0;
+    padding: 0;
+    border: 0;
+    overflow: visible;
+  }
+  .workspace-shell:not([data-screen='home']) > .sidebar > :not(.sidebar-top),
+  .workspace-shell:not([data-screen='home']) .sidebar .palette-trigger {
     display: none;
   }
   .sidebar {
