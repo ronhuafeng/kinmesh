@@ -225,6 +225,7 @@ export async function deliver(
     // Crash before remember() re-enters the SAME frozen intent; T3Backend returns its durable journal outcome.
     if (row.reference === null) {
       const intent = inboxIntent(claim.agentId, claim.id);
+      if (row.operationId === null) await store.inbox.launching(claim);
       const dispatch =
         row.operationId === null
           ? await handle.backend.launch(frozen.input, intent, signal)

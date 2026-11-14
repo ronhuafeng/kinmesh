@@ -69,10 +69,9 @@ export function deliveryText(
         ? { text: `${name} is waiting for an approval in T3`, tone: 'waiting' }
         : { text: `${name} is working on it`, tone: 'active' };
     case 'uncertain':
-      return {
-        text: `Checking whether ${name}’s run started…`,
-        tone: 'waiting',
-      };
+      return because('native-launch-pending')
+        ? { text: `${name} is working on it`, tone: 'active' }
+        : { text: `Checking whether ${name}’s run started…`, tone: 'waiting' };
     case 'acked':
       return {
         text:

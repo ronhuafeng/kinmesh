@@ -1352,6 +1352,73 @@ await test('never-dispatched expiry, bounded retry history, retained facts and r
     await f.dispose();
   }
 });
+await test('work expires unless it may be in T3: a frozen launch alone never reached T3', async () => {
+  const f = await inboxFixture();
+  const raw = rawDatabase(f.dbPath);
+  const p = f.workerPrincipal;
+  assert.equal(p.kind, 'agent');
+  const frozen = FrozenLaunch.parse({
+    grantId: p.grantId,
+    execution: {
+      endpoint: options.endpoint,
+      environmentId: reference.environmentId,
+      authority: options.authority,
+    },
+    input: { ...launch, message: 'Frozen fixture input' },
+  });
+  try {
+    // Controlled clock fixture only: production code cannot edit expiry.
+    await raw.exec('DROP TRIGGER inbox_source_immutable ON agent_inbox');
+    const overdue = async (id: string) => {
+      await raw
+        .prepare('UPDATE agent_inbox SET expires_at=1 WHERE id=?')
+        .run(id);
+      await due(f.dbPath, true);
+      const next = await f.inbox.claim([f.agent.id]);
+      return { state: (await f.inbox.get(id)).state, next };
+    };
+
+    // Frozen, then sent back to the queue before T3 was called.
+    await mention(f);
+    const queued = await claim(f);
+    await f.inbox.freeze(queued, p, frozen);
+    await f.inbox.defer(queued, 'ready', 'setup-catching-up');
+    assert.equal((await overdue(queued.id)).state, 'expired');
+
+    // About to call T3: uncertain, so it stays to be reconciled.
+    await mention(f);
+    const launching = await claim(f);
+    await f.inbox.freeze(launching, p, frozen);
+    await f.inbox.launching(launching);
+    assert.equal((await f.inbox.get(launching.id)).state, 'uncertain');
+    const reconciling = await overdue(launching.id);
+    assert.equal(reconciling.state, 'uncertain');
+    // The next claim takes it up to reconcile; set it aside.
+    assert.ok(reconciling.next);
+    assert.equal(reconciling.next.id, launching.id);
+    await f.inbox.defer(reconciling.next, 'blocked', 'fixture-blocked');
+
+    // Ready, but its native intent is journaled: T3 may have the run.
+    await mention(f);
+    const journaled = await claim(f);
+    await f.inbox.freeze(journaled, p, frozen);
+    await f.inbox.defer(journaled, 'ready', 'temporarily-unavailable');
+    await raw
+      .prepare(
+        "INSERT INTO execution_operations (id, scope, actor, operation_key, request_id, fingerprint, tool, payload, phase) VALUES (?, 'fixture', ?, ?, ?, 'fixture', 'fixture', '{}', 'dispatching')",
+      )
+      .run(
+        randomUUID(),
+        'inbox-agent:' + f.agent.id,
+        'inbox:' + journaled.id,
+        randomUUID(),
+      );
+    assert.equal((await overdue(journaled.id)).state, 'ready');
+  } finally {
+    await raw.close();
+    await f.dispose();
+  }
+});
 await test('frozen T3 endpoint/authority and Kinmesh grant cannot switch after uncertain dispatch', async () => {
   for (const change of ['endpoint', 'authority', 'grant'] as const) {
     const f = await inboxFixture();

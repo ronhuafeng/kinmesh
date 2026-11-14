@@ -52,6 +52,13 @@ const decode = (value: string): unknown => JSON.parse(value);
  */
 const among = (column: AnyPgColumn, ids: readonly string[]) =>
   sql`${column} = any(${sql.param(ids)}::text[])`;
+/**
+ * The delivery's launch may be in T3: it was correlated, or its native
+ * intent was journaled, which happens before T3 is called (the strings are
+ * `inboxIntent`'s, as in drizzle/0001_rules.sql). A frozen launch alone
+ * never reached T3.
+ */
+const mayBeInT3 = sql`(${s.agentInbox.operationId} IS NOT NULL OR ${s.agentInbox.reference} IS NOT NULL OR EXISTS (SELECT 1 FROM execution_operations o WHERE o.actor = 'inbox-agent:' || ${s.agentInbox.agentId} AND o.operation_key = 'inbox:' || ${s.agentInbox.id}))`;
 /** The advisory lock claims take turns under (any fixed 64-bit key). */
 const CLAIM_LOCK = 0x6b696e6d657368n;
 export function inboxRepository(
@@ -232,7 +239,8 @@ export function inboxRepository(
         // held until this transaction ends. Row locks alone (SKIP LOCKED)
         // would let two claims each see room and exceed the capacity.
         await q().execute(sql`select pg_advisory_xact_lock(${CLAIM_LOCK})`);
-        // Expire only never-dispatched work. Frozen launches/uncertainty must remain reconcilable.
+        // Expire only work that never reached T3; anything that may be there
+        // must stay reconcilable. A launch in flight is uncertain, not ready.
         const expired = await q()
           .update(t)
           .set({
@@ -245,7 +253,7 @@ export function inboxRepository(
             and(
               among(t.agentId, ids),
               eq(t.state, 'ready'),
-              sql`${t.launch} IS NULL`,
+              sql`NOT ${mayBeInT3}`,
               lte(t.expiresAt, dbNow),
               lte(t.leaseUntil, dbNow),
             ),
@@ -426,6 +434,21 @@ export function inboxRepository(
         });
         await history(await get(c.id), 'launch-frozen');
         return value;
+      });
+    },
+    /**
+     * The worker is about to call T3, under its claim: from here the run may
+     * exist, so the delivery is uncertain until the launch's reply is
+     * remembered, and no longer expires. A worker whose claim is gone
+     * learns it here, before T3 is called.
+     */
+    async launching(c: Claim) {
+      await atomic(async () => {
+        await update(c, {
+          state: 'uncertain',
+          reason: 'native-launch-pending',
+        });
+        await history(await get(c.id), 'native-launch-pending');
       });
     },
     async remember(c: Claim, reference: Reference | { operationId: string }) {

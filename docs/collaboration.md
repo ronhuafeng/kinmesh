@@ -201,7 +201,7 @@ Publication is one fenced transaction: authority and assignment checks, executio
 
 An agent that keeps owner or reviewer responsibility may still settle a run it already dispatched after a handoff, approval, acceptance or rework. Reassignment, cancellation, revoked grants and removed membership block publication.
 
-Work that never froze expires after seven days. Frozen, uncertain and correlated work never expires on its own, since a native effect may exist.
+Work that never reached T3 expires after seven days, frozen or not. Just before it calls T3, the worker marks the delivery `uncertain` under its claim (a worker whose claim is gone stops there); from then on, and for anything journaled or correlated, a native effect may exist, so it never expires on its own.
 
 ## Workspace snapshot
 

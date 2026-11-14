@@ -61,6 +61,7 @@ export const DeliveryReason = z.enum([
   'operator-resume',
   'owner-resume',
   'setup-catching-up',
+  'native-launch-pending',
 ]);
 export type DeliveryReason = z.infer<typeof DeliveryReason>;
 /**

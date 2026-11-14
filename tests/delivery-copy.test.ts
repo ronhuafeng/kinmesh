@@ -30,6 +30,7 @@ await test('every delivery state reads as a plain sentence about the agent', () 
     ['waiting', 'human-or-approval-wait', true, /waiting for an approval/],
     ['waiting', 'assistant-result-unavailable', true, /working on it/],
     ['uncertain', 'native-launch-uncertain', true, /^Checking whether Ada/],
+    ['uncertain', 'native-launch-pending', true, /^Ada is working on it$/],
     [
       'acked',
       'assistant-result-published',
