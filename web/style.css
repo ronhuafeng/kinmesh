@@ -593,6 +593,84 @@ textarea {
   color: var(--ink-subtle);
   font-family: var(--mono);
 }
+/* Something in a channel waits on you: a dot in the decision colour at the
+ * end of its row. */
+.sidebar nav > button {
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
+}
+.sidebar nav button span.waiting-dot {
+  flex: none;
+  /* The size of a presence dot, on the same right edge as theirs. */
+  width: 0.5rem;
+  height: 0.5rem;
+  margin-left: auto;
+  margin-right: 0.05rem;
+  border-radius: 50%;
+  background: var(--decision);
+}
+/* The current channel's topics hang under it like a tree: a hairline trunk,
+ * the topic you are in in ink, the others quieter. */
+.channel-topics {
+  display: grid;
+  gap: 0.15rem;
+  margin: 0.15rem 0 0.4rem 1.05rem;
+  padding-left: 0.45rem;
+  border-left: 1px solid var(--hairline);
+}
+.channel-topics ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 1px;
+}
+/* Every line of the tree is one height, text or "+". */
+.sidebar nav .channel-topics button {
+  display: block;
+  width: 100%;
+  height: 1.75rem;
+  padding: 0 0.5rem;
+  line-height: calc(1.75rem - 2px);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--ink-subtle);
+  font-size: 0.85rem;
+  font-weight: 500;
+}
+.sidebar nav .channel-topics button[aria-pressed='true'] {
+  color: var(--ink);
+  font-weight: 600;
+}
+.sidebar nav .channel-topics .add-button {
+  display: inline-grid;
+  place-items: center;
+  width: auto;
+}
+.channel-topics .inline-field.pill input {
+  width: 100%;
+}
+/* Leaving keeps the danger colour and starts where the topics start. */
+.sidebar nav .channel-topics .leave-channel button {
+  border: 1px solid transparent;
+  color: var(--danger);
+  font-size: 0.8rem;
+  font-weight: 600;
+}
+/* On a wide screen the topics live in the sidebar; on a phone, above the
+ * conversation. */
+@media (min-width: 721px) {
+  .conversation > .topic-bar {
+    display: none;
+  }
+}
+@media (max-width: 720px) {
+  .channel-topics {
+    display: none;
+  }
+}
 .people ul {
   list-style: none;
   margin: 0;

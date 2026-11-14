@@ -1,7 +1,7 @@
 import { enqueueFact } from './inbox-enqueue.js';
 import { transactional, snapshotPage } from './transactional.js';
 import { randomUUID } from 'node:crypto';
-import { and, asc, eq, gt, lte, max, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, gt, lte, max, sql } from 'drizzle-orm';
 import type { BetterSQLite3Database } from 'drizzle-orm/better-sqlite3';
 import type { z } from 'zod';
 import * as s from './schema.js';
@@ -548,6 +548,42 @@ export function communicationRepository(
               .all()
               .map((r) => topic(channelId, TopicId.parse(r.id))),
         );
+      });
+    },
+    /**
+     * A channel's most recently active topics, newest first: the time of its
+     * latest message, or of the topic itself before anyone wrote in it.
+     */
+    activeTopics(
+      p: Principal,
+      teamId: TeamId,
+      channelId: ChannelId,
+      limit: number,
+    ) {
+      return atomic(() => {
+        access(p, teamId, channelId);
+        const active = sql<string>`coalesce(max(${s.messages.createdAt}), ${s.topics.createdAt})`;
+        const rows = db
+          .select({ id: s.topics.id })
+          .from(s.topics)
+          .leftJoin(
+            s.messages,
+            and(
+              eq(s.messages.topicId, s.topics.id),
+              eq(s.messages.channelId, s.topics.channelId),
+            ),
+          )
+          .where(eq(s.topics.channelId, channelId))
+          .groupBy(s.topics.id)
+          .orderBy(desc(active), desc(s.topics.position))
+          .limit(limit + 1)
+          .all();
+        return {
+          items: rows
+            .slice(0, limit)
+            .map((r) => topic(channelId, TopicId.parse(r.id))),
+          more: rows.length > limit,
+        };
       });
     },
     post(p: Principal, teamId: TeamId, channelId: ChannelId, input: PostInput) {

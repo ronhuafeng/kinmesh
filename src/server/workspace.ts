@@ -248,6 +248,9 @@ export function registerWorkspace(
               ...(query.topicsCursor ? { cursor: query.topicsCursor } : {}),
             })
           : { items: [], nextCursor: null },
+        activeTopics: channel
+          ? store.communication.activeTopics(principal, teamId, channel.id, 10)
+          : { items: [], more: false },
         tasks,
       }),
     );
