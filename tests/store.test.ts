@@ -37,7 +37,7 @@ await test('migrations are applied in full and the team survives reopen', async 
     const raw = rawDatabase(f.path);
     assert.equal(
       await raw
-        .prepare('SELECT count(*) AS n FROM __drizzle_migrations')
+        .prepare('SELECT count(*) AS n FROM drizzle.__drizzle_migrations')
         .pluck()
         .get(),
       // Every migration in the journal is applied, whatever their number.

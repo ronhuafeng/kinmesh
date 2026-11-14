@@ -1272,9 +1272,9 @@ await test('never-dispatched expiry, bounded retry history, retained facts and r
         .prepare('SELECT count(*) FROM inbox_history WHERE delivery_id=?')
         .pluck()
         .get(c.id);
-    assert.equal(count(), 127);
+    assert.equal(await count(), 127);
     await f.inbox.ack(c, f.workerPrincipal, fixtureResult());
-    assert.equal(count(), 128);
+    assert.equal(await count(), 128);
     assert.equal((await f.inbox.get(c.id)).attempts, 141);
     assert.equal(
       (await f.comm.history(f.principal, f.teamId, f.channelId)).items.length,

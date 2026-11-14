@@ -15,6 +15,7 @@ import { tmpdir } from 'node:os';
 import { loadAgentToken, TeamEndpoint } from '../src/team-mcp/client.js';
 import { LiveContext } from '../src/team-mcp/live-context.js';
 import { rawDatabase } from './raw.js';
+import { dropDisposable } from '../src/persistence/disposable.js';
 import { StreamableHTTPError } from '@modelcontextprotocol/sdk/client/streamableHttp.js';
 import { z } from 'zod';
 import { taskFixture, commandInput, taskInput } from './task-helpers.js';
@@ -575,15 +576,23 @@ await test('Team MCP transactions roll back on outbox failure and retries recove
 });
 
 await test('Team configuration rejects non-TLS external origins and malformed configuration', () => {
-  assert.equal(teamConfig({}).port, 3001);
+  const database = {
+    KINMESH_DATABASE_URL: 'postgres://kinmesh@127.0.0.1:5432/kinmesh',
+  };
+  assert.equal(teamConfig(database).port, 3001);
+  assert.throws(() => teamConfig({}));
   for (const origin of [
     'http://example.com',
     'https://example.com/path',
     'https://example.com?x=1',
   ])
-    assert.throws(() => teamConfig({ KINMESH_TEAM_MCP_ORIGIN: origin }));
-  assert.throws(() => teamConfig({ KINMESH_TEAM_MCP_CONCURRENCY: '0' }));
-  assert.throws(() => teamConfig({ KINMESH_TEAM_MCP_PORT: '0' }));
+    assert.throws(() =>
+      teamConfig({ ...database, KINMESH_TEAM_MCP_ORIGIN: origin }),
+    );
+  assert.throws(() =>
+    teamConfig({ ...database, KINMESH_TEAM_MCP_CONCURRENCY: '0' }),
+  );
+  assert.throws(() => teamConfig({ ...database, KINMESH_TEAM_MCP_PORT: '0' }));
 });
 
 await test('Team SDK topic/task creation, scoped request-review and external references reuse authoritative domain state; reads have no effects', async () => {
@@ -793,6 +802,8 @@ await test('private token loader and real smoke CLI protect credentials; live pr
 
 await test('disposable provider fixture CLI prepares private state and refuses overwrite without touching shared database', async () => {
   const directory = join(tmpdir(), 'kinmesh-team-live-' + randomUUID());
+  const admin = process.env.KINMESH_TEST_DATABASE_ADMIN_URL ?? '';
+  let made: string | undefined;
   try {
     const run = () =>
       new Promise<{ code: number | null; log: string }>((resolve, reject) => {
@@ -804,6 +815,7 @@ await test('disposable provider fixture CLI prepares private state and refuses o
               ...process.env,
               KINMESH_TEAM_LIVE_DIR: directory,
               KINMESH_TEAM_MCP_ENDPOINT: 'http://127.0.0.1:3001/mcp',
+              KINMESH_DATABASE_ADMIN_URL: admin,
             },
             stdio: ['ignore', 'pipe', 'pipe'],
           },
@@ -828,6 +840,7 @@ await test('disposable provider fixture CLI prepares private state and refuses o
     const context = LiveContext.parse(
       JSON.parse(readFileSync(join(directory, 'context.json'), 'utf8')),
     );
+    made = context.database;
     assert.equal(statSync(context.tokenFile).mode & 0o077, 0);
     assert.equal(
       prepared.log.includes(loadAgentToken(context.tokenFile)),
@@ -844,6 +857,7 @@ await test('disposable provider fixture CLI prepares private state and refuses o
     assert.equal((await run()).code, 1);
   } finally {
     rmSync(directory, { recursive: true, force: true });
+    if (made) await dropDisposable(admin, made);
   }
 });
 

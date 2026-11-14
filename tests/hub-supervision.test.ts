@@ -689,11 +689,11 @@ await test(
     try {
       const p = f.start();
       await p.ready();
+      const id = p.workers()[0];
+      assert.ok(id);
       // The same name, now a different, empty database.
       const name = new URL(f.dbPath).pathname.slice(1);
       await replaceDatabase(name);
-      const id = p.workers()[0];
-      assert.ok(id);
       try {
         process.kill(id, 'SIGKILL');
       } catch {
