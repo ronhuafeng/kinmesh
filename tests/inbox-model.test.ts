@@ -92,7 +92,15 @@ await test('a model chosen before a run reaches T3 is the one it launches with',
     );
     await f.inbox.defer(claim, 'ready', 'temporarily-unavailable');
     await chooseModel(f, OTHER_MODEL);
-    // T3 reports the run on the model it was launched with.
+    // T3 launches and reports the run on the model it was asked for.
+    const started = z
+      .object({ modelSelection: z.record(z.string(), z.unknown()) })
+      .loose()
+      .parse(f.wire.values.t3_thread_launch);
+    f.wire.values.t3_thread_launch = {
+      ...started,
+      modelSelection: { ...started.modelSelection, model: OTHER_MODEL },
+    };
     const read = assistantRead();
     f.wire.values.t3_thread_read = {
       ...read,
