@@ -122,7 +122,7 @@ The worker merges managed bindings with the file's on every loop; the file wins 
 }
 ```
 
-The file is strict: `pollMs` 100–30000, at most 32 unique bindings (none is an idle worker). It and each token file must be regular, private (0600, owned by the service user, non-executable for the config) and small; symlinks are refused. For each binding:
+The file is strict: `pollMs` 100–30000, at most 32 unique bindings (none is an idle worker); agents connected from the workspace add to them without limit, and one worker serves them all. It and each token file must be regular, private (0600, owned by the service user, non-executable for the config) and small; symlinks are refused. For each binding:
 
 1. Enroll the agent in its channels and set its preferences to the T3 environment ID, the isolated provider instance and an advertised model. The worker launches scratch threads in that environment.
 2. Issue a credential with the worker scopes (the agent page's **Run the worker yourself** issues one) and save `{"token":"…"}` as `tokenFile`.

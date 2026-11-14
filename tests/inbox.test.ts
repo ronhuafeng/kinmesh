@@ -2,6 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { rawDatabase } from './raw.js';
 import { randomUUID } from 'node:crypto';
+import { AgentId } from '../src/domain/contracts.js';
 import { writeFileSync, chmodSync, symlinkSync } from 'node:fs';
 import { join } from 'node:path';
 import {
@@ -1165,6 +1166,56 @@ await test('native assistant selection refuses wrong run/tool text, preserves wa
       reason: 'history-page-bound',
     });
     assert.equal(f.wire.calls.length - before, 4);
+  } finally {
+    await f.dispose();
+  }
+});
+await test('a worker bound to any number of agents claims for the last of them, and binding more never throws', async () => {
+  const f = await inboxFixture();
+  try {
+    // Forty agents, more than any former limit; only the last is mentioned.
+    const ids = [f.agent.id, f.reviewer.id];
+    while (ids.length < 40)
+      ids.push(
+        (
+          await f.store.agents.create(f.principal, f.teamId, {
+            ...profileInput,
+            name: 'Bound ' + String(ids.length),
+          })
+        ).id,
+      );
+    const last = ids.at(-1);
+    assert.ok(last);
+    await f.comm.enroll(
+      f.principal,
+      f.teamId,
+      f.channelId,
+      { operationKey: key(), member: { kind: 'agent', id: last } },
+      'invite',
+    );
+    await f.comm.post(
+      f.principal,
+      f.teamId,
+      f.channelId,
+      postInput({ mentions: [{ kind: 'agent', id: last }] }),
+    );
+    // Its liveness, then its delivery: the worker's loop does both each turn.
+    await f.inbox.heartbeat(ids);
+    assert.deepEqual(
+      (await f.inbox.liveness(f.teamId)).map((r) => r.agentId).sort(),
+      [...ids].sort(),
+    );
+    const claimed = await f.inbox.claim(ids);
+    assert.equal(claimed?.agentId, last);
+    // Far beyond one parameter per agent, nothing throws.
+    const many = [
+      ...ids,
+      ...Array.from({ length: 70_000 }, () => randomUUID()),
+    ].map((id) => AgentId.parse(id));
+    await f.inbox.heartbeat(many);
+    assert.equal(await f.inbox.claim(many), undefined);
+    await f.inbox.release(many);
+    assert.deepEqual(await f.inbox.liveness(f.teamId), []);
   } finally {
     await f.dispose();
   }
