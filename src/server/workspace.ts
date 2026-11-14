@@ -3,7 +3,6 @@ import { z } from 'zod';
 import { PROTOCOL_VERSION } from '@ag-ui/core';
 import { AgentId, TeamId } from '../domain/contracts.js';
 import { IdentityError, type Principal } from '../domain/agents.js';
-import { memberKey } from '../domain/communication.js';
 import { INBOX_LIVENESS_MS } from '../domain/inbox.js';
 import type { Store } from '../persistence/store.js';
 import { fingerprint } from '../persistence/transactional.js';
@@ -187,12 +186,11 @@ export function registerWorkspace(
       : [];
     // Every member reaches this route; what waits on them is theirs: tasks
     // they decide on, and the deliveries and setup the team shares.
-    const me = memberKey({ kind: 'human', id: principal.humanId });
     const live = new Set(wake.filter((w) => w.connected).map((w) => w.agentId));
     const attention = {
       decide: store.tasks.waitingOn(principal, teamId),
       unstuck: store.inbox
-        .blockedIn(teamId, me)
+        .blockedIn(teamId, principal.humanId)
         .filter((d) => known.has(AgentId.parse(d.agentId)))
         .map((d) => ({
           ...project(d),

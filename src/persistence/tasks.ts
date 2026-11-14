@@ -1,6 +1,18 @@
 import { enqueueFact } from './inbox-enqueue.js';
 import { randomUUID } from 'node:crypto';
-import { and, asc, eq, gt, isNull, lte, max, or, sql } from 'drizzle-orm';
+import {
+  and,
+  asc,
+  desc,
+  eq,
+  gt,
+  isNotNull,
+  isNull,
+  lte,
+  max,
+  or,
+  sql,
+} from 'drizzle-orm';
 import type { BetterSQLite3Database } from 'drizzle-orm/better-sqlite3';
 import { z } from 'zod';
 import * as s from './schema.js';
@@ -9,7 +21,12 @@ import type { communicationRepository } from './communication.js';
 import { transactional, snapshotPage, referenceKey } from './transactional.js';
 import type { TeamId, TaskId } from '../domain/contracts.js';
 import { HumanId, type ChannelId } from '../domain/contracts.js';
-import { IdentityError, type Principal, type Scope } from '../domain/agents.js';
+import {
+  Author,
+  IdentityError,
+  type Principal,
+  type Scope,
+} from '../domain/agents.js';
 import {
   memberKey,
   type Member,
@@ -183,6 +200,120 @@ export function taskRepository(
     enqueueFact(db, fact);
     return TaskResult.parse({ task, eventId: id, executionLink });
   }
+  /** Whether a person is joined to the channel now. */
+  function joinedPerson(channelId: ChannelId, humanId: string) {
+    return (
+      db
+        .select({ id: s.channelParticipants.humanId })
+        .from(s.channelParticipants)
+        .where(
+          and(
+            eq(s.channelParticipants.channelId, channelId),
+            eq(s.channelParticipants.memberKey, `human:${humanId}`),
+            eq(s.channelParticipants.state, 'joined'),
+          ),
+        )
+        .get() !== undefined
+    );
+  }
+  /** The person who wrote a fact or a message (stored JSON), if a person did. */
+  function personOf(stored: string | undefined) {
+    if (stored === undefined) return undefined;
+    const value = decode(stored);
+    const parsed = Author.safeParse(
+      typeof value === 'object' && value !== null && 'author' in value
+        ? value.author
+        : value,
+    );
+    return parsed.success && parsed.data.kind === 'human'
+      ? parsed.data.humanId
+      : undefined;
+  }
+  /**
+   * Who decides on a new task: the person who asked for it. A person asks
+   * for their own, or names someone in the channel. An agent's task belongs
+   * to the person at the root of what the agent was answering; failing
+   * that, the author of the message it came from, then the person who last
+   * spoke in the channel, then anyone in it.
+   */
+  function acceptorFor(
+    p: Principal,
+    channelId: ChannelId,
+    data: z.output<typeof TaskCreate>,
+  ) {
+    if (p.kind === 'human') {
+      if (data.acceptor === null) return p.humanId;
+      if (!joinedPerson(channelId, data.acceptor)) throw new IdentityError(404);
+      return data.acceptor;
+    }
+    if (data.acceptor !== null) throw new IdentityError(403);
+    const rootAuthor = personOf(
+      data.sourceEventId === null
+        ? undefined
+        : db
+            .select({ fact: s.communicationOutbox.fact })
+            .from(s.inboxCauses)
+            .innerJoin(
+              s.communicationOutbox,
+              eq(s.communicationOutbox.id, s.inboxCauses.rootId),
+            )
+            .where(eq(s.inboxCauses.eventId, data.sourceEventId))
+            .get()?.fact,
+    );
+    const messageAuthor =
+      data.sourceMessageId === null
+        ? undefined
+        : personOf(
+            db
+              .select({ author: s.messages.author })
+              .from(s.messages)
+              .where(eq(s.messages.id, data.sourceMessageId))
+              .get()?.author,
+          );
+    const lastSpoke = personOf(
+      db
+        .select({ author: s.messages.author })
+        .from(s.messages)
+        .innerJoin(
+          s.channelParticipants,
+          and(
+            eq(s.channelParticipants.channelId, s.messages.channelId),
+            eq(
+              s.channelParticipants.memberKey,
+              sql`'human:' || json_extract(${s.messages.author}, '$.humanId')`,
+            ),
+            eq(s.channelParticipants.state, 'joined'),
+          ),
+        )
+        .where(
+          and(
+            eq(s.messages.channelId, channelId),
+            sql`json_extract(${s.messages.author}, '$.kind') = 'human'`,
+          ),
+        )
+        .orderBy(desc(s.messages.createdAt))
+        .get()?.author,
+    );
+    const anyone = db
+      .select({ id: s.channelParticipants.humanId })
+      .from(s.channelParticipants)
+      .where(
+        and(
+          eq(s.channelParticipants.channelId, channelId),
+          eq(s.channelParticipants.state, 'joined'),
+          isNotNull(s.channelParticipants.humanId),
+        ),
+      )
+      .orderBy(asc(s.channelParticipants.humanId))
+      .get()?.id;
+    const chosen = [rootAuthor, messageAuthor, lastSpoke].find(
+      (id) => id !== undefined && joinedPerson(channelId, id),
+    );
+    const acceptor = chosen ?? anyone;
+    // Nobody in the channel can decide on it.
+    if (!acceptor) throw new IdentityError(409);
+    return HumanId.parse(acceptor);
+  }
   return {
     create(
       p: Principal,
@@ -223,35 +354,7 @@ export function taskRepository(
               data.sourceMessageId,
               data.sourceEventId,
             );
-            // The person who asked decides; for an agent, a person in the
-            // channel.
-            const candidate =
-              p.kind === 'human'
-                ? p.humanId
-                : db
-                    .select({ id: s.memberships.humanId })
-                    .from(s.memberships)
-                    .innerJoin(
-                      s.channelParticipants,
-                      and(
-                        eq(
-                          s.channelParticipants.humanId,
-                          s.memberships.humanId,
-                        ),
-                        eq(s.channelParticipants.teamId, s.memberships.teamId),
-                      ),
-                    )
-                    .where(
-                      and(
-                        eq(s.memberships.teamId, teamId),
-                        eq(s.channelParticipants.channelId, channelId),
-                        eq(s.channelParticipants.state, 'joined'),
-                      ),
-                    )
-                    .orderBy(asc(s.memberships.humanId))
-                    .get()?.id;
-            if (candidate === undefined) throw new IdentityError(409);
-            const acceptorHumanId = HumanId.parse(candidate);
+            const acceptorHumanId = acceptorFor(p, channelId, data);
             const time = new Date().toISOString();
             const state = TaskState.parse({
               status: data.owner === null ? 'proposed' : 'in-progress',

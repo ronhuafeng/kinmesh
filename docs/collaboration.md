@@ -120,7 +120,7 @@ A mention target must be an active, joined participant of this channel; duplicat
 
 Let `T = /api/teams/:teamId/channels/:channelId/tasks`. Every route rechecks joined channel membership. Agents also need `channels:read` and `tasks:read`; commands need `tasks:write`, except review, which needs `tasks:review`.
 
-Any joined member with write authority may create an unowned task or one owned by themselves; a person may also preassign another member or a reviewer, an agent may not. A creating person becomes the immutable `acceptorHumanId`; for an agent the server designates the lowest-ID joined person of the channel (409 if none). Clients cannot choose or change the acceptor, and only the acceptor accepts, sends back or cancels. The acceptor must still be a joined member when deciding.
+Any joined member with write authority may create an unowned task or one owned by themselves; a person may also preassign another member or a reviewer, an agent may not. The immutable `acceptorHumanId` is the person who asked for the task. A creating person is it, unless they name another person joined to the channel as `acceptor` (404 otherwise). An agent never names one (403); its task goes to the person at the root of the causal chain of `sourceEventId` (every chain starts with a person's act), else the person who wrote `sourceMessageId`, else the person who last wrote in the channel, else the lowest-ID person joined to it (409 if none) — each only while still joined. The acceptor never changes, and only the acceptor accepts, sends back or cancels. The acceptor must still be a joined member when deciding.
 
 | Command                 | Legal state / actor                                            | Result                                                     |
 | ----------------------- | -------------------------------------------------------------- | ---------------------------------------------------------- |
@@ -140,20 +140,20 @@ Any joined member with write authority may create an unowned task or one owned b
 
 Owner and reviewer must differ and stay active and joined. Rework always needs another review before acceptance. Terminal tasks reject every command. Title, description, criteria, creator, context and acceptor are immutable; progress is a note, not a patch. Audit keeps before/after snapshots, command, verified author (with grant ID for agents), time, version and event ID. Runtime completion is not part of the transition algebra; execution links and reports never accept a task.
 
-| Method/path                               | Body                                                                                                   |
-| ----------------------------------------- | ------------------------------------------------------------------------------------------------------ |
-| `POST T`                                  | `{operationKey,title,description,criteria,topicId,owner,reviewer,sourceMessageId,sourceEventId}` → 201 |
-| `GET T`                                   | Page of tasks                                                                                          |
-| `GET T/:taskId`                           | Task                                                                                                   |
-| `GET T/:taskId/history`                   | Page of immutable task events                                                                          |
-| `GET T/:taskId/executions`                | Page of execution links                                                                                |
-| `POST T/:taskId/claim`                    | Common fields                                                                                          |
-| `POST T/:taskId/progress`                 | Common + `{note}`                                                                                      |
-| `POST T/:taskId/handoff`                  | Common + `{recipient,mode:"work"\|"review",note}`                                                      |
-| `POST T/:taskId/request-review`           | Common + `{reviewer,note}`                                                                             |
-| `POST T/:taskId/review`                   | Common + `{decision:"approve"\|"rework",note}`                                                         |
-| `POST T/:taskId/accept, /rework, /cancel` | Common + `{note}`                                                                                      |
-| `POST T/:taskId/link-execution`           | Common + `{reference,note}`                                                                            |
+| Method/path                               | Body                                                                                                             |
+| ----------------------------------------- | ---------------------------------------------------------------------------------------------------------------- |
+| `POST T`                                  | `{operationKey,title,description,criteria,topicId,owner,reviewer,sourceMessageId,sourceEventId,acceptor?}` → 201 |
+| `GET T`                                   | Page of tasks                                                                                                    |
+| `GET T/:taskId`                           | Task                                                                                                             |
+| `GET T/:taskId/history`                   | Page of immutable task events                                                                                    |
+| `GET T/:taskId/executions`                | Page of execution links                                                                                          |
+| `POST T/:taskId/claim`                    | Common fields                                                                                                    |
+| `POST T/:taskId/progress`                 | Common + `{note}`                                                                                                |
+| `POST T/:taskId/handoff`                  | Common + `{recipient,mode:"work"\|"review",note}`                                                                |
+| `POST T/:taskId/request-review`           | Common + `{reviewer,note}`                                                                                       |
+| `POST T/:taskId/review`                   | Common + `{decision:"approve"\|"rework",note}`                                                                   |
+| `POST T/:taskId/accept, /rework, /cancel` | Common + `{note}`                                                                                                |
+| `POST T/:taskId/link-execution`           | Common + `{reference,note}`                                                                                      |
 
 Common command fields are `{operationKey,expectedVersion}`; the route names the command, so `type` in a body is rejected. A member is `{kind:"human"|"agent",id}` and names a target, never the caller. Nullable create fields must be explicit `null`. Limits: title 1–160, description 0–4000, criteria 1–20 distinct entries of at most 500, notes 1–2000 characters. Commands return `{task,eventId,executionLink}`. Status codes: 401/403 or hiding 404 for authorization, 400 schema or cursor, 409 transition, version or key conflict, 413 oversized body.
 
@@ -211,7 +211,7 @@ It also carries:
 
 - `deliveries` — for the visible messages and tasks: delivery ID, agent, source, state, reason, times and the reply message. Claims, frozen launches, operation IDs and native references stay in the worker.
 - `replies` — for visible agent replies: outcome, model and T3 identifiers.
-- `attention` — what waits on the signed-in person across joined channels: `decide` (tasks awaiting their sign-off, review or rework; up to 50), `unstuck` (blocked deliveries; up to 50) and `connect` (agents with queued work and no live worker).
+- `attention` — what waits on the signed-in person across joined channels: `decide` (tasks awaiting their sign-off, review or rework; up to 50), `unstuck` (blocked deliveries they caused — the root of what woke the agent is theirs; anyone may resume any; up to 50) and `connect` (agents with queued work and no live worker).
 - `wake` — per agent, when a worker last recorded it and whether that is within 90 seconds (see [worker liveness](operations.md#worker-liveness)).
 - `managed`, `teamMcp` — agents the hub runs, and when an agent's credential last reached Team MCP. Team MCP presence is evidence, not authority.
 - `nativeT3Origin` — the origin of the team's T3 connection, used to [check a run](t3.md#checking-a-run), or null before Connect T3.

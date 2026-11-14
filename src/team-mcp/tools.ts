@@ -231,7 +231,8 @@ export function teamServer(store: Store, authorization: string) {
   register(
     'team_task_create',
     'Propose a task or assign yourself; human acceptance is separate.',
-    channel.extend(TaskCreate.shape),
+    // Who accepts is never an agent's to say.
+    channel.extend(TaskCreate.omit({ acceptor: true }).shape),
     TaskResult,
     false,
     (p, { channelId, ...data }) =>
