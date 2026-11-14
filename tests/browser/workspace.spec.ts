@@ -900,9 +900,11 @@ test('lost message response retries the same committed operation; real conflict 
   await expect(composer.getByLabel('Message', { exact: true })).toBeDisabled();
   await composer.getByRole('button', { name: 'Retry same action' }).click();
   await expect(
-    page.getByText('One committed message, even after a lost response', {
-      exact: true,
-    }),
+    page
+      .getByRole('list', { name: 'Channel messages' })
+      .getByText('One committed message, even after a lost response', {
+        exact: true,
+      }),
   ).toBeVisible();
   await expect(composer.getByLabel('Message', { exact: true })).toHaveValue('');
   expect(keys).toHaveLength(2);
