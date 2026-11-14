@@ -8,7 +8,8 @@ import { spawn, execFileSync } from 'node:child_process';
 import { once } from 'node:events';
 import { readFileSync, statSync } from 'node:fs';
 import { join } from 'node:path';
-import { fixture } from './helpers.js';
+import { feishuEnv, fixture } from './helpers.js';
+import { signInOver, startFeishuStandIn } from './feishu.js';
 import { deadline, freePort, stop } from './process-helpers.js';
 
 await test('setup command creates private secrets, never prints values and refuses overwrite', () => {
@@ -26,7 +27,7 @@ await test('setup command creates private secrets, never prints values and refus
     );
     const env = readFileSync(join(f.directory, '.env'), 'utf8');
     assert.equal(statSync(join(f.directory, '.env')).mode & 0o777, 0o600);
-    const secret = /^KINMESH_SETUP_TOKEN=([a-f0-9]{64})$/m.exec(env)?.[1];
+    const secret = /^KINMESH_SESSION_KEY=([a-f0-9]{64})$/m.exec(env)?.[1];
     assert.ok(secret);
     assert.ok(!output.includes(secret));
     assert.throws(() =>
@@ -51,6 +52,7 @@ await test('actual server entrypoint boots from env, persists an authenticated w
   const port = await freePort();
   const origin = `http://127.0.0.1:${String(port)}`;
   const f = fixture();
+  const feishu = await startFeishuStandIn();
   const start = () =>
     spawn(process.execPath, ['--import', 'tsx', 'src/server/main.ts'], {
       cwd: new URL('..', import.meta.url),
@@ -58,8 +60,9 @@ await test('actual server entrypoint boots from env, persists an authenticated w
       env: {
         PATH: process.env.PATH ?? '',
         KINMESH_DATABASE: f.path,
-        KINMESH_SETUP_TOKEN: f.config.setupToken,
         KINMESH_SESSION_KEY: f.config.sessionKey.toString('hex'),
+        ...feishuEnv,
+        KINMESH_FEISHU_URL: feishu.url,
         KINMESH_PORT: String(port),
         KINMESH_ORIGIN: origin,
       },
@@ -98,23 +101,15 @@ await test('actual server entrypoint boots from env, persists an authenticated w
         redirect: 'error',
         signal: AbortSignal.timeout(10000),
       });
-    const owner = {
-      username: 'owner',
-      password: 'real-http-test-password-only',
-      teamName: 'HTTP team',
-    };
-    const setup = await post('/api/setup', owner, {
-      authorization: 'Bearer ' + f.config.setupToken,
-    });
-    assert.equal(setup.status, 201);
-    const team = z.object({ team: Team }).parse(await setup.json()).team;
-    const login = await post('/api/login', {
-      username: owner.username,
-      password: owner.password,
-    });
-    assert.equal(login.status, 200);
-    const cookie = login.headers.get('set-cookie')?.split(';')[0];
-    assert.ok(cookie);
+    // Signing in through (a stand-in for) Feishu's own hosts.
+    const cookie = await signInOver(origin, 'owner@example.com');
+    const team = z
+      .object({ team: Team })
+      .parse(
+        await (
+          await fetch(origin + '/api/team', { headers: { cookie } })
+        ).json(),
+      ).team;
     const created = await post(
       `/api/teams/${team.id}/channels`,
       { operationKey: key(), name: 'HTTP discussion' },
@@ -140,6 +135,7 @@ await test('actual server entrypoint boots from env, persists an authenticated w
     await shutdown();
   } finally {
     await stop(child, 'SIGKILL');
+    await feishu.close();
     f.cleanup();
   }
 });

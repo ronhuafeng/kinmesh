@@ -425,7 +425,7 @@ export function App() {
     return (
       <>
         {error && <Notice>{error} Sign in with an authorized account.</Notice>}
-        <Auth onLogin={refresh} />
+        <Auth />
       </>
     );
   if (!data)

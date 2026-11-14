@@ -13,19 +13,14 @@ import { z } from 'zod';
 import Fastify, { type FastifyRequest } from 'fastify';
 import secureSession from '@fastify/secure-session';
 import rateLimit from '@fastify/rate-limit';
-import { hash, verify } from '@node-rs/argon2';
-import { createHash, randomUUID, timingSafeEqual } from 'node:crypto';
-import {
-  BootstrapInput,
-  Credentials,
-  SESSION_LIFETIME_MS,
-} from '../domain/contracts.js';
+import { randomUUID } from 'node:crypto';
+import { SESSION_LIFETIME_MS, TeamName } from '../domain/contracts.js';
 import type { Store } from '../persistence/store.js';
 import type { Config } from './config.js';
 import { describeFailure } from '../diagnostics.js';
+import { feishuClient, type Feishu } from './feishu.js';
+import { registerLogin } from './login.js';
 
-/** One KDF cost for every password hash, including the unknown-account dummy. */
-const ARGON2 = { memoryCost: 19456, timeCost: 2, parallelism: 1 };
 declare module '@fastify/secure-session' {
   interface SessionData {
     /** The server-side session's token; the cookie carries nothing else. */
@@ -38,8 +33,12 @@ export async function createApp(
   workerReady: () => boolean = () => true,
   beforeClose?: () => Promise<void>,
   overrides: Partial<Omit<Hub, 'directory'>> = {},
-  /** Where the log goes; standard output when absent. */
-  options: { logStream?: NodeJS.WritableStream } = {},
+  options: {
+    /** Where the log goes; standard output when absent. */
+    logStream?: NodeJS.WritableStream;
+    /** Feishu itself unless a test stands in for it. */
+    feishu?: Feishu;
+  } = {},
 ) {
   const hub = {
     ...defaultHub(managedDirectory(config.database)),
@@ -75,8 +74,6 @@ export async function createApp(
       maxAge: SESSION_LIFETIME_MS / 1000,
     },
   });
-  // A dummy hash makes unknown-account verification perform the same expensive KDF.
-  const dummyHash = await hash('unusable random account password', ARGON2);
   app.decorateRequest('principal', null);
   app.addHook('onSend', async (_request, reply) => {
     reply.header('X-Content-Type-Options', 'nosniff');
@@ -148,101 +145,11 @@ export async function createApp(
       component: 'kinmesh-team-hub',
     });
   });
-  // Whether first-owner setup is still possible, so the sign-in page offers
-  // it only then. Reveals nothing else.
-  app.get('/api/setup/status', (_request, reply) =>
-    reply
-      .header('Cache-Control', 'no-store')
-      .send({ open: !store.isBootstrapped() }),
-  );
-  app.post(
-    '/api/setup',
-    { config: { rateLimit: { max: 5, timeWindow: '1 minute' } } },
-    async (request, reply) => {
-      const supplied = request.headers.authorization;
-      const expected = createHash('sha256')
-        .update(`Bearer ${config.setupToken}`)
-        .digest();
-      const actual = createHash('sha256')
-        .update(typeof supplied === 'string' ? supplied : '')
-        .digest();
-      if (!timingSafeEqual(expected, actual))
-        return reply.code(401).send({ error: 'Setup authorization required' });
-      if (store.isBootstrapped())
-        return reply.code(409).send({ error: 'Setup already completed' });
-      const input = BootstrapInput.safeParse(request.body);
-      if (!input.success)
-        return reply.code(400).send({ error: 'Invalid setup input' });
-      const passwordHash = await hash(input.data.password, ARGON2);
-      try {
-        const result = store.bootstrap(
-          input.data.username,
-          passwordHash,
-          input.data.teamName,
-        );
-        return await reply.code(201).send(result);
-      } catch (error) {
-        if (store.isBootstrapped())
-          return await reply
-            .code(409)
-            .send({ error: 'Setup already completed' });
-        throw error;
-      }
-    },
-  );
-  app.post(
-    '/api/login',
-    { config: { rateLimit: { max: 5, timeWindow: '1 minute' } } },
-    async (request, reply) => {
-      const parsed = Credentials.safeParse(request.body);
-      if (!parsed.success)
-        return reply.code(400).send({ error: 'Invalid login input' });
-      const account = store.credentials(parsed.data.username);
-      const valid = await verify(
-        account?.passwordHash ?? dummyHash,
-        parsed.data.password,
-      );
-      if (!valid || account === undefined)
-        return reply.code(401).send({ error: 'Invalid credentials' });
-      request.session.regenerate();
-      request.session.set(
-        'session',
-        store.sessions.open(account.id, Date.now()),
-      );
-      return { authenticated: true };
-    },
-  );
-  // Change your own password. Every other session ends; this one continues.
-  app.post(
-    '/api/me/password',
-    { config: { rateLimit: { max: 5, timeWindow: '1 minute' } } },
-    async (request, reply) => {
-      const principal = request.principal;
-      if (principal?.kind !== 'human') throw new IdentityError(403);
-      const input = z
-        .strictObject({
-          currentPassword: Credentials.shape.password,
-          newPassword: Credentials.shape.password,
-        })
-        .safeParse(request.body);
-      if (!input.success)
-        return reply.code(400).send({ error: 'Invalid password input' });
-      const current = store.passwordHash(principal.humanId);
-      if (
-        current === undefined ||
-        !(await verify(current, input.data.currentPassword))
-      )
-        return reply.code(403).send({ error: 'Current password is wrong' });
-      const next = await hash(input.data.newPassword, ARGON2);
-      store.setPasswordHash(principal.humanId, next);
-      store.sessions.revokeAll(principal.humanId, Date.now());
-      request.session.regenerate();
-      request.session.set(
-        'session',
-        store.sessions.open(principal.humanId, Date.now()),
-      );
-      return reply.code(204).send();
-    },
+  registerLogin(
+    app,
+    store,
+    config,
+    options.feishu ?? feishuClient(config.feishu),
   );
   app.post('/api/logout', (request, reply) => {
     store.sessions.revoke(request.session.get('session'), Date.now());
@@ -258,13 +165,7 @@ export async function createApp(
     return reply.code(204).send();
   });
   app.addHook('preHandler', async (request, reply) => {
-    if (
-      !request.url.startsWith('/api/') ||
-      ['/api/setup', '/api/setup/status', '/api/login'].includes(
-        request.routeOptions.url ?? '',
-      )
-    )
-      return;
+    if (!request.url.startsWith('/api/')) return;
     request.principal = resolvePrincipal(
       store,
       request.headers.authorization,
@@ -305,9 +206,7 @@ export async function createApp(
     // The owner renames the team; the name is what everyone sees.
     protectedApi.put('/api/team', (request) => {
       const id = human(request);
-      const { name } = z
-        .strictObject({ name: BootstrapInput.shape.teamName })
-        .parse(request.body);
+      const { name } = z.strictObject({ name: TeamName }).parse(request.body);
       return store.renameTeam(id, name);
     });
     done();

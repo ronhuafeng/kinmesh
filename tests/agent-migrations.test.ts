@@ -48,7 +48,7 @@ await test('upgrade from populated foundation/adapter migrations preserves owner
   let store = f.open();
   try {
     const principal = { kind: 'human', humanId } as const;
-    assert.equal(store.credentials('old-owner')?.id, humanId);
+    assert.equal(store.human(humanId)?.username, 'old-owner');
     assert.equal(store.operations.get(operationId).phase, 'uncertain');
     const agent = store.agents.create(principal, teamId, profileInput);
     const credential = store.agents.issue(

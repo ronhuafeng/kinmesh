@@ -11,6 +11,7 @@ import {
   type GrantInput,
 } from '../src/domain/agents.js';
 import { fixture } from './helpers.js';
+import { signInAs, standInFeishu } from './feishu.js';
 export const profileInput = ProfileInput.parse({
   name: 'Developer',
   role: 'developer',
@@ -42,32 +43,21 @@ export async function agentFixture(overrides: Partial<Config> = {}) {
   const f = fixture();
   f.config = { ...f.config, ...overrides };
   const store = f.open();
-  const app = await createApp(f.config, store);
-  const input = {
-    username: 'owner',
-    password: 'a long owner test password',
-    teamName: 'Team',
-  };
-  const setup = await app.inject({
-    method: 'POST',
-    url: '/api/setup',
-    headers: { authorization: `Bearer ${f.config.setupToken}` },
-    payload: input,
-  });
-  assert.equal(setup.statusCode, 201);
-  const owner = store.credentials('owner');
-  assert.ok(owner);
+  const app = await createApp(
+    f.config,
+    store,
+    undefined,
+    undefined,
+    {},
+    {
+      feishu: standInFeishu,
+    },
+  );
+  const cookies = await signInAs(app, 'owner@example.com');
+  const owner = store.signIn('owner@example.com');
   const team = store.teamFor(owner.id);
   assert.ok(team);
   const principal: Principal = { kind: 'human', humanId: owner.id };
-  const login = await app.inject({
-    method: 'POST',
-    url: '/api/login',
-    payload: { username: input.username, password: input.password },
-  });
-  const cookie = login.cookies[0];
-  assert.ok(cookie);
-  const cookies = { [cookie.name]: cookie.value };
   const base = `/api/teams/${team.team.id}/agents`;
   const created = await app.inject({
     method: 'POST',

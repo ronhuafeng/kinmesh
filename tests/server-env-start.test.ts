@@ -14,6 +14,7 @@ import { test } from 'node:test';
 import { setTimeout as delay } from 'node:timers/promises';
 import { z } from 'zod';
 import { freePort, stop } from './process-helpers.js';
+import { feishuEnv } from './helpers.js';
 
 await test(
   'ordinary hub startup accepts private process environment without a local .env',
@@ -39,8 +40,8 @@ await test(
       const origin = 'http://127.0.0.1:' + String(port);
       const env: NodeJS.ProcessEnv = {
         ...process.env,
-        KINMESH_SETUP_TOKEN: randomBytes(32).toString('hex'),
         KINMESH_SESSION_KEY: randomBytes(32).toString('hex'),
+        ...feishuEnv,
         KINMESH_DATABASE: join(directory, 'team.sqlite'),
         KINMESH_ORIGIN: origin,
         KINMESH_PORT: String(port),

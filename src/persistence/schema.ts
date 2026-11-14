@@ -16,12 +16,21 @@ export const humans = sqliteTable(
   {
     id: text('id').primaryKey(),
     username: text('username').notNull().unique(),
-    passwordHash: text('password_hash').notNull(),
+    /** The organization mailbox Feishu verified; null only before linking. */
+    email: text('email').unique(),
   },
   (t) => [
     check('username_length', sql`length(${t.username}) BETWEEN 3 AND 64`),
   ],
 );
+/**
+ * A sign-in under way: the digest of its one-time state, until Feishu sends
+ * the browser back or ten minutes pass.
+ */
+export const loginStates = sqliteTable('login_states', {
+  stateHash: text('state_hash').primaryKey(),
+  expiresAt: integer('expires_at').notNull(),
+});
 /**
  * A signed-in browser. Only the digest of its random token is kept, so a
  * copy of the database cannot be replayed as a session.

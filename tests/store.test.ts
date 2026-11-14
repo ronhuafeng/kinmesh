@@ -11,27 +11,22 @@ const journal = z
   .object({ entries: z.array(z.unknown()) })
   .parse(JSON.parse(readFileSync('drizzle/meta/_journal.json', 'utf8')));
 
-await test('deterministic migrations enable WAL and foreign keys; bootstrap survives reopen', () => {
+await test('deterministic migrations enable WAL and foreign keys; the team survives reopen', () => {
   const f = fixture();
   try {
     const store = f.open();
-    const created = store.bootstrap(
-      'owner',
-      'test-hash-not-a-real-password',
-      'First team',
-    );
-    assert.equal(store.isBootstrapped(), true);
+    const created = store.signIn('owner@example.com');
     store.close();
     const reopened = f.open();
-    assert.equal(reopened.isBootstrapped(), true);
+    assert.equal(reopened.teamFor(created.id)?.channels[0]?.name, 'general');
+    assert.deepEqual(reopened.signIn('owner@example.com'), created);
+    assert.equal(reopened.human(created.id)?.username, 'owner');
+    // Whoever comes next joins that team; there is never a second.
+    const other = reopened.signIn('other@example.com');
     assert.equal(
-      reopened.teamFor(created.human.id)?.channels[0]?.name,
-      'general',
+      reopened.teamFor(other.id)?.team.id,
+      reopened.teamFor(created.id)?.team.id,
     );
-    assert.equal(reopened.credentials('owner')?.id, created.human.id);
-    assert.equal(reopened.human(created.human.id)?.username, 'owner');
-    assert.throws(() => reopened.bootstrap('other', 'hash', 'Another team'));
-    assert.equal(reopened.credentials('other'), undefined);
     reopened.close();
     const raw = new Database(f.path);
     assert.equal(raw.pragma('journal_mode', { simple: true }), 'wal');
@@ -48,24 +43,14 @@ await test('deterministic migrations enable WAL and foreign keys; bootstrap surv
     f.cleanup();
   }
 });
-await test('bootstrap rollback removes all partial team state and permits retry', () => {
-  const f = fixture();
-  const store = f.open();
-  try {
-    assert.throws(() => store.bootstrap('owner', 'hash', ''));
-    assert.equal(store.isBootstrapped(), false);
-    assert.equal(store.credentials('owner'), undefined);
-    assert.ok(store.bootstrap('owner', 'hash', 'Valid').team.id);
-  } finally {
-    store.close();
-    f.cleanup();
-  }
-});
 await test('database rejects invalid role, orphan membership, duplicate channel, singleton and names', () => {
   const f = fixture();
   const store = f.open();
   try {
-    const created = store.bootstrap('owner', 'hash', 'Team');
+    const human = store.signIn('owner@example.com');
+    const team = store.teamFor(human.id);
+    assert.ok(team);
+    const created = { human, team: team.team };
     const raw = new Database(f.path);
     raw.pragma('foreign_keys = ON');
     try {
@@ -89,7 +74,13 @@ await test('database rejects invalid role, orphan membership, duplicate channel,
       assert.throws(() =>
         raw
           .prepare('INSERT INTO humans VALUES (?, ?, ?)')
-          .run('second', 'owner', 'hash'),
+          .run('second', 'owner', 'second@example.com'),
+      );
+      // One person per mailbox.
+      assert.throws(() =>
+        raw
+          .prepare('INSERT INTO humans VALUES (?, ?, ?)')
+          .run('third', 'third', 'owner@example.com'),
       );
     } finally {
       raw.close();
@@ -104,7 +95,7 @@ await test('database rejects invalid role, orphan membership, duplicate channel,
   }
 });
 
-await test('WAL recovers committed bootstrap and discards an interrupted writer transaction', async () => {
+await test('WAL recovers a committed team and discards an interrupted writer transaction', async () => {
   const f = fixture();
   const child = forkWorker(
     new URL('./fixtures/crash-writer.ts', import.meta.url),
@@ -115,10 +106,8 @@ await test('WAL recovers committed bootstrap and discards an interrupted writer 
     await stop(child, 'SIGKILL');
     const recovered = f.open();
     try {
-      const owner = recovered.credentials('owner');
-      assert.ok(owner);
+      const owner = recovered.signIn('owner@example.com');
       assert.equal(recovered.teamFor(owner.id)?.team.name, 'Committed team');
-      assert.equal(recovered.isBootstrapped(), true);
     } finally {
       recovered.close();
     }

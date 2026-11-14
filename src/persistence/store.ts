@@ -9,7 +9,7 @@ import { operationJournal } from './operations.js';
 import Database from 'better-sqlite3';
 import { drizzle } from 'drizzle-orm/better-sqlite3';
 import { migrate } from 'drizzle-orm/better-sqlite3/migrator';
-import { eq, and, isNull } from 'drizzle-orm';
+import { eq, and, gt, isNull, lte } from 'drizzle-orm';
 import { createHash, randomBytes, randomUUID } from 'node:crypto';
 import { mkdirSync, chmodSync } from 'node:fs';
 import { dirname } from 'node:path';
@@ -22,7 +22,8 @@ import {
   Team,
   Channel,
   Membership,
-  BootstrapInput,
+  TeamName,
+  LOGIN_STATE_MS,
   SESSION_IDLE_MS,
   SESSION_LIFETIME_MS,
   SESSION_TOUCH_MS,
@@ -52,6 +53,25 @@ export function openStore(path: string) {
   const communicationStore = communicationRepository(db, agentStore);
   const tasks = taskRepository(db, agentStore, communicationStore);
   const ownWrites = sqlite.prepare('select total_changes()').pluck();
+  /** A mailbox's local part as a handle, numbered when already taken. */
+  function freeUsername(email: string) {
+    const local = email
+      .slice(0, email.lastIndexOf('@'))
+      .replace(/[^a-z0-9_-]+/g, '-')
+      .replace(/^[^a-z0-9]+|-+$/g, '')
+      .slice(0, 58);
+    const base =
+      local.length >= 3 ? local : `member${local ? `-${local}` : ''}`;
+    for (let n = 1; ; n += 1) {
+      const candidate = n === 1 ? base : `${base}-${String(n)}`;
+      const taken = db
+        .select({ id: tables.humans.id })
+        .from(tables.humans)
+        .where(eq(tables.humans.username, candidate))
+        .get();
+      if (taken === undefined) return candidate;
+    }
+  }
   return {
     /** Moves on every commit: another process's (data_version), or this one's. */
     writes: () =>
@@ -65,51 +85,96 @@ export function openStore(path: string) {
     close: () => {
       if (sqlite.open) sqlite.close();
     },
-    isBootstrapped: () =>
-      db.select().from(tables.bootstrap).get() !== undefined,
-    bootstrap(username: string, passwordHash: string, teamName: string) {
+    /**
+     * The person a verified organization mailbox belongs to. Their first
+     * sign-in makes them a member; the very first one also makes the team
+     * and its #general.
+     */
+    signIn(email: string) {
       return db.transaction(
         (tx) => {
-          // A unique singleton, claimed inside the same transaction, fences simultaneous first-run requests.
+          const known = tx
+            .select({ id: tables.humans.id, username: tables.humans.username })
+            .from(tables.humans)
+            .where(eq(tables.humans.email, email))
+            .get();
+          if (known !== undefined) return Human.parse(known);
+          const human = Human.parse({
+            id: randomUUID(),
+            username: freeUsername(email),
+          });
+          tx.insert(tables.humans)
+            .values({ ...human, email })
+            .run();
+          const existing = tx.select().from(tables.teams).get();
+          if (existing !== undefined) {
+            const team = Team.parse(existing);
+            // Until roles go, everyone may do everything.
+            tx.insert(tables.memberships)
+              .values({ humanId: human.id, teamId: team.id, role: 'owner' })
+              .run();
+            communicationStore.welcome(human.id, team.id);
+            return human;
+          }
+          // A unique singleton fences two first sign-ins at once.
           tx.insert(tables.bootstrap)
             .values({ singleton: 1, completedAt: new Date().toISOString() })
             .run();
-          const human = Human.parse({ id: randomUUID(), username });
-          const team = Team.parse({ id: randomUUID(), name: teamName });
-          tx.insert(tables.humans)
-            .values({ ...human, passwordHash })
-            .run();
+          const team = Team.parse({ id: randomUUID(), name: 'Team' });
           tx.insert(tables.teams).values(team).run();
           tx.insert(tables.memberships)
             .values({ humanId: human.id, teamId: team.id, role: 'owner' })
             .run();
-          // The owner's first channel, made the way every channel is (nested savepoint).
-          const { id } = communicationStore.createChannel(
+          // The first channel, made the way every channel is (nested savepoint).
+          communicationStore.createChannel(
             { kind: 'human', humanId: human.id },
             team.id,
             { operationKey: 'bootstrap.general', name: 'general' },
           );
-          const channel = Channel.parse({
-            id,
-            teamId: team.id,
-            name: 'general',
-          });
-          return { human, team, channel };
+          return human;
         },
         { behavior: 'immediate' },
       );
     },
-    credentials(username: string) {
-      const row = db
-        .select()
-        .from(tables.humans)
+    /** Ties a person who predates Feishu sign-in to their mailbox. */
+    linkMailbox(username: string, email: string) {
+      const changed = db
+        .update(tables.humans)
+        .set({ email })
         .where(eq(tables.humans.username, username))
-        .get();
-      return row === undefined
-        ? undefined
-        : z.object({ id: HumanId, passwordHash: z.string().min(1) }).parse(row);
+        .run().changes;
+      if (changed !== 1) throw new IdentityError(404);
     },
-    /** The stored password hash, to check the current password or a session. */
+    /**
+     * Sign-ins under way. The state travels to Feishu and back; the database
+     * keeps its digest, and it is good for one return within ten minutes.
+     */
+    logins: {
+      begin(now: number) {
+        const state = randomBytes(32).toString('base64url');
+        db.delete(tables.loginStates)
+          .where(lte(tables.loginStates.expiresAt, now))
+          .run();
+        db.insert(tables.loginStates)
+          .values({ stateHash: digest(state), expiresAt: now + LOGIN_STATE_MS })
+          .run();
+        return state;
+      },
+      finish(state: unknown, now: number) {
+        if (typeof state !== 'string' || state === '') return false;
+        return (
+          db
+            .delete(tables.loginStates)
+            .where(
+              and(
+                eq(tables.loginStates.stateHash, digest(state)),
+                gt(tables.loginStates.expiresAt, now),
+              ),
+            )
+            .run().changes === 1
+        );
+      },
+    },
     /**
      * Signed-in browsers. A session is a random token held only in the
      * encrypted cookie; the database keeps its digest.
@@ -169,32 +234,17 @@ export function openStore(path: string) {
           .run();
       },
     },
-    passwordHash(id: HumanId) {
-      return db
-        .select({ hash: tables.humans.passwordHash })
-        .from(tables.humans)
-        .where(eq(tables.humans.id, id))
-        .get()?.hash;
-    },
-    setPasswordHash(id: HumanId, passwordHash: string) {
-      const changed = db
-        .update(tables.humans)
-        .set({ passwordHash: z.string().min(1).parse(passwordHash) })
-        .where(eq(tables.humans.id, id))
-        .run().changes;
-      if (changed !== 1) throw new IdentityError(404);
-    },
     /** Only the team's owner renames it: the team they own. */
     renameTeam(id: HumanId, name: string) {
       const membership = this.teamFor(id);
       if (membership === undefined) throw new IdentityError(403);
       db.update(tables.teams)
-        .set({ name: BootstrapInput.shape.teamName.parse(name) })
+        .set({ name: TeamName.parse(name) })
         .where(eq(tables.teams.id, membership.team.id))
         .run();
       return Team.parse({
         ...membership.team,
-        name: BootstrapInput.shape.teamName.parse(name),
+        name: TeamName.parse(name),
       });
     },
     human(id: HumanId) {

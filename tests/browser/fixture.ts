@@ -6,15 +6,17 @@ import { join } from 'node:path';
 import { randomBytes } from 'node:crypto';
 import { setTimeout as delay } from 'node:timers/promises';
 import { freePort, stop } from '../process-helpers.js';
+import { feishuEnv } from '../helpers.js';
+import { startFeishuStandIn } from '../feishu.js';
 export const test = base.extend<{
-  hub: { origin: string; setup: string; database: string };
+  hub: { origin: string; database: string };
 }>({
   hub: async ({}, use) => {
     const dir = mkdtempSync(join(tmpdir(), 'kinmesh-browser-'));
     chmodSync(dir, 0o700);
     const port = await freePort();
     const origin = `http://127.0.0.1:${String(port)}`;
-    const setup = randomBytes(32).toString('hex');
+    const feishu = await startFeishuStandIn();
     // Deliberate allowlist: no T3, Provider, Inbox, inherited .env or native credentials.
     const child = spawn(
       process.execPath,
@@ -28,8 +30,9 @@ export const test = base.extend<{
           KINMESH_DATABASE: join(dir, 'team.sqlite'),
           KINMESH_PORT: String(port),
           KINMESH_ORIGIN: origin,
-          KINMESH_SETUP_TOKEN: setup,
           KINMESH_SESSION_KEY: randomBytes(32).toString('hex'),
+          ...feishuEnv,
+          KINMESH_FEISHU_URL: feishu.url,
         },
       },
     );
@@ -51,9 +54,10 @@ export const test = base.extend<{
         await delay(100);
       }
       if (!ready) throw new Error('Disposable Kinmesh startup failed');
-      await use({ origin, setup, database: join(dir, 'team.sqlite') });
+      await use({ origin, database: join(dir, 'team.sqlite') });
     } finally {
       await stop(child);
+      await feishu.close();
       rmSync(dir, { recursive: true, force: true });
     }
   },

@@ -21,6 +21,7 @@ import {
   postInput,
 } from './communication-helpers.js';
 import { profileInput } from './agent-helpers.js';
+import { signInAs } from './feishu.js';
 const rejected = (status: number) => (e: unknown) =>
   e instanceof IdentityError && e.statusCode === status;
 
@@ -949,11 +950,9 @@ await test('human nonowner team membership alone does not expose channels; owner
   const raw = new Database(f.dbPath);
   try {
     const id = HumanId.parse(randomUUID());
-    const account = f.store.credentials('owner');
-    assert.ok(account);
     raw
       .prepare('INSERT INTO humans VALUES (?, ?, ?)')
-      .run(id, 'participant', account.passwordHash);
+      .run(id, 'participant', 'participant@example.com');
     raw
       .prepare('INSERT INTO memberships VALUES (?, ?, ?)')
       .run(id, f.teamId, 'member');
@@ -970,18 +969,7 @@ await test('human nonowner team membership alone does not expose channels; owner
       { operationKey: key(), member: { kind: 'human', id } },
       'invite',
     );
-    const login = await f.app.inject({
-      method: 'POST',
-      url: '/api/login',
-      payload: {
-        username: 'participant',
-        password: 'a long owner test password',
-      },
-    });
-    assert.equal(login.statusCode, 200);
-    const cookie = login.cookies[0];
-    assert.ok(cookie);
-    const cookies = { [cookie.name]: cookie.value };
+    const cookies = await signInAs(f.app, 'participant@example.com');
     assert.equal(
       (await f.app.inject({ url: f.channelPath + '/messages', cookies }))
         .statusCode,

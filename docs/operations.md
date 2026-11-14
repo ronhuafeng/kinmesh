@@ -8,15 +8,19 @@ Running Kinmesh, its Inbox worker and Team MCP; the live gates against real T3; 
 
 The hub writes JSON lines to standard output: one record per failure, with its request ID, route, error name, code, constraint and stack (what is never recorded: [security](security.md)). A process that cannot start or run, the Inbox worker and Team MCP included, prints one `…_failed` line with the same fields to standard error before it exits with 1.
 
-| Variable                                     | Meaning                                                                                 |
-| -------------------------------------------- | --------------------------------------------------------------------------------------- |
-| `KINMESH_SETUP_TOKEN`, `KINMESH_SESSION_KEY` | Required; 64 lowercase hex characters each; `npm run setup` writes them to `.env`       |
-| `KINMESH_DATABASE`                           | SQLite file (default `.store/kinmesh.sqlite`)                                           |
-| `KINMESH_ORIGIN`, `KINMESH_PORT`             | Public origin (an HTTPS origin, or exactly `http://127.0.0.1:<port>`) and listener port |
-| `KINMESH_INBOX_CONFIG`                       | Optional operator worker configuration (below)                                          |
-| `KINMESH_RATE_LIMIT`                         | Requests per minute per client (default 60); see [security](security.md)                |
+| Variable                             | Meaning                                                                                              |
+| ------------------------------------ | ---------------------------------------------------------------------------------------------------- |
+| `KINMESH_SESSION_KEY`                | Required; 64 lowercase hex characters; `npm run setup` writes it to `.env`                           |
+| `FEISHU_APP_ID`, `FEISHU_APP_SECRET` | Required; the Feishu app people sign in through; its redirect URL is `KINMESH_ORIGIN/login/callback` |
+| `KINMESH_EMAIL_DOMAIN`               | Required; only mailboxes in this domain may sign in                                                  |
+| `KINMESH_DATABASE`                   | SQLite file (default `.store/kinmesh.sqlite`)                                                        |
+| `KINMESH_ORIGIN`, `KINMESH_PORT`     | Public origin (an HTTPS origin, or exactly `http://127.0.0.1:<port>`) and listener port              |
+| `KINMESH_INBOX_CONFIG`               | Optional operator worker configuration (below)                                                       |
+| `KINMESH_RATE_LIMIT`                 | Requests per minute per client (default 60); see [security](security.md)                             |
 
 `npm start` reads `.env` if present; managed deployments may inject the same variables instead. Missing or malformed values fail startup.
+
+A person who used Kinmesh before Feishu sign-in keeps their identity by being linked to their mailbox before their first Feishu sign-in: `npm run link-human -- <username> <mailbox>`. Unlinked, they would sign in as someone new.
 
 `GET /health` returns 200 when the database is ready and, while the hub supervises a worker, that worker's loop is running; otherwise 503. It never reports T3, OAuth, Team MCP or provider health.
 
@@ -68,7 +72,7 @@ Run every process as the same private OS user with `umask 077`. Configuration ed
 
 ### Hub supervision
 
-The hub validates the configuration before listening. The worker's `database` must resolve to the same absolute path as `KINMESH_DATABASE`; the database's device and inode are pinned across restarts, so replacing the file means stopping everything. The hub forks `src/inbox/main.ts` without its setup and session secrets or `NODE_OPTIONS`; each startup step has a 10-second deadline, and a failed start exits 1.
+The hub validates the configuration before listening. The worker's `database` must resolve to the same absolute path as `KINMESH_DATABASE`; the database's device and inode are pinned across restarts, so replacing the file means stopping everything. The hub forks `src/inbox/main.ts` without the session key, the Feishu app secret or `NODE_OPTIONS`; each startup step has a 10-second deadline, and a failed start exits 1.
 
 An unexpected worker exit gets **three replacements per hub lifetime**, after 250, 500 and 1000 ms; exhausting them stops the hub with exit 1, so the outer service manager can alert and restart. `SIGTERM`/`SIGINT` stop the worker first: it gets 10 seconds to abort claims and close SQLite, then SIGKILL and five more seconds. Allow at least 20 seconds for hub shutdown. If the hub dies, the worker stops claiming and exits within 10 seconds. Native work is never interrupted by shutdown.
 
@@ -232,7 +236,7 @@ Both manual workflows check, before checkout, that the dispatcher and any rerun 
 
 ### Live collaboration
 
-`Live collaboration` installs pinned T3, Codex and Grok releases (`tests/live/install.sh`; T3 and Grok checksum-verified) and runs, per executor, the complete workflow in disposable state: browser owner setup, T3 OAuth from the workspace with separate Read only and Supervised grants, a Developer and a Reviewer through two full task cycles including human rework, a worker killed under a live lease and recovered, T3 stopped and restarted, replayed submissions, denied agent acceptance and spoofed headers, a Kinmesh restart, human acceptance, checking a run in T3 and revoked grants. Cleanup failure fails the job. It uses the `live` Environment secrets `LLM_API_KEY`, `CODEX_BASE_URL` and `GROK_BASE_URL`, given only to the test step. The simulated human's decisions test permissions, not product acceptance. Only `.live-evidence/*.json` (commit, versions, outcomes, hashed correlations, failure stage, hub responses per stage by method, path pattern and status, cleanup) is uploaded; logs, prompts, tokens and databases are not.
+`Live collaboration` installs pinned T3, Codex and Grok releases (`tests/live/install.sh`; T3 and Grok checksum-verified) and runs, per executor, the complete workflow in disposable state: browser sign-in through a stand-in for Feishu, T3 OAuth from the workspace with separate Read only and Supervised grants, a Developer and a Reviewer through two full task cycles including human rework, a worker killed under a live lease and recovered, T3 stopped and restarted, replayed submissions, denied agent acceptance and spoofed headers, a Kinmesh restart, human acceptance, checking a run in T3 and revoked grants. Cleanup failure fails the job. It uses the `live` Environment secrets `LLM_API_KEY`, `CODEX_BASE_URL` and `GROK_BASE_URL`, given only to the test step. The simulated human's decisions test permissions, not product acceptance. Only `.live-evidence/*.json` (commit, versions, outcomes, hashed correlations, failure stage, hub responses per stage by method, path pattern and status, cleanup) is uploaded; logs, prompts, tokens and databases are not.
 
 To run it locally on a trusted machine: Node 24, the three secrets, `KINMESH_LIVE_EXECUTOR=codex` or `grok`, absolute `KINMESH_T3_BINARY`, `KINMESH_CODEX_BINARY` and `KINMESH_GROK_BINARY`, Chromium, a build, a free `127.0.0.1:49871`, and no unrelated `.env`; then `npm run test:collaboration-live`. Dispatch on GitHub with `gh workflow run live.yml --ref main`. The gate drives the workspace at machine speed to check correctness, so it starts its hub with a high `KINMESH_RATE_LIMIT`; the limit itself is checked by `tests/server.test.ts`. Two optional inputs narrow a run: `executor` (`both`, `codex` or `grok`) and `through`, a stage name after which the run stops with its evidence (`stoppedAfter`); a misspelt stage fails before anything runs. For example, `-f executor=codex -f through=workspace-oauth-models-and-managed-worker` checks setup up to a ready worker.
 

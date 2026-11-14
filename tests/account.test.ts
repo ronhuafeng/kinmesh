@@ -1,105 +1,335 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { agentFixture } from './agent-helpers.js';
+import { createApp } from '../src/server/app.js';
+import { LOGIN_STATE_MS } from '../src/domain/contracts.js';
+import type { Feishu } from '../src/server/feishu.js';
+import { fixture } from './helpers.js';
+import { signInAs, standInFeishu, startFeishuStandIn } from './feishu.js';
+import { FeishuFailure, feishuClient } from '../src/server/feishu.js';
 
-type Fixture = Awaited<ReturnType<typeof agentFixture>>;
-const OLD = 'a long owner test password';
-const NEW = 'another long owner password';
-async function login(f: Fixture, password: string) {
-  const response = await f.app.inject({
-    method: 'POST',
-    url: '/api/login',
-    payload: { username: 'owner', password },
-  });
-  const cookie = response.cookies[0];
-  return response.statusCode === 200 && cookie
-    ? { [cookie.name]: cookie.value }
-    : null;
+async function hub(feishu: Feishu = standInFeishu) {
+  const f = fixture();
+  const store = f.open();
+  const app = await createApp(
+    f.config,
+    store,
+    undefined,
+    undefined,
+    {},
+    {
+      feishu,
+    },
+  );
+  return {
+    store,
+    app,
+    async dispose() {
+      await app.close();
+      f.cleanup();
+    },
+  };
 }
-const me = (f: Fixture, cookies: Record<string, string>) =>
-  f.app.inject({ url: '/api/me', cookies });
+/** Begins a sign-in; its state and the browser's state cookie. */
+async function begin(app: Awaited<ReturnType<typeof hub>>['app']) {
+  const response = await app.inject({ url: '/login' });
+  const state = new URL(String(response.headers.location)).searchParams.get(
+    'state',
+  );
+  const cookie = response.cookies.find((c) => c.name === 'kinmesh-login');
+  assert.ok(state && cookie);
+  assert.equal(cookie.sameSite, 'Lax');
+  assert.equal(cookie.httpOnly, true);
+  return { state, cookies: { [cookie.name]: cookie.value } };
+}
+const back = (
+  app: Awaited<ReturnType<typeof hub>>['app'],
+  query: string,
+  cookies: Record<string, string> = {},
+) => app.inject({ url: `/login/callback?${query}`, cookies });
 
-await test('changing the password keeps this session and ends every other one', async () => {
-  const f = await agentFixture();
+await test('Feishu sign-in asks for the mailbox, and sends the browser back here', async () => {
+  const f = fixture();
+  const store = f.open();
+  const app = await createApp(f.config, store);
   try {
-    const other = await login(f, OLD);
-    assert.ok(other);
-    const change = (currentPassword: string, newPassword: string) =>
-      f.app.inject({
-        method: 'POST',
-        url: '/api/me/password',
-        cookies: f.cookies,
-        payload: { currentPassword, newPassword },
-      });
+    const response = await app.inject({ url: '/login' });
+    assert.equal(response.statusCode, 302);
+    const url = new URL(String(response.headers.location));
     assert.equal(
-      (await change('not the current password', NEW)).statusCode,
-      403,
+      url.origin + url.pathname,
+      'https://accounts.feishu.cn/open-apis/authen/v1/authorize',
     );
-    assert.equal((await change(OLD, 'too short')).statusCode, 400);
-    const changed = await change(OLD, NEW);
-    assert.equal(changed.statusCode, 204);
-    const cookie = changed.cookies[0];
-    assert.ok(cookie);
-    // This browser stays signed in with its re-issued session.
+    assert.equal(url.searchParams.get('client_id'), 'cli_test');
+    assert.equal(url.searchParams.get('response_type'), 'code');
     assert.equal(
-      (await me(f, { [cookie.name]: cookie.value })).statusCode,
-      200,
+      url.searchParams.get('redirect_uri'),
+      'http://127.0.0.1:3000/login/callback',
     );
-    // The old cookie of this browser and every other session are over.
-    assert.equal((await me(f, f.cookies)).statusCode, 401);
-    assert.equal((await me(f, other)).statusCode, 401);
-    assert.equal(await login(f, OLD), null);
-    assert.ok(await login(f, NEW));
-    // An agent credential can never change a human's password.
-    const agent = await f.app.inject({
-      method: 'POST',
-      url: '/api/me/password',
-      headers: f.headers,
-      payload: { currentPassword: NEW, newPassword: OLD + ' again' },
-    });
-    assert.notEqual(agent.statusCode, 204);
-    assert.ok(await login(f, NEW));
+    assert.match(String(url.searchParams.get('scope')), /user\.email/);
+    assert.match(String(url.searchParams.get('state')), /^[\w-]{43}$/);
+    // The app secret never travels through the browser.
+    assert.ok(!url.href.includes('test-secret'));
   } finally {
-    await f.dispose();
+    await app.close();
+    f.cleanup();
   }
 });
 
-await test('the owner renames the team', async () => {
-  const f = await agentFixture();
+await test('the first person makes the team; everyone after joins it and #general', async () => {
+  const h = await hub();
   try {
-    const rename = (name: string) =>
-      f.app.inject({
-        method: 'PUT',
-        url: '/api/team',
-        cookies: f.cookies,
-        payload: { name },
-      });
-    assert.equal((await rename('   ')).statusCode, 400);
-    const renamed = await rename('  Fieldnotes  ');
-    assert.equal(renamed.statusCode, 200);
-    assert.equal(renamed.json<{ name: string }>().name, 'Fieldnotes');
-    const team = await f.app.inject({ url: '/api/team', cookies: f.cookies });
-    assert.match(team.body, /"name":"Fieldnotes"/);
-    // Agents have no say over the team.
-    const agent = await f.app.inject({
-      method: 'PUT',
-      url: '/api/team',
-      headers: f.headers,
-      payload: { name: 'Taken' },
-    });
-    assert.notEqual(agent.statusCode, 200);
+    const first = await signInAs(h.app, 'Ada.Lovelace@Example.com');
+    const me = await h.app.inject({ url: '/api/me', cookies: first });
+    assert.equal(me.statusCode, 200);
+    assert.equal(
+      me.json<{ human: { username: string } }>().human.username,
+      'ada-lovelace',
+    );
+    const team = await h.app.inject({ url: '/api/team', cookies: first });
+    const second = await signInAs(h.app, 'grace@example.com');
+    const theirs = await h.app.inject({ url: '/api/team', cookies: second });
+    interface Team {
+      team: { id: string };
+      channels: { name: string }[];
+    }
+    assert.equal(theirs.json<Team>().team.id, team.json<Team>().team.id);
+    assert.deepEqual(
+      theirs.json<Team>().channels.map((c) => c.name),
+      ['general'],
+    );
+    // The same mailbox is the same person, however it is written.
+    const again = await signInAs(h.app, 'ada.lovelace@example.com');
+    const same = await h.app.inject({ url: '/api/me', cookies: again });
+    assert.deepEqual(same.json<unknown>(), me.json<unknown>());
   } finally {
-    await f.dispose();
+    await h.dispose();
   }
 });
 
-await test('first-owner setup is offered only until a team exists', async () => {
-  const f = await agentFixture();
+await test('a handle is the mailbox name, numbered when taken', async () => {
+  const h = await hub();
   try {
-    const status = await f.app.inject({ url: '/api/setup/status' });
-    assert.equal(status.statusCode, 200);
-    assert.deepEqual(status.json<unknown>(), { open: false });
+    const names = ['li@example.com', 'li@sub.example.com', 'x@example.com'].map(
+      (email) => h.store.signIn(email).username,
+    );
+    assert.deepEqual(names, ['member-li', 'member-li-2', 'member-x']);
+    assert.equal(h.store.signIn('a.b+c@example.com').username, 'a-b-c');
   } finally {
-    await f.dispose();
+    await h.dispose();
+  }
+});
+
+await test('only a mailbox in the organization, from a tenant, signs in', async () => {
+  const profiles: Record<string, Awaited<ReturnType<Feishu['profile']>>> = {
+    outside: { enterprise: 'eve@other.com', email: null, tenant: 't' },
+    lookalike: { enterprise: 'eve@example.com.evil', email: null, tenant: 't' },
+    tenantless: { enterprise: 'eve@example.com', email: null, tenant: '' },
+    personal: { enterprise: null, email: 'eve@example.com', tenant: 't' },
+    enterprise: {
+      enterprise: 'eve.work@example.com',
+      email: 'eve@example.com',
+      tenant: 't',
+    },
+  };
+  const h = await hub({
+    ...standInFeishu,
+    exchange: (code) => Promise.resolve(code),
+    profile: (token) =>
+      Promise.resolve(
+        profiles[token] ?? { enterprise: null, email: null, tenant: null },
+      ),
+  });
+  try {
+    for (const code of ['outside', 'lookalike', 'tenantless']) {
+      const { state, cookies } = await begin(h.app);
+      const response = await back(
+        h.app,
+        `code=${code}&state=${state}`,
+        cookies,
+      );
+      assert.equal(response.headers.location, '/?signin=denied', code);
+      assert.equal(
+        response.cookies.find((c) => c.name === 'kinmesh-session'),
+        undefined,
+      );
+    }
+    // The account's own address counts when it is in the domain; the
+    // enterprise address wins when both are.
+    for (const [code, username] of [
+      ['personal', 'eve'],
+      ['enterprise', 'eve-work'],
+    ] as const) {
+      const { state, cookies } = await begin(h.app);
+      const response = await back(
+        h.app,
+        `code=${code}&state=${state}`,
+        cookies,
+      );
+      assert.equal(response.headers.location, '/');
+      const session = response.cookies.find(
+        (c) => c.name === 'kinmesh-session',
+      );
+      assert.ok(session);
+      const me = await h.app.inject({
+        url: '/api/me',
+        cookies: { [session.name]: session.value },
+      });
+      assert.equal(
+        me.json<{ human: { username: string } }>().human.username,
+        username,
+      );
+    }
+  } finally {
+    await h.dispose();
+  }
+});
+
+await test('a sign-in returns once, to the browser that began it, within ten minutes', async () => {
+  const h = await hub();
+  try {
+    const code = 'code=ada%40example.com';
+    // No cookie, or another browser's.
+    const a = await begin(h.app);
+    const b = await begin(h.app);
+    for (const cookies of [{}, b.cookies]) {
+      const response = await back(h.app, `${code}&state=${a.state}`, cookies);
+      assert.equal(response.headers.location, '/?signin=expired');
+    }
+    // Used once, it is spent.
+    const c = await begin(h.app);
+    assert.equal(
+      (await back(h.app, `${code}&state=${c.state}`, c.cookies)).headers
+        .location,
+      '/',
+    );
+    assert.equal(
+      (await back(h.app, `${code}&state=${c.state}`, c.cookies)).headers
+        .location,
+      '/?signin=expired',
+    );
+    // Too late.
+    const now = Date.now();
+    const late = h.store.logins.begin(now);
+    assert.equal(h.store.logins.finish(late, now + LOGIN_STATE_MS), false);
+    // Turning back at Feishu just returns home.
+    const d = await begin(h.app);
+    const declined = await back(
+      h.app,
+      `error=access_denied&state=${d.state}`,
+      d.cookies,
+    );
+    assert.equal(declined.headers.location, '/');
+    assert.equal(
+      declined.cookies.find((c) => c.name === 'kinmesh-session'),
+      undefined,
+    );
+  } finally {
+    await h.dispose();
+  }
+});
+
+await test('Feishu failing turns the browser back without leaking what it said', async () => {
+  const h = await hub();
+  try {
+    const { state, cookies } = await begin(h.app);
+    const response = await back(
+      h.app,
+      `code=fail-secret&state=${state}`,
+      cookies,
+    );
+    assert.equal(response.headers.location, '/?signin=unavailable');
+  } finally {
+    await h.dispose();
+  }
+});
+
+await test('people signing in at once are one team, and one person each', async () => {
+  const h = await hub();
+  try {
+    const mailboxes = ['a1@example.com', 'a2@example.com', 'a1@example.com'];
+    const sessions = await Promise.all(
+      mailboxes.map((m) => signInAs(h.app, m)),
+    );
+    const teams = await Promise.all(
+      sessions.map(async (cookies) =>
+        (await h.app.inject({ url: '/api/team', cookies })).json<{
+          team: { id: string };
+        }>(),
+      ),
+    );
+    assert.equal(new Set(teams.map((t) => t.team.id)).size, 1);
+    const people = await Promise.all(
+      sessions.map(async (cookies) =>
+        (await h.app.inject({ url: '/api/me', cookies })).json<{
+          human: { id: string };
+        }>(),
+      ),
+    );
+    assert.equal(people[0]?.human.id, people[2]?.human.id);
+    assert.notEqual(people[0]?.human.id, people[1]?.human.id);
+  } finally {
+    await h.dispose();
+  }
+});
+
+await test('a person from before Feishu is linked to their mailbox and signs in as themself', async () => {
+  const h = await hub();
+  try {
+    const before = h.store.signIn('old@example.com');
+    h.store.linkMailbox(before.username, 'renamed@example.com');
+    assert.deepEqual(h.store.signIn('renamed@example.com'), before);
+    assert.throws(() => {
+      h.store.linkMailbox('nobody', 'n@example.com');
+    });
+  } finally {
+    await h.dispose();
+  }
+});
+
+await test('passwords and first-owner setup are gone', async () => {
+  const h = await hub();
+  try {
+    for (const [method, url] of [
+      ['POST', '/api/login'],
+      ['POST', '/api/setup'],
+      ['GET', '/api/setup/status'],
+      ['POST', '/api/me/password'],
+    ] as const) {
+      const response = await h.app.inject({ method, url, payload: {} });
+      assert.ok([401, 404].includes(response.statusCode), url);
+    }
+  } finally {
+    await h.dispose();
+  }
+});
+
+await test('the Feishu client reads a profile that leaves fields out, and names a failure without its content', async () => {
+  const stand = await startFeishuStandIn();
+  try {
+    const feishu = feishuClient({
+      appId: 'cli_test',
+      appSecret: 'test-secret',
+      emailDomain: 'example.com',
+      standIn: stand.url,
+    });
+    const profile = await feishu.profile(
+      await feishu.exchange(
+        'ada@example.com',
+        'http://127.0.0.1:3000/login/callback',
+      ),
+    );
+    assert.deepEqual(profile, {
+      email: undefined,
+      enterprise: 'ada@example.com',
+      tenant: 'stand-in',
+    });
+    // Feishu's own error envelope, with a 200, is still a refusal.
+    await assert.rejects(
+      feishu.exchange('fail-secret-code', 'x'),
+      (error: unknown) =>
+        error instanceof FeishuFailure && error.message === 'feishu_token_200',
+    );
+  } finally {
+    await stand.close();
   }
 });

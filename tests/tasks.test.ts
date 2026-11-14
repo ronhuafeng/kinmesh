@@ -19,6 +19,7 @@ import { createApp } from '../src/server/app.js';
 import { key, postInput } from './communication-helpers.js';
 import { taskFixture, taskInput, commandInput } from './task-helpers.js';
 import { forkWorker, race, stop } from './process-helpers.js';
+import { signInAs } from './feishu.js';
 const rejected = (status: number) => (e: unknown) =>
   e instanceof IdentityError && e.statusCode === status;
 
@@ -541,11 +542,9 @@ await test('assigned reviewer/owner and designated current human owner control d
     }).task;
     for (const role of ['member', 'owner'] as const) {
       const humanId = HumanId.parse(randomUUID());
-      const account = f.store.credentials('owner');
-      assert.ok(account);
       raw
         .prepare('INSERT INTO humans VALUES (?,?,?)')
-        .run(humanId, 'other-' + role, account.passwordHash);
+        .run(humanId, 'other-' + role, `other-${role}@example.com`);
       raw
         .prepare('INSERT INTO memberships VALUES (?,?,?)')
         .run(humanId, f.teamId, role);
@@ -556,17 +555,7 @@ await test('assigned reviewer/owner and designated current human owner control d
         { operationKey: key(), member: { kind: 'human', id: humanId } },
         'invite',
       );
-      const login = await f.app.inject({
-        method: 'POST',
-        url: '/api/login',
-        payload: {
-          username: 'other-' + role,
-          password: 'a long owner test password',
-        },
-      });
-      const cookie = login.cookies[0];
-      assert.ok(cookie);
-      const cookies = { [cookie.name]: cookie.value };
+      const cookies = await signInAs(f.app, `other-${role}@example.com`);
       for (const action of ['accept', 'rework', 'cancel'])
         assert.equal(
           (

@@ -67,7 +67,7 @@ export class InboxSupervisor {
       throw new Error('Hub database identity changed');
     const { database, identity } = this.databaseState;
     const env = { ...process.env };
-    delete env.KINMESH_SETUP_TOKEN;
+    delete env.FEISHU_APP_SECRET;
     delete env.KINMESH_SESSION_KEY;
     delete env.NODE_OPTIONS;
     const source = import.meta.url.endsWith('.ts');

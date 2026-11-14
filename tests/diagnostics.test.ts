@@ -7,10 +7,10 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { Writable } from 'node:stream';
 import { z } from 'zod';
-import { HumanId } from '../src/domain/contracts.js';
 import { createApp } from '../src/server/app.js';
 import { describeFailure } from '../src/diagnostics.js';
-import { fixture } from './helpers.js';
+import { feishuEnv, fixture } from './helpers.js';
+import { signInAs, standInFeishu } from './feishu.js';
 
 const Line = z.looseObject({
   msg: z.string(),
@@ -39,32 +39,11 @@ await test('a failure leaves one record to diagnose it, and nothing private', as
     undefined,
     undefined,
     {},
-    {
-      logStream,
-    },
+    { logStream, feishu: standInFeishu },
   );
   try {
-    const owner = {
-      username: 'owner',
-      password: 'a long owner test password',
-      teamName: 'Team',
-    };
-    const setup = await app.inject({
-      method: 'POST',
-      url: '/api/setup',
-      headers: { authorization: `Bearer ${f.config.setupToken}` },
-      payload: owner,
-    });
-    assert.equal(setup.statusCode, 201);
-    const login = await app.inject({
-      method: 'POST',
-      url: '/api/login',
-      payload: { username: owner.username, password: owner.password },
-    });
-    const cookie = login.cookies[0];
-    assert.ok(cookie);
-    const cookies = { [cookie.name]: cookie.value };
-    const team = store.teamFor(HumanId.parse(store.credentials('owner')?.id));
+    const cookies = await signInAs(app, 'owner@example.com');
+    const team = store.teamFor(store.signIn('owner@example.com').id);
     assert.ok(team);
     const url = `/api/teams/${team.team.id}/channels`;
     const marker = 'private-body-' + randomUUID();
@@ -98,9 +77,8 @@ await test('a failure leaves one record to diagnose it, and nothing private', as
     const written = lines.join('\n');
     for (const secret of [
       marker,
-      cookie.value,
-      f.config.setupToken,
-      owner.password,
+      ...Object.values(cookies),
+      f.config.feishu.appSecret,
     ])
       assert.equal(written.includes(secret), false);
 
@@ -123,6 +101,24 @@ await test('a failure leaves one record to diagnose it, and nothing private', as
     assert.ok(refusal);
     assert.equal(refusal.status, 409);
     assert.match(refusal.constraint ?? '', /channels\./);
+
+    // Feishu refusing a sign-in is recorded, without the code it was given.
+    const begin = await app.inject({ url: '/login' });
+    const state = new URL(String(begin.headers.location)).searchParams.get(
+      'state',
+    );
+    const login = begin.cookies.find((c) => c.name === 'kinmesh-login');
+    assert.ok(state && login);
+    const code = 'fail-' + randomUUID();
+    await app.inject({
+      url: `/login/callback?code=${code}&state=${state}`,
+      cookies: { [login.name]: login.value },
+    });
+    const turnedBack = lines
+      .map((l) => Line.parse(JSON.parse(l)))
+      .filter((r) => r.route === '/login/callback');
+    assert.equal(turnedBack.length, 1);
+    assert.equal(lines.join('\n').includes(code), false);
   } finally {
     await app.close();
     store.close();
@@ -162,8 +158,8 @@ await test('a hub that cannot start says what failed', () => {
         PATH: process.env.PATH,
         // A directory is not a database file.
         KINMESH_DATABASE: directory,
-        KINMESH_SETUP_TOKEN: 'a'.repeat(64),
         KINMESH_SESSION_KEY: 'b'.repeat(64),
+        ...feishuEnv,
       },
     },
   );
