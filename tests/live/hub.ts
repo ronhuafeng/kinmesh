@@ -22,17 +22,17 @@ import { Process, port, ready } from './processes.js';
 import {
   createChannel,
   newTask,
-  onboard,
   openAgent,
   openTask,
   register,
+  signIn,
   untilReady,
 } from '../browser/ui.js';
+import { feishuEnv } from '../helpers.js';
+import { startFeishuStandIn } from '../feishu.js';
 
 export class Hub {
   readonly database: string;
-  readonly setup = randomBytes(32).toString('hex');
-  readonly password = randomBytes(24).toString('base64url');
   readonly session = randomBytes(32).toString('hex');
   origin = '';
   teamOrigin = '';
@@ -97,15 +97,19 @@ export class Hub {
       ? null
       : (response.json() as Promise<unknown>);
   }
+  /** People sign in through a stand-in for Feishu; the gate is about agents. */
+  feishu: Awaited<ReturnType<typeof startFeishuStandIn>> | undefined;
   async start() {
     if (!this.origin) this.origin = `http://127.0.0.1:${String(await port())}`;
+    this.feishu ??= await startFeishuStandIn();
     const env: NodeJS.ProcessEnv = {
       PATH: process.env.PATH,
       HOME: this.root,
       NODE_ENV: 'test',
       KINMESH_DATABASE: this.database,
-      KINMESH_SETUP_TOKEN: this.setup,
       KINMESH_SESSION_KEY: this.session,
+      ...feishuEnv,
+      KINMESH_FEISHU_URL: this.feishu.url,
       KINMESH_ORIGIN: this.origin,
       KINMESH_PORT: new URL(this.origin).port,
       // The gate checks correctness at machine speed, not the flood guard
@@ -134,11 +138,7 @@ export class Hub {
     this.page = await context.newPage();
     const page = this.page;
     page.setDefaultTimeout(15_000);
-    await onboard(page, this, {
-      username: 'ci_owner',
-      password: this.password,
-      team: 'CI Team',
-    });
+    await signIn(page, this, 'ci_owner@example.com');
     await createChannel(page, 'collaboration');
     const me = z
       .object({ human: z.object({ id: z.string() }) })
@@ -473,6 +473,7 @@ export class Hub {
     const stopped = await Promise.allSettled([
       this.process?.stop(),
       this.team?.stop(),
+      this.feishu?.close(),
     ]);
     return {
       grantsRevoked,

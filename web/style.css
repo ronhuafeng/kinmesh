@@ -180,7 +180,9 @@ code {
 }
 
 /* Buttons ---------------------------------------------------------- */
-button {
+/* A link that starts something is drawn as the button it acts as. */
+button,
+a.button {
   font: inherit;
   font-size: 0.9rem;
   font-weight: 600;
@@ -197,11 +199,13 @@ button {
     color 140ms ease,
     transform 140ms ease;
 }
-button:hover:not(:disabled) {
+button:hover:not(:disabled),
+a.button:hover {
   background: var(--primary-hover);
   border-color: var(--primary-hover);
 }
-button:active:not(:disabled) {
+button:active:not(:disabled),
+a.button:active {
   transform: translateY(1px);
 }
 button:disabled {
@@ -445,13 +449,14 @@ textarea {
 }
 
 /* ------------------------------------------------------------------
- * Sign in / first owner (P1)
+ * Sign in
  * ------------------------------------------------------------------ */
 .auth-shell {
   min-height: 100vh;
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
   align-items: center;
+  align-content: center;
   gap: 4rem;
   padding: 3rem clamp(1.5rem, 6vw, 6rem);
   max-width: 1280px;
@@ -485,15 +490,12 @@ textarea {
 .auth-card h2 + p {
   color: var(--ink-muted);
 }
-.auth-card [role='status'] {
-  padding: 0.6rem 0.85rem;
-  border-radius: var(--radius);
-  background: var(--primary-soft);
-  color: var(--primary-soft-text);
-  font-size: 0.88rem;
+.auth-card h2 {
+  margin-top: 0;
 }
-.auth-card > button {
+.auth-card > a.button {
   justify-self: start;
+  text-decoration: none;
 }
 
 /* Segmented controls (auth tabs and workspace views) ----------------- */

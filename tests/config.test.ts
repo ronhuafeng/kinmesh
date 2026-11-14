@@ -1,14 +1,24 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { loadConfig } from '../src/server/config.js';
-import { fixture } from './helpers.js';
+import { feishuEnv, fixture } from './helpers.js';
+import { signInAs, standInFeishu } from './feishu.js';
 
 await test('configuration rejects absent secrets, invalid ports and non-loopback plaintext origins', () => {
   assert.throws(() => loadConfig({}));
-  const env = {
-    KINMESH_SETUP_TOKEN: 'a'.repeat(64),
-    KINMESH_SESSION_KEY: 'b'.repeat(64),
-  };
+  const env = { KINMESH_SESSION_KEY: 'b'.repeat(64), ...feishuEnv };
+  // Without the Feishu app or the organization's domain, nobody could sign in.
+  for (const key of Object.keys(feishuEnv))
+    assert.throws(() => loadConfig({ ...env, [key]: '' }));
+  assert.throws(() =>
+    loadConfig({ ...env, KINMESH_EMAIL_DOMAIN: '@example.com' }),
+  );
+  assert.equal(
+    loadConfig({ ...env, KINMESH_EMAIL_DOMAIN: ' Example.COM ' }).feishu
+      .emailDomain,
+    'example.com',
+  );
+  assert.equal(loadConfig(env).feishu.standIn, null);
   assert.throws(() => loadConfig({ ...env, KINMESH_PORT: '0' }));
   assert.throws(() =>
     loadConfig({ ...env, KINMESH_ORIGIN: 'http://remote.test' }),
@@ -32,26 +42,18 @@ await test('new session key rejects existing encrypted session', async () => {
   const { createApp } = await import('../src/server/app.js');
   const f = fixture();
   let store = f.open();
-  let app = await createApp(f.config, store);
+  let app = await createApp(
+    f.config,
+    store,
+    undefined,
+    undefined,
+    {},
+    {
+      feishu: standInFeishu,
+    },
+  );
   try {
-    const payload = {
-      username: 'owner',
-      password: 'a unique test password 123',
-      teamName: 'Team',
-    };
-    await app.inject({
-      method: 'POST',
-      url: '/api/setup',
-      headers: { authorization: `Bearer ${f.config.setupToken}` },
-      payload,
-    });
-    const result = await app.inject({
-      method: 'POST',
-      url: '/api/login',
-      payload: { username: payload.username, password: payload.password },
-    });
-    const cookie = result.cookies[0];
-    assert.ok(cookie);
+    const cookies = await signInAs(app, 'owner@example.com');
     await app.close();
     store = f.open();
     app = await createApp(
@@ -62,7 +64,7 @@ await test('new session key rejects existing encrypted session', async () => {
       (
         await app.inject({
           url: '/api/me',
-          cookies: { [cookie.name]: cookie.value },
+          cookies,
         })
       ).statusCode,
       401,

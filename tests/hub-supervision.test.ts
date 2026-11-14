@@ -26,6 +26,8 @@ import { postInput } from './communication-helpers.js';
 import { Message } from '../src/domain/communication.js';
 import { WORKER_SHUTDOWN_MS } from '../src/inbox/lifecycle.js';
 import { deadline, freePort } from './process-helpers.js';
+import { feishuEnv } from './helpers.js';
+import { signInOver, startFeishuStandIn } from './feishu.js';
 
 const root = fileURLToPath(new URL('../', import.meta.url));
 async function until<T>(
@@ -126,14 +128,19 @@ async function fixture(database?: string) {
     symlinkSync(join(root, name), join(directory, name));
   const port = await freePort();
   const endpoint = `http://127.0.0.1:${String(port)}`;
-  const setupToken = randomBytes(32).toString('hex');
   const sessionKey = randomBytes(32).toString('hex');
+  const feishu = await startFeishuStandIn();
+  const app = {
+    ...feishuEnv,
+    FEISHU_APP_SECRET: randomBytes(16).toString('hex'),
+    KINMESH_FEISHU_URL: feishu.url,
+  };
   writeFileSync(
     join(directory, '.env'),
     [
       'KINMESH_DATABASE=' + dbPath,
-      'KINMESH_SETUP_TOKEN=' + setupToken,
       'KINMESH_SESSION_KEY=' + sessionKey,
+      ...Object.entries(app).map(([key, value]) => `${key}=${value}`),
       'KINMESH_PORT=' + String(port),
       'KINMESH_ORIGIN=' + endpoint,
     ].join('\n'),
@@ -147,15 +154,18 @@ async function fixture(database?: string) {
   function start(optIn = true, override?: string, fromProcessEnv = false) {
     const env = Object.fromEntries(
       Object.entries(process.env).filter(
-        ([key]) => !key.startsWith('KINMESH_') && key !== 'NODE_OPTIONS',
+        ([key]) =>
+          !key.startsWith('KINMESH_') &&
+          !key.startsWith('FEISHU_') &&
+          key !== 'NODE_OPTIONS',
       ),
     );
     if (optIn) env.KINMESH_INBOX_CONFIG = override ?? configPath;
     if (fromProcessEnv)
       Object.assign(env, {
         KINMESH_DATABASE: dbPath,
-        KINMESH_SETUP_TOKEN: setupToken,
         KINMESH_SESSION_KEY: sessionKey,
+        ...app,
         KINMESH_PORT: String(port),
         KINMESH_ORIGIN: endpoint,
       });
@@ -225,7 +235,7 @@ async function fixture(database?: string) {
     dbPath,
     configPath,
     endpoint,
-    setupToken,
+    appSecret: app.FEISHU_APP_SECRET,
     sessionKey,
     port,
     start,
@@ -245,6 +255,7 @@ async function fixture(database?: string) {
         }
         await deadline(p.closed, 5000);
       }
+      await feishu.close();
       rmSync(directory, { recursive: true, force: true });
     },
   };
@@ -262,14 +273,8 @@ await test(
       assert.equal(p.output().includes('supervised Inbox'), false);
       assert.equal((await fetch(f.endpoint + '/api/me')).status, 401);
       assert.equal(
-        (
-          await fetch(f.endpoint + '/api/setup', {
-            method: 'POST',
-            headers: { 'content-type': 'application/json' },
-            body: '{}',
-          })
-        ).status,
-        401,
+        (await fetch(f.endpoint + '/login', { redirect: 'manual' })).status,
+        302,
       );
       assert.equal(await p.stop(), 0);
       assert.equal(await f.health(), 0);
@@ -288,7 +293,7 @@ await test(
       rmSync(join(f.directory, '.env'));
       const p = f.start(true, undefined, true);
       await p.ready();
-      assert.ok(!p.output().includes(f.setupToken));
+      assert.ok(!p.output().includes(f.appSecret));
       assert.ok(!p.output().includes(f.sessionKey));
       assert.equal(p.workers().length, 1);
       assert.equal(await p.stop(), 0);
@@ -355,17 +360,7 @@ await test(
       assert.equal(workers.length, 1);
       const original = workers[0];
       assert.ok(original);
-      const login = await fetch(f.endpoint + '/api/login', {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({
-          username: 'owner',
-          password: 'a long owner test password',
-        }),
-      });
-      assert.equal(login.status, 200);
-      const cookie = login.headers.get('set-cookie')?.split(';')[0];
-      assert.ok(cookie);
+      const cookie = await signInOver(f.endpoint, 'owner@example.com');
       const response = await fetch(
         f.endpoint + seed.channelPath + '/messages',
         {

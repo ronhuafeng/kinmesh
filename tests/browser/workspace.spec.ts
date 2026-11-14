@@ -1,6 +1,6 @@
 import type { Page, APIRequestContext } from '@playwright/test';
 import { z } from 'zod';
-import { randomBytes, randomUUID } from 'node:crypto';
+import { randomUUID } from 'node:crypto';
 import Database from 'better-sqlite3';
 import { readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
@@ -15,7 +15,6 @@ import {
   createChannel,
   inStage,
   newTask,
-  onboard,
   openAgent,
   refreshNow,
   register,
@@ -72,7 +71,7 @@ test('a desktop workspace loads without sideways scrolling', async ({
   hub,
 }) => {
   await page.setViewportSize({ width: 1440, height: 1000 });
-  await onboard(page, hub);
+  await signIn(page, hub);
   expect(
     await page.evaluate(
       () => document.documentElement.scrollWidth <= window.innerWidth,
@@ -86,7 +85,7 @@ test('real workspace onboarding, mentions and reconnect on a phone', async ({
 }) => {
   const errors: string[] = [];
   page.on('pageerror', (error) => errors.push(error.message));
-  await onboard(page, hub);
+  await signIn(page, hub);
   await createChannel(page, 'design');
   await register(page, 'Ada', 'developer');
   // A phone stacks the places: Home holds the channels and the team.
@@ -177,7 +176,7 @@ test('real workspace onboarding, mentions and reconnect on a phone', async ({
   await places.getByRole('button', { name: 'You' }).click();
   await page.getByRole('button', { name: 'Sign out', exact: true }).click();
   await expect(
-    page.getByRole('heading', { name: 'Welcome back' }),
+    page.getByRole('link', { name: 'Sign in with Feishu' }),
   ).toBeVisible();
 });
 test('two independent task cards: real agent handoff, human review, acceptance and rework', async ({
@@ -186,7 +185,7 @@ test('two independent task cards: real agent handoff, human review, acceptance a
   playwright,
   hub,
 }) => {
-  await onboard(page, hub);
+  await signIn(page, hub);
   await register(page, 'Developer', 'developer');
   const state = await snapshot(context.request, hub.origin);
   const developer = state.agents[0];
@@ -308,7 +307,7 @@ test('AG-UI snapshots render persisted reports honestly', async ({
   context,
   hub,
 }) => {
-  await onboard(page, hub);
+  await signIn(page, hub);
   await register(page, 'Observer', 'assistant');
   const state = await snapshot(context.request, hub.origin);
   const agent = Agent.parse(state.agents[0]);
@@ -364,7 +363,7 @@ test('keyboard mention, and a message becomes a task in its topic', async ({
   context,
   hub,
 }) => {
-  await onboard(page, hub);
+  await signIn(page, hub);
   await register(page, 'Ada', 'developer');
   await page.getByRole('tab', { name: 'Chat', exact: true }).click();
   await page.getByRole('button', { name: 'Start a topic' }).click();
@@ -477,7 +476,7 @@ test('a mention says what happened to it and leads to the agent’s reply', asyn
   playwright,
   hub,
 }) => {
-  await onboard(page, hub);
+  await signIn(page, hub);
   await register(page, 'Ada', 'developer');
   const state = await snapshot(context.request, hub.origin);
   const ada = state.agents[0];
@@ -552,7 +551,7 @@ test('the Inbox gathers what waits on me across channels and leads to the fix', 
   page,
   hub,
 }) => {
-  await onboard(page, hub);
+  await signIn(page, hub);
   await register(page, 'Ada', 'developer');
   // What the Inbox lists, and when: tests/attention.test.ts.
   const needs = page.getByRole('tab', { name: /^Inbox/ });
@@ -603,7 +602,7 @@ test('a stuck request says what was lost and is fixed and retried in place', asy
   context,
   hub,
 }) => {
-  await onboard(page, hub);
+  await signIn(page, hub);
   await register(page, 'Ada', 'developer');
   const state = await snapshot(context.request, hub.origin);
   const ada = state.agents[0];
@@ -686,7 +685,7 @@ test('connect T3 and an agent in two clicks: the hub keeps the credential and wa
   context,
   hub,
 }) => {
-  await onboard(page, hub);
+  await signIn(page, hub);
   await register(page, 'Ada', 'developer');
   const state = await snapshot(context.request, hub.origin);
   const ada = state.agents[0];
@@ -810,7 +809,7 @@ test('the agent panel still walks an operator through a self-run worker binding'
   context,
   hub,
 }) => {
-  await onboard(page, hub);
+  await signIn(page, hub);
   await register(page, 'Ada', 'developer');
   const state = await snapshot(context.request, hub.origin);
   const ada = state.agents[0];
@@ -874,7 +873,7 @@ test('lost message response retries the same committed operation; real conflict 
   context,
   hub,
 }) => {
-  await onboard(page, hub);
+  await signIn(page, hub);
   const state = await snapshot(context.request, hub.origin);
   if (!state.channel) throw new Error('Local channel missing');
   let first = true;
@@ -928,7 +927,7 @@ test('human claim and request-review controls, plus leave/rejoin of known member
   context,
   hub,
 }) => {
-  await onboard(page, hub);
+  await signIn(page, hub);
   await register(page, 'Reviewer', 'reviewer');
   const state = await snapshot(context.request, hub.origin);
   if (!state.channel || !state.agents[0])
@@ -978,7 +977,7 @@ test('a heartbeat refresh never interrupts work; after a failure nothing submits
   context,
   hub,
 }) => {
-  await onboard(page, hub);
+  await signIn(page, hub);
   const state = await snapshot(context.request, hub.origin);
   if (!state.channel) throw new Error('Local channel unavailable');
   await page.getByRole('button', { name: 'New channel' }).click();
@@ -1080,12 +1079,8 @@ test('a heartbeat refresh never interrupts work; after a failure nothing submits
   expect(posts).toBe(2);
 });
 
-// Ending the other sessions and keeping this one: tests/account.test.ts.
-test('the owner renames the team and changes the password', async ({
-  page,
-  hub,
-}) => {
-  const password = await onboard(page, hub);
+test('a person renames the team', async ({ page, hub }) => {
+  await signIn(page, hub);
   // You are one of the people; your row opens your settings.
   await page
     .getByRole('region', { name: 'People in this channel' })
@@ -1099,126 +1094,29 @@ test('the owner renames the team and changes the password', async ({
     page.getByRole('status').filter({ hasText: 'Team renamed.' }),
   ).toBeVisible();
   await expect(team.getByLabel('Team name')).toHaveValue('Fieldnotes');
-  const change = settings.getByRole('form', { name: 'Password' });
-  const next = randomBytes(24).toString('base64url');
-  await change.getByLabel('Current password').fill('not the password at all');
-  await change.getByLabel('New password').fill(next);
-  await change.getByRole('button', { name: 'Change password' }).click();
-  await expect(change).toContainText('That isn’t your current password.');
-  await change.getByLabel('Current password').fill(password);
-  await change.getByLabel('New password').fill(next);
-  await change.getByRole('button', { name: 'Change password' }).click();
-  await expect(
-    page.getByRole('status').filter({ hasText: 'Password changed' }),
-  ).toBeVisible();
-  // This browser carries on with its re-issued session.
-  await refreshNow(page);
-  await expect(page.getByRole('heading', { name: '# general' })).toBeVisible();
 });
 
-test('ambiguous login retry retains original request', async ({
-  page,
-  hub,
-}) => {
-  const password = await onboard(page, hub);
-  await page.getByRole('button', { name: 'Sign out', exact: true }).click();
-  await expect(
-    page.getByRole('heading', { name: 'Welcome back' }),
-  ).toBeVisible();
-  let attempts = 0;
-  let original = '';
-  let identical = false;
-  let setupPosts = 0;
-  page.on('request', (request) => {
-    if (
-      request.method() === 'POST' &&
-      new URL(request.url()).pathname === '/api/setup'
-    )
-      setupPosts++;
-  });
-  await page.route('**/api/login', async (route) => {
-    attempts++;
-    const request = route.request();
-    const serialized = JSON.stringify({
-      url: request.url(),
-      method: request.method(),
-      body: request.postData(),
-      headers: request.headers(),
-    });
-    if (attempts === 1) {
-      original = serialized;
-      await route.abort('timedout');
-    } else {
-      identical = serialized === original;
-      await route.continue();
-    }
-  });
-  await page.getByLabel('Username', { exact: true }).fill('browser_owner');
-  await page.getByLabel('Password', { exact: true }).fill(password);
-  await page.getByRole('button', { name: 'Sign in', exact: true }).click();
-  await expect(
-    page.getByRole('button', { name: 'Retry same action' }),
-  ).toBeVisible();
-  expect(attempts).toBe(1);
-  await page.getByRole('button', { name: 'Retry same action' }).click();
-  await expect(page.getByRole('heading', { name: '# general' })).toBeVisible();
-  expect(attempts).toBe(2);
-  expect(identical).toBe(true);
-  expect(setupPosts).toBe(0);
-});
-
-test('ambiguous setup retry retains setup completion after switching to login', async ({
+test('someone outside the organization is turned back, and a reload starts clean', async ({
   page,
   hub,
 }) => {
   await page.goto(hub.origin);
-  await page.getByRole('tab', { name: 'First owner setup' }).click();
-  const password = randomBytes(24).toString('base64url');
-  await page.getByLabel('Setup secret', { exact: true }).fill(hub.setup);
-  await page.getByLabel('Owner username', { exact: true }).fill('retry_owner');
-  await page.getByLabel('Owner password', { exact: true }).fill(password);
-  await page.getByLabel('Team name', { exact: true }).fill('Retry team');
-  let attempts = 0;
-  let original = '';
-  let identical = false;
-  let loginPosts = 0;
-  page.on('request', (request) => {
-    if (
-      request.method() === 'POST' &&
-      new URL(request.url()).pathname === '/api/login'
-    )
-      loginPosts++;
-  });
-  await page.route('**/api/setup', async (route) => {
-    attempts++;
-    const request = route.request();
-    const serialized = JSON.stringify({
-      body: request.postData(),
-      headers: request.headers(),
-      url: request.url(),
-      method: request.method(),
-    });
-    if (attempts === 1) {
-      original = serialized;
-      await route.abort('timedout');
-    } else {
-      identical = serialized === original;
-      await route.continue();
-    }
-  });
-  await page.getByRole('button', { name: 'Create owner and team' }).click();
+  await page.getByRole('link', { name: 'Sign in with Feishu' }).click();
+  await page.getByLabel('Mailbox').fill('eve@other.com');
+  await page.getByRole('button', { name: 'Continue' }).click();
   await expect(
-    page.getByRole('button', { name: 'Retry same action' }),
+    page.getByText('That Feishu account isn’t part of this organization.'),
   ).toBeVisible();
-  await page.getByRole('tab', { name: 'Sign in', exact: true }).click();
-  await page.getByRole('button', { name: 'Retry same action' }).click();
+  expect(new URL(page.url()).search).toBe('');
+  await page.reload();
   await expect(
-    page.getByText('Owner created. Sign in with your new credentials.'),
+    page.getByRole('link', { name: 'Sign in with Feishu' }),
   ).toBeVisible();
-  expect(attempts).toBe(2);
-  expect(identical).toBe(true);
-  expect(loginPosts).toBe(0);
-  await signIn(page, 'retry_owner', password);
+  await expect(
+    page.getByText('That Feishu account isn’t part of this organization.'),
+  ).toHaveCount(0);
+  // Someone in it, signing in next, makes the team.
+  await signIn(page, hub, 'grace@example.com');
 });
 
 test('permission loss purges workspace snapshot instead of retaining stale team data', async ({
@@ -1226,7 +1124,7 @@ test('permission loss purges workspace snapshot instead of retaining stale team 
   context,
   hub,
 }) => {
-  await onboard(page, hub);
+  await signIn(page, hub);
   const state = await snapshot(context.request, hub.origin);
   const privateMessage = 'Previously authorized channel message';
   const composer = page.getByRole('form', { name: 'Message your team' });
@@ -1254,7 +1152,7 @@ test('permission loss purges workspace snapshot instead of retaining stale team 
   });
   await refreshNow(page);
   await expect(
-    page.getByRole('heading', { name: 'Welcome back' }),
+    page.getByRole('link', { name: 'Sign in with Feishu' }),
   ).toBeVisible();
   await expect(
     page.getByText(/HTTP 403: You are not authorized for this action/),
@@ -1284,7 +1182,7 @@ test('AG-UI access revocation clears prior reports while a transient outage pres
   context,
   hub,
 }) => {
-  await onboard(page, hub);
+  await signIn(page, hub);
   await register(page, 'Revoked Activity', 'assistant');
   const state = await snapshot(context.request, hub.origin);
   const agent = state.agents.find((a) => a.name === 'Revoked Activity');
@@ -1354,7 +1252,7 @@ test('AG-UI access revocation clears prior reports while a transient outage pres
 async function openMockNativeCard(
   page: Page,
   request: APIRequestContext,
-  hub: { origin: string; setup: string },
+  hub: { origin: string },
 ) {
   await page.route('**/api/workspace**', async (route) => {
     // A read after the test's hub has stopped is simply lost.
@@ -1373,7 +1271,7 @@ async function openMockNativeCard(
       json: { ...data, nativeT3Origin: 'https://native-mock.invalid' },
     });
   });
-  await onboard(page, hub);
+  await signIn(page, hub);
   await register(page, 'Mock Native Observer', 'assistant');
   const state = await snapshot(request, hub.origin);
   const agent = state.agents.find(
@@ -1515,7 +1413,7 @@ test('a reload keeps the place and unsent work; Back returns to where you were',
   page,
   hub,
 }) => {
-  await onboard(page, hub);
+  await signIn(page, hub);
   const composer = page.getByRole('form', { name: 'Message your team' });
   await composer.getByLabel('Message', { exact: true }).fill('half a thought');
   await page.reload();
@@ -1555,7 +1453,7 @@ test('a wide tablet keeps the board, one stage, beside the task that is open', a
   page,
   hub,
 }) => {
-  await onboard(page, hub);
+  await signIn(page, hub);
   await page.setViewportSize({ width: 1194, height: 834 });
   await page.getByRole('tab', { name: 'Board', exact: true }).click();
   await page.getByRole('button', { name: 'New task' }).first().click();

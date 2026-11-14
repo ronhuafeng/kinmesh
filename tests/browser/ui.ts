@@ -1,46 +1,26 @@
 import { expect, type Page } from '@playwright/test';
-import { randomBytes } from 'node:crypto';
 
 /**
  * The workspace as a person drives it. The CI browser suite and the paid
  * live driver (tests/live/hub.ts) share these, so a renamed control fails
  * in CI before it can break a live run.
  */
-export interface Owner {
-  username: string;
-  password: string;
-  team: string;
-}
-export async function signIn(page: Page, username: string, password: string) {
-  await page.getByLabel('Username', { exact: true }).fill(username);
-  await page.getByLabel('Password', { exact: true }).fill(password);
-  await page.getByRole('button', { name: 'Sign in', exact: true }).click();
+/**
+ * Sign in through Feishu's stand-in, choosing who to be there; ends in
+ * #general. The first person to sign in makes the team.
+ */
+export async function signIn(
+  page: Page,
+  hub: { origin: string },
+  mailbox = 'browser_owner@example.com',
+) {
+  await page.goto(hub.origin);
+  await page.getByRole('link', { name: 'Sign in with Feishu' }).click();
+  await page.getByLabel('Mailbox').fill(mailbox);
+  await page.getByRole('button', { name: 'Continue' }).click();
   await expect(
     page.getByRole('heading', { name: '# general', exact: true }),
   ).toBeVisible();
-}
-/** First-owner setup, then sign in; ends in #general. Returns the password. */
-export async function onboard(
-  page: Page,
-  hub: { origin: string; setup: string },
-  owner: Partial<Owner> = {},
-) {
-  const username = owner.username ?? 'browser_owner';
-  const password = owner.password ?? randomBytes(24).toString('base64url');
-  await page.goto(hub.origin);
-  await page.getByRole('tab', { name: 'First owner setup' }).click();
-  await page.getByLabel('Setup secret', { exact: true }).fill(hub.setup);
-  await page.getByLabel('Owner username', { exact: true }).fill(username);
-  await page.getByLabel('Owner password', { exact: true }).fill(password);
-  await page
-    .getByLabel('Team name', { exact: true })
-    .fill(owner.team ?? 'Fieldnotes team');
-  await page.getByRole('button', { name: 'Create owner and team' }).click();
-  await expect(
-    page.getByText('Owner created. Sign in with your new credentials.'),
-  ).toBeVisible();
-  await signIn(page, username, password);
-  return password;
 }
 /** The heartbeat is silent; a refresh on demand lives in the command palette. */
 export async function refreshNow(page: Page) {

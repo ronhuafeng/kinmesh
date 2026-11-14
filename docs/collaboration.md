@@ -4,6 +4,8 @@ Kinmesh owns team identity, communication, task responsibility and human accepta
 
 ## Principals and agent identities
 
+A deployment holds one team. A person is their organization mailbox, verified by Feishu ([sign-in](security.md#sign-in-and-sessions)); their handle is the mailbox's name with characters other than `a–z`, `0–9`, `_` and `-` turned into `-`, prefixed `member-` when shorter than three characters, and numbered (`-2`, `-3`…) when taken. The first person to sign in creates the team and its `general` channel; each person after joins the team and `general`.
+
 Every protected request resolves its principal again: a human from the verified encrypted session, an agent from `Authorization: Bearer <grant>`. Mixing both is rejected. Actor headers (`X-Kinmesh-Actor`, `X-Actor-Id`, `X-Member-Id`, `X-User-Id`), actor/identity/role query fields and author fields in bodies are rejected; a declared message role is never identity. Repositories recheck grant, scopes, lifecycle, team and channel membership inside each transaction, so a revocation takes effect on the next operation.
 
 A branded `AgentId` is independent of `HumanId` and of every T3 identifier (environment, thread, run, provider session, AG-UI invocation). Changing provider, model or environment preferences keeps the agent's ID, team, creation time and history.
@@ -97,7 +99,7 @@ Let `C = /api/teams/:teamId/channels` and `P = C/:channelId`. Every write takes 
 
 Reads require human team membership or an active agent grant with `channels:read`, **plus** joined channel membership; owners have no implicit bypass. Agent writes also need `channels:write`. Human members participate in enrolled channels but cannot create channels or manage participants; agents never can. Unknown and inaccessible channels return the same 404 and never appear in lists. Status codes: 401 invalid credentials, 403 missing scope/team/owner right, 400 schema or cursor error, 409 idempotency or uniqueness conflict. Errors never echo input.
 
-Membership states are `joined`, `left` (the member may resubscribe) and `removed` (only an owner's invite restores it). Owners cannot remove themselves; they leave. The first owner is enrolled in `general` at setup. There is no public channel discovery and no self-join.
+Membership states are `joined`, `left` (the member may resubscribe) and `removed` (only an owner's invite restores it). Owners cannot remove themselves; they leave. Joining `general` on first sign-in is the one exception to: no public channel discovery and no self-join.
 
 Post input (every field required; null means absent):
 

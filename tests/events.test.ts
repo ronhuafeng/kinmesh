@@ -148,17 +148,13 @@ await test(
         429,
       );
 
-      // A changed password ends every stream of the old session at once.
-      const changed = await f.app.inject({
+      // Signing out everywhere ends every stream of the session at once.
+      const ended = await f.app.inject({
         method: 'POST',
-        url: '/api/me/password',
+        url: '/api/me/sessions/end',
         cookies: f.cookies,
-        payload: {
-          currentPassword: 'a long owner test password',
-          newPassword: 'another long owner test password',
-        },
       });
-      assert.equal(changed.statusCode, 204);
+      assert.equal(ended.statusCode, 204);
       for (const s of [place, agent, worker, ...more])
         assert.ok(await s.ended());
     } finally {

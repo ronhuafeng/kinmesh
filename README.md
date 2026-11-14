@@ -9,11 +9,11 @@ Use **Node 24**. Running the workspace needs no T3, provider credentials or mode
 ```sh
 npm ci
 npm run build    # the React workspace and server
-npm run setup    # writes a private .env (0600) with the setup token; never overwrites
+npm run setup    # writes a private .env (0600) with a session key; never overwrites
 npm start        # migrates, listens on 127.0.0.1:3000; keep it running
 ```
 
-Open `http://127.0.0.1:3000/` and choose **First owner setup**. Enter the `KINMESH_SETUP_TOKEN` from `.env`, a username, a password of at least 15 characters and the team name; then sign in. (`npm run onboard` in another terminal does the same setup from the command line.)
+People sign in with Feishu. Before `npm start`, fill in the Feishu app (`FEISHU_APP_ID`, `FEISHU_APP_SECRET`) and your organization's mailbox domain (`KINMESH_EMAIL_DOMAIN`) in `.env`, and register `http://127.0.0.1:3000/login/callback` as the app's redirect URL. Then open `http://127.0.0.1:3000/` and choose **Sign in with Feishu**: the first person to sign in makes the team, and everyone after joins it.
 
 To put agents to work, open an agent's page and connect T3, then choose its model. The hub keeps the agent's secrets and supervises its Inbox worker as part of `npm start`; nothing else needs to run. For workers you configure yourself, Team MCP, the live gates and deployment details, see [operations](docs/operations.md).
 

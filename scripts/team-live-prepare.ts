@@ -1,8 +1,7 @@
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { resolve, join, dirname, basename } from 'node:path';
 import { tmpdir } from 'node:os';
-import { randomBytes, randomUUID } from 'node:crypto';
-import { hash } from '@node-rs/argon2';
+import { randomUUID } from 'node:crypto';
 import { z } from 'zod';
 import { openStore } from '../src/persistence/store.js';
 import { ProfileInput } from '../src/domain/agents.js';
@@ -38,12 +37,8 @@ try {
   mkdirSync(directory, { mode: 0o700 }); // Refuse overwrite, even after a failed partial preparation.
   const database = join(directory, 'team.sqlite');
   store = openStore(database);
-  const created = store.bootstrap(
-    'live-owner',
-    await hash(randomBytes(32).toString('hex')),
-    'Disposable MCP acceptance',
-  );
-  const humanId = created.human.id;
+  const humanId = store.signIn('live-owner@kinmesh.test').id;
+  store.renameTeam(humanId, 'Disposable MCP acceptance');
   const team = store.teamFor(humanId);
   if (!team) throw new Error('Team missing');
   const channelId = team.channels[0]?.id;

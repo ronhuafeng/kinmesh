@@ -32,10 +32,6 @@ export const Membership = z.strictObject({
   teamId: TeamId,
   role: z.enum(['owner', 'member']),
 });
-export const Credentials = z.strictObject({
-  username: z.string().regex(/^[a-z0-9][a-z0-9_-]{2,63}$/),
-  password: z.string().min(15).max(128),
-});
-export const BootstrapInput = Credentials.extend({
-  teamName: z.string().trim().min(1).max(80),
-});
+export const TeamName = z.string().trim().min(1).max(80);
+/** A sign-in must come back from Feishu within ten minutes. */
+export const LOGIN_STATE_MS = 10 * 60 * 1000;

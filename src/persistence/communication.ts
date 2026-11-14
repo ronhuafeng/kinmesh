@@ -6,7 +6,7 @@ import type { BetterSQLite3Database } from 'drizzle-orm/better-sqlite3';
 import type { z } from 'zod';
 import * as s from './schema.js';
 import type { agentRepository } from './agents.js';
-import type { ChannelId, TeamId } from '../domain/contracts.js';
+import type { ChannelId, HumanId, TeamId } from '../domain/contracts.js';
 import { IdentityError, type Principal } from '../domain/agents.js';
 import {
   principalAuthor as author,
@@ -239,6 +239,43 @@ export function communicationRepository(
     }
   }
   return {
+    /** A newcomer joins the team's #general, as their own act. */
+    welcome(humanId: HumanId, teamId: TeamId) {
+      const general = db
+        .select({
+          id: s.channels.id,
+          teamId: s.channels.teamId,
+          name: s.channels.name,
+          position: s.channels.position,
+        })
+        .from(s.channels)
+        .where(
+          and(eq(s.channels.teamId, teamId), eq(s.channels.name, 'general')),
+        )
+        .get();
+      if (general === undefined) return;
+      const channelId = ChannelView.parse(general).id;
+      const target = { kind: 'human' as const, id: humanId };
+      db.insert(s.channelParticipants)
+        .values({
+          channelId,
+          teamId,
+          memberKey: memberKey(target),
+          humanId,
+          agentId: null,
+          state: 'joined',
+        })
+        .onConflictDoNothing()
+        .run();
+      fact(
+        { kind: 'human', humanId },
+        teamId,
+        channelId,
+        `welcome.${humanId}`,
+        'participant.changed',
+        { participant: target, participantState: 'joined' },
+      );
+    },
     validateParticipant(
       p: Principal,
       teamId: TeamId,

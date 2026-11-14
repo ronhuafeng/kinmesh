@@ -5,6 +5,7 @@ import {
   SESSION_LIFETIME_MS,
 } from '../src/domain/contracts.js';
 import { agentFixture } from './agent-helpers.js';
+import { signInAs } from './feishu.js';
 
 const MINUTE = 60 * 1000;
 
@@ -66,14 +67,7 @@ await test('a revoked session is refused, even from a copied cookie', async () =
 await test('signing out everywhere ends every session of yours', async () => {
   const f = await agentFixture();
   try {
-    const login = await f.app.inject({
-      method: 'POST',
-      url: '/api/login',
-      payload: { username: 'owner', password: 'a long owner test password' },
-    });
-    const second = login.cookies[0];
-    assert.ok(second);
-    const other = { [second.name]: second.value };
+    const other = await signInAs(f.app, 'owner@example.com');
     const me = (cookies: Record<string, string>) =>
       f.app.inject({ url: '/api/me', cookies });
     assert.equal((await me(other)).statusCode, 200);

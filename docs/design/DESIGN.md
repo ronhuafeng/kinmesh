@@ -183,11 +183,15 @@ it is the authority. Use the custom property for its role, never a raw colour.
   A row leaves when its cause is resolved; there is nothing to dismiss. Expired
   deliveries are not listed; they stay on their message's delivery line.
 - **Settings**: your own row among the sidebar's people opens your page; the account
-  is not shown anywhere else, so the page has no face or name of its own. One row
-  per fact typed in place — the team name (everyone sees it) and your password (the
-  current one, then the new) — each confirmed by the round arrow. A changed password
-  signs out every other session. The page ends with **Sign out everywhere**, a quiet
-  row in the danger colour.
+  is not shown anywhere else, so the page has no face or name of its own. The team
+  name (everyone sees it) is typed in place and confirmed by the round arrow. The page
+  ends with **Sign out everywhere**, a quiet row in the danger colour.
+- **Sign in**: the brand and the team's promise beside one card, **Welcome** and a
+  single **Sign in with Feishu** button (a link drawn as the primary button). When
+  Feishu sends someone back unsigned, the card says why in one line — not part of
+  this organization, took too long, or Feishu couldn't be reached — and the reason
+  leaves the address, so a reload starts clean. Turning back at Feishu returns here
+  silently.
 - **Sign out**: the power icon at the far right of the header.
 - **Connection pill**: absent while healthy; dot + "Refreshing… / Disconnected" with
   last time and **Reconnect**; offline turns into a full-width stale banner. **Refresh
