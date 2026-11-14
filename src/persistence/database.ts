@@ -30,9 +30,21 @@ export const CHANGES = 'kinmesh_changes';
 const RETRY = new Set(['40001', '40P01']);
 const MAX_ATTEMPTS = 20;
 
+/** PostgreSQL's SQLSTATE, which drizzle carries as the cause of its own error. */
 const codeOf = (error: unknown): string | undefined => {
-  const parsed = z.object({ code: z.string() }).safeParse(error);
-  return parsed.success ? parsed.data.code : undefined;
+  for (let at = error, depth = 0; at !== undefined && depth < 4; depth++) {
+    const parsed = z
+      .object({ code: z.string().optional(), cause: z.unknown().optional() })
+      .safeParse(at);
+    if (!parsed.success) return undefined;
+    if (
+      parsed.data.code !== undefined &&
+      /^[0-9A-Z]{5}$/.test(parsed.data.code)
+    )
+      return parsed.data.code;
+    at = parsed.data.cause;
+  }
+  return undefined;
 };
 
 /**
