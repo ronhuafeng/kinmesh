@@ -945,6 +945,8 @@ export function App() {
                     className="view-content"
                     data-switching={switching ? 'true' : undefined}
                     data-page={onPage ? 'true' : undefined}
+                    // A wide tablet keeps the board beside a task's page.
+                    data-beside={onBoardPage ? 'board' : undefined}
                   >
                     {/* A task, a new task, the Inbox, Settings or a hand-run
                       worker opens here, in place of the view. Unsent text
@@ -1064,6 +1066,7 @@ export function App() {
                           }}
                           openTask={openTask}
                           onNewTask={startNewTask}
+                          openId={focus?.kind === 'task' ? focus.id : null}
                         />
                       ) : (
                         <div className="empty">

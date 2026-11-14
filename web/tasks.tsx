@@ -1086,15 +1086,19 @@ export function TaskPage({
 function TaskCard({
   task,
   data,
+  open,
   onOpen,
 }: {
   task: Task;
   data: WorkspaceSnapshot;
+  /** Its page is open beside the board. */
+  open: boolean;
   onOpen: () => void;
 }) {
   const ask = humanAsk(task, data);
   return (
     <article
+      data-open={open ? 'true' : undefined}
       className="task-card"
       ref={(el) => {
         // Lets a status change travel between columns as one element.
@@ -1214,11 +1218,14 @@ export function Board({
   next,
   openTask,
   onNewTask,
+  openId = null,
 }: {
   data: WorkspaceSnapshot;
   next: () => void;
   openTask: (id: string) => void;
   onNewTask: () => void;
+  /** The task whose page is open, beside the board on a wide tablet. */
+  openId?: string | null;
 }) {
   const items = data.tasks.items;
   const [showCancelled, setShowCancelled] = useState(false);
@@ -1231,9 +1238,14 @@ export function Board({
     byStage.get(s.id)?.some((t) => humanAsk(t, data)),
   );
   const [column, setColumn] = useState<StageId>(firstAsk?.id ?? 'proposed');
+  // One stage at a time shows the stage of the task that is open.
+  const openStage = items.find((t) => t.id === openId)?.state.status;
+  useEffect(() => {
+    if (openStage) setColumn(stageOf(openStage));
+  }, [openStage]);
   return (
     <section aria-label="Task board">
-      {/* A phone shows one stage at a time. */}
+      {/* A narrow board shows one stage at a time. */}
       <div className="column-switcher" role="group" aria-label="Stages">
         {stages.map((s) => (
           <button
@@ -1270,6 +1282,7 @@ export function Board({
                   key={task.id}
                   task={task}
                   data={data}
+                  open={task.id === openId}
                   onOpen={() => {
                     openTask(task.id);
                   }}
