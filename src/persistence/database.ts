@@ -106,7 +106,8 @@ export async function openDatabase(url: string) {
      */
     listen: async (listener: () => void) => {
       const listening = await client.listen(CHANGES, listener);
-      return () => listening.unlisten();
+      // A store closing first has already stopped listening.
+      return () => listening.unlisten().catch(() => undefined);
     },
     /** Which database this is: its name and the identity it was created with. */
     identity: async () => {
