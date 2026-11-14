@@ -43,16 +43,17 @@ import { Reference } from '../domain/execution.js';
 import {
   actingMember,
   retainsExecutionResponsibility,
+  type Task,
 } from '../domain/tasks.js';
 
 const decode = (value: string): unknown => JSON.parse(value);
-/** The advisory lock claims take turns under (any fixed 64-bit key). */
 /**
  * `column` is one of `ids`, sent as one array: a worker serves any number of
  * agents, where a parameter each would meet PostgreSQL's limit.
  */
 const among = (column: AnyPgColumn, ids: readonly string[]) =>
   sql`${column} = any(${sql.param(ids)}::text[])`;
+/** The advisory lock claims take turns under (any fixed 64-bit key). */
 const CLAIM_LOCK = 0x6b696e6d657368n;
 export function inboxRepository(
   d: Database,
@@ -145,6 +146,71 @@ export function inboxRepository(
     if (changed.count !== 1) throw new IdentityError(409);
     await history(await get(id), reason);
   }
+  /**
+   * Whether the task still has this agent act on this delivery: it is the
+   * task's acting member, or the delivery woke it for the task and its run
+   * already reached T3, so the answer it owes is still its own. Publication
+   * and the cause of a block decide it alike.
+   */
+  async function actsOn(c: Claim, task: Task) {
+    const state = task.state;
+    const assigned = actingMember(state.status, state.owner, state.reviewer);
+    if (assigned?.kind === 'agent' && assigned.id === c.agentId) return true;
+    const row = await get(c.id);
+    const frozen =
+      row.launch === null ? null : FrozenLaunch.parse(decode(row.launch));
+    const fact = OutboxFact.parse(
+      decode(
+        (
+          await q()
+            .select()
+            .from(s.communicationOutbox)
+            .where(eq(s.communicationOutbox.id, c.eventId))
+            .limit(1)
+        )[0]?.fact ?? '',
+      ),
+    );
+    const recipient =
+      fact.kind !== 'task.changed'
+        ? null
+        : actingMember(fact.taskStatus, fact.owner, fact.reviewer);
+    const intent = inboxIntent(c.agentId, c.id);
+    const dispatched =
+      frozen !== null &&
+      (
+        await q()
+          .select({ id: s.executionOperations.id })
+          .from(s.executionOperations)
+          .where(
+            and(
+              eq(
+                s.executionOperations.scope,
+                executionScope(
+                  frozen.execution.endpoint,
+                  frozen.execution.environmentId,
+                ),
+              ),
+              eq(s.executionOperations.actor, intent.actor),
+              eq(s.executionOperations.operationKey, intent.operationKey),
+              eq(s.executionOperations.tool, 't3_thread_launch'),
+              inArray(s.executionOperations.phase, [
+                'dispatching',
+                'uncertain',
+                'known',
+              ]),
+            ),
+          )
+          .limit(1)
+      )[0] !== undefined;
+    return (
+      fact.kind === 'task.changed' &&
+      fact.taskId === task.id &&
+      recipient?.kind === 'agent' &&
+      recipient.id === c.agentId &&
+      dispatched &&
+      retainsExecutionResponsibility(task, c.agentId)
+    );
+  }
   async function authorized(c: Claim, p: Principal) {
     await owned(c);
     if (p.kind !== 'agent' || p.agentId !== c.agentId || p.teamId !== c.teamId)
@@ -160,65 +226,7 @@ export function inboxRepository(
     let task = null;
     if (c.taskId !== null) {
       task = await tasks.get(p, c.teamId, c.channelId, c.taskId);
-      const state = task.state;
-      const assigned = actingMember(state.status, state.owner, state.reviewer);
-      if (assigned?.kind !== 'agent' || assigned.id !== c.agentId) {
-        const row = await get(c.id);
-        const frozen =
-          row.launch === null ? null : FrozenLaunch.parse(decode(row.launch));
-        const fact = OutboxFact.parse(
-          decode(
-            (
-              await q()
-                .select()
-                .from(s.communicationOutbox)
-                .where(eq(s.communicationOutbox.id, c.eventId))
-                .limit(1)
-            )[0]?.fact ?? '',
-          ),
-        );
-        const recipient =
-          fact.kind !== 'task.changed'
-            ? null
-            : actingMember(fact.taskStatus, fact.owner, fact.reviewer);
-        const intent = inboxIntent(c.agentId, c.id);
-        const dispatched =
-          frozen !== null &&
-          (
-            await q()
-              .select({ id: s.executionOperations.id })
-              .from(s.executionOperations)
-              .where(
-                and(
-                  eq(
-                    s.executionOperations.scope,
-                    executionScope(
-                      frozen.execution.endpoint,
-                      frozen.execution.environmentId,
-                    ),
-                  ),
-                  eq(s.executionOperations.actor, intent.actor),
-                  eq(s.executionOperations.operationKey, intent.operationKey),
-                  eq(s.executionOperations.tool, 't3_thread_launch'),
-                  inArray(s.executionOperations.phase, [
-                    'dispatching',
-                    'uncertain',
-                    'known',
-                  ]),
-                ),
-              )
-              .limit(1)
-          )[0] !== undefined;
-        if (
-          fact.kind !== 'task.changed' ||
-          fact.taskId !== task.id ||
-          recipient?.kind !== 'agent' ||
-          recipient.id !== c.agentId ||
-          !dispatched ||
-          !retainsExecutionResponsibility(task, c.agentId)
-        )
-          throw new IdentityError(403);
-      }
+      if (!(await actsOn(c, task))) throw new IdentityError(403);
     }
     return { profile, channel, task, principal: p };
   }
@@ -639,9 +647,14 @@ export function inboxRepository(
           .limit(1)
       )[0];
       if (joined?.state !== 'joined') return 'not-in-channel';
-      return c.taskId !== null
-        ? 'not-assigned'
-        : 'authority-or-contract-blocked';
+      if (c.taskId !== null)
+        try {
+          const task = await tasks.get(p, c.teamId, c.channelId, c.taskId);
+          if (!(await actsOn(c, task))) return 'not-assigned';
+        } catch {
+          // A task the agent can no longer read explains nothing more here.
+        }
+      return 'authority-or-contract-blocked';
     },
     // Operator-local recovery; people use resumeByPerson. Neither mints a new native operation key.
     async resume(id: string) {

@@ -112,6 +112,21 @@ export async function assistantResult(
   }
   return { kind: 'waiting', reason: 'history-page-bound' };
 }
+/** T3 answers from another environment than the one the agent was connected to. */
+class EnvironmentChanged extends Error {
+  override readonly name = 'EnvironmentChanged';
+}
+/**
+ * What T3's refusal says a person can fix: access, or the model the agent
+ * runs. A conflict or rejected input names neither, so it stays unexplained.
+ */
+function nativeCause(failure: ExecutionFailure): BlockedReason {
+  if (['permission', 'authentication'].includes(failure.kind))
+    return 'native-access';
+  return failure.kind === 'incompatible'
+    ? 'native-incompatible'
+    : 'authority-or-contract-blocked';
+}
 export async function deliver(
   store: Store,
   claim: Claim,
@@ -142,11 +157,10 @@ export async function deliver(
     stage = 'connect';
     handle = await factory(binding, profile, signal);
     signal.throwIfAborted();
-    if (
-      handle.identity.endpoint !== binding.t3Endpoint ||
-      handle.identity.environmentId !== preferences.environmentId
-    )
+    if (handle.identity.endpoint !== binding.t3Endpoint)
       throw new ExecutionFailure('incompatible');
+    if (handle.identity.environmentId !== preferences.environmentId)
+      throw new EnvironmentChanged();
     const frozen = await store.inbox.freeze(
       claim,
       principal,
@@ -223,6 +237,7 @@ export async function deliver(
     );
   } catch (error) {
     const blocked =
+      error instanceof EnvironmentChanged ||
       (error instanceof IdentityError && error.statusCode !== 409) ||
       (error instanceof ExecutionFailure &&
         [
@@ -234,13 +249,13 @@ export async function deliver(
         ].includes(error.kind));
     try {
       const reason: DeliveryReason | BlockedReason = blocked
-        ? error instanceof ExecutionFailure
-          ? ['permission', 'authentication'].includes(error.kind)
-            ? 'native-access'
-            : 'native-incompatible'
-          : await store.inbox.blockedCause(claim, () =>
-              loadAgentToken(binding.tokenFile),
-            )
+        ? error instanceof EnvironmentChanged
+          ? 'environment-changed'
+          : error instanceof ExecutionFailure
+            ? nativeCause(error)
+            : await store.inbox.blockedCause(claim, () =>
+                loadAgentToken(binding.tokenFile),
+              )
         : stopping.aborted
           ? 'worker-stopping'
           : 'temporarily-unavailable';

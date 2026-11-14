@@ -33,6 +33,7 @@ export const BlockedReason = z.enum([
   'not-assigned',
   'native-access',
   'native-incompatible',
+  'environment-changed',
   'authority-or-contract-blocked',
 ]);
 export type BlockedReason = z.infer<typeof BlockedReason>;
@@ -71,8 +72,14 @@ export const inboxIntent = (agentId: string, deliveryId: string): Intent => ({
 /** What an agent's grant must hold for a delivery to run and publish. */
 export const deliveryScopes = (hasTask: boolean): Scope[] =>
   hasTask
-    ? ['executions:write', 'channels:write', 'tasks:write']
-    : ['executions:write', 'channels:write'];
+    ? [
+        'executions:write',
+        'channels:read',
+        'channels:write',
+        'tasks:read',
+        'tasks:write',
+      ]
+    : ['executions:write', 'channels:read', 'channels:write'];
 export const Delivery = z.object({
   position: z.number().int().positive(),
   id: z.uuid(),
