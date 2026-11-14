@@ -88,7 +88,7 @@ export interface ReleaseStage {
   context?: z.infer<typeof LiveContext>;
   env: Record<string, string>;
 }
-export function releasePlanFromEnvironment(env: NodeJS.ProcessEnv) {
+export async function releasePlanFromEnvironment(env: NodeJS.ProcessEnv) {
   if (env.KINMESH_RELEASE_LIVE !== '1' || !env.KINMESH_RELEASE_CONFIG)
     throw new Error(
       'Explicit aggregate opt-in and private release configuration required',
