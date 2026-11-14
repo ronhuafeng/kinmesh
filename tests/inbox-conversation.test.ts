@@ -4,7 +4,7 @@ import { z } from 'zod';
 import { deliver } from '../src/inbox/worker.js';
 import { assistantRead, due, inboxFixture } from './inbox-helpers.js';
 import { key, postInput } from './communication-helpers.js';
-import { launched } from './t3-helpers.js';
+import { envelope, launched } from './t3-helpers.js';
 import { MessageId, type TopicId } from '../src/domain/communication.js';
 import { rawDatabase } from './raw.js';
 
@@ -250,6 +250,95 @@ await test('each topic is its own conversation; the channel outside topics is an
     assert.equal((await attempt(f)).state, 'acked');
     assert.equal(calls(f, 't3_thread_launch').length, 3);
     assert.equal(calls(f, 't3_thread_send').length, 1);
+  } finally {
+    await f.dispose();
+  }
+});
+
+/** T3 after someone deleted the first thread: it answers only for a new one. */
+function deleteFirstThread(f: Fixture) {
+  const NEW_THREAD = 'fixture-new-thread';
+  const gone = {
+    isError: true,
+    content: [
+      {
+        type: 'text',
+        text: JSON.stringify({
+          _tag: 'OrchestratorMcpFailure',
+          code: 'thread_not_found',
+          message: 'Thread is no longer available.',
+        }),
+      },
+    ],
+  };
+  f.wire.handler = (name, args) => {
+    if (name !== 't3_thread_launch' && args.threadId === launched.threadId)
+      return Promise.resolve(gone);
+    const value = Args.parse(f.wire.values[name]);
+    const thread = Args.parse(value.thread ?? {});
+    return Promise.resolve(
+      envelope(
+        name === 't3_thread_read'
+          ? { ...value, thread: { ...thread, threadId: NEW_THREAD } }
+          : { ...value, threadId: NEW_THREAD },
+      ),
+    );
+  };
+  return NEW_THREAD;
+}
+
+await test('a thread deleted in T3 ends its conversation: the next message starts a new one', async () => {
+  const f = await inboxFixture();
+  try {
+    await mention(f);
+    f.wire.values.t3_thread_read = assistantRead('First');
+    assert.equal((await attempt(f)).state, 'acked');
+
+    const newThread = deleteFirstThread(f);
+    f.wire.values.t3_thread_read = assistantRead('In a new thread');
+    await mention(f);
+    const second = await attempt(f);
+    assert.equal(second.state, 'acked', second.reason);
+    // T3 refused the send to the deleted thread; the message started a new
+    // thread, with the rules a first turn carries.
+    assert.equal(calls(f, 't3_thread_send').length, 1);
+    const launches = calls(f, 't3_thread_launch');
+    assert.equal(launches.length, 2);
+    assert.match(
+      String(launches[1]?.message),
+      /^You are .+, an agent in the Kinmesh channel #/,
+    );
+    const reply = await f.comm.message(
+      f.principal,
+      f.teamId,
+      f.channelId,
+      MessageId.parse(second.resultMessageId),
+    );
+    assert.equal(reply.body, 'In a new thread');
+
+    // The conversation continues in the new thread.
+    await mention(f);
+    assert.equal((await attempt(f)).state, 'acked');
+    assert.equal(calls(f, 't3_thread_launch').length, 2);
+    assert.equal(calls(f, 't3_thread_send').at(-1)?.threadId, newThread);
+  } finally {
+    await f.dispose();
+  }
+});
+
+await test('a run whose thread is deleted in T3 ends with a stopped notice', async () => {
+  const f = await inboxFixture();
+  try {
+    await mention(f);
+    f.wire.values.t3_thread_read = thread([
+      { runId: RUN, status: 'waiting', position: 0 },
+    ]);
+    assert.equal((await attempt(f)).state, 'waiting');
+
+    deleteFirstThread(f);
+    const ended = await attempt(f);
+    assert.equal(ended.state, 'acked', ended.reason);
+    assert.equal(ended.reason, 'native-terminal-notice-published');
   } finally {
     await f.dispose();
   }

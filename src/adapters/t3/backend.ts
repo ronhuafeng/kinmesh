@@ -40,6 +40,9 @@ const ranking = [
   'auto',
   'full-access',
 ];
+/** What a journaled refusal is when it is replayed. */
+const rejection = (kind: string | null) =>
+  kind === 'authentication' || kind === 'gone' ? kind : 'permission';
 export interface BackendOptions {
   endpoint: string;
   expectedEnvironmentId: string;
@@ -184,9 +187,7 @@ export class T3Backend implements ExecutionBackend {
         reference: Reference.parse(JSON.parse(row.reference ?? '')),
       };
     if (row.phase === 'rejected')
-      throw new ExecutionFailure(
-        row.rejection === 'authentication' ? 'authentication' : 'permission',
-      );
+      throw new ExecutionFailure(rejection(row.rejection));
     // Normal dispatch never replays an uncertain intent; explicit reconciliation owns recovery.
     if (row.phase !== 'prepared')
       return { kind: 'uncertain', operationId: row.id, reason: 'in-flight' };
@@ -277,7 +278,9 @@ export class T3Backend implements ExecutionBackend {
       if (
         !effectReturned &&
         error instanceof ExecutionFailure &&
-        (error.kind === 'permission' || error.kind === 'authentication')
+        (error.kind === 'permission' ||
+          error.kind === 'authentication' ||
+          error.kind === 'gone')
       ) {
         if (!(await this.journal.rejected(row, error.kind)))
           return this.fenced(row.id);
@@ -326,9 +329,7 @@ export class T3Backend implements ExecutionBackend {
       this.options.authority,
     );
     if (row.phase === 'rejected')
-      throw new ExecutionFailure(
-        row.rejection === 'authentication' ? 'authentication' : 'permission',
-      );
+      throw new ExecutionFailure(rejection(row.rejection));
     if (row.phase === 'known') {
       const reference = Reference.parse(JSON.parse(row.reference ?? ''));
       await this.read(reference, undefined, signal);

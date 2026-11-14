@@ -78,7 +78,9 @@ export type FailureKind =
   | 'incompatible'
   | 'invalid-input'
   | 'cancelled'
-  | 'conflict';
+  | 'conflict'
+  /** The thread no longer exists in T3; nothing was done in it. */
+  | 'gone';
 export class ExecutionFailure extends Error {
   override readonly name = 'ExecutionFailure';
   constructor(readonly kind: FailureKind) {

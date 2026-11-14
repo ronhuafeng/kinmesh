@@ -1,9 +1,11 @@
 import { setTimeout as delay } from 'node:timers/promises';
 import type { Store } from '../persistence/store.js';
 import { loadAgentToken } from '../team-mcp/client.js';
+import type { z } from 'zod';
 import {
   ExecutionFailure,
   Reference,
+  type Dispatch,
   type ExecutionBackend,
   type Observation,
 } from '../domain/execution.js';
@@ -191,30 +193,31 @@ export async function deliver(
       JSON.stringify(previous.model) === JSON.stringify(model)
         ? previous.conversation
         : undefined;
-    const frozen = await store.inbox
-      .freeze(
-        claim,
-        principal,
-        FrozenLaunch.parse({
-          execution: handle.identity,
-          grantId: principal.kind === 'agent' ? principal.grantId : '',
-          input: {
-            target: { kind: 'scratch' },
-            title: (
-              `Kinmesh: ${profile.name} in #${context.channelName}` +
-              (context.topic === null ? '' : ` / ${context.topic}`)
-            ).slice(0, 200),
-            mode: 'approval-required',
-            model,
-            message: wakePrompt(
-              context,
-              profile.name,
-              conversation === undefined,
-            ),
-          },
-          ...(conversation === undefined ? {} : { conversation }),
-        }),
-      )
+    const execution = handle.identity;
+    const launch = (
+      conversation: z.infer<typeof FrozenLaunch>['conversation'],
+    ) =>
+      FrozenLaunch.parse({
+        execution,
+        grantId: principal.kind === 'agent' ? principal.grantId : '',
+        input: {
+          target: { kind: 'scratch' },
+          title: (
+            `Kinmesh: ${profile.name} in #${context.channelName}` +
+            (context.topic === null ? '' : ` / ${context.topic}`)
+          ).slice(0, 200),
+          mode: 'approval-required',
+          model,
+          message: wakePrompt(
+            context,
+            profile.name,
+            conversation === undefined,
+          ),
+        },
+        ...(conversation === undefined ? {} : { conversation }),
+      });
+    let frozen = await store.inbox
+      .freeze(claim, principal, launch(conversation))
       .catch(async (error: unknown) => {
         // A run T3 may already have stays pinned to the credential and T3
         // authority it started under; after a reconnect it cannot publish.
@@ -253,22 +256,35 @@ export async function deliver(
       if (row.operationId === null) await store.inbox.launching(claim);
       // A message to a busy thread steers its running turn instead of
       // waiting behind it.
-      const dispatch =
-        row.operationId !== null
-          ? await handle.backend.reconcile(intent, row.operationId, signal)
-          : frozen.conversation === undefined
-            ? await handle.backend.launch(frozen.input, intent, signal)
-            : await handle.backend.send(
-                {
-                  backend: 't3',
-                  environmentId: preferences.environmentId,
-                  threadId: frozen.conversation.threadId,
-                },
-                frozen.input.message ?? '',
-                intent,
-                signal,
-                'auto',
-              );
+      let dispatch: Dispatch;
+      try {
+        dispatch =
+          row.operationId !== null
+            ? await handle.backend.reconcile(intent, row.operationId, signal)
+            : frozen.conversation === undefined
+              ? await handle.backend.launch(frozen.input, intent, signal)
+              : await handle.backend.send(
+                  {
+                    backend: 't3',
+                    environmentId: preferences.environmentId,
+                    threadId: frozen.conversation.threadId,
+                  },
+                  frozen.input.message ?? '',
+                  intent,
+                  signal,
+                  'auto',
+                );
+      } catch (error) {
+        // Someone deleted the conversation's thread in T3: the message
+        // starts a new one.
+        if (
+          frozen.conversation === undefined ||
+          !(error instanceof ExecutionFailure && error.kind === 'gone')
+        )
+          throw error;
+        frozen = await store.inbox.restart(claim, principal, launch(undefined));
+        dispatch = await handle.backend.launch(frozen.input, intent, signal);
+      }
       if (dispatch.kind === 'uncertain') {
         await store.inbox.remember(claim, {
           operationId: dispatch.operationId,
@@ -293,7 +309,23 @@ export async function deliver(
       frozen.input.model,
       signal,
       frozen.conversation?.afterPosition ?? undefined,
-    );
+    ).catch((error: unknown) => {
+      // Its thread was deleted in T3, and the run with it.
+      if (
+        error instanceof ExecutionFailure &&
+        error.kind === 'gone' &&
+        reference.runId !== undefined
+      )
+        return {
+          kind: 'terminal-notice' as const,
+          notice: NativeTerminalNotice.parse({
+            kind: 'native-terminal-no-assistant',
+            reference,
+            state: 'stopped',
+          }),
+        };
+      throw error;
+    });
     if ('reason' in result) {
       await store.inbox.defer(claim, result.kind, result.reason);
       return;
