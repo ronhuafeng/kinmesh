@@ -224,10 +224,10 @@ await test('connecting an agent gives the hub’s worker a private credential th
     const tokenFile = agentTokenFile(f.directory, f.agent.id);
     assert.equal(mode(tokenFile), 0o600);
     const token = loadAgentToken(tokenFile);
-    const worker = f.store.agents.resolveToken(token);
+    const worker = await f.store.agents.resolveToken(token);
     assert.equal(worker.kind === 'agent' && worker.agentId, f.agent.id);
     assert.deepEqual(
-      f.store.agents.get(f.principal, f.teamId, f.agent.id).preferences,
+      (await f.store.agents.get(f.principal, f.teamId, f.agent.id)).preferences,
       {
         environmentId: 'env-live',
         providerId: 'isolated-dev',
@@ -236,7 +236,7 @@ await test('connecting an agent gives the hub’s worker a private credential th
     );
     // The worker serves it, and the workspace knows.
     assert.deepEqual(
-      managedBindings(f.store, f.directory).map((b) => [
+      (await managedBindings(f.store, f.directory)).map((b) => [
         b.agentId,
         b.isolatedProviderId,
         b.t3Endpoint,
@@ -252,7 +252,11 @@ await test('connecting an agent gives the hub’s worker a private credential th
       [[f.agent.id, 'isolated-dev']],
     );
     // The hub rotates by reconnecting; a browser rotation would strand the worker.
-    const managed = f.store.managed.binding(f.principal, f.teamId, f.agent.id);
+    const managed = await f.store.managed.binding(
+      f.principal,
+      f.teamId,
+      f.agent.id,
+    );
     assert.ok(managed);
     assert.equal(
       (
@@ -276,9 +280,13 @@ await test('connecting an agent gives the hub’s worker a private credential th
     const revoked = loadAgentToken(tokenFile);
     assert.throws(() => f.store.agents.resolveToken(revoked));
     await f.call('POST', f.agentPath + '/lifecycle', { lifecycle: 'active' });
-    assert.ok(f.store.agents.resolveToken(loadAgentToken(tokenFile)));
+    assert.ok(await f.store.agents.resolveToken(loadAgentToken(tokenFile)));
     // Revoking the worker credential from the list disconnects the agent.
-    const current = f.store.managed.binding(f.principal, f.teamId, f.agent.id);
+    const current = await f.store.managed.binding(
+      f.principal,
+      f.teamId,
+      f.agent.id,
+    );
     assert.ok(current);
     assert.equal(
       (await f.call('POST', `${f.agentPath}/grants/${current.grantId}/revoke`))
@@ -286,7 +294,7 @@ await test('connecting an agent gives the hub’s worker a private credential th
       204,
     );
     assert.equal(existsSync(tokenFile), false);
-    assert.deepEqual(managedBindings(f.store, f.directory), []);
+    assert.deepEqual(await managedBindings(f.store, f.directory), []);
     // Connect, then disconnect explicitly.
     assert.equal((await connect()).statusCode, 200);
     const last = loadAgentToken(tokenFile);
@@ -306,11 +314,16 @@ await test('connecting an agent gives the hub’s worker a private credential th
       400,
     );
     // A valid agent credential, with every scope it can hold, is still not an owner.
-    const valid = f.store.agents.issue(f.principal, f.teamId, f.agent.id, {
-      label: 'agent',
-      scopes: ['agents:read', 'channels:read', 'channels:write'],
-      lifetimeSeconds: 600,
-    });
+    const valid = await f.store.agents.issue(
+      f.principal,
+      f.teamId,
+      f.agent.id,
+      {
+        label: 'agent',
+        scopes: ['agents:read', 'channels:read', 'channels:write'],
+        lifetimeSeconds: 600,
+      },
+    );
     for (const [method, url] of [
       ['GET', f.team + '/t3'],
       ['POST', f.agentPath + '/disconnect'],
@@ -335,9 +348,9 @@ await test('connecting an agent gives the hub’s worker a private credential th
 await test('Team MCP presence is recorded per agent and shown as evidence', async () => {
   const f = await connectFixture();
   try {
-    const agent = f.store.agents.resolveToken(f.grant.token);
-    f.store.managed.seenByTeamMcp(agent);
-    f.store.managed.seenByTeamMcp(f.principal);
+    const agent = await f.store.agents.resolveToken(f.grant.token);
+    await f.store.managed.seenByTeamMcp(agent);
+    await f.store.managed.seenByTeamMcp(f.principal);
     const snapshot = WorkspaceSnapshot.parse(
       (await f.call('GET', '/api/workspace')).json<unknown>(),
     );
@@ -354,17 +367,23 @@ await test('the hub’s worker serves a connected agent without a restart and le
   const f = await inboxFixture();
   const stopping = new AbortController();
   try {
-    f.store.managed.saveConnection(f.principal, f.teamId, endpoint, 'env-live');
+    await f.store.managed.saveConnection(
+      f.principal,
+      f.teamId,
+      endpoint,
+      'env-live',
+    );
     const running = runWorker(
       f.store,
       { ...f.workerConfig, bindings: [], pollMs: 100 },
       f.factory,
       stopping.signal,
     );
-    const live = () => f.inbox.liveness(f.teamId).map((r) => r.agentId);
+    const live = async () =>
+      (await f.inbox.liveness(f.teamId)).map((r) => r.agentId);
     await delay(200);
-    assert.deepEqual(live(), []);
-    const { token } = f.store.managed.connect(
+    assert.deepEqual(await live(), []);
+    const { token } = await f.store.managed.connect(
       f.principal,
       f.teamId,
       f.agent.id,
@@ -373,10 +392,10 @@ await test('the hub’s worker serves a connected agent without a restart and le
     );
     writeAgentToken(managedDirectory(f.dbPath), f.agent.id, token);
     await delay(300);
-    assert.deepEqual(live(), [f.agent.id]);
-    f.store.managed.disconnect(f.principal, f.teamId, f.agent.id);
+    assert.deepEqual(await live(), [f.agent.id]);
+    await f.store.managed.disconnect(f.principal, f.teamId, f.agent.id);
     await delay(300);
-    assert.deepEqual(live(), []);
+    assert.deepEqual(await live(), []);
     stopping.abort();
     await running;
   } finally {

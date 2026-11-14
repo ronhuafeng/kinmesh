@@ -64,19 +64,19 @@ try {
   )
     throw new Error('Wrong fixture');
   store = openStore(config.database);
-  if (store.inbox.status().some((r) => r.count > 0))
+  if ((await store.inbox.status()).some((r) => r.count > 0))
     throw new Error('Fresh inbox required');
-  const principal = store.agents.resolveToken(
+  const principal = await store.agents.resolveToken(
     loadAgentToken(binding.tokenFile),
   );
-  const profile = store.agents.authorize(
+  const profile = await store.agents.authorize(
     principal,
     context.teamId,
     context.agentId,
     'executions:write',
   );
-  store.agents.teamAccess(principal, context.teamId, 'channels:write');
-  const initial = store.tasks.get(
+  await store.agents.teamAccess(principal, context.teamId, 'channels:write');
+  const initial = await store.tasks.get(
     principal,
     context.teamId,
     context.channelId,
@@ -98,7 +98,7 @@ try {
   });
   const nonce = 'INBOX_NATIVE_' + randomUUID();
   stage = 'mention-wake-and-result';
-  const source = store.communication.post(
+  const source = await store.communication.post(
     { kind: 'human', humanId: context.humanId },
     context.teamId,
     context.channelId,
@@ -116,15 +116,20 @@ try {
   );
   const deadline = Date.now() + 300000;
   // Source event ID is resolved through an authorized bounded page in this fresh disposable channel.
-  const event = store.communication
-    .events(principal, context.teamId, context.channelId, { limit: 100 })
-    .items.find((e) => e.fact.messageId === source.id);
+  const event = (
+    await store.communication.events(
+      principal,
+      context.teamId,
+      context.channelId,
+      { limit: 100 },
+    )
+  ).items.find((e) => e.fact.messageId === source.id);
   if (!event) throw new Error('Missing source event');
   // The trusted worker claim is observed locally; identity is still independently checked via Team MCP below.
-  deliveryId = store.inbox.find(event.fact.id, context.agentId)?.id;
+  deliveryId = (await store.inbox.find(event.fact.id, context.agentId))?.id;
   if (!deliveryId) throw new Error('Missing durable delivery');
   while (Date.now() < deadline) {
-    const delivery = store.inbox.get(deliveryId);
+    const delivery = await store.inbox.get(deliveryId);
     if (delivery.state === 'acked') break;
     if (
       delivery.state === 'blocked' ||
@@ -135,7 +140,7 @@ try {
     await delay(1000);
   }
   if (!deliveryId) throw new Error('Native result not published');
-  const row = store.inbox.get(deliveryId);
+  const row = await store.inbox.get(deliveryId);
   if (
     row.state !== 'acked' ||
     row.eventId !== event.fact.id ||
@@ -180,11 +185,13 @@ try {
   )
     throw new Error('Incorrect delivery');
   if (
-    store.tasks.get(
-      principal,
-      context.teamId,
-      context.channelId,
-      context.taskId,
+    (
+      await store.tasks.get(
+        principal,
+        context.teamId,
+        context.channelId,
+        context.taskId,
+      )
     ).state.status !== 'proposed'
   )
     throw new Error('Task acceptance changed');
@@ -228,7 +235,7 @@ try {
   }
   // A failed/uncertain launch can need operator inspection. Never delete its durable intent or claim cleanup success.
   if (deliveryId && store && !reference) {
-    const row = store.inbox.get(deliveryId);
+    const row = await store.inbox.get(deliveryId);
     if (row.reference) reference = Reference.parse(JSON.parse(row.reference));
     else if (row.launch !== null) {
       console.error(
@@ -268,5 +275,5 @@ try {
     }
   }
   await Promise.allSettled([wire?.close(), handle?.close(), client?.close()]);
-  store?.close();
+  await store?.close();
 }

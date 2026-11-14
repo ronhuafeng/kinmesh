@@ -66,11 +66,11 @@ function failure(error: unknown): z.infer<typeof Failure> {
   }
   return { code: 'internal', message: 'Operation failed' };
 }
-export function agentPrincipal(
+export async function agentPrincipal(
   store: Store,
   authorization: string | undefined,
 ) {
-  const principal = resolvePrincipal(store, authorization, undefined);
+  const principal = await resolvePrincipal(store, authorization, undefined);
   if (principal.kind !== 'agent') throw new IdentityError(401);
   return principal;
 }
@@ -89,7 +89,7 @@ export function teamServer(store: Store, authorization: string) {
     run: (
       p: Extract<Principal, { kind: 'agent' }>,
       data: z.output<z.ZodObject<S>>,
-    ) => unknown,
+    ) => Promise<unknown>,
   ) {
     const schema = outcome(output);
     server.registerTool<typeof schema, typeof input>(
@@ -105,12 +105,12 @@ export function teamServer(store: Store, authorization: string) {
           openWorldHint: false,
         },
       },
-      (args) => {
+      async (args) => {
         // Validate output separately: corrupt stored data is never reported as bad caller input.
         let value: unknown;
         try {
-          const p = agentPrincipal(store, authorization);
-          value = run(p, input.parse(args));
+          const p = await agentPrincipal(store, authorization);
+          value = await run(p, input.parse(args));
         } catch (error) {
           const result = schema.parse({
             result: { ok: false, error: failure(error) },

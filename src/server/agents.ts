@@ -26,12 +26,12 @@ export function registerAgents(
   directory: string,
 ) {
   const base = '/api/teams/:teamId/agents';
-  app.post(base, (request, reply) => {
+  app.post(base, async (request, reply) => {
     const { teamId } = TeamPath.parse(request.params);
     return reply
       .code(201)
       .send(
-        store.agents.create(
+        await store.agents.create(
           principal(request),
           teamId,
           ProfileInput.parse(request.body),
@@ -75,14 +75,18 @@ export function registerAgents(
       request.body,
     );
   });
-  app.delete(base + '/:agentId/avatar', (request, reply) => {
+  app.delete(base + '/:agentId/avatar', async (request, reply) => {
     const { teamId, agentId } = AgentPath.parse(request.params);
-    store.agents.removeAvatar(principal(request), teamId, agentId);
+    await store.agents.removeAvatar(principal(request), teamId, agentId);
     return reply.code(204).send();
   });
-  app.get(base + '/:agentId/avatar', (request, reply) => {
+  app.get(base + '/:agentId/avatar', async (request, reply) => {
     const { teamId, agentId } = AgentPath.parse(request.params);
-    const image = store.agents.avatar(principal(request), teamId, agentId);
+    const image = await store.agents.avatar(
+      principal(request),
+      teamId,
+      agentId,
+    );
     if (image === null) throw new IdentityError(404);
     return reply
       .header('content-type', image.mime)
@@ -91,19 +95,21 @@ export function registerAgents(
       .header('content-security-policy', "default-src 'none'; sandbox")
       .send(image.bytes);
   });
-  app.post(base + '/:agentId/lifecycle', (request) => {
+  app.post(base + '/:agentId/lifecycle', async (request) => {
     const { teamId, agentId } = AgentPath.parse(request.params);
     const { lifecycle } = z
       .strictObject({ lifecycle: z.enum(['active', 'disabled']) })
       .parse(request.body);
     const p = principal(request);
-    const agent = store.agents.lifecycle(p, teamId, agentId, lifecycle);
+    const agent = await store.agents.lifecycle(p, teamId, agentId, lifecycle);
     // Disabling revoked every credential; re-enabling a connected agent
     // gives its worker a fresh one so it can be woken again.
     const managed =
-      lifecycle === 'active' ? store.managed.binding(p, teamId, agentId) : null;
+      lifecycle === 'active'
+        ? await store.managed.binding(p, teamId, agentId)
+        : null;
     if (managed === null || agent.preferences.modelId === null) return agent;
-    const { token } = store.managed.connect(
+    const { token } = await store.managed.connect(
       p,
       teamId,
       agentId,
@@ -114,21 +120,25 @@ export function registerAgents(
     return store.agents.get(p, teamId, agentId);
   });
   /** An agent's credentials, never a hash or secret, and their revision. */
-  const grants = (caller: Principal, teamId: TeamId, agentId: AgentId) => {
-    const listed = store.agents.grants(caller, teamId, agentId);
+  const grants = async (
+    caller: Principal,
+    teamId: TeamId,
+    agentId: AgentId,
+  ) => {
+    const listed = await store.agents.grants(caller, teamId, agentId);
     return { grants: listed, revision: fingerprint(listed) };
   };
   app.get(base + '/:agentId/grants', (request) => {
     const { teamId, agentId } = AgentPath.parse(request.params);
     return grants(principal(request), teamId, agentId);
   });
-  app.post(base + '/:agentId/grants', (request, reply) => {
+  app.post(base + '/:agentId/grants', async (request, reply) => {
     const { teamId, agentId } = AgentPath.parse(request.params);
     return reply
       .header('Cache-Control', 'no-store')
       .code(201)
       .send(
-        store.agents.issue(
+        await store.agents.issue(
           principal(request),
           teamId,
           agentId,
@@ -136,46 +146,52 @@ export function registerAgents(
         ),
       );
   });
-  app.post(base + '/:agentId/grants/:grantId/revoke', (request, reply) => {
-    const { teamId, agentId, grantId } = GrantPath.parse(request.params);
-    store.agents.revoke(principal(request), teamId, agentId, grantId);
-    // Revoking the managed worker credential disconnects the agent.
-    if (store.managed.forgetGrant(teamId, agentId, grantId))
-      removeAgentToken(directory, agentId);
-    return reply.code(204).send();
-  });
-  app.post(base + '/:agentId/grants/:grantId/rotate', (request, reply) => {
-    const { teamId, agentId, grantId } = GrantPath.parse(request.params);
-    // The hub rotates its own worker credential by reconnecting; a rotated
-    // token shown in the browser would never reach the worker.
-    if (
-      store.managed.binding(principal(request), teamId, agentId)?.grantId ===
-      grantId
-    )
-      throw new IdentityError(409);
-    return reply
-      .header('Cache-Control', 'no-store')
-      .code(201)
-      .send(
-        store.agents.rotate(
-          principal(request),
-          teamId,
-          agentId,
-          grantId,
-          GrantInput.parse(request.body),
-        ),
-      );
-  });
+  app.post(
+    base + '/:agentId/grants/:grantId/revoke',
+    async (request, reply) => {
+      const { teamId, agentId, grantId } = GrantPath.parse(request.params);
+      await store.agents.revoke(principal(request), teamId, agentId, grantId);
+      // Revoking the managed worker credential disconnects the agent.
+      if (await store.managed.forgetGrant(teamId, agentId, grantId))
+        removeAgentToken(directory, agentId);
+      return reply.code(204).send();
+    },
+  );
+  app.post(
+    base + '/:agentId/grants/:grantId/rotate',
+    async (request, reply) => {
+      const { teamId, agentId, grantId } = GrantPath.parse(request.params);
+      // The hub rotates its own worker credential by reconnecting; a rotated
+      // token shown in the browser would never reach the worker.
+      if (
+        (await store.managed.binding(principal(request), teamId, agentId))
+          ?.grantId === grantId
+      )
+        throw new IdentityError(409);
+      return reply
+        .header('Cache-Control', 'no-store')
+        .code(201)
+        .send(
+          await store.agents.rotate(
+            principal(request),
+            teamId,
+            agentId,
+            grantId,
+            GrantInput.parse(request.body),
+          ),
+        );
+    },
+  );
   app.get(base + '/:agentId/audit', (request) => {
     const { teamId, agentId } = AgentPath.parse(request.params);
     return store.agents.audit(principal(request), teamId, agentId);
   });
-  app.post(base + '/:agentId/executions', (request, reply) => {
+  app.post(base + '/:agentId/executions', async (request, reply) => {
     const { teamId, agentId } = AgentPath.parse(request.params);
     return reply
       .code(201)
       .send(
-        store.agents.correlate(
+        await store.agents.correlate(
           principal(request),
           teamId,
           agentId,
@@ -189,14 +205,14 @@ export function registerAgents(
   });
   app.post(
     base + '/:agentId/executions/:executionId/events',
-    (request, reply) => {
+    async (request, reply) => {
       const { teamId, agentId, executionId } = ExecutionPath.parse(
         request.params,
       );
       return reply
         .code(201)
         .send(
-          store.agents.runtimeEvent(
+          await store.agents.runtimeEvent(
             principal(request),
             teamId,
             agentId,

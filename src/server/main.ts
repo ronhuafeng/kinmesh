@@ -35,7 +35,10 @@ try {
   store = openStore(config.database);
   // Agents connected from the workspace need the hub's worker even without
   // an operator configuration; with none, no worker runs.
-  if (supervisor === undefined && store.managed.workerBindings().length > 0)
+  if (
+    supervisor === undefined &&
+    (await store.managed.workerBindings()).length > 0
+  )
     supervisor = new InboxSupervisor(undefined, config.database, fatal);
   let starting: Promise<void> | undefined;
   const ensureWorker = () => {
@@ -93,6 +96,6 @@ try {
     reportFailure('hub_shutdown_failed', error);
     process.exitCode = 1;
   } finally {
-    store?.close();
+    await store?.close();
   }
 }

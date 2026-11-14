@@ -16,7 +16,7 @@ import {
   communicationFixture,
 } from './communication-helpers.js';
 
-await test('populated #1–#3 upgrade preserves identity/grant and backfills general owner membership without enrolling other members/agents', () => {
+await test('populated #1–#3 upgrade preserves identity/grant and backfills general owner membership without enrolling other members/agents', async () => {
   const f = fixture();
   const humanId = HumanId.parse(randomUUID()),
     memberId = HumanId.parse(randomUUID()),
@@ -57,32 +57,43 @@ await test('populated #1–#3 upgrade preserves identity/grant and backfills gen
   let store = f.open();
   try {
     assert.equal(
-      store.communication.channels(p, teamId).items[0]?.id,
+      (await store.communication.channels(p, teamId)).items[0]?.id,
       channelId,
     );
-    assert.equal(store.teamFor(humanId)?.channels[0]?.id, channelId);
+    assert.equal((await store.teamFor(humanId))?.channels[0]?.id, channelId);
     assert.equal(
-      store.communication.channels({ kind: 'human', humanId: memberId }, teamId)
-        .items.length,
-      0,
-    );
-    assert.equal(
-      store.communication.channels(
-        store.agents.resolveToken(grant.token),
-        teamId,
+      (
+        await store.communication.channels(
+          { kind: 'human', humanId: memberId },
+          teamId,
+        )
       ).items.length,
       0,
     );
-    const message = store.communication.post(p, teamId, channelId, postInput());
-    store.close();
+    assert.equal(
+      (
+        await store.communication.channels(
+          await store.agents.resolveToken(grant.token),
+          teamId,
+        )
+      ).items.length,
+      0,
+    );
+    const message = await store.communication.post(
+      p,
+      teamId,
+      channelId,
+      postInput(),
+    );
+    await store.close();
     store = f.open();
     assert.equal(
-      store.communication.history(p, teamId, channelId).items[0]?.id,
+      (await store.communication.history(p, teamId, channelId)).items[0]?.id,
       message.id,
     );
-    assert.equal(store.agents.get(p, teamId, agent.id).id, agent.id);
+    assert.equal((await store.agents.get(p, teamId, agent.id)).id, agent.id);
   } finally {
-    store.close();
+    await store.close();
     f.cleanup();
   }
 });
@@ -92,12 +103,12 @@ await test('communication SQL constraints and immutable facts prevent cross-chan
   const raw = new Database(f.dbPath);
   raw.pragma('foreign_keys = ON');
   try {
-    f.invite();
-    const topic = f.comm.createTopic(f.principal, f.teamId, f.channelId, {
+    await f.invite();
+    const topic = await f.comm.createTopic(f.principal, f.teamId, f.channelId, {
       operationKey: key(),
       title: 'One',
     });
-    f.comm.post(
+    await f.comm.post(
       f.principal,
       f.teamId,
       f.channelId,
@@ -106,7 +117,7 @@ await test('communication SQL constraints and immutable facts prevent cross-chan
         mentions: [{ kind: 'agent', id: f.agent.id }],
       }),
     );
-    const other = f.comm.createChannel(f.principal, f.teamId, {
+    const other = await f.comm.createChannel(f.principal, f.teamId, {
       operationKey: key(),
       name: 'Other',
     });

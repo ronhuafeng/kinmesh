@@ -75,8 +75,8 @@ await test('MOCK F1: two independent SQLite connections reconciling uncertain la
   } finally {
     gate.resolve(undefined);
     await Promise.allSettled(pending);
-    second.close();
-    f.dispose();
+    await second.close();
+    await f.dispose();
   }
 });
 await test('MOCK F1: reconciliation cannot resend while initial dispatch holds an active durable claim', async () => {
@@ -112,8 +112,8 @@ await test('MOCK F1: reconciliation cannot resend while initial dispatch holds a
   } finally {
     gate.resolve(undefined);
     await Promise.allSettled(pending);
-    second.close();
-    f.dispose();
+    await second.close();
+    await f.dispose();
   }
 });
 await test('MOCK F1: crashed dispatch lease survives reopen, blocks until expiry and recovers with exact persisted key', async () => {
@@ -123,7 +123,7 @@ await test('MOCK F1: crashed dispatch lease survives reopen, blocks until expiry
     const scope = createHash('sha256')
       .update(JSON.stringify([options.endpoint, reference.environmentId]))
       .digest('hex');
-    const row = f.store.operations.prepare(
+    const row = await f.store.operations.prepare(
       scope,
       intent,
       't3_thread_launch',
@@ -140,8 +140,8 @@ await test('MOCK F1: crashed dispatch lease survives reopen, blocks until expiry
       },
       options.authority,
     );
-    assert.ok(f.store.operations.claim(row.id));
-    f.store.close();
+    assert.ok(await f.store.operations.claim(row.id));
+    await f.store.close();
     reopened = f.open();
     const wire = new MockWire();
     const backend = await T3Backend.connect(wire, reopened.operations, options);
@@ -161,8 +161,8 @@ await test('MOCK F1: crashed dispatch lease survives reopen, blocks until expiry
     assert.equal(outbound(wire).length, 1);
     assert.equal(outbound(wire)[0]?.args.clientRequestId, row.requestId);
   } finally {
-    reopened?.close();
-    f.dispose();
+    await reopened?.close();
+    await f.dispose();
   }
 });
 
@@ -191,55 +191,65 @@ await test('MOCK F1: every journal write fences expired and superseded owners; t
     const f = await backendFixture();
     const second = f.open();
     try {
-      const row = prepared(f);
-      const first = f.store.operations.claim(row.id);
+      const row = await prepared(f);
+      const first = await f.store.operations.claim(row.id);
       assert.ok(first);
       assert.equal(first.leaseUntil > Date.now() + 60_000, true);
       expire(f.path, row.id);
-      const staleWrites = () => {
-        assert.equal(f.store.operations.owned(first), false);
-        assert.equal(f.store.operations.remember(first, reference), false);
-        assert.equal(f.store.operations.known(first, reference), false);
-        assert.equal(f.store.operations.rejected(first, 'permission'), false);
-        assert.equal(f.store.operations.uncertain(first), false);
+      const staleWrites = async () => {
+        assert.equal(await f.store.operations.owned(first), false);
+        assert.equal(
+          await f.store.operations.remember(first, reference),
+          false,
+        );
+        assert.equal(await f.store.operations.known(first, reference), false);
+        assert.equal(
+          await f.store.operations.rejected(first, 'permission'),
+          false,
+        );
+        assert.equal(await f.store.operations.uncertain(first), false);
       };
-      staleWrites();
+      await staleWrites();
       assert.equal(
-        second.operations.claim(row.id),
+        await second.operations.claim(row.id),
         undefined,
         'Normal dispatch cannot recover an expired attempt',
       );
-      const next = second.operations.claim(row.id, true);
+      const next = await second.operations.claim(row.id, true);
       assert.ok(next);
       assert.equal(next.generation, first.generation + 1);
       assert.notEqual(next.claimToken, first.claimToken);
       assert.equal(next.requestId, first.requestId);
-      staleWrites();
-      assert.equal(f.store.operations.claim(row.id, true), undefined);
+      await staleWrites();
+      assert.equal(await f.store.operations.claim(row.id, true), undefined);
       if (terminal === 'known')
-        assert.equal(second.operations.known(next, reference), true);
-      else assert.equal(second.operations.rejected(next, 'permission'), true);
-      staleWrites();
-      assert.equal(second.operations.uncertain(next), false);
-      assert.equal(f.store.operations.claim(row.id, true), undefined);
-      assert.equal(second.operations.get(row.id).phase, terminal);
+        assert.equal(await second.operations.known(next, reference), true);
+      else
+        assert.equal(
+          await second.operations.rejected(next, 'permission'),
+          true,
+        );
+      await staleWrites();
+      assert.equal(await second.operations.uncertain(next), false);
+      assert.equal(await f.store.operations.claim(row.id, true), undefined);
+      assert.equal((await second.operations.get(row.id)).phase, terminal);
     } finally {
-      second.close();
-      f.dispose();
+      await second.close();
+      await f.dispose();
     }
   }
 });
 await test('MOCK F1: normal dispatch cannot claim a stale prepared snapshot after uncertainty', async () => {
   const f = await backendFixture();
   try {
-    const row = prepared(f);
-    const claim = f.store.operations.claim(row.id);
+    const row = await prepared(f);
+    const claim = await f.store.operations.claim(row.id);
     assert.ok(claim);
-    assert.equal(f.store.operations.uncertain(claim), true);
-    assert.equal(f.store.operations.claim(row.id), undefined);
-    assert.ok(f.store.operations.claim(row.id, true));
+    assert.equal(await f.store.operations.uncertain(claim), true);
+    assert.equal(await f.store.operations.claim(row.id), undefined);
+    assert.ok(await f.store.operations.claim(row.id, true));
   } finally {
-    f.dispose();
+    await f.dispose();
   }
 });
 for (const outcome of ['known', 'rejected'] as const) {
@@ -274,14 +284,14 @@ for (const outcome of ['known', 'rejected'] as const) {
           backend.reconcile(intent, id),
           (e) => e instanceof ExecutionFailure && e.kind === 'permission',
         );
-      const saved = second.operations.get(id);
+      const saved = await second.operations.get(id);
       gate.resolve(undefined);
       assert.deepEqual(await pending, {
         kind: 'uncertain',
         operationId: id,
         reason: 'in-flight',
       });
-      assert.deepEqual(second.operations.get(id), saved);
+      assert.deepEqual(await second.operations.get(id), saved);
       assert.equal(
         outbound(f.wire)[0]?.args.clientRequestId,
         outbound(wire)[0]?.args.clientRequestId,
@@ -310,8 +320,8 @@ for (const outcome of ['known', 'rejected'] as const) {
     } finally {
       gate.resolve(undefined);
       await pending;
-      second.close();
-      f.dispose();
+      await second.close();
+      await f.dispose();
     }
   });
 }
@@ -339,23 +349,23 @@ await test('MOCK F1: provisional reference takeover is read-only and late failed
       db.prepare('SELECT id FROM execution_operations').pluck().get(),
     );
     db.close();
-    assert.notEqual(second.operations.get(id).reference, null);
+    assert.notEqual((await second.operations.get(id)).reference, null);
     expire(f.path, id);
     assert.equal((await backend.reconcile(intent, id)).kind, 'known');
     assert.equal(outbound(wire).length, 0);
-    const saved = second.operations.get(id);
+    const saved = await second.operations.get(id);
     release.resolve(undefined);
     assert.deepEqual(await pending, {
       kind: 'uncertain',
       operationId: id,
       reason: 'in-flight',
     });
-    assert.deepEqual(second.operations.get(id), saved);
+    assert.deepEqual(await second.operations.get(id), saved);
   } finally {
     release.resolve(undefined);
     await pending;
-    second.close();
-    f.dispose();
+    await second.close();
+    await f.dispose();
   }
 });
 
@@ -367,7 +377,7 @@ await test(
     const children: ChildProcess[] = [];
     try {
       const id = await lost(f);
-      const original = f.store.operations.get(id);
+      const original = await f.store.operations.get(id);
       for (let n = 0; n < 2; n++) {
         const child = forkWorker(
           new URL('./fixtures/operation-claimant.ts', import.meta.url),
@@ -387,7 +397,7 @@ await test(
         reason: 'in-flight',
       });
       for (const child of children) await stop(child, 'SIGKILL');
-      f.store.close();
+      await f.store.close();
       const reopened = f.open();
       try {
         const wire = new MockWire();
@@ -408,13 +418,13 @@ await test(
           outbound(wire)[0]?.args.clientRequestId,
           original.requestId,
         );
-        assert.equal(reopened.operations.get(id).generation, 3);
+        assert.equal((await reopened.operations.get(id)).generation, 3);
       } finally {
-        reopened.close();
+        await reopened.close();
       }
     } finally {
       for (const child of children) await stop(child, 'SIGKILL');
-      f.dispose();
+      await f.dispose();
     }
   },
 );

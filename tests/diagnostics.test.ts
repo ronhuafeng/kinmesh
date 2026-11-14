@@ -43,8 +43,8 @@ await test('a failure leaves one record to diagnose it, and nothing private', as
   );
   try {
     const cookies = await signInAs(app, 'owner@example.com');
-    const team = store.teamFor(
-      store.signIn(feishuPerson('owner@example.com')).id,
+    const team = await store.teamFor(
+      (await store.signIn(feishuPerson('owner@example.com'))).id,
     );
     assert.ok(team);
     const url = `/api/teams/${team.team.id}/channels`;
@@ -123,7 +123,7 @@ await test('a failure leaves one record to diagnose it, and nothing private', as
     assert.equal(lines.join('\n').includes(code), false);
   } finally {
     await app.close();
-    store.close();
+    await store.close();
     f.cleanup();
   }
 });

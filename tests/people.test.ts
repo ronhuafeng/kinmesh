@@ -55,7 +55,7 @@ await test('people of the team see each other: by name, in the channel, and who 
       ],
     );
     const later = Date.now() + PRESENCE_MS + 1;
-    assert.deepEqual(store.online(later), []);
+    assert.deepEqual(await store.online(later), []);
   } finally {
     await app.close();
     f.cleanup();

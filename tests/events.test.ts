@@ -104,11 +104,11 @@ await test(
       await post('Pushed, not polled');
       assert.deepEqual(await place.next(), { workspace: await workspace() });
       // Another process writes: the agent's worker starts.
-      other.inbox.heartbeat([f.agent.id]);
+      await other.inbox.heartbeat([f.agent.id]);
       assert.deepEqual(await place.next(), { workspace: await workspace() });
       // A later heartbeat changes nothing on screen.
       const awake = await workspace();
-      other.inbox.heartbeat([f.agent.id]);
+      await other.inbox.heartbeat([f.agent.id]);
       assert.equal(await workspace(), awake);
 
       // An agent page also watches T3 and the agent's runs.
@@ -158,7 +158,7 @@ await test(
       for (const s of [place, agent, worker, ...more])
         assert.ok(await s.ended());
     } finally {
-      other.close();
+      await other.close();
       await f.dispose();
     }
   },

@@ -134,7 +134,7 @@ type Fixture = ReturnType<typeof fixture>;
 await test('aggregate executes all preflights before isolated credential-free stage processes; Team consumes v1→v3 and Inbox still sees v1', async () => {
   const f = fixture();
   try {
-    const stages = f.plan();
+    const stages = await f.plan();
     const manifest = JSON.parse(
       readFileSync(new URL('../package.json', import.meta.url), 'utf8'),
     ) as unknown;
@@ -202,7 +202,7 @@ await test('aggregate executes all preflights before isolated credential-free st
   }
 });
 
-await test('aggregate refuses missing opt-in, missing release config and the legacy single inherited directory', () => {
+await test('aggregate refuses missing opt-in, missing release config and the legacy single inherited directory', async () => {
   const f = fixture();
   try {
     for (const env of [
@@ -217,10 +217,12 @@ await test('aggregate refuses missing opt-in, missing release config and the leg
     ])
       assert.throws(() => releasePlanFromEnvironment(env));
     assert.equal(
-      releasePlanFromEnvironment({
-        KINMESH_RELEASE_CONFIG: f.path,
-        KINMESH_RELEASE_LIVE: '1',
-      }).length,
+      (
+        await releasePlanFromEnvironment({
+          KINMESH_RELEASE_CONFIG: f.path,
+          KINMESH_RELEASE_LIVE: '1',
+        })
+      ).length,
       3,
     );
   } finally {
@@ -321,26 +323,34 @@ const invalid: [string, (f: Fixture) => void][] = [
   ],
   [
     'consumed task',
-    (f) => {
+    async (f) => {
       const s = openStore(f.inbox.database);
       try {
-        const p = s.agents.resolveToken(loadAgentToken(f.inbox.tokenFile));
-        s.tasks.command(p, f.inbox.teamId, f.inbox.channelId, f.inbox.taskId, {
-          type: 'claim',
-          operationKey: randomUUID(),
-          expectedVersion: 1,
-        });
+        const p = await s.agents.resolveToken(
+          loadAgentToken(f.inbox.tokenFile),
+        );
+        await s.tasks.command(
+          p,
+          f.inbox.teamId,
+          f.inbox.channelId,
+          f.inbox.taskId,
+          {
+            type: 'claim',
+            operationKey: randomUUID(),
+            expectedVersion: 1,
+          },
+        );
       } finally {
-        s.close();
+        await s.close();
       }
     },
   ],
   [
     'reviewer removed from channel',
-    (f) => {
+    async (f) => {
       const s = openStore(f.team.database);
       try {
-        s.communication.enroll(
+        await s.communication.enroll(
           { kind: 'human', humanId: f.team.humanId },
           f.team.teamId,
           f.team.channelId,
@@ -351,16 +361,16 @@ const invalid: [string, (f: Fixture) => void][] = [
           'remove',
         );
       } finally {
-        s.close();
+        await s.close();
       }
     },
   ],
   [
     'nonfresh Inbox',
-    (f) => {
+    async (f) => {
       const s = openStore(f.inbox.database);
       try {
-        s.communication.post(
+        await s.communication.post(
           { kind: 'human', humanId: f.inbox.humanId },
           f.inbox.teamId,
           f.inbox.channelId,
@@ -374,16 +384,16 @@ const invalid: [string, (f: Fixture) => void][] = [
           },
         );
       } finally {
-        s.close();
+        await s.close();
       }
     },
   ],
   [
     'insufficient persisted scopes',
-    (f) => {
+    async (f) => {
       const s = openStore(f.inbox.database);
       try {
-        const grant = s.agents.issue(
+        const grant = await s.agents.issue(
           { kind: 'human', humanId: f.inbox.humanId },
           f.inbox.teamId,
           f.inbox.agentId,
@@ -395,16 +405,16 @@ const invalid: [string, (f: Fixture) => void][] = [
         );
         put(f.inbox.tokenFile, { token: grant.token });
       } finally {
-        s.close();
+        await s.close();
       }
     },
   ],
 ];
 for (const [name, mutate] of invalid)
-  await test('aggregate rejects before any native stage: ' + name, () => {
+  await test('aggregate rejects before any native stage: ' + name, async () => {
     const f = fixture();
     try {
-      assert.equal(f.plan().length, 3);
+      assert.equal((await f.plan()).length, 3);
       mutate(f);
       assert.throws(f.plan);
       for (const dir of [f.sdk, f.teamDir, f.inboxDir])
@@ -423,7 +433,7 @@ for (const failure of ['sdk', 'team', 'inbox'])
         let runs = 0;
         await assert.rejects(
           runRelease(
-            f.plan(),
+            await f.plan(),
             {
               preflight: (s) =>
                 s.name === failure
@@ -451,7 +461,7 @@ await test('a native stage failure blocks all later stages and prevents fixture 
     const calls: string[] = [];
     await assert.rejects(
       runRelease(
-        f.plan(),
+        await f.plan(),
         {
           preflight: () => Promise.resolve(),
           run: (s) => {
@@ -493,7 +503,7 @@ for (const variant of [
     async () => {
       const f = fixture();
       try {
-        const stage = f.plan()[0];
+        const stage = (await f.plan())[0];
         assert.ok(stage);
         const wire = new MockWire();
         const c = structuredClone(credential);
@@ -537,7 +547,7 @@ await test('independent real local Team MCP read preflight passes both fresh con
   const f = fixture();
   const servers = [];
   try {
-    const stages = f.plan().filter((s) => s.context);
+    const stages = (await f.plan()).filter((s) => s.context);
     for (const stage of stages) {
       assert.ok(stage.context);
       const port = await freePort();

@@ -94,8 +94,8 @@ export function registerConnect(
     | undefined;
   const credentialFile = t3AuthFile(hub.directory);
   /** The team's T3 connection and any sign-in under way. */
-  const t3Status = (caller: Principal, teamId: TeamId) => {
-    const connection = store.managed.connection(caller, teamId);
+  const t3Status = async (caller: Principal, teamId: TeamId) => {
+    const connection = await store.managed.connection(caller, teamId);
     // Whether T3 let agents run, or only read: a read-only approval looks
     // connected but every wake would be refused.
     let access: 'operate' | 'read' | null = null;
@@ -130,7 +130,7 @@ export function registerConnect(
   app.get('/api/teams/:teamId/t3/local', async (request, reply) => {
     reply.header('Cache-Control', 'no-store');
     const { teamId } = TeamPath.parse(request.params);
-    store.managed.connection(principal(request), teamId);
+    await store.managed.connection(principal(request), teamId);
     return { endpoint: await hub.discover() };
   });
   app.post('/api/teams/:teamId/t3/connect', async (request, reply) => {
@@ -141,7 +141,7 @@ export function registerConnect(
       .strictObject({ endpoint: Endpoint, replace: z.boolean() })
       .parse(request.body);
     // A person of the team, checked before any file or network access.
-    store.managed.connection(p, teamId);
+    await store.managed.connection(p, teamId);
     if (flow?.state === 'waiting') throw new IdentityError(409);
     // Never replace an approved credential without being asked to.
     if (existsSync(credentialFile) && !replace) throw new IdentityError(409);
@@ -175,9 +175,9 @@ export function registerConnect(
     };
     const done = hub
       .authorize(endpoint, interaction, signal)
-      .then((credential) => {
+      .then(async (credential) => {
         saveCredential(credentialFile, credential, { replace });
-        store.managed.saveConnection(
+        await store.managed.saveConnection(
           p,
           teamId,
           endpoint,
@@ -204,7 +204,10 @@ export function registerConnect(
   app.get('/api/teams/:teamId/t3/providers', async (request, reply) => {
     reply.header('Cache-Control', 'no-store');
     const { teamId } = TeamPath.parse(request.params);
-    const connection = store.managed.connection(principal(request), teamId);
+    const connection = await store.managed.connection(
+      principal(request),
+      teamId,
+    );
     if (connection === null) throw new IdentityError(409);
     try {
       const credential = loadCredential(credentialFile, connection.endpoint);
@@ -229,7 +232,7 @@ export function registerConnect(
           modelId: z.string().trim().min(1).max(256),
         })
         .parse(request.body);
-      const { token } = store.managed.connect(
+      const { token } = await store.managed.connect(
         p,
         teamId,
         agentId,
@@ -239,7 +242,7 @@ export function registerConnect(
       try {
         writeAgentToken(hub.directory, agentId, token);
       } catch {
-        store.managed.disconnect(p, teamId, agentId);
+        await store.managed.disconnect(p, teamId, agentId);
         return reply.code(500).send({ error: 'Could not store credential' });
       }
       try {
@@ -254,9 +257,9 @@ export function registerConnect(
   );
   app.post(
     '/api/teams/:teamId/agents/:agentId/disconnect',
-    (request, reply) => {
+    async (request, reply) => {
       const { teamId, agentId } = AgentPath.parse(request.params);
-      store.managed.disconnect(principal(request), teamId, agentId);
+      await store.managed.disconnect(principal(request), teamId, agentId);
       removeAgentToken(hub.directory, agentId);
       return reply.code(204).send();
     },

@@ -149,7 +149,7 @@ await test('health becomes unavailable when persistence cannot be queried', asyn
   const store = f.open();
   const app = await createApp(f.config, store);
   try {
-    store.close();
+    await store.close();
     assert.equal((await app.inject({ url: '/health' })).statusCode, 503);
   } finally {
     await app.close();

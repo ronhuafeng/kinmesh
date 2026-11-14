@@ -35,7 +35,7 @@ await test('MOCK: captured v0.1.5 schemas validate inputs and nested authoritati
     assert.equal(call.args.projectId, undefined);
     assert.ok(typeof call.args.clientRequestId === 'string');
   } finally {
-    f.dispose();
+    await f.dispose();
   }
 });
 await test('MOCK: explicit project selection is not replaced by linked environmentId', async () => {
@@ -51,7 +51,7 @@ await test('MOCK: explicit project selection is not replaced by linked environme
     assert.equal(call.args.scratch, undefined);
     assert.equal(call.args.environmentId, undefined);
   } finally {
-    f.dispose();
+    await f.dispose();
   }
 });
 await test('MOCK: versions below 0.1.5 and missing idempotency support fail before mutation', async () => {
@@ -99,7 +99,7 @@ await test('MOCK: versions below 0.1.5 and missing idempotency support fail befo
       0,
     );
   } finally {
-    f.dispose();
+    await f.dispose();
   }
 });
 await test('MOCK: model/provider and runtime ceilings are checked; tool visibility is not privilege', async () => {
@@ -122,7 +122,7 @@ await test('MOCK: model/provider and runtime ceilings are checked; tool visibili
     });
     await assert.rejects(reader.launch(launch, intent), failure('permission'));
   } finally {
-    f.dispose();
+    await f.dispose();
   }
 });
 await test('MOCK: only typed native capability denial or explicit HTTP auth status is denial evidence', async () => {
@@ -168,7 +168,7 @@ await test('MOCK: malformed nested responses are rejected, not mistaken for comp
     );
     assert.equal(f.wire.calls.length, before);
   } finally {
-    f.dispose();
+    await f.dispose();
   }
 });
 await test('MOCK: wait timeout is not terminal; waiting remains nonterminal', async () => {
@@ -195,7 +195,7 @@ await test('MOCK: wait timeout is not terminal; waiting remains nonterminal', as
       assert.equal(result.observation.terminal, false);
     }
   } finally {
-    f.dispose();
+    await f.dispose();
   }
 });
 await test('MOCK: interrupt_requested requires authoritative terminal reconciliation', async () => {
@@ -209,7 +209,7 @@ await test('MOCK: interrupt_requested requires authoritative terminal reconcilia
     assert.equal((await f.backend.read(reference)).state, 'stopped');
     assert.equal((await f.backend.read(reference)).terminal, true);
   } finally {
-    f.dispose();
+    await f.dispose();
   }
 });
 await test('MOCK: run-specific reads do not substitute latest thread status for an unknown run', async () => {
@@ -235,7 +235,7 @@ await test('MOCK: run-specific reads do not substitute latest thread status for 
     f.wire.values.t3_thread_read = data;
     assert.equal((await f.backend.read(reference)).state, 'succeeded');
   } finally {
-    f.dispose();
+    await f.dispose();
   }
 });
 await test('MOCK: endpoint identities and response thread/run mismatches fail closed', async () => {
@@ -260,6 +260,6 @@ await test('MOCK: endpoint identities and response thread/run mismatches fail cl
     };
     await assert.rejects(f.backend.wait(reference, 1), failure('incompatible'));
   } finally {
-    f.dispose();
+    await f.dispose();
   }
 });

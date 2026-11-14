@@ -34,21 +34,21 @@ await test('populated main/PR18 migration preserves every baseline row and activ
   const oldPath = join(f.directory, 'populated-main.sqlite');
   const old = new Database(oldPath);
   try {
-    f.comm.post(
+    await f.comm.post(
       f.principal,
       f.teamId,
       f.channelId,
       postInput({ mentions: [{ kind: 'agent', id: f.agent.id }] }),
     );
-    f.create({ owner: { kind: 'agent', id: f.agent.id } });
-    const operation = f.store.operations.prepare(
+    await f.create({ owner: { kind: 'agent', id: f.agent.id } });
+    const operation = await f.store.operations.prepare(
       'migration-fixture',
       { actor: 'migration-owner', operationKey: 'existing-flight' },
       't3_thread_launch',
       { scratch: true },
       'fixture-authority',
     );
-    const lease = f.store.operations.claim(operation.id);
+    const lease = await f.store.operations.claim(operation.id);
     assert.ok(lease);
     migrateTo(old, f.directory, 6);
     const names = z
@@ -80,22 +80,25 @@ await test('populated main/PR18 migration preserves every baseline row and activ
           changed[name]?.read ?? `SELECT * FROM ${name} ORDER BY rowid`;
         assert.deepEqual(after.prepare(read).all(), source.prepare(read).all());
       }
-      assert.deepEqual(upgraded.operations.get(operation.id), lease);
-      assert.equal(upgraded.operations.claim(operation.id, true), undefined);
-      assert.deepEqual(upgraded.inbox.status(), []);
+      assert.deepEqual(await upgraded.operations.get(operation.id), lease);
+      assert.equal(
+        await upgraded.operations.claim(operation.id, true),
+        undefined,
+      );
+      assert.deepEqual(await upgraded.inbox.status(), []);
       assert.deepEqual(after.pragma('foreign_key_check'), []);
       assert.equal(after.pragma('journal_mode', { simple: true }), 'wal');
     } finally {
       after.close();
     }
-    const before = f.comm.history(f.principal, f.teamId, f.channelId);
+    const before = await f.comm.history(f.principal, f.teamId, f.channelId);
     assert.deepEqual(
-      upgraded.communication.history(f.principal, f.teamId, f.channelId),
+      await upgraded.communication.history(f.principal, f.teamId, f.channelId),
       before,
     );
   } finally {
     if (old.open) old.close();
-    upgraded?.close();
+    await upgraded?.close();
     source.close();
     await f.dispose();
   }

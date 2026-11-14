@@ -149,7 +149,11 @@ await test('team-scoped unique profile names, cross-team IDs and nonmember mutat
     raw
       .prepare('INSERT INTO memberships VALUES (?, ?)')
       .run(f.owner.id, teamId);
-    const other = f.store.agents.create(f.principal, teamId, profileInput);
+    const other = await f.store.agents.create(
+      f.principal,
+      teamId,
+      profileInput,
+    );
     assert.notEqual(other.id, f.agent.id);
     assert.throws(
       () => f.store.agents.get(f.principal, teamId, f.agent.id),
@@ -165,31 +169,31 @@ await test('team-scoped unique profile names, cross-team IDs and nonmember mutat
       .prepare('INSERT INTO memberships VALUES (?, ?)')
       .run(memberId, f.teamId);
     const member: Principal = { kind: 'human', humanId: memberId };
-    const theirs = f.store.agents.create(member, f.teamId, {
+    const theirs = await f.store.agents.create(member, f.teamId, {
       ...profileInput,
       name: 'Member’s agent',
     });
-    f.store.agents.update(member, f.teamId, theirs.id, {
+    await f.store.agents.update(member, f.teamId, theirs.id, {
       ...profileInput,
       name: 'Member’s agent',
       capabilities: ['review'],
     });
-    const issued = f.store.agents.issue(
+    const issued = await f.store.agents.issue(
       member,
       f.teamId,
       theirs.id,
       grantInput,
     );
-    const rotated = f.store.agents.rotate(
+    const rotated = await f.store.agents.rotate(
       member,
       f.teamId,
       theirs.id,
       issued.grant.id,
       grantInput,
     );
-    f.store.agents.revoke(member, f.teamId, theirs.id, rotated.grant.id);
+    await f.store.agents.revoke(member, f.teamId, theirs.id, rotated.grant.id);
     assert.equal(
-      f.store.agents.lifecycle(member, f.teamId, f.agent.id, 'disabled')
+      (await f.store.agents.lifecycle(member, f.teamId, f.agent.id, 'disabled'))
         .lifecycle,
       'disabled',
     );
@@ -203,7 +207,7 @@ await test('opaque agent credentials use independent 256-bit randomness, hash-on
   const f = await agentFixture();
   const raw = new Database(f.dbPath);
   try {
-    const second = f.store.agents.issue(
+    const second = await f.store.agents.issue(
       f.principal,
       f.teamId,
       f.agent.id,
@@ -256,10 +260,15 @@ await test('opaque agent credentials use independent 256-bit randomness, hash-on
 await test('agent scopes are checked from persisted grants and never confer human owner or another agent authority', async () => {
   const f = await agentFixture();
   try {
-    const scoped = f.store.agents.issue(f.principal, f.teamId, f.agent.id, {
-      ...grantInput,
-      scopes: ['executions:read'],
-    });
+    const scoped = await f.store.agents.issue(
+      f.principal,
+      f.teamId,
+      f.agent.id,
+      {
+        ...grantInput,
+        scopes: ['executions:read'],
+      },
+    );
     const headers = { authorization: 'Bearer ' + scoped.token };
     assert.equal(
       (await f.app.inject({ url: f.path, headers })).statusCode,
@@ -280,7 +289,7 @@ await test('agent scopes are checked from persisted grants and never confer huma
       ).statusCode,
       403,
     );
-    const agent = f.store.agents.resolveToken(scoped.token);
+    const agent = await f.store.agents.resolveToken(scoped.token);
     assert.equal(agent.kind, 'agent');
     assert.throws(
       () =>
@@ -292,7 +301,7 @@ await test('agent scopes are checked from persisted grants and never confer huma
         ),
       (e) => e instanceof IdentityError && e.statusCode === 403,
     );
-    const another = f.store.agents.create(f.principal, f.teamId, {
+    const another = await f.store.agents.create(f.principal, f.teamId, {
       ...profileInput,
       name: 'Another',
     });
@@ -438,11 +447,16 @@ await test('execution correlations preserve multiple runs, agent provenance and 
   const f = await agentFixture();
   try {
     const first = await f.execution();
-    const second = f.store.agents.correlate(f.principal, f.teamId, f.agent.id, {
-      ...correlationInput,
-      reference: { ...correlationInput.reference, runId: 'run-two' },
-      invocationId: 'invocation-two',
-    });
+    const second = await f.store.agents.correlate(
+      f.principal,
+      f.teamId,
+      f.agent.id,
+      {
+        ...correlationInput,
+        reference: { ...correlationInput.reference, runId: 'run-two' },
+        invocationId: 'invocation-two',
+      },
+    );
     assert.equal(Author.parse(first.author).kind, 'agent');
     assert.equal(Author.parse(second.author).kind, 'human');
     const event = await f.app.inject({
@@ -456,7 +470,7 @@ await test('execution correlations preserve multiple runs, agent provenance and 
       RuntimeEvent.parse(event.json<unknown>()).author.kind,
       'agent',
     );
-    f.store.agents.update(f.principal, f.teamId, f.agent.id, {
+    await f.store.agents.update(f.principal, f.teamId, f.agent.id, {
       ...profileInput,
       preferences: {
         providerId: 'other',
@@ -464,7 +478,7 @@ await test('execution correlations preserve multiple runs, agent provenance and 
         environmentId: 'other-env',
       },
     });
-    const correlations = f.store.agents.correlations(
+    const correlations = await f.store.agents.correlations(
       f.principal,
       f.teamId,
       f.agent.id,
@@ -473,12 +487,18 @@ await test('execution correlations preserve multiple runs, agent provenance and 
     assert.equal(correlations[0]?.reference.environmentId, 'env-one');
     assert.equal(Correlation.parse(first).acceptance, 'not-evaluated');
     assert.equal(
-      f.store.agents.runtimeEvents(f.principal, f.teamId, f.agent.id, second.id)
-        .length,
+      (
+        await f.store.agents.runtimeEvents(
+          f.principal,
+          f.teamId,
+          f.agent.id,
+          second.id,
+        )
+      ).length,
       0,
     );
     assert.equal(
-      f.store.agents.get(f.principal, f.teamId, f.agent.id).lifecycle,
+      (await f.store.agents.get(f.principal, f.teamId, f.agent.id)).lifecycle,
       'active',
     );
     assert.equal(
@@ -492,7 +512,7 @@ await test('execution correlations preserve multiple runs, agent provenance and 
       ).statusCode,
       409,
     );
-    const another = f.store.agents.create(f.principal, f.teamId, {
+    const another = await f.store.agents.create(f.principal, f.teamId, {
       ...profileInput,
       name: 'Another',
     });
@@ -515,8 +535,13 @@ await test('revoke blocks every agent profile/execution route and stale principa
   const f = await agentFixture();
   try {
     const execution = await f.execution();
-    const stale = f.store.agents.resolveToken(f.grant.token);
-    f.store.agents.revoke(f.principal, f.teamId, f.agent.id, f.grant.grant.id);
+    const stale = await f.store.agents.resolveToken(f.grant.token);
+    await f.store.agents.revoke(
+      f.principal,
+      f.teamId,
+      f.agent.id,
+      f.grant.grant.id,
+    );
     for (const action of [
       () => f.store.agents.get(stale, f.teamId, f.agent.id),
       () => f.store.agents.correlations(stale, f.teamId, f.agent.id),
@@ -578,13 +603,13 @@ await test('disable revokes all grants atomically and reactivation cannot resurr
   const f = await agentFixture();
   try {
     const execution = await f.execution();
-    const second = f.store.agents.issue(
+    const second = await f.store.agents.issue(
       f.principal,
       f.teamId,
       f.agent.id,
       grantInput,
     );
-    const stale = f.store.agents.resolveToken(second.token);
+    const stale = await f.store.agents.resolveToken(second.token);
     assert.equal(
       (
         await f.app.inject({
@@ -634,12 +659,12 @@ await test('disable revokes all grants atomically and reactivation cannot resurr
       () => f.store.agents.issue(f.principal, f.teamId, f.agent.id, grantInput),
       (e) => e instanceof IdentityError && e.statusCode === 409,
     );
-    f.store.agents.lifecycle(f.principal, f.teamId, f.agent.id, 'active');
+    await f.store.agents.lifecycle(f.principal, f.teamId, f.agent.id, 'active');
     assert.throws(
       () => f.store.agents.get(stale, f.teamId, f.agent.id),
       (e) => e instanceof IdentityError && e.statusCode === 401,
     );
-    const fresh = f.store.agents.issue(
+    const fresh = await f.store.agents.issue(
       f.principal,
       f.teamId,
       f.agent.id,
@@ -655,7 +680,8 @@ await test('disable revokes all grants atomically and reactivation cannot resurr
       200,
     );
     assert.equal(
-      f.store.agents.correlations(f.principal, f.teamId, f.agent.id).length,
+      (await f.store.agents.correlations(f.principal, f.teamId, f.agent.id))
+        .length,
       1,
     );
   } finally {
@@ -740,7 +766,7 @@ await test('expiration and removed human membership are checked on every request
   const f = await agentFixture();
   const raw = new Database(f.dbPath);
   try {
-    const principal = f.store.agents.resolveToken(f.grant.token);
+    const principal = await f.store.agents.resolveToken(f.grant.token);
     raw
       .prepare('UPDATE agent_grants SET expires_at = ? WHERE id = ?')
       .run('2000-01-01T00:00:00.000Z', f.grant.grant.id);
@@ -793,12 +819,12 @@ await test('database constraints enforce immutable identity/history, final revoc
       'UPDATE agent_grants SET agent_id = agent_id',
     ])
       assert.throws(() => raw.exec(sql));
-    f.store.agents.runtimeEvent(
+    await f.store.agents.runtimeEvent(
       f.principal,
       f.teamId,
       f.agent.id,
-      f.store.agents.correlations(f.principal, f.teamId, f.agent.id)[0]?.id ??
-        '',
+      (await f.store.agents.correlations(f.principal, f.teamId, f.agent.id))[0]
+        ?.id ?? '',
       'active',
     );
     for (const sql of [
@@ -822,7 +848,12 @@ await test('database constraints enforce immutable identity/history, final revoc
         )
         .run(randomUUID(), teamId),
     );
-    f.store.agents.revoke(f.principal, f.teamId, f.agent.id, f.grant.grant.id);
+    await f.store.agents.revoke(
+      f.principal,
+      f.teamId,
+      f.agent.id,
+      f.grant.grant.id,
+    );
     assert.throws(() => raw.exec('UPDATE agent_grants SET revoked_at = NULL'));
   } finally {
     raw.close();
@@ -844,14 +875,14 @@ await test('audit failure rolls back profile changes, disable/revocation and rot
       }),
     );
     assert.equal(
-      f.store.agents.get(f.principal, f.teamId, f.agent.id).name,
+      (await f.store.agents.get(f.principal, f.teamId, f.agent.id)).name,
       'Developer',
     );
     assert.throws(() =>
       f.store.agents.lifecycle(f.principal, f.teamId, f.agent.id, 'disabled'),
     );
     assert.equal(
-      f.store.agents.get(f.principal, f.teamId, f.agent.id).lifecycle,
+      (await f.store.agents.get(f.principal, f.teamId, f.agent.id)).lifecycle,
       'active',
     );
     assert.throws(() =>
@@ -864,7 +895,7 @@ await test('audit failure rolls back profile changes, disable/revocation and rot
       ),
     );
     assert.equal(
-      f.store.agents.grants(f.principal, f.teamId, f.agent.id).length,
+      (await f.store.agents.grants(f.principal, f.teamId, f.agent.id)).length,
       1,
     );
     assert.equal(
@@ -882,16 +913,21 @@ await test('service restart preserves stable agent, grant, correlations, provena
   let restarted: Awaited<ReturnType<typeof createApp>> | undefined;
   try {
     const execution = await f.execution();
-    const updated = f.store.agents.update(f.principal, f.teamId, f.agent.id, {
-      ...profileInput,
-      role: 'reviewer',
-      preferences: {
-        environmentId: 'rebound-env',
-        providerId: 'other-provider',
-        modelId: 'other-model',
+    const updated = await f.store.agents.update(
+      f.principal,
+      f.teamId,
+      f.agent.id,
+      {
+        ...profileInput,
+        role: 'reviewer',
+        preferences: {
+          environmentId: 'rebound-env',
+          providerId: 'other-provider',
+          modelId: 'other-model',
+        },
       },
-    });
-    f.store.agents.runtimeEvent(
+    );
+    await f.store.agents.runtimeEvent(
       f.principal,
       f.teamId,
       f.agent.id,
@@ -902,7 +938,7 @@ await test('service restart preserves stable agent, grant, correlations, provena
     const reopened = f.open();
     restarted = await createApp(f.config, reopened);
     assert.deepEqual(
-      reopened.agents.get(f.principal, f.teamId, f.agent.id),
+      await reopened.agents.get(f.principal, f.teamId, f.agent.id),
       updated,
     );
     assert.equal(
@@ -922,27 +958,37 @@ await test('service restart preserves stable agent, grant, correlations, provena
       execution.id,
     );
     assert.equal(
-      reopened.agents.runtimeEvents(
-        f.principal,
-        f.teamId,
-        f.agent.id,
-        execution.id,
+      (
+        await reopened.agents.runtimeEvents(
+          f.principal,
+          f.teamId,
+          f.agent.id,
+          execution.id,
+        )
       )[0]?.state,
       'succeeded',
     );
     assert.ok(
-      reopened.agents.audit(f.principal, f.teamId, f.agent.id).length >= 3,
+      (await reopened.agents.audit(f.principal, f.teamId, f.agent.id)).length >=
+        3,
     );
     assert.equal(
-      resolvePrincipal(reopened, f.headers.authorization, undefined).kind,
+      (await resolvePrincipal(reopened, f.headers.authorization, undefined))
+        .kind,
       'agent',
     );
-    reopened.agents.lifecycle(f.principal, f.teamId, f.agent.id, 'disabled');
+    await reopened.agents.lifecycle(
+      f.principal,
+      f.teamId,
+      f.agent.id,
+      'disabled',
+    );
     await restarted.close();
     const disabledStore = f.open();
     restarted = await createApp(f.config, disabledStore);
     assert.equal(
-      disabledStore.agents.get(f.principal, f.teamId, f.agent.id).lifecycle,
+      (await disabledStore.agents.get(f.principal, f.teamId, f.agent.id))
+        .lifecycle,
       'disabled',
     );
     assert.equal(
@@ -950,8 +996,13 @@ await test('service restart preserves stable agent, grant, correlations, provena
       401,
     );
     assert.equal(
-      disabledStore.agents.correlations(f.principal, f.teamId, f.agent.id)[0]
-        ?.id,
+      (
+        await disabledStore.agents.correlations(
+          f.principal,
+          f.teamId,
+          f.agent.id,
+        )
+      )[0]?.id,
       execution.id,
     );
   } finally {
@@ -965,7 +1016,7 @@ await test('disabled lifecycle independently blocks unrevoked grants and every p
   const raw = new Database(f.dbPath);
   try {
     const execution = await f.execution();
-    const stale = f.store.agents.resolveToken(f.grant.token);
+    const stale = await f.store.agents.resolveToken(f.grant.token);
     raw
       .prepare("UPDATE agents SET lifecycle = 'disabled' WHERE id = ?")
       .run(f.agent.id);

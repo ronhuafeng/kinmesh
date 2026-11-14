@@ -5,9 +5,9 @@ if (path === undefined || id === undefined)
   throw new Error('Missing fixture arguments');
 const store = openStore(path);
 process.once('message', () => {
-  process.send?.(
-    store.operations.claim(id, true) === undefined ? 'busy' : 'claimed',
-  );
+  void store.operations.claim(id, true).then((claimed) => {
+    process.send?.(claimed === undefined ? 'busy' : 'claimed');
+  });
 });
 process.send?.('ready');
 // Parent kills the process to exercise abandoned durable lease recovery.

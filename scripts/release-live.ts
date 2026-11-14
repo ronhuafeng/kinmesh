@@ -3,7 +3,7 @@ import { preflightStage, runRelease, runStage } from './release-live-runner.js';
 
 process.umask(0o077);
 try {
-  const stages = releasePlanFromEnvironment(process.env);
+  const stages = await releasePlanFromEnvironment(process.env);
   await runRelease(
     stages,
     { preflight: preflightStage, run: runStage },

@@ -34,10 +34,10 @@ export async function probeNative(
   );
   try {
     if (stage.name === 'inbox' && stage.context) {
-      const p = store.agents.resolveToken(
+      const p = await store.agents.resolveToken(
         loadAgentToken(stage.context.tokenFile),
       );
-      const profile = store.agents.authorize(
+      const profile = await store.agents.authorize(
         p,
         stage.context.teamId,
         stage.context.agentId,
@@ -59,14 +59,14 @@ export async function probeNative(
       mode: 'approval-required',
     });
   } finally {
-    store.close();
+    await store.close();
     await wire.close();
   }
 }
 export async function probeTeam(stage: ReleaseStage) {
   if (!stage.context) return;
   const c = stage.context;
-  validateFixture(c, stage.name === 'inbox');
+  await validateFixture(c, stage.name === 'inbox');
   const client = await connectAgent(c.endpoint, c.tokenFile);
   try {
     const task = outcome(Task).parse(
@@ -149,7 +149,8 @@ export async function runRelease(
       { mode: 0o600, flag: 'wx' },
     );
   for (const stage of stages) {
-    if (stage.context) validateFixture(stage.context, stage.name === 'inbox');
+    if (stage.context)
+      await validateFixture(stage.context, stage.name === 'inbox');
     await dependencies.run(stage, stageEnvironment(stage, inherited));
   }
 }

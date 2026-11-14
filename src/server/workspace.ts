@@ -56,14 +56,14 @@ export function registerWorkspace(
         .parse(request.params);
       z.strictObject({}).parse(request.query);
       // Do not mask Kinmesh authorization denials as external-service outages.
-      const correlation = store.agents.getCorrelation(
+      const correlation = await store.agents.getCorrelation(
         principal,
         teamId,
         agentId,
         executionId,
       );
       try {
-        const connection = store.managed.teamConnection(teamId);
+        const connection = await store.managed.teamConnection(teamId);
         if (!connection) throw new Error('Unavailable');
         const credential = loadCredential(
           t3CredentialFile,
@@ -77,57 +77,62 @@ export function registerWorkspace(
           AbortSignal.timeout(8000),
         );
         // Access may have changed while the external read was in flight.
-        store.agents.getCorrelation(principal, teamId, agentId, executionId);
+        await store.agents.getCorrelation(
+          principal,
+          teamId,
+          agentId,
+          executionId,
+        );
         return observation;
       } catch (error) {
         if (error instanceof IdentityError) throw error;
         // A concurrent Kinmesh access loss still takes precedence over an upstream outage.
-        store.agents.getCorrelation(principal, teamId, agentId, executionId);
+        await store.agents.getCorrelation(
+          principal,
+          teamId,
+          agentId,
+          executionId,
+        );
         // External OAuth/permission failures are never Kinmesh session expiry.
         return reply.code(503).send({ error: 'Native T3 status unavailable' });
       }
     },
   );
   /** What one person's workspace shows for one place. */
-  const snapshot = (principal: Person, query: WorkspaceQuery) => {
-    const human = store.human(principal.humanId);
-    const membership = store.teamFor(principal.humanId);
+  const snapshot = async (principal: Person, query: WorkspaceQuery) => {
+    const human = await store.human(principal.humanId);
+    const membership = await store.teamFor(principal.humanId);
     if (!human || !membership) throw new IdentityError(403);
     const teamId = membership.team.id;
-    const channels = store.communication.channels(principal, teamId, {
+    const channels = await store.communication.channels(principal, teamId, {
       limit: 100,
       ...(query.channelsCursor ? { cursor: query.channelsCursor } : {}),
     });
     const id = query.channelId ?? channels.items[0]?.id;
     const channel = id
-      ? store.communication.channel(principal, teamId, id)
+      ? await store.communication.channel(principal, teamId, id)
       : null;
-    const profiles = store.agents.workspaceProfiles(principal, teamId);
+    const profiles = await store.agents.workspaceProfiles(principal, teamId);
     const agents = profiles.agents;
-    const joinedAgentIds = channel
-      ? agents
-          .filter((agent) => {
-            if (agent.lifecycle !== 'active') return false;
-            try {
-              store.communication.validateParticipant(
-                principal,
-                teamId,
-                channel.id,
-                { kind: 'agent', id: agent.id },
-              );
-              return true;
-            } catch (error) {
-              if (error instanceof IdentityError && error.statusCode === 404)
-                return false;
-              throw error;
-            }
-          })
-          .map((agent) => agent.id)
-      : [];
+    const joinedAgentIds: AgentId[] = [];
+    for (const agent of channel ? agents : []) {
+      if (agent.lifecycle !== 'active' || !channel) continue;
+      try {
+        await store.communication.validateParticipant(
+          principal,
+          teamId,
+          channel.id,
+          { kind: 'agent', id: agent.id },
+        );
+        joinedAgentIds.push(agent.id);
+      } catch (error) {
+        if (!(error instanceof IdentityError && error.statusCode === 404))
+          throw error;
+      }
+    }
     const now = Date.now();
     const known = new Set(agents.map((agent) => agent.id));
-    const wake = store.inbox
-      .liveness(teamId)
+    const wake = (await store.inbox.liveness(teamId))
       .filter((row) => known.has(AgentId.parse(row.agentId)))
       .map((row) => ({
         agentId: row.agentId,
@@ -135,7 +140,7 @@ export function registerWorkspace(
         lastSeenAt: new Date(row.lastSeenAt).toISOString(),
       }));
     const messages = channel
-      ? store.communication.history(
+      ? await store.communication.history(
           principal,
           teamId,
           channel.id,
@@ -146,7 +151,7 @@ export function registerWorkspace(
         )
       : { items: [], nextCursor: null };
     const tasks = channel
-      ? store.tasks.list(principal, teamId, channel.id, {
+      ? await store.tasks.list(principal, teamId, channel.id, {
           ...(query.tasksCursor ? { cursor: query.tasksCursor } : {}),
         })
       : { items: [], nextCursor: null };
@@ -175,36 +180,34 @@ export function registerWorkspace(
       resultMessageId: d.resultMessageId,
     });
     const deliveries = channel
-      ? store.inbox
-          .deliveriesFor(
+      ? (
+          await store.inbox.deliveriesFor(
             teamId,
             channel.id,
             messages.items.map((m) => m.id),
             tasks.items.map((t) => t.id),
           )
-          .map(project)
+        ).map(project)
       : [];
     // Every member reaches this route; what waits on them is theirs: tasks
     // they decide on, and the deliveries and setup the team shares.
     const live = new Set(wake.filter((w) => w.connected).map((w) => w.agentId));
     const attention = {
-      decide: store.tasks.waitingOn(principal, teamId),
-      unstuck: store.inbox
-        .blockedIn(teamId, principal.humanId)
+      decide: await store.tasks.waitingOn(principal, teamId),
+      unstuck: (await store.inbox.blockedIn(teamId, principal.humanId))
         .filter((d) => known.has(AgentId.parse(d.agentId)))
         .map((d) => ({
           ...project(d),
           channelId: d.channelId,
           channelName: d.channelName,
         })),
-      connect: store.inbox
-        .queuedPerAgent(teamId)
+      connect: (await store.inbox.queuedPerAgent(teamId))
         .filter(
           (q) => known.has(AgentId.parse(q.agentId)) && !live.has(q.agentId),
         )
         .map((q) => ({ agentId: q.agentId, queued: q.count })),
     };
-    const t3 = store.managed.teamConnection(teamId);
+    const t3 = await store.managed.teamConnection(teamId);
     const t3Origin = t3 ? new URL(t3.endpoint).origin : null;
     return WorkspaceSnapshot.parse(
       withRevision({
@@ -212,19 +215,23 @@ export function registerWorkspace(
         nativeT3Origin: t3Origin,
         human,
         team: membership.team,
-        people: store.people(teamId, now),
+        people: await store.people(teamId, now),
         joinedHumanIds: channel
-          ? store.communication.joinedHumans(principal, teamId, channel.id)
+          ? await store.communication.joinedHumans(
+              principal,
+              teamId,
+              channel.id,
+            )
           : [],
         channels,
         channel,
-        leftChannels: store.communication.leftChannels(principal, teamId),
+        leftChannels: await store.communication.leftChannels(principal, teamId),
         agents,
         agentsTruncated: profiles.truncated,
         joinedAgentIds,
         deliveries,
         replies: channel
-          ? store.inbox.repliesFor(
+          ? await store.inbox.repliesFor(
               teamId,
               channel.id,
               messages.items.map((m) => m.id),
@@ -232,36 +239,40 @@ export function registerWorkspace(
           : [],
         attention,
         wake,
-        managed: store.managed
-          .teamBindings(teamId)
-          .filter((b) => known.has(AgentId.parse(b.agentId))),
-        teamMcp: store.managed
-          .teamMcpPresence(teamId)
+        managed: (await store.managed.teamBindings(teamId)).filter((b) =>
+          known.has(AgentId.parse(b.agentId)),
+        ),
+        teamMcp: (await store.managed.teamMcpPresence(teamId))
           .filter((row) => known.has(AgentId.parse(row.agentId)))
           .map((row) => ({
             agentId: row.agentId,
             lastSeenAt: new Date(row.lastSeenAt).toISOString(),
           })),
-        avatars: store.agents
-          .avatars(principal, teamId)
-          .filter((row) => known.has(AgentId.parse(row.agentId))),
+        avatars: (await store.agents.avatars(principal, teamId)).filter((row) =>
+          known.has(AgentId.parse(row.agentId)),
+        ),
         messages,
         topics: channel
-          ? store.communication.topics(principal, teamId, channel.id, {
+          ? await store.communication.topics(principal, teamId, channel.id, {
               ...(query.topicsCursor ? { cursor: query.topicsCursor } : {}),
             })
           : { items: [], nextCursor: null },
         activeTopics: channel
-          ? store.communication.activeTopics(principal, teamId, channel.id, 10)
+          ? await store.communication.activeTopics(
+              principal,
+              teamId,
+              channel.id,
+              10,
+            )
           : { items: [], more: false },
         tasks,
       }),
     );
   };
   /** An agent's runs as Kinmesh recorded them; the read time is not part of what they show. */
-  const runs = (principal: Person, teamId: TeamId, agentId: AgentId) => {
+  const runs = async (principal: Person, teamId: TeamId, agentId: AgentId) => {
     // Membership and current identity are rechecked by each repository call.
-    const executions = store.agents.workspaceExecutions(
+    const executions = await store.agents.workspaceExecutions(
       principal,
       teamId,
       agentId,
@@ -280,7 +291,7 @@ export function registerWorkspace(
     if (principal?.kind !== 'human') throw new IdentityError(403);
     return snapshot(principal, WorkspaceQuery.parse(request.query));
   });
-  app.get('/api/agui/:teamId/:memberId', (request, reply) => {
+  app.get('/api/agui/:teamId/:memberId', async (request, reply) => {
     reply.header('Cache-Control', 'no-store');
     z.strictObject({}).parse(request.query);
     const { teamId, memberId } = z
@@ -288,7 +299,7 @@ export function registerWorkspace(
       .parse(request.params);
     const principal = request.principal;
     if (principal?.kind !== 'human') throw new IdentityError(403);
-    return executionEvent(runs(principal, teamId, memberId));
+    return executionEvent(await runs(principal, teamId, memberId));
   });
   return { snapshot, runs };
 }

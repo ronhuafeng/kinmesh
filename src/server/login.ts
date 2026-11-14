@@ -25,8 +25,8 @@ export function registerLogin(
   const redirectUri = `${config.origin}/login/callback`;
   const limit = { config: { rateLimit: { max: 10, timeWindow: '1 minute' } } };
   // A link, not a form: the page's form-action policy keeps forms on-site.
-  app.get('/login', limit, (_request, reply) => {
-    const state = store.logins.begin(Date.now());
+  app.get('/login', limit, async (_request, reply) => {
+    const state = await store.logins.begin(Date.now());
     // Lax, because Feishu sends the browser back from another site.
     void reply.setCookie(STATE_COOKIE, state, {
       path: '/login',
@@ -50,7 +50,7 @@ export function registerLogin(
     if (
       !query.success ||
       cookie !== query.data.state ||
-      !store.logins.finish(query.data.state, Date.now())
+      !(await store.logins.finish(query.data.state, Date.now()))
     )
       return turnBack('expired');
     // No code: the person turned back at Feishu, and knows it.
@@ -69,12 +69,12 @@ export function registerLogin(
       return turnBack('unavailable');
     }
     if (member === null) return turnBack('denied');
-    const human = store.signIn(member);
+    const human = await store.signIn(member);
     // The team is the organization: its name follows Feishu's. Without it,
     // the name stays as it was and the sign-in goes on.
     try {
       const name = (await feishu.organization()).trim().slice(0, 80);
-      if (name !== '') store.renameTeam(human.id, name);
+      if (name !== '') await store.renameTeam(human.id, name);
     } catch (error) {
       request.log.warn(
         { route: '/login/callback', ...describeFailure(error) },
@@ -82,7 +82,10 @@ export function registerLogin(
       );
     }
     request.session.regenerate();
-    request.session.set('session', store.sessions.open(human.id, Date.now()));
+    request.session.set(
+      'session',
+      await store.sessions.open(human.id, Date.now()),
+    );
     return reply.redirect('/');
   });
 }

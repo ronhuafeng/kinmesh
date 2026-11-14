@@ -72,9 +72,9 @@ try {
     stopping.signal.throwIfAborted();
   }
   if (process.argv[2] === 'status')
-    console.info(JSON.stringify(store.inbox.status()));
+    console.info(JSON.stringify(await store.inbox.status()));
   else if (process.argv[2] === 'resume' && process.argv[3]) {
-    store.inbox.resume(process.argv[3]);
+    await store.inbox.resume(process.argv[3]);
     console.info('Inbox delivery resumed with its existing intent.');
   } else if (process.argv.length === 2) {
     console.info('Kinmesh Inbox worker ready.');
@@ -98,7 +98,7 @@ try {
     process.exitCode = 1;
   }
 } finally {
-  store?.close();
+  await store?.close();
   clearTimeout(orphanDeadline);
   if (supervised && process.connected) process.disconnect();
 }

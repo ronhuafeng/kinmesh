@@ -12,26 +12,29 @@ const journal = z
   .object({ entries: z.array(z.unknown()) })
   .parse(JSON.parse(readFileSync('drizzle/meta/_journal.json', 'utf8')));
 
-await test('deterministic migrations enable WAL and foreign keys; the team survives reopen', () => {
+await test('deterministic migrations enable WAL and foreign keys; the team survives reopen', async () => {
   const f = fixture();
   try {
     const store = f.open();
-    const created = store.signIn(feishuPerson('owner@example.com'));
-    store.close();
+    const created = await store.signIn(feishuPerson('owner@example.com'));
+    await store.close();
     const reopened = f.open();
-    assert.equal(reopened.teamFor(created.id)?.channels[0]?.name, 'general');
+    assert.equal(
+      (await reopened.teamFor(created.id))?.channels[0]?.name,
+      'general',
+    );
     assert.deepEqual(
-      reopened.signIn(feishuPerson('owner@example.com')),
+      await reopened.signIn(feishuPerson('owner@example.com')),
       created,
     );
-    assert.equal(reopened.human(created.id)?.username, 'owner');
+    assert.equal((await reopened.human(created.id))?.username, 'owner');
     // Whoever comes next joins that team; there is never a second.
-    const other = reopened.signIn(feishuPerson('other@example.com'));
+    const other = await reopened.signIn(feishuPerson('other@example.com'));
     assert.equal(
-      reopened.teamFor(other.id)?.team.id,
-      reopened.teamFor(created.id)?.team.id,
+      (await reopened.teamFor(other.id))?.team.id,
+      (await reopened.teamFor(created.id))?.team.id,
     );
-    reopened.close();
+    await reopened.close();
     const raw = new Database(f.path);
     assert.equal(raw.pragma('journal_mode', { simple: true }), 'wal');
     assert.equal(
@@ -47,12 +50,12 @@ await test('deterministic migrations enable WAL and foreign keys; the team survi
     f.cleanup();
   }
 });
-await test('database rejects orphan membership, duplicate channel, singleton and names', () => {
+await test('database rejects orphan membership, duplicate channel, singleton and names', async () => {
   const f = fixture();
   const store = f.open();
   try {
-    const human = store.signIn(feishuPerson('owner@example.com'));
-    const team = store.teamFor(human.id);
+    const human = await store.signIn(feishuPerson('owner@example.com'));
+    const team = await store.teamFor(human.id);
     assert.ok(team);
     const created = { human, team: team.team };
     const raw = new Database(f.path);
@@ -93,11 +96,13 @@ await test('database rejects orphan membership, duplicate channel, singleton and
       raw.close();
     }
     assert.equal(
-      store.teamFor(HumanId.parse('00000000-0000-4000-8000-000000000000')),
+      await store.teamFor(
+        HumanId.parse('00000000-0000-4000-8000-000000000000'),
+      ),
       undefined,
     );
   } finally {
-    store.close();
+    await store.close();
     f.cleanup();
   }
 });
@@ -113,10 +118,13 @@ await test('WAL recovers a committed team and discards an interrupted writer tra
     await stop(child, 'SIGKILL');
     const recovered = f.open();
     try {
-      const owner = recovered.signIn(feishuPerson('owner@example.com'));
-      assert.equal(recovered.teamFor(owner.id)?.team.name, 'Committed team');
+      const owner = await recovered.signIn(feishuPerson('owner@example.com'));
+      assert.equal(
+        (await recovered.teamFor(owner.id))?.team.name,
+        'Committed team',
+      );
     } finally {
-      recovered.close();
+      await recovered.close();
     }
   } finally {
     await stop(child, 'SIGKILL');

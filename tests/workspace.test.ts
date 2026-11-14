@@ -31,7 +31,7 @@ await test('protected workspace and AG-UI 1.0 snapshots reconstruct persisted re
     assert.deepEqual(snapshot.joinedAgentIds, []);
     assert.equal(snapshot.agents[0]?.id, f.agent.id);
     const execution = await f.execution();
-    f.store.agents.runtimeEvent(
+    await f.store.agents.runtimeEvent(
       f.principal,
       f.teamId,
       f.agent.id,
@@ -119,7 +119,7 @@ await test('execution projection bounds SQL history and preserves last appended 
   try {
     let latestId = '';
     for (let i = 0; i < 22; i++) {
-      const correlation = f.store.agents.correlate(
+      const correlation = await f.store.agents.correlate(
         f.principal,
         f.teamId,
         f.agent.id,
@@ -137,14 +137,14 @@ await test('execution projection bounds SQL history and preserves last appended 
       latestId = correlation.id;
     }
     for (let i = 0; i < 102; i++)
-      f.store.agents.runtimeEvent(
+      await f.store.agents.runtimeEvent(
         f.principal,
         f.teamId,
         f.agent.id,
         latestId,
         i === 101 ? 'waiting' : 'active',
       );
-    const result = f.store.agents.workspaceExecutions(
+    const result = await f.store.agents.workspaceExecutions(
       f.principal,
       f.teamId,
       f.agent.id,
@@ -157,9 +157,9 @@ await test('execution projection bounds SQL history and preserves last appended 
     assert.equal(latest.events.length, 100);
     assert.equal(latest.eventsTruncated, true);
     assert.equal(latest.events.at(-1)?.state, 'waiting');
-    assert.throws(() =>
+    assert.throws(async () =>
       f.store.agents.workspaceExecutions(
-        f.store.agents.resolveToken(f.grant.token),
+        await f.store.agents.resolveToken(f.grant.token),
         f.teamId,
         AgentId.parse(randomUUID()),
       ),

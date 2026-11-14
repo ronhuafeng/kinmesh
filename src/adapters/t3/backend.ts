@@ -170,7 +170,7 @@ export class T3Backend implements ExecutionBackend {
     signal?: AbortSignal,
   ): Promise<Dispatch> {
     if (signal?.aborted) throw new ExecutionFailure('cancelled');
-    const row = this.journal.prepare(
+    const row = await this.journal.prepare(
       this.scope(),
       Intent.parse(intent),
       tool,
@@ -189,7 +189,7 @@ export class T3Backend implements ExecutionBackend {
     // Normal dispatch never replays an uncertain intent; explicit reconciliation owns recovery.
     if (row.phase !== 'prepared')
       return { kind: 'uncertain', operationId: row.id, reason: 'in-flight' };
-    const claim = this.journal.claim(row.id);
+    const claim = await this.journal.claim(row.id);
     if (!claim)
       return { kind: 'uncertain', operationId: row.id, reason: 'in-flight' };
     return this.execute(claim, signal);
@@ -226,7 +226,7 @@ export class T3Backend implements ExecutionBackend {
         .record(z.string(), z.unknown())
         .parse(JSON.parse(row.payload));
       signal.throwIfAborted();
-      if (!this.journal.owned(row)) return this.fenced(row.id);
+      if (!(await this.journal.owned(row))) return this.fenced(row.id);
       const raw = await this.tools.call(
         row.tool,
         { ...args, clientRequestId: row.requestId },
@@ -267,10 +267,10 @@ export class T3Backend implements ExecutionBackend {
       }
       // A response is not enough: bind the journal only after an authoritative read succeeds.
       effectReturned = true;
-      if (!this.journal.remember(row, ref)) return this.fenced(row.id);
+      if (!(await this.journal.remember(row, ref))) return this.fenced(row.id);
       const observation = await this.read(ref, undefined, signal);
       this.verifyObservation(row, observation);
-      if (!this.journal.known(row, ref)) return this.fenced(row.id);
+      if (!(await this.journal.known(row, ref))) return this.fenced(row.id);
       return { kind: 'known', reference: ref };
     } catch (error) {
       if (
@@ -278,10 +278,11 @@ export class T3Backend implements ExecutionBackend {
         error instanceof ExecutionFailure &&
         (error.kind === 'permission' || error.kind === 'authentication')
       ) {
-        if (!this.journal.rejected(row, error.kind)) return this.fenced(row.id);
+        if (!(await this.journal.rejected(row, error.kind)))
+          return this.fenced(row.id);
         throw error;
       }
-      if (!this.journal.uncertain(row)) return this.fenced(row.id);
+      if (!(await this.journal.uncertain(row))) return this.fenced(row.id);
       return {
         kind: 'uncertain',
         operationId: row.id,
@@ -305,7 +306,7 @@ export class T3Backend implements ExecutionBackend {
     this.permitted();
     if (signal?.aborted) throw new ExecutionFailure('cancelled');
     Intent.parse(intent);
-    let row = this.journal.get(operationId);
+    let row = await this.journal.get(operationId);
     if (
       row.scope !== this.scope() ||
       row.actor !== intent.actor ||
@@ -316,7 +317,7 @@ export class T3Backend implements ExecutionBackend {
       .record(z.string(), z.unknown())
       .parse(JSON.parse(row.payload));
     // Fingerprint also binds retries to the exact original OAuth authority; reauthorization cannot silently duplicate work.
-    row = this.journal.prepare(
+    row = await this.journal.prepare(
       this.scope(),
       intent,
       row.tool,
@@ -332,7 +333,7 @@ export class T3Backend implements ExecutionBackend {
       await this.read(reference, undefined, signal);
       return { kind: 'known', reference };
     }
-    const claim = this.journal.claim(row.id, true);
+    const claim = await this.journal.claim(row.id, true);
     if (!claim) return this.fenced(row.id);
     // Claim returns the current reference atomically; an active dispatcher cannot be raced.
     if (claim.reference !== null) {
@@ -343,10 +344,11 @@ export class T3Backend implements ExecutionBackend {
         const reference = Reference.parse(JSON.parse(claim.reference));
         const observation = await this.read(reference, undefined, signal);
         this.verifyObservation(claim, observation);
-        if (!this.journal.known(claim, reference)) return this.fenced(row.id);
+        if (!(await this.journal.known(claim, reference)))
+          return this.fenced(row.id);
         return { kind: 'known', reference };
       } catch {
-        if (!this.journal.uncertain(claim)) return this.fenced(row.id);
+        if (!(await this.journal.uncertain(claim))) return this.fenced(row.id);
         return {
           kind: 'uncertain',
           operationId: row.id,

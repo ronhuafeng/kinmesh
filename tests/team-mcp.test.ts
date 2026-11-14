@@ -46,7 +46,7 @@ import { forkWorker, race } from './process-helpers.js';
 
 async function fixture() {
   const f = await taskFixture();
-  const writer = f.store.agents.issue(f.principal, f.teamId, f.agent.id, {
+  const writer = await f.store.agents.issue(f.principal, f.teamId, f.agent.id, {
     label: 'Team SDK',
     scopes: ['channels:read', 'channels:write', 'tasks:read', 'tasks:write'],
     lifetimeSeconds: 3600,
@@ -118,7 +118,7 @@ await test('real Team MCP subprocess + independent SDK initializes, notifies, li
     assert.equal(sent.data.author.kind, 'agent');
     assert.equal(sent.data.author.agentId, f.agent.id);
     assert.equal(
-      f.comm.history(f.principal, f.teamId, f.channelId).items[0]?.id,
+      (await f.comm.history(f.principal, f.teamId, f.channelId)).items[0]?.id,
       sent.data.id,
     );
     assert.deepEqual(
@@ -132,7 +132,7 @@ await test('real Team MCP subprocess + independent SDK initializes, notifies, li
       Message,
     );
     assert.ok(!conflict.ok && conflict.error.code === 'conflict');
-    let task = f.create().task;
+    let task = (await f.create()).task;
     const claimed = await call(
       client,
       'team_task_claim',
@@ -194,7 +194,8 @@ await test('real Team MCP subprocess + independent SDK initializes, notifies, li
     task = reviewed.data.task;
     assert.equal(task.state.status, 'awaiting-human');
     assert.equal(
-      f.tasks.get(f.principal, f.teamId, f.channelId, task.id).state.status,
+      (await f.tasks.get(f.principal, f.teamId, f.channelId, task.id)).state
+        .status,
       'awaiting-human',
     );
     await f.restart();
@@ -329,11 +330,16 @@ await test('Team SDK strict input/output schemas reject impersonation and unknow
       pageOf(Task),
     );
     assert.ok(!read.ok && read.error.code === 'forbidden');
-    const grant = f.store.agents.issue(f.principal, f.teamId, f.agent.id, {
-      label: 'Read only SDK',
-      scopes: ['channels:read'],
-      lifetimeSeconds: 3600,
-    });
+    const grant = await f.store.agents.issue(
+      f.principal,
+      f.teamId,
+      f.agent.id,
+      {
+        label: 'Read only SDK',
+        scopes: ['channels:read'],
+        lifetimeSeconds: 3600,
+      },
+    );
     const r = await f.connect(grant.token);
     const denied = await call(
       r.client,
@@ -343,7 +349,7 @@ await test('Team SDK strict input/output schemas reject impersonation and unknow
     );
     assert.ok(!denied.ok && denied.error.code === 'forbidden');
     assert.equal(
-      f.comm.history(f.principal, f.teamId, f.channelId).items.length,
+      (await f.comm.history(f.principal, f.teamId, f.channelId)).items.length,
       0,
     );
     assert.equal(
@@ -370,7 +376,7 @@ await test('Team SDK hides cross-team/channel context, enforces current membersh
       .prepare('INSERT INTO memberships (human_id,team_id) VALUES (?,?)')
       .run(f.owner.id, otherTeam);
     foreign.close();
-    const foreignChannel = f.comm.createChannel(f.principal, otherTeam, {
+    const foreignChannel = await f.comm.createChannel(f.principal, otherTeam, {
       operationKey: key(),
       name: 'Foreign channel',
     });
@@ -381,7 +387,7 @@ await test('Team SDK hides cross-team/channel context, enforces current membersh
       pageOf(Message),
     );
     assert.ok(!foreignRead.ok && foreignRead.error.code === 'not_found');
-    const privateChannel = f.comm.createChannel(f.principal, f.teamId, {
+    const privateChannel = await f.comm.createChannel(f.principal, f.teamId, {
       operationKey: key(),
       name: 'private',
     });
@@ -392,7 +398,7 @@ await test('Team SDK hides cross-team/channel context, enforces current membersh
       pageOf(Message),
     );
     assert.ok(!hidden.ok && hidden.error.code === 'not_found');
-    const task = f.create().task;
+    const task = (await f.create()).task;
     const noOwner = await call(
       client,
       'team_task_progress',
@@ -425,7 +431,7 @@ await test('Team SDK hides cross-team/channel context, enforces current membersh
       arguments: { teamId: randomUUID() },
     });
     assert.equal(cross.isError, true);
-    f.comm.enroll(
+    await f.comm.enroll(
       f.principal,
       f.teamId,
       f.channelId,
@@ -449,7 +455,12 @@ await test('Team MCP revocation, disable and expiry reject existing SDK connecti
   try {
     const { client } = await f.connect();
     const advertised = await client.listTools();
-    f.store.agents.revoke(f.principal, f.teamId, f.agent.id, f.writer.grant.id);
+    await f.store.agents.revoke(
+      f.principal,
+      f.teamId,
+      f.agent.id,
+      f.writer.grant.id,
+    );
     await assert.rejects(() => client.ping(), denied401);
     for (const tool of advertised.tools)
       await assert.rejects(
@@ -458,7 +469,12 @@ await test('Team MCP revocation, disable and expiry reject existing SDK connecti
       );
     await assert.rejects(() => f.connect(), denied401);
     const old = await f.connect(f.developerGrant.token);
-    f.store.agents.lifecycle(f.principal, f.teamId, f.agent.id, 'disabled');
+    await f.store.agents.lifecycle(
+      f.principal,
+      f.teamId,
+      f.agent.id,
+      'disabled',
+    );
     await assert.rejects(() => old.client.listTools(), denied401);
     for (const tool of advertised.tools)
       await assert.rejects(
@@ -491,7 +507,7 @@ await test('two independent official SDK client processes race to claim through 
   const f = await fixture();
   const children: ChildProcess[] = [];
   try {
-    const task = f.create().task;
+    const task = (await f.create()).task;
     for (const token of [f.writer.token, f.reviewerGrant.token])
       children.push(
         forkWorker(
@@ -508,22 +524,19 @@ await test('two independent official SDK client processes race to claim through 
       );
     assert.deepEqual(await race(children, 12000), ['conflict', 'won']);
     assert.equal(
-      f.tasks.get(f.principal, f.teamId, f.channelId, task.id).version,
+      (await f.tasks.get(f.principal, f.teamId, f.channelId, task.id)).version,
       2,
     );
     assert.equal(
-      f.tasks
-        .history(f.principal, f.teamId, f.channelId, task.id)
-        .items.filter((e) => e.action === 'claim').length,
+      (
+        await f.tasks.history(f.principal, f.teamId, f.channelId, task.id)
+      ).items.filter((e) => e.action === 'claim').length,
       1,
     );
     assert.equal(
-      f.comm
-        .events(f.principal, f.teamId, f.channelId)
-        .items.filter(
-          (e) =>
-            e.fact.kind === 'task.changed' && e.fact.taskAction === 'claim',
-        ).length,
+      (await f.comm.events(f.principal, f.teamId, f.channelId)).items.filter(
+        (e) => e.fact.kind === 'task.changed' && e.fact.taskAction === 'claim',
+      ).length,
       1,
     );
   } finally {
@@ -544,7 +557,7 @@ await test('Team MCP transactions roll back on outbox failure and retries recove
     const failure = await call(client, 'team_messages_send', input, Message);
     assert.ok(!failure.ok && failure.error.code === 'conflict');
     assert.equal(
-      f.comm.history(f.principal, f.teamId, f.channelId).items.length,
+      (await f.comm.history(f.principal, f.teamId, f.channelId)).items.length,
       0,
     );
     db.exec('DROP TRIGGER test_mcp_failure');
@@ -556,7 +569,7 @@ await test('Team MCP transactions roll back on outbox failure and retries recove
       sent,
     );
     assert.equal(
-      f.comm.history(f.principal, f.teamId, f.channelId).items.length,
+      (await f.comm.history(f.principal, f.teamId, f.channelId)).items.length,
       1,
     );
   } finally {
@@ -843,7 +856,7 @@ for (const cursorCase of ['bad', 'wrong-context'] as const) {
       let name = 'team_messages_read';
       if (cursorCase === 'wrong-context') {
         for (let i = 0; i < 2; i++)
-          f.comm.post(
+          await f.comm.post(
             f.principal,
             f.teamId,
             f.channelId,

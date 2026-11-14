@@ -13,12 +13,11 @@ const config = z
   })
   .parse(process.env);
 const store = openStore(config.TASK_TEST_DATABASE);
-process.on('message', (message: unknown) => {
-  if (message !== 'go') return;
+async function claim() {
   let outcome: 'won' | 'conflict' | 'failed' = 'failed';
   try {
-    const p = store.agents.resolveToken(config.TASK_TEST_TOKEN);
-    store.tasks.command(
+    const p = await store.agents.resolveToken(config.TASK_TEST_TOKEN);
+    await store.tasks.command(
       p,
       config.TASK_TEST_TEAM,
       config.TASK_TEST_CHANNEL,
@@ -30,9 +29,12 @@ process.on('message', (message: unknown) => {
     if (error instanceof IdentityError && error.statusCode === 409)
       outcome = 'conflict';
   }
-  store.close();
+  await store.close();
   process.send?.({ outcome }, () => {
     process.disconnect();
   });
+}
+process.on('message', (message: unknown) => {
+  if (message === 'go') void claim();
 });
 process.send?.({ ready: true });

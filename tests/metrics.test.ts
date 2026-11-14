@@ -40,7 +40,7 @@ await test('the hub is live while it answers, and ready only with its worker', a
     worker = true;
     assert.equal((await h.app.inject({ url: '/health' })).statusCode, 200);
     // A database that cannot answer is not ready either; the process lives.
-    h.store.close();
+    await h.store.close();
     assert.equal((await h.app.inject({ url: '/health' })).statusCode, 503);
     assert.equal((await h.app.inject({ url: '/health/live' })).statusCode, 200);
   } finally {
@@ -54,13 +54,13 @@ await test('/metrics reports the hub in Prometheus text, and nothing about anyon
   try {
     const mailbox = 'ada.lovelace@example.com';
     const cookies = await signInAs(h.app, mailbox);
-    const ada = h.store.signIn(feishuPerson(mailbox));
-    const team = h.store.teamFor(ada.id);
+    const ada = await h.store.signIn(feishuPerson(mailbox));
+    const team = await h.store.teamFor(ada.id);
     assert.ok(team);
     const channel = team.channels[0];
     assert.ok(channel);
     const marker = 'private-words-' + crypto.randomUUID();
-    h.store.communication.post(
+    await h.store.communication.post(
       { kind: 'human', humanId: ada.id },
       team.team.id,
       channel.id,

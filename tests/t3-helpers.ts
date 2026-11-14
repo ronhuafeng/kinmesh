@@ -122,8 +122,8 @@ export async function backendFixture() {
     store,
     wire,
     backend,
-    dispose: () => {
-      store.close();
+    dispose: async () => {
+      await store.close();
       f.cleanup();
     },
   };

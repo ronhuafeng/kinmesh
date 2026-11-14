@@ -13,32 +13,32 @@ await test('a session ends when idle too long, and when too old even if used', a
   const f = await agentFixture();
   try {
     const start = Date.now();
-    const used = f.store.sessions.open(f.owner.id, start);
+    const used = await f.store.sessions.open(f.owner.id, start);
     // Used every 15 minutes, it lives past the idle limit...
     let now = start;
     while (now < start + SESSION_IDLE_MS * 2) {
       now += 15 * MINUTE;
-      assert.equal(f.store.sessions.resolve(used, now), f.owner.id);
+      assert.equal(await f.store.sessions.resolve(used, now), f.owner.id);
     }
     // ...but not past its lifetime.
     assert.equal(
-      f.store.sessions.resolve(used, start + SESSION_LIFETIME_MS + 1),
+      await f.store.sessions.resolve(used, start + SESSION_LIFETIME_MS + 1),
       undefined,
     );
     // Left alone, it ends after the idle limit.
-    const idle = f.store.sessions.open(f.owner.id, start);
+    const idle = await f.store.sessions.open(f.owner.id, start);
     assert.equal(
-      f.store.sessions.resolve(idle, start + SESSION_IDLE_MS - MINUTE),
+      await f.store.sessions.resolve(idle, start + SESSION_IDLE_MS - MINUTE),
       f.owner.id,
     );
     const later = start + SESSION_IDLE_MS - MINUTE;
     assert.equal(
-      f.store.sessions.resolve(idle, later + SESSION_IDLE_MS + 1),
+      await f.store.sessions.resolve(idle, later + SESSION_IDLE_MS + 1),
       undefined,
     );
     // Nothing that is not a live token resolves.
     for (const token of [undefined, '', 'not-a-session', 42])
-      assert.equal(f.store.sessions.resolve(token, start), undefined);
+      assert.equal(await f.store.sessions.resolve(token, start), undefined);
   } finally {
     await f.dispose();
   }
