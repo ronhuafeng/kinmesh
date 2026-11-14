@@ -1,4 +1,5 @@
 import { PostgreSqlContainer } from '@testcontainers/postgresql';
+import postgres from 'postgres';
 import {
   disposableDatabase,
   prepareTemplate,
@@ -18,6 +19,15 @@ export async function startTestDatabase() {
     .withPassword('kinmesh-test')
     .start();
   const adminUrl = container.getConnectionUri();
+  // A test waiting on a lock fails, naming where, instead of stalling the run.
+  const admin = postgres(adminUrl, { max: 1, onnotice: () => undefined });
+  try {
+    await admin.unsafe(
+      "ALTER ROLE kinmesh SET lock_timeout = '20s'; ALTER ROLE kinmesh SET statement_timeout = '30s'",
+    );
+  } finally {
+    await admin.end({ timeout: 5 });
+  }
   await prepareTemplate(adminUrl);
   process.env[ADMIN] = adminUrl;
   return {

@@ -53,8 +53,8 @@ await test('a failure leaves one record to diagnose it, and nothing private', as
     // An unknown failure: the response says nothing, the log says what failed.
     const create = store.communication.createChannel.bind(store.communication);
     store.communication.createChannel = () => {
-      throw Object.assign(new Error('disk I/O error'), {
-        code: 'SQLITE_IOERR',
+      throw Object.assign(new Error('could not write to file'), {
+        code: '58030',
       });
     };
     const failed = await app.inject({
@@ -74,7 +74,7 @@ await test('a failure leaves one record to diagnose it, and nothing private', as
     assert.equal(failure.method, 'POST');
     assert.equal(failure.status, 500);
     assert.equal(failure.error, 'Error');
-    assert.equal(failure.code, 'SQLITE_IOERR');
+    assert.equal(failure.code, '58030');
     assert.match(failure.reqId ?? '', /^[0-9a-f-]{36}$/);
     const written = lines.join('\n');
     for (const secret of [
@@ -130,13 +130,27 @@ await test('a failure leaves one record to diagnose it, and nothing private', as
 
 await test('a failure is described by name, code and constraint, not by request data', () => {
   const unique = Object.assign(
-    new Error('UNIQUE constraint failed: channels.team_id, channels.name'),
-    { name: 'SqliteError', code: 'SQLITE_CONSTRAINT_UNIQUE' },
+    new Error('duplicate key value violates unique constraint "channel_name"'),
+    {
+      name: 'PostgresError',
+      code: '23505',
+      table_name: 'channels',
+      constraint_name: 'channel_name',
+      detail: 'Key (team_id, name)=(t, private-name) already exists.',
+    },
   );
-  const described = describeFailure(unique);
-  assert.equal(described.error, 'SqliteError');
-  assert.equal(described.code, 'SQLITE_CONSTRAINT_UNIQUE');
-  assert.equal(described.constraint, 'channels.team_id, channels.name');
+  // As drizzle throws it: the query and its values, wrapping PostgreSQL's error.
+  const query = Object.assign(
+    new Error('Failed query: insert into channels\nparams: private-name', {
+      cause: unique,
+    }),
+    { query: 'insert into channels', params: ['private-name'] },
+  );
+  const described = describeFailure(query);
+  assert.equal(described.error, 'PostgresError');
+  assert.equal(described.code, '23505');
+  assert.equal(described.constraint, 'channels.channel_name');
+  assert.equal(JSON.stringify(described).includes('private-name'), false);
   const wrapped = new Error('Listener unavailable', {
     cause: Object.assign(new Error('listen EADDRINUSE'), {
       code: 'EADDRINUSE',
