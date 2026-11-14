@@ -22,6 +22,23 @@ export const humans = sqliteTable(
     check('username_length', sql`length(${t.username}) BETWEEN 3 AND 64`),
   ],
 );
+/**
+ * A signed-in browser. Only the digest of its random token is kept, so a
+ * copy of the database cannot be replayed as a session.
+ */
+export const sessions = sqliteTable(
+  'sessions',
+  {
+    tokenHash: text('token_hash').primaryKey(),
+    humanId: text('human_id')
+      .notNull()
+      .references(() => humans.id, { onDelete: 'cascade' }),
+    createdAt: integer('created_at').notNull(),
+    lastSeenAt: integer('last_seen_at').notNull(),
+    revokedAt: integer('revoked_at'),
+  },
+  (t) => [index('session_human').on(t.humanId)],
+);
 export const teams = sqliteTable(
   'teams',
   {

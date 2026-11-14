@@ -61,8 +61,7 @@ export function registerEvents(
     if (principal?.kind !== 'human') throw new IdentityError(403);
     const { page, ...place } = WatchQuery.parse(request.query);
     const resources = watched({ ...place, page });
-    const humanId = request.session.get('humanId');
-    const credential = request.session.get('credential');
+    const session = request.session.get('session');
     const readable = (read: () => Revisioned) => {
       try {
         return read().revision;
@@ -117,7 +116,7 @@ export function registerEvents(
       if (!open.has(end)) return;
       try {
         // A changed password or lost membership ends the stream at once.
-        resolvePrincipal(store, undefined, humanId, credential);
+        resolvePrincipal(store, undefined, session);
         const now = look();
         const changed: Partial<Record<Resource, string>> = {};
         for (const resource of resources) {

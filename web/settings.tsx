@@ -16,6 +16,7 @@ export function SettingsPage({
   onDone,
   onNotify,
   onSignOut,
+  onSignOutEverywhere,
 }: {
   data: WorkspaceSnapshot;
   onClose: () => void;
@@ -23,6 +24,8 @@ export function SettingsPage({
   onNotify: (message: string) => void;
   /** On a phone, where the header's power icon is not shown. */
   onSignOut?: () => void;
+  /** Ends every session of yours, on every device, this one included. */
+  onSignOutEverywhere: () => void;
 }) {
   const team = useRequest({ 400: 'Use 1–80 characters.' });
   const password = useRequest({
@@ -158,12 +161,22 @@ export function SettingsPage({
           </span>
           {password.error && <Notice>{password.error}</Notice>}
         </form>
-        {onSignOut && (
-          <button type="button" className="you-sign-out" onClick={onSignOut}>
+        <div className="you-sign-outs">
+          {onSignOut && (
+            <button type="button" className="you-sign-out" onClick={onSignOut}>
+              <PowerIcon />
+              Sign out
+            </button>
+          )}
+          <button
+            type="button"
+            className="you-sign-out"
+            onClick={onSignOutEverywhere}
+          >
             <PowerIcon />
-            Sign out
+            Sign out everywhere
           </button>
-        )}
+        </div>
       </div>
     </Page>
   );

@@ -12,8 +12,9 @@ Kinmesh is a single-node, single-owner service with a loopback listener. This do
 ## Passwords and sessions
 
 - Passwords are hashed with Argon2id (19 MiB, two iterations, one lane). Unknown accounts verify against a dummy hash to bound timing differences.
-- Sessions use `@fastify/secure-session`: an encrypted, authenticated `HttpOnly`, `SameSite=Strict` cookie, `Secure` for an HTTPS origin, expiring after one hour. Login regenerates the session. Sessions survive restarts only while the session key is unchanged; changing the key ends every session.
-- Each session carries a mark of the password hash it signed in with, checked on every request. `POST /api/me/password` (current password required, rate-limited like login) therefore ends every other session at once, including copied cookies; the changing browser gets a new session. Deleting an account ends its access.
+- Sessions live on the server. Login creates a session from a random 256-bit token; the database keeps only its SHA-256 digest, so a copy of the database cannot be replayed. The token travels in an `@fastify/secure-session` cookie: encrypted, authenticated, `HttpOnly`, `SameSite=Strict`, and `Secure` for an HTTPS origin. Login regenerates the cookie.
+- Every request checks the session: it ends after 8 hours unused and 7 days after sign-in, whichever comes first, and once revoked. Last-seen is written at most once a minute. Logout revokes this session; **Sign out everywhere** (`POST /api/me/sessions/end`) revokes all of yours. A copied cookie is the same session and ends with it. Changing the session key ends every session.
+- `POST /api/me/password` (current password required, rate-limited like login) revokes every session of yours and gives the changing browser a new one. Deleting an account ends its access.
 - Logout clears the browser cookie but does not revoke a copied cookie before it expires.
 
 ## Requests
@@ -22,7 +23,7 @@ Kinmesh is a single-node, single-owner service with a loopback listener. This do
 - Actor headers and actor/identity/role query parameters are rejected (400); they are never identity.
 - A mutating request with an `Origin` header must match `KINMESH_ORIGIN`. There is no CORS and no proxy trust.
 - Rate limits are per client IP and in memory: 60 requests/minute overall by default (`KINMESH_RATE_LIMIT`, 1–100000), well above what a person does; 5/minute for setup, login and password change, which is fixed. They reset on restart and are not a distributed defence.
-- Event streams (`GET /api/events`) are for signed-in humans and carry no data, only the revisions of what a view shows, which are hashes of what that person can already read. Each person may hold 8 and the hub 64; a stream ends after 10 minutes and the browser reconnects with its session. The session is rechecked on every change and every 25 seconds, so a changed password or lost membership ends its streams at once.
+- Event streams (`GET /api/events`) are for signed-in humans and carry no data, only the revisions of what a view shows, which are hashes of what that person can already read. Each person may hold 8 and the hub 64; a stream ends after 10 minutes and the browser reconnects with its session. The session is rechecked on every change and every 25 seconds, so a revoked or expired session, a changed password or lost membership ends its streams at once.
 - Logs record failures only: a 5xx or a startup or worker failure with its route, method, request ID, error name, code, constraint and stack, and a refusal that a database constraint caused. Requests themselves are not logged, so URLs, headers, cookies, bodies, tokens, OAuth values and T3 responses never reach a log.
 - JSON bodies are capped at 16 KiB. Errors are fixed messages that never echo input or internal exceptions.
 - Every response carries `nosniff`, `Referrer-Policy: no-referrer` and a restrictive CSP (`default-src 'self'`, no objects, no framing). Credential-bearing and workspace responses are `Cache-Control: no-store`.
