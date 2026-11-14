@@ -10,6 +10,7 @@ import {
   WORKER_SHUTDOWN_MS,
   type WorkerEvent,
 } from './lifecycle.js';
+import { reportFailure } from '../diagnostics.js';
 process.umask(0o077);
 let store: ReturnType<typeof openStore> | undefined;
 const stopping = new AbortController();
@@ -88,11 +89,12 @@ try {
     );
     console.info('Kinmesh Inbox worker stopped.');
   } else throw new Error('Invalid command');
-} catch {
+} catch (error) {
   if (!stopping.signal.aborted) {
     console.error(
       'Inbox worker failed. Check private configuration, credentials and database availability.',
     );
+    reportFailure('inbox_worker_failed', error);
     process.exitCode = 1;
   }
 } finally {

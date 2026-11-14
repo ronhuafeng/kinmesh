@@ -3,6 +3,7 @@ import { loadConfig } from './config.js';
 import { openStore } from '../persistence/store.js';
 import { InboxSupervisor } from './inbox-supervisor.js';
 import { once } from 'node:events';
+import { reportFailure } from '../diagnostics.js';
 
 process.umask(0o077);
 const stopping = new AbortController();
@@ -74,11 +75,12 @@ try {
   stopping.signal.throwIfAborted();
   console.info('Kinmesh Team Hub ready on configured loopback port.');
   await once(stopping.signal, 'abort');
-} catch {
+} catch (error) {
   if (!stopping.signal.aborted) {
     console.error(
       'Kinmesh startup failed. Check local configuration and database availability.',
     );
+    reportFailure('hub_startup_failed', error);
     process.exitCode = 1;
   }
 } finally {
@@ -86,8 +88,9 @@ try {
     // Abort pending startup handshakes/backoff immediately on a shutdown signal.
     await supervisor?.stop();
     await app?.close();
-  } catch {
+  } catch (error) {
     console.error('Kinmesh shutdown failed. Check local process supervision.');
+    reportFailure('hub_shutdown_failed', error);
     process.exitCode = 1;
   } finally {
     store?.close();

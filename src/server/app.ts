@@ -14,10 +14,11 @@ import Fastify from 'fastify';
 import secureSession from '@fastify/secure-session';
 import rateLimit from '@fastify/rate-limit';
 import { hash, verify } from '@node-rs/argon2';
-import { createHash, timingSafeEqual } from 'node:crypto';
+import { createHash, randomUUID, timingSafeEqual } from 'node:crypto';
 import { BootstrapInput, Credentials, HumanId } from '../domain/contracts.js';
 import type { Store } from '../persistence/store.js';
 import type { Config } from './config.js';
+import { describeFailure } from '../diagnostics.js';
 
 /** One KDF cost for every password hash, including the unknown-account dummy. */
 const ARGON2 = { memoryCost: 19456, timeCost: 2, parallelism: 1 };
@@ -34,12 +35,25 @@ export async function createApp(
   workerReady: () => boolean = () => true,
   beforeClose?: () => Promise<void>,
   overrides: Partial<Omit<Hub, 'directory'>> = {},
+  /** Where the log goes; standard output when absent. */
+  options: { logStream?: NodeJS.WritableStream } = {},
 ) {
   const hub = {
     ...defaultHub(managedDirectory(config.database)),
     ...overrides,
   };
-  const app = Fastify({ logger: false, bodyLimit: 16_384, trustProxy: false });
+  const app = Fastify({
+    // Only failures are logged, each with its request's ID; a request itself
+    // is never logged, so its URL, headers and body never reach the log.
+    logger: {
+      level: 'info',
+      ...(options.logStream ? { stream: options.logStream } : {}),
+    },
+    disableRequestLogging: true,
+    genReqId: () => randomUUID(),
+    bodyLimit: 16_384,
+    trustProxy: false,
+  });
   await app.register(rateLimit, {
     max: config.rateLimit,
     timeWindow: '1 minute',
@@ -67,13 +81,26 @@ export async function createApp(
       "default-src 'self'; script-src 'self'; style-src 'self'; connect-src 'self'; img-src 'self' data:; object-src 'none'; base-uri 'none'; frame-ancestors 'none'; form-action 'self'",
     );
   });
-  app.setErrorHandler((error, _request, reply) => {
+  app.setErrorHandler((error, request, reply) => {
     if (error instanceof z.ZodError)
       return void reply.code(400).send({ error: 'Invalid input' });
     const known = z
       .object({ statusCode: z.number().int().min(400).max(499) })
       .safeParse(error);
     const status = known.success ? known.data.statusCode : 500;
+    // A failure is recorded; a refusal only when a constraint caused it.
+    const where = {
+      route: request.routeOptions.url,
+      method: request.method,
+      status,
+    };
+    if (status >= 500)
+      request.log.error({ ...where, ...describeFailure(error) }, 'failed');
+    else if (error instanceof Error && error.cause !== undefined)
+      request.log.warn(
+        { ...where, ...describeFailure(error.cause) },
+        'refused',
+      );
     void reply.code(status).send({
       error:
         status === 429
