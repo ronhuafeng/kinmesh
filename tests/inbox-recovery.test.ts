@@ -5,7 +5,7 @@ import { z } from 'zod';
 import { rawDatabase } from './raw.js';
 import { deliver } from '../src/inbox/worker.js';
 import { FrozenLaunch } from '../src/domain/inbox.js';
-import { IdentityError } from '../src/domain/agents.js';
+import { IdentityError, type Scope } from '../src/domain/agents.js';
 import { launch, options, reference } from './t3-helpers.js';
 import { inboxFixture } from './inbox-helpers.js';
 import { key, postInput } from './communication-helpers.js';
@@ -30,12 +30,13 @@ async function mention(f: Fixture) {
 async function causeAfter(
   lose: (f: Fixture) => Promise<void>,
   binding = (f: Fixture) => f.binding,
+  factory = (f: Fixture) => f.factory,
 ) {
   const f = await inboxFixture();
   try {
     const claim = await mention(f);
     await lose(f);
-    await deliver(f.store, claim, binding(f), f.factory, signal());
+    await deliver(f.store, claim, binding(f), factory(f), signal());
     const row = await f.inbox.get(claim.id);
     assert.equal(row.state, 'blocked', row.reason);
     return row.reason;
@@ -90,6 +91,59 @@ await test('a blocked delivery records the precondition it lost, not one catch-a
     ),
     'native-incompatible',
   );
+  // T3 now answers from another environment than the agent was connected to.
+  assert.equal(
+    await causeAfter(
+      () => Promise.resolve(),
+      undefined,
+      (f) =>
+        async (...args) => {
+          const handle = await f.factory(...args);
+          return {
+            ...handle,
+            identity: { ...handle.identity, environmentId: 'another' },
+          };
+        },
+    ),
+    'environment-changed',
+  );
+});
+
+await test('a credential lacking a scope the delivery reads with is the cause, whatever else holds', async () => {
+  for (const missing of ['channels:read', 'tasks:read'] as const) {
+    const f = await inboxFixture();
+    try {
+      await f.create({ owner: { kind: 'agent', id: f.agent.id } });
+      const claim = await f.inbox.claim([f.agent.id]);
+      assert.ok(claim?.taskId);
+      const lacking = await f.store.agents.issue(
+        f.principal,
+        f.teamId,
+        f.agent.id,
+        {
+          label: 'Lacks ' + missing,
+          scopes: (
+            [
+              'channels:read',
+              'channels:write',
+              'tasks:read',
+              'tasks:write',
+              'executions:read',
+              'executions:write',
+            ] satisfies Scope[]
+          ).filter((scope) => scope !== missing),
+          lifetimeSeconds: 3600,
+        },
+      );
+      assert.equal(
+        await f.inbox.blockedCause(claim, () => lacking.token),
+        'credential-invalid',
+        missing,
+      );
+    } finally {
+      await f.dispose();
+    }
+  }
 });
 
 await test('an owner resumes a blocked delivery over HTTP with every resume invariant kept', async () => {
@@ -158,7 +212,7 @@ await test('owner resume needs access to the delivery’s channel', async () => 
   }
 });
 
-await test('resume cannot bypass a revoked credential, and task work reports lost assignment', async () => {
+await test('resume cannot bypass a revoked credential, and only a task taken away reports lost assignment', async () => {
   const f = await inboxFixture();
   try {
     const claim = await mention(f);
@@ -182,9 +236,17 @@ await test('resume cannot bypass a revoked credential, and task work reports los
   }
   const g = await inboxFixture();
   try {
-    await g.create({ owner: { kind: 'agent', id: g.agent.id } });
+    const { task } = await g.create({
+      owner: { kind: 'agent', id: g.agent.id },
+    });
     const claim = await g.inbox.claim([g.agent.id]);
     assert.ok(claim?.taskId);
+    // Still the task's owner: whatever blocked it, assignment did not.
+    assert.equal(
+      await g.inbox.blockedCause(claim, () => g.inboxGrant.token),
+      'authority-or-contract-blocked',
+    );
+    await g.act(g.principal, task, { type: 'cancel', note: 'Not needed' });
     assert.equal(
       await g.inbox.blockedCause(claim, () => g.inboxGrant.token),
       'not-assigned',

@@ -34,6 +34,8 @@ function blockedText(reason: string, name: string) {
       return `T3 refused ${name}’s access: reconnect T3 and choose Supervised`;
     case 'native-incompatible':
       return `${name}’s model isn’t available in T3: choose another one`;
+    case 'environment-changed':
+      return `T3 is no longer the environment ${name} was connected to: connect ${name} again`;
     default:
       return `${name} is stuck: Kinmesh or T3 refused the request`;
   }
@@ -213,7 +215,8 @@ export function Recovery({
       )}
       {(reason === 'credential-invalid' ||
         reason === 'native-access' ||
-        reason === 'native-incompatible') &&
+        reason === 'native-incompatible' ||
+        reason === 'environment-changed') &&
         openAgent && (
           <button
             type="button"

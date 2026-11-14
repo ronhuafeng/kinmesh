@@ -185,7 +185,7 @@ Enqueue never grants authority. Before dispatch and again at publication the wor
 
 ### Delivery states
 
-A delivery is `ready`, `waiting`, `uncertain`, `blocked`, `acked` or `expired`. A blocked delivery records a cause a person can fix: `agent-disabled`, `credential-invalid`, `not-in-channel`, `not-assigned`, `native-access`, `native-incompatible`, or `authority-or-contract-blocked` when none of these applies.
+A delivery is `ready`, `waiting`, `uncertain`, `blocked`, `acked` or `expired`. A blocked delivery records a cause a person can fix: `agent-disabled`, `credential-invalid`, `not-in-channel`, `not-assigned`, `native-access`, `native-incompatible` (T3 doesn't offer the agent's model or provider), `environment-changed` (T3 now answers from another environment than the agent was connected to), or `authority-or-contract-blocked` when none of these applies. `not-assigned` is decided by the same rule publication uses: the task no longer has the agent act on it.
 
 Any person resumes a blocked delivery with `POST /api/teams/:teamId/deliveries/:deliveryId/resume` (a person's session and channel read access; agent bearers are refused; keyed, so a retry replays). Resume keeps the frozen intent, authority and native request key, and authority is rechecked at dispatch and publication, so it cannot revive a revoked credential or switch to another.
 
