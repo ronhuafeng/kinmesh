@@ -30,7 +30,7 @@ import { Avatar, AvatarImages, Presence, workerConnected } from './ui.js';
 import { CommandPalette } from './palette.js';
 import { InboxPage, attentionCount } from './inbox.js';
 import { SettingsPage } from './settings.js';
-import { InboxIcon, MenuIcon, PowerIcon } from './icons.js';
+import { MenuIcon, PowerIcon } from './icons.js';
 import type { Command } from './palette.js';
 /** Tabs, plus one agent's own page reached from them. */
 type View = 'chat' | 'board' | 'team' | 'agent';
@@ -487,10 +487,16 @@ export function App() {
     workerAgent !== undefined ||
     focus?.kind === 'inbox' ||
     focus?.kind === 'settings';
-  // A task (new or open) sits on the board; the Inbox, Settings and a
-  // hand-run worker sit on no tab. An agent's page is its own tab panel,
+  // A task (new or open) sits on the board and the Inbox is its own tab;
+  // Settings and a hand-run worker sit on no tab. An agent's page is its own tab panel,
   // which no trigger lights.
-  const tabValue = onBoardPage ? 'board' : onPage ? 'page' : view;
+  const tabValue = onBoardPage
+    ? 'board'
+    : focus?.kind === 'inbox'
+      ? 'inbox'
+      : onPage
+        ? 'page'
+        : view;
   /** Any tab leads away from a page, even the one it sits on. */
   const leavePage = () => {
     setFocus(null);
@@ -611,21 +617,6 @@ export function App() {
                     <MenuIcon />
                   </button>
                 </div>
-                <button
-                  className="inbox-link"
-                  data-count={waiting > 0 ? 'true' : undefined}
-                  aria-pressed={focus?.kind === 'inbox'}
-                  onClick={() => {
-                    setFocus({ kind: 'inbox' });
-                  }}
-                >
-                  <span className="with-icon">
-                    <InboxIcon />
-                    Inbox
-                  </span>
-                  {/* An empty inbox needs no number. */}
-                  {waiting > 0 && <span className="count">{waiting}</span>}
-                </button>
                 <nav aria-label="Channels">
                   <div className="nav-heading">
                     <h2>Channels</h2>
@@ -759,6 +750,7 @@ export function App() {
                   // Focus returning from a page or the palette must not switch views.
                   activationMode="manual"
                   onValueChange={(v) => {
+                    if (v === 'inbox') return;
                     setView(v === 'board' || v === 'team' ? v : 'chat');
                   }}
                 >
@@ -790,6 +782,20 @@ export function App() {
                       </Tabs.Trigger>
                       <Tabs.Trigger value="team" onClick={leavePage}>
                         Team
+                      </Tabs.Trigger>
+                      {/* What waits on you across the team; an empty inbox
+                        needs no number. */}
+                      <Tabs.Trigger
+                        value="inbox"
+                        onClick={() => {
+                          setDraft(null);
+                          setFocus({ kind: 'inbox' });
+                        }}
+                      >
+                        Inbox
+                        {waiting > 0 && (
+                          <span className="count">{waiting}</span>
+                        )}
                       </Tabs.Trigger>
                     </Tabs.List>
                     <div className="header-end">
