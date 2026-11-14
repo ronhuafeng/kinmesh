@@ -26,7 +26,7 @@ export function transactional(db: BetterSQLite3Database<typeof s>) {
     } catch (error) {
       const code = z.object({ code: z.string() }).safeParse(error);
       if (code.success && code.data.code.startsWith('SQLITE_CONSTRAINT'))
-        throw new IdentityError(409);
+        throw new IdentityError(409, { cause: error });
       throw error;
     }
   }

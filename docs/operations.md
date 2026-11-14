@@ -6,6 +6,8 @@ Running Kinmesh, its Inbox worker and Team MCP; the live gates against real T3; 
 
 `npm start` applies migrations, then listens on `127.0.0.1:${KINMESH_PORT}`. It runs from source with the development dependencies installed by `npm ci`; keep `drizzle/` beside `src/`. `npm run build` also compiles a standalone server (`dist/src/server/main.js`) with staged assets and migrations. Without built assets, `/` returns 503 while the API keeps working. For UI work, run `npm run web:watch` beside `npm start` and reload after each build.
 
+The hub writes JSON lines to standard output: one record per failure, with its request ID, route, error name, code, constraint and stack (what is never recorded: [security](security.md)). A process that cannot start or run, the Inbox worker and Team MCP included, prints one `…_failed` line with the same fields to standard error before it exits with 1.
+
 | Variable                                     | Meaning                                                                                 |
 | -------------------------------------------- | --------------------------------------------------------------------------------------- |
 | `KINMESH_SETUP_TOKEN`, `KINMESH_SESSION_KEY` | Required; 64 lowercase hex characters each; `npm run setup` writes them to `.env`       |

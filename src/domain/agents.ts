@@ -96,8 +96,12 @@ export const RuntimeState = z.enum([
 ]);
 export const RuntimeEventInput = z.strictObject({ state: RuntimeState });
 export class IdentityError extends Error {
-  constructor(readonly statusCode: 400 | 401 | 403 | 404 | 409) {
-    super('Identity request rejected');
+  /** `cause` keeps what the store saw, such as the constraint, for the log. */
+  constructor(
+    readonly statusCode: 400 | 401 | 403 | 404 | 409,
+    options?: ErrorOptions,
+  ) {
+    super('Identity request rejected', options);
   }
 }
 
