@@ -54,7 +54,10 @@ export async function createApp(
     disableRequestLogging: true,
     genReqId: () => randomUUID(),
     bodyLimit: 16_384,
-    trustProxy: false,
+    // Only the configured proxies may say who the client is; limits then
+    // apply per client rather than to everyone behind the proxy at once.
+    trustProxy:
+      config.trustedProxies.length > 0 ? config.trustedProxies : false,
   });
   await app.register(rateLimit, {
     max: config.rateLimit,

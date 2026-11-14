@@ -97,6 +97,8 @@ export function registerEvents(
     response.writeHead(200, {
       'Content-Type': 'text/event-stream; charset=utf-8',
       'Cache-Control': 'no-store',
+      // A proxy passes each event on at once instead of buffering them.
+      'X-Accel-Buffering': 'no',
       'X-Content-Type-Options': 'nosniff',
       'Referrer-Policy': 'no-referrer',
       'Content-Security-Policy': "default-src 'none'; frame-ancestors 'none'",

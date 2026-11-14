@@ -26,10 +26,27 @@ await test('configuration rejects absent secrets, invalid ports and non-loopback
   assert.throws(() =>
     loadConfig({ ...env, KINMESH_ORIGIN: 'https://remote.test/path' }),
   );
-  assert.equal(
-    loadConfig({ ...env, KINMESH_ORIGIN: 'https://remote.test' }).secureCookie,
-    true,
+  // A public HTTPS origin sits behind a proxy, which must be named.
+  const team = {
+    ...env,
+    KINMESH_ORIGIN: 'https://remote.test',
+    KINMESH_TRUSTED_PROXIES: '127.0.0.1, ::1, 10.0.0.0/8',
+  };
+  assert.equal(loadConfig(team).secureCookie, true);
+  assert.deepEqual(loadConfig(team).trustedProxies, [
+    '127.0.0.1',
+    '::1',
+    '10.0.0.0/8',
+  ]);
+  assert.throws(() =>
+    loadConfig({ ...env, KINMESH_ORIGIN: 'https://remote.test' }),
   );
+  for (const bad of ['proxy.example', '10.0.0.0/33', '::1/129', '1.2.3.4/8/1'])
+    assert.throws(
+      () => loadConfig({ ...team, KINMESH_TRUSTED_PROXIES: bad }),
+      bad,
+    );
+  assert.deepEqual(loadConfig(env).trustedProxies, []);
   assert.equal(loadConfig(env).secureCookie, false);
   assert.equal(loadConfig(env).rateLimit, 60);
   assert.equal(

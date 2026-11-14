@@ -18,7 +18,8 @@ Kinmesh is a single-node service for one organization, with a loopback listener.
 
 - Every `/api/` route requires a principal. Non-team routes require a human. Human and agent credentials cannot be mixed.
 - Actor headers and actor/identity/role query parameters are rejected (400); they are never identity.
-- A mutating request with an `Origin` header must match `KINMESH_ORIGIN`. There is no CORS and no proxy trust.
+- A mutating request with an `Origin` header must match `KINMESH_ORIGIN`. There is no CORS.
+- Only the proxies named in `KINMESH_TRUSTED_PROXIES` (addresses or CIDR ranges) may say, in `X-Forwarded-For`, who the client is; from anyone else the header is ignored and the connecting address is the client. An HTTPS origin requires the setting, since the hub listens on loopback behind a proxy and would otherwise count everyone as one client.
 - Rate limits are per client IP and in memory: 60 requests/minute overall by default (`KINMESH_RATE_LIMIT`, 1–100000), well above what a person does; 10/minute for each of `/login` and `/login/callback`, which is fixed. They reset on restart and are not a distributed defence.
 - Event streams (`GET /api/events`) are for signed-in humans and carry no data, only the revisions of what a view shows, which are hashes of what that person can already read. Each person may hold 8 and the hub 64; a stream ends after 10 minutes and the browser reconnects with its session. The session is rechecked on every change and every 25 seconds, so a revoked or expired session or lost membership ends its streams at once.
 - Logs record failures only: a 5xx or a startup or worker failure with its route, method, request ID, error name, code, constraint and stack, and a refusal that a database constraint caused. Requests themselves are not logged, so URLs, headers, cookies, bodies, tokens, OAuth values and T3 responses never reach a log.
@@ -72,6 +73,6 @@ The hub, worker, Team MCP and the T3 sign-in and live-gate scripts run with umas
 
 - One node, one SQLite database; no multi-node deployment, online backup or disaster-recovery procedure.
 - Sign-in is Feishu only; MFA and account recovery are Feishu's.
-- No proxy trust or distributed rate limiting.
+- No distributed rate limiting: limits are per hub process.
 - No proof-of-possession or theft detection for bearer tokens.
 - Task acceptors cannot be reassigned.
