@@ -703,7 +703,8 @@ export function communicationRepository(
             ),
           )
           .where(eq(s.topics.channelId, channelId))
-          .groupBy(s.topics.id)
+          // By the key, so every topic column may be read.
+          .groupBy(s.topics.position)
           .orderBy(desc(active), desc(s.topics.position))
           .limit(limit + 1);
         return {
