@@ -82,3 +82,16 @@ await test('a task change carries the task, who changed it and what they did', (
     `<task id="${taskId}" status="in-progress" change="handoff" by="wangwu" title="Draw the logo">\nAn SVG logo.\nAcceptance criteria:\n- Square\n- Two colours\n</task>`,
   );
 });
+
+await test('a topic conversation names its topic once, in the first turn', () => {
+  const inTopic = { ...context, topic: 'Logo <draft>' };
+  const first = wakePrompt(inTopic, 'Helper', true);
+  assert.match(
+    first,
+    /^You are Helper, an agent in the Kinmesh channel #general, in its topic "Logo &lt;draft&gt;"\. Each message or task change for you in this topic/,
+  );
+  assert.equal(
+    wakePrompt(inTopic, 'Helper', false),
+    '<message from="wangwu">\n@Helper render it as SVG\n</message>',
+  );
+});

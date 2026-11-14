@@ -302,15 +302,16 @@ export function inboxRepository(
                 inArray(t.state, ['ready', 'waiting', 'uncertain']),
                 lte(t.nextAttempt, dbNow),
                 lte(t.leaseUntil, dbNow),
-                // One claim at a time per conversation (agent and channel), so
-                // its thread is started once and messages reach it in order.
+                // One claim at a time per conversation (agent, channel and
+                // topic), so its thread is started once and messages reach it
+                // in order.
                 // An operator can resume an older blocked row while a newer
                 // one is leased; order alone does not exclude that owner.
-                sql`NOT EXISTS (SELECT 1 FROM agent_inbox active WHERE active.agent_id = ${t.agentId} AND active.channel_id = ${t.channelId} AND active.lease_until > ${dbNow})`,
+                sql`NOT EXISTS (SELECT 1 FROM agent_inbox active WHERE active.agent_id = ${t.agentId} AND active.channel_id = ${t.channelId} AND active.topic_id IS NOT DISTINCT FROM ${t.topicId} AND active.lease_until > ${dbNow})`,
                 // An older message not yet in T3 goes first. One already in
                 // T3 holds nothing back: the next message steers its turn or
                 // follows it in the same thread.
-                sql`(${t.reference} IS NOT NULL OR NOT EXISTS (SELECT 1 FROM agent_inbox older WHERE older.agent_id = ${t.agentId} AND older.channel_id = ${t.channelId} AND older.position < ${t.position} AND older.state IN ('ready','waiting','uncertain') AND older.reference IS NULL))`,
+                sql`(${t.reference} IS NOT NULL OR NOT EXISTS (SELECT 1 FROM agent_inbox older WHERE older.agent_id = ${t.agentId} AND older.channel_id = ${t.channelId} AND older.topic_id IS NOT DISTINCT FROM ${t.topicId} AND older.position < ${t.position} AND older.state IN ('ready','waiting','uncertain') AND older.reference IS NULL))`,
               ),
             )
             .orderBy(asc(t.nextAttempt), asc(t.position))
@@ -461,8 +462,9 @@ export function inboxRepository(
       });
     },
     /**
-     * The agent's conversation in the delivery's channel: the thread the
-     * latest of its other deliveries there reached, the T3 authority and
+     * The agent's conversation in the delivery's topic, or in its channel
+     * outside topics: the thread the latest of its other deliveries there
+     * reached, the T3 authority and
      * model it runs under, and the position after the last answer published
      * from it. Null before the agent's first message in the channel.
      */
@@ -477,6 +479,7 @@ export function inboxRepository(
               and(
                 eq(t.agentId, c.agentId),
                 eq(t.channelId, c.channelId),
+                sql`${t.topicId} IS NOT DISTINCT FROM ${c.topicId}`,
                 sql`${t.id} <> ${c.id}`,
                 sql`${t.reference} IS NOT NULL`,
                 sql`${t.launch} IS NOT NULL`,
@@ -493,7 +496,13 @@ export function inboxRepository(
           .select({ result: s.inboxResults.result })
           .from(s.inboxResults)
           .innerJoin(t, eq(t.id, s.inboxResults.deliveryId))
-          .where(and(eq(t.agentId, c.agentId), eq(t.channelId, c.channelId)))
+          .where(
+            and(
+              eq(t.agentId, c.agentId),
+              eq(t.channelId, c.channelId),
+              sql`${t.topicId} IS NOT DISTINCT FROM ${c.topicId}`,
+            ),
+          )
           .orderBy(desc(t.position))
           .limit(20);
         const positions = answers.flatMap(({ result }) => {

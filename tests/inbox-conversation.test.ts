@@ -3,9 +3,9 @@ import assert from 'node:assert/strict';
 import { z } from 'zod';
 import { deliver } from '../src/inbox/worker.js';
 import { assistantRead, due, inboxFixture } from './inbox-helpers.js';
-import { postInput } from './communication-helpers.js';
+import { key, postInput } from './communication-helpers.js';
 import { launched } from './t3-helpers.js';
-import { MessageId } from '../src/domain/communication.js';
+import { MessageId, type TopicId } from '../src/domain/communication.js';
 import { rawDatabase } from './raw.js';
 
 type Fixture = Awaited<ReturnType<typeof inboxFixture>>;
@@ -16,12 +16,12 @@ const Args = z.record(z.string(), z.unknown());
 /** The run T3 reports for the thread's first message. */
 const RUN = z.string().parse(launched.runId);
 
-async function mention(f: Fixture) {
+async function mention(f: Fixture, topicId: TopicId | null = null) {
   await f.comm.post(
     f.principal,
     f.teamId,
     f.channelId,
-    postInput({ mentions: [{ kind: 'agent', id: f.agent.id }] }),
+    postInput({ topicId, mentions: [{ kind: 'agent', id: f.agent.id }] }),
   );
 }
 /** One worker attempt at whatever is due for the agent. */
@@ -218,6 +218,38 @@ await test('another model starts a new conversation', async () => {
       String(calls(f, 't3_thread_launch')[1]?.message),
       /^You are .+, an agent in the Kinmesh channel #/,
     );
+  } finally {
+    await f.dispose();
+  }
+});
+
+await test('each topic is its own conversation; the channel outside topics is another', async () => {
+  const f = await inboxFixture();
+  try {
+    const topic = (title: string) =>
+      f.comm.createTopic(f.principal, f.teamId, f.channelId, {
+        operationKey: key(),
+        title,
+      });
+    const logo = await topic('Logo');
+    const site = await topic('Site');
+    f.wire.values.t3_thread_read = assistantRead('Answered');
+    for (const where of [null, logo.id, site.id]) {
+      await mention(f, where);
+      assert.equal((await attempt(f)).state, 'acked');
+    }
+    // A thread each: outside topics, then one per topic.
+    const launches = calls(f, 't3_thread_launch');
+    assert.equal(launches.length, 3);
+    assert.match(String(launches[1]?.title), / \/ Logo$/);
+    assert.match(String(launches[1]?.message), /in its topic "Logo"/);
+    assert.equal(calls(f, 't3_thread_send').length, 0);
+
+    // The next message in a topic continues that topic's thread.
+    await mention(f, logo.id);
+    assert.equal((await attempt(f)).state, 'acked');
+    assert.equal(calls(f, 't3_thread_launch').length, 3);
+    assert.equal(calls(f, 't3_thread_send').length, 1);
   } finally {
     await f.dispose();
   }
