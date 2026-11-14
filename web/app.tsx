@@ -656,7 +656,15 @@ export function App() {
           <Offline value={!canAct && !switching}>
             <div className="workspace-shell" data-screen={screen}>
               <aside className="sidebar">
-                {/* Search first; the team's name lives in Settings. */}
+                {/* The organization, as Feishu names it, set as a wordmark;
+                    then search. A long name wraps to two lines, smaller. */}
+                <p
+                  className="team-name"
+                  title={data.team.name}
+                  data-long={data.team.name.length > 12 || undefined}
+                >
+                  {data.team.name}
+                </p>
                 <div className="sidebar-top">
                   <CommandPalette commands={commands} />
                 </div>
@@ -1016,10 +1024,7 @@ export function App() {
                     )}
                     {focus?.kind === 'settings' && (
                       <SettingsPage
-                        data={data}
                         onClose={closeFocus}
-                        onDone={refresh}
-                        onNotify={notify}
                         {...(phone ? { onSignOut: signOut } : {})}
                         onSignOutEverywhere={signOutEverywhere}
                       />

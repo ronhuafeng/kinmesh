@@ -7,6 +7,7 @@ import { fixture } from './helpers.js';
 import {
   feishuPerson,
   signInAs,
+  STAND_IN_ORGANIZATION,
   standInFeishu,
   startFeishuStandIn,
 } from './feishu.js';
@@ -108,6 +109,43 @@ await test('the first person makes the team; everyone after joins it and #genera
     const again = await signInAs(h.app, 'ada.lovelace@example.com');
     const same = await h.app.inject({ url: '/api/me', cookies: again });
     assert.deepEqual(same.json<unknown>(), me.json<unknown>());
+  } finally {
+    await h.dispose();
+  }
+});
+
+await test('the team is named after the organization, and a sign-in goes on without it', async () => {
+  let name: Promise<string> = Promise.resolve('为沃科技');
+  const h = await hub({ ...standInFeishu, organization: () => name });
+  try {
+    const teamName = async (cookies: Record<string, string>) =>
+      (await h.app.inject({ url: '/api/team', cookies })).json<{
+        team: { name: string };
+      }>().team.name;
+    assert.equal(
+      await teamName(await signInAs(h.app, 'a@example.com')),
+      '为沃科技',
+    );
+    // Renamed in Feishu, renamed here at the next sign-in.
+    name = Promise.resolve('  Weiwo  ');
+    assert.equal(
+      await teamName(await signInAs(h.app, 'b@example.com')),
+      'Weiwo',
+    );
+    // Feishu can't say: the name stays, and so does the person.
+    name = Promise.reject(new Error('tenant query refused'));
+    assert.equal(
+      await teamName(await signInAs(h.app, 'c@example.com')),
+      'Weiwo',
+    );
+    // Nobody renames it here.
+    const put = await h.app.inject({
+      method: 'PUT',
+      url: '/api/team',
+      cookies: await signInAs(h.app, 'a@example.com'),
+      payload: { name: 'Other' },
+    });
+    assert.equal(put.statusCode, 404);
   } finally {
     await h.dispose();
   }
@@ -379,6 +417,7 @@ await test('the Feishu client reads a profile that leaves fields out, and names 
       enterprise: 'ada@example.com',
       tenant: 'stand-in',
     });
+    assert.equal(await feishu.organization(), STAND_IN_ORGANIZATION);
     // Feishu's own error envelope, with a 200, is still a refusal.
     await assert.rejects(
       feishu.exchange('fail-secret-code', 'x'),

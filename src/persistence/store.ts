@@ -274,7 +274,7 @@ export function openStore(path: string) {
           .run();
       },
     },
-    /** Only the team's owner renames it: the team they own. */
+    /** Names the team a person belongs to: the organization, as Feishu calls it. */
     renameTeam(id: HumanId, name: string) {
       const membership = this.teamFor(id);
       if (membership === undefined) throw new IdentityError(403);

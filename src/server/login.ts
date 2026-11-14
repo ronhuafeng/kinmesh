@@ -70,6 +70,17 @@ export function registerLogin(
     }
     if (member === null) return turnBack('denied');
     const human = store.signIn(member);
+    // The team is the organization: its name follows Feishu's. Without it,
+    // the name stays as it was and the sign-in goes on.
+    try {
+      const name = (await feishu.organization()).trim().slice(0, 80);
+      if (name !== '') store.renameTeam(human.id, name);
+    } catch (error) {
+      request.log.warn(
+        { route: '/login/callback', ...describeFailure(error) },
+        'failed',
+      );
+    }
     request.session.regenerate();
     request.session.set('session', store.sessions.open(human.id, Date.now()));
     return reply.redirect('/');
