@@ -113,6 +113,7 @@ export const Read = z.object({
   items: z.array(
     z.object({
       itemId: z.string(),
+      position: z.number().int().nonnegative(),
       runId: z.string().nullable(),
       type: z.string(),
       text: z.string().nullable(),

@@ -30,6 +30,7 @@ function call(
 ): Activity['items'][number] {
   return {
     itemId: name,
+    position: 0,
     runId: 'run',
     type: 'dynamic_tool',
     status: completed ? 'completed' : 'running',
@@ -141,6 +142,7 @@ await test('LIVE ORACLE FIXTURE: native approvals match per tool and tolerate an
   const { approvalCandidates } = await import('./live/proof.js');
   const request = (name: string, id: string): Activity['items'][number] => ({
     itemId: id,
+    position: 0,
     runId: 'run',
     type: 'approval_request',
     status: 'waiting',

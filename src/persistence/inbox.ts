@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto';
 import {
   and,
   asc,
+  desc,
   eq,
   gt,
   gte,
@@ -21,7 +22,7 @@ import { dbNow, type Database } from './database.js';
 import { executionScope } from './operations.js';
 import { IdentityError, type Principal } from '../domain/agents.js';
 import { AgentId, ChannelId, TeamId } from '../domain/contracts.js';
-import { OutboxFact, memberKey } from '../domain/communication.js';
+import { MessageId, OutboxFact, memberKey } from '../domain/communication.js';
 import {
   Claim,
   Delivery,
@@ -281,10 +282,15 @@ export function inboxRepository(
                 inArray(t.state, ['ready', 'waiting', 'uncertain']),
                 lte(t.nextAttempt, dbNow),
                 lte(t.leaseUntil, dbNow),
-                // An operator can resume an older blocked row while a newer row is leased.
-                // Oldest-outstanding order alone does not exclude that live same-agent owner.
-                sql`NOT EXISTS (SELECT 1 FROM agent_inbox active WHERE active.agent_id = ${t.agentId} AND active.lease_until > ${dbNow})`,
-                sql`NOT EXISTS (SELECT 1 FROM agent_inbox older WHERE older.agent_id = ${t.agentId} AND older.position < ${t.position} AND older.state IN ('ready','waiting','uncertain'))`,
+                // One claim at a time per conversation (agent and channel), so
+                // its thread is started once and messages reach it in order.
+                // An operator can resume an older blocked row while a newer
+                // one is leased; order alone does not exclude that owner.
+                sql`NOT EXISTS (SELECT 1 FROM agent_inbox active WHERE active.agent_id = ${t.agentId} AND active.channel_id = ${t.channelId} AND active.lease_until > ${dbNow})`,
+                // An older message not yet in T3 goes first. One already in
+                // T3 holds nothing back: the next message steers its turn or
+                // follows it in the same thread.
+                sql`(${t.reference} IS NOT NULL OR NOT EXISTS (SELECT 1 FROM agent_inbox older WHERE older.agent_id = ${t.agentId} AND older.channel_id = ${t.channelId} AND older.position < ${t.position} AND older.state IN ('ready','waiting','uncertain') AND older.reference IS NULL))`,
               ),
             )
             .orderBy(asc(t.nextAttempt), asc(t.position))
@@ -393,13 +399,17 @@ export function inboxRepository(
           const model =
             JSON.stringify(frozen.input.model) ===
             JSON.stringify(value.input.model);
-          if (authority && model) return frozen;
+          const conversation =
+            JSON.stringify(frozen.conversation) ===
+            JSON.stringify(value.conversation);
+          if (authority && model && conversation) return frozen;
           // A different grant or T3 authority may never replay an operation
           // that could exist natively, and a run that may exist keeps the
-          // model it started with. One that provably never reached T3
-          // (nothing journaled: the journal is written before dispatch) is
+          // model and thread it started with. One that provably never reached
+          // T3 (nothing journaled: the journal is written before dispatch) is
           // frozen again as things are now, e.g. after someone reconnects T3
-          // with the access the first attempt lacked or chooses a new model.
+          // with the access the first attempt lacked, chooses a new model, or
+          // another message started the conversation's thread meanwhile.
           const intent = inboxIntent(c.agentId, c.id);
           const journaled = (
             await q()
@@ -434,6 +444,60 @@ export function inboxRepository(
         });
         await history(await get(c.id), 'launch-frozen');
         return value;
+      });
+    },
+    /**
+     * The agent's conversation in the delivery's channel: the thread the
+     * latest of its other deliveries there reached, the T3 authority and
+     * model it runs under, and the position after the last answer published
+     * from it. Null before the agent's first message in the channel.
+     */
+    async conversation(c: Claim) {
+      return atomic(async () => {
+        await owned(c);
+        const latest = (
+          await q()
+            .select({ launch: t.launch, reference: t.reference })
+            .from(t)
+            .where(
+              and(
+                eq(t.agentId, c.agentId),
+                eq(t.channelId, c.channelId),
+                sql`${t.id} <> ${c.id}`,
+                sql`${t.reference} IS NOT NULL`,
+                sql`${t.launch} IS NOT NULL`,
+              ),
+            )
+            .orderBy(desc(t.position))
+            .limit(1)
+        )[0];
+        if (!latest?.launch || !latest.reference) return null;
+        const frozen = FrozenLaunch.parse(decode(latest.launch));
+        const thread = Reference.parse(decode(latest.reference)).threadId;
+        // Recent answers only: the furthest published item in this thread.
+        const answers = await q()
+          .select({ result: s.inboxResults.result })
+          .from(s.inboxResults)
+          .innerJoin(t, eq(t.id, s.inboxResults.deliveryId))
+          .where(and(eq(t.agentId, c.agentId), eq(t.channelId, c.channelId)))
+          .orderBy(desc(t.position))
+          .limit(20);
+        const positions = answers.flatMap(({ result }) => {
+          const outcome = PublishedOutcome.parse(decode(result));
+          return 'kind' in outcome ||
+            outcome.reference.threadId !== thread ||
+            outcome.position === undefined
+            ? []
+            : [outcome.position];
+        });
+        return {
+          execution: frozen.execution,
+          model: frozen.input.model,
+          conversation: {
+            threadId: thread,
+            afterPosition: positions.length ? Math.max(...positions) : null,
+          },
+        };
       });
     },
     /**
@@ -505,6 +569,44 @@ export function inboxRepository(
         const frozen = FrozenLaunch.parse(decode(row.launch));
         if (p.kind !== 'agent' || frozen.grantId !== p.grantId)
           throw new IdentityError(403);
+        const publicationReason: DeliveryReason =
+          'kind' in result
+            ? 'native-terminal-notice-published'
+            : 'assistant-result-published';
+        // A message that steered a running turn is answered by that run's
+        // reply, which is posted once: the first delivery of the run to
+        // publish posts it, and the others point to it.
+        const answered = (
+          await q()
+            .select({ messageId: t.resultMessageId })
+            .from(t)
+            .where(
+              and(
+                eq(t.agentId, c.agentId),
+                eq(t.channelId, c.channelId),
+                eq(t.state, 'acked'),
+                eq(t.reference, row.reference),
+                sql`${t.id} <> ${c.id}`,
+              ),
+            )
+            .limit(1)
+        )[0]?.messageId;
+        if (answered) {
+          await update(c, {
+            state: 'acked',
+            resultMessageId: answered,
+            claimToken: null,
+            leaseUntil: 0,
+            reason: publicationReason,
+          });
+          await history(await get(c.id), publicationReason);
+          return await communication.message(
+            p,
+            c.teamId,
+            c.channelId,
+            MessageId.parse(answered),
+          );
+        }
         // These links and the actual message/outbox either commit together with ACK, or all roll back.
         // The execution API can associate this Run before Inbox publication.
         // Reuse only this agent's exact execution, preserving immutable provenance.
@@ -572,10 +674,6 @@ export function inboxRepository(
               ? 'The run in T3 failed before writing a reply.'
               : 'The run in T3 was stopped before writing a reply.'
             : result.text;
-        const publicationReason: DeliveryReason =
-          'kind' in result
-            ? 'native-terminal-notice-published'
-            : 'assistant-result-published';
         const message = await communication.post(p, c.teamId, c.channelId, {
           operationKey: 'inbox-result:' + c.id,
           body,
