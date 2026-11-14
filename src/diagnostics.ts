@@ -11,7 +11,7 @@ export function describeFailure(error: unknown) {
       ? record.constraint
       : /constraint failed: (.+)$/.exec(error.message)?.[1];
   const cause = error.cause instanceof Error ? error.cause : null;
-  const causeCode = (cause as { code?: unknown } | null)?.code;
+  const causeCode = cause && 'code' in cause ? cause.code : undefined;
   return {
     error: error.name,
     ...(typeof record.code === 'string' ? { code: record.code } : {}),
