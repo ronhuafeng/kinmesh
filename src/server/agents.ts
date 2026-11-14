@@ -109,14 +109,14 @@ export function registerAgents(
         ? await store.managed.binding(p, teamId, agentId)
         : null;
     if (managed === null || agent.preferences.modelId === null) return agent;
-    const { token } = await store.managed.connect(
+    const issued = await store.managed.connect(
       p,
       teamId,
       agentId,
       { providerId: managed.providerId, modelId: agent.preferences.modelId },
       WORKER_GRANT,
     );
-    writeAgentToken(directory, agentId, token);
+    if (issued !== null) writeAgentToken(directory, agentId, issued.token);
     return store.agents.get(p, teamId, agentId);
   });
   /** An agent's credentials, never a hash or secret, and their revision. */

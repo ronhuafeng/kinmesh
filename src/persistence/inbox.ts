@@ -407,16 +407,20 @@ export function inboxRepository(
         const row = await get(c.id);
         if (row.launch !== null) {
           const frozen = FrozenLaunch.parse(decode(row.launch));
-          if (
+          const authority =
             frozen.grantId === p.grantId &&
-            JSON.stringify(frozen.execution) === JSON.stringify(value.execution)
-          )
-            return frozen;
+            JSON.stringify(frozen.execution) ===
+              JSON.stringify(value.execution);
+          const model =
+            JSON.stringify(frozen.input.model) ===
+            JSON.stringify(value.input.model);
+          if (authority && model) return frozen;
           // A different grant or T3 authority may never replay an operation
-          // that could exist natively. One that provably never reached T3
+          // that could exist natively, and a run that may exist keeps the
+          // model it started with. One that provably never reached T3
           // (nothing journaled: the journal is written before dispatch) is
-          // frozen again under the current authority, e.g. after the owner
-          // reconnects T3 with the access the first attempt lacked.
+          // frozen again as things are now, e.g. after someone reconnects T3
+          // with the access the first attempt lacked or chooses a new model.
           const intent = inboxIntent(c.agentId, c.id);
           const journaled = (
             await q()
@@ -434,8 +438,10 @@ export function inboxRepository(
             row.operationId !== null ||
             row.reference !== null ||
             journaled !== undefined
-          )
+          ) {
+            if (authority) return frozen;
             throw new IdentityError(403);
+          }
           await update(c, {
             launch: JSON.stringify(value),
             reason: 'launch-refrozen',

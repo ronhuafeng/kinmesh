@@ -83,12 +83,22 @@ await test('a blocked delivery records the precondition it lost, not one catch-a
     }),
     'not-in-channel',
   );
-  // The worker's own setup check: its binding names another provider.
+  // Nothing chosen for the agent to run on.
   assert.equal(
-    await causeAfter(
-      () => Promise.resolve(),
-      (f) => ({ ...f.binding, isolatedProviderId: 'another' }),
-    ),
+    await causeAfter(async (f) => {
+      const profile = await f.store.agents.get(
+        f.principal,
+        f.teamId,
+        f.agent.id,
+      );
+      await f.store.agents.update(f.principal, f.teamId, f.agent.id, {
+        name: profile.name,
+        role: profile.role,
+        capabilities: profile.capabilities,
+        memoryLocation: profile.memoryLocation,
+        preferences: { ...profile.preferences, modelId: null },
+      });
+    }),
     'native-incompatible',
   );
   // T3 now answers from another environment than the agent was connected to.

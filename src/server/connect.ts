@@ -232,19 +232,20 @@ export function registerConnect(
           modelId: z.string().trim().min(1).max(256),
         })
         .parse(request.body);
-      const { token } = await store.managed.connect(
+      const issued = await store.managed.connect(
         p,
         teamId,
         agentId,
         choice,
         WORKER_GRANT,
       );
-      try {
-        writeAgentToken(hub.directory, agentId, token);
-      } catch {
-        await store.managed.disconnect(p, teamId, agentId);
-        return reply.code(500).send({ error: 'Could not store credential' });
-      }
+      if (issued !== null)
+        try {
+          writeAgentToken(hub.directory, agentId, issued.token);
+        } catch {
+          await store.managed.disconnect(p, teamId, agentId);
+          return reply.code(500).send({ error: 'Could not store credential' });
+        }
       try {
         await hub.ensureWorker();
       } catch {

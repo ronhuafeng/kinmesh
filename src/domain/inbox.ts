@@ -34,6 +34,7 @@ export const BlockedReason = z.enum([
   'native-access',
   'native-incompatible',
   'environment-changed',
+  'authority-changed',
   'authority-or-contract-blocked',
 ]);
 export type BlockedReason = z.infer<typeof BlockedReason>;
@@ -59,11 +60,12 @@ export const DeliveryReason = z.enum([
   'native-terminal-notice-published',
   'operator-resume',
   'owner-resume',
+  'setup-catching-up',
 ]);
 export type DeliveryReason = z.infer<typeof DeliveryReason>;
 /**
- * The native operation identity of a delivery's launch. Migration 0009's
- * immutability trigger matches these exact strings.
+ * The native operation identity of a delivery's launch. The delivery rules
+ * (drizzle/0001_rules.sql) match these exact strings.
  */
 export const inboxIntent = (agentId: string, deliveryId: string): Intent => ({
   actor: 'inbox-agent:' + agentId,

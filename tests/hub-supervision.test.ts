@@ -343,13 +343,15 @@ await test(
       'https://t3.test/mcp',
       'env-live',
     );
-    const { token } = await seed.store.managed.connect(
+    const issued = await seed.store.managed.connect(
       seed.principal,
       seed.teamId,
       seed.agent.id,
       { providerId: 'isolated-dev', modelId: 'model-a' },
       WORKER_GRANT,
     );
+    assert.ok(issued);
+    const { token } = issued;
     writeAgentToken(managedDirectory(seed.directory), seed.agent.id, token);
     const f = await fixture(seed.dbPath, seed.directory);
     try {
