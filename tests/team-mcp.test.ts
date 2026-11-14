@@ -359,8 +359,8 @@ await test('Team SDK hides cross-team/channel context, enforces current membersh
       .prepare('INSERT INTO teams (id,name) VALUES (?,?)')
       .run(otherTeam, 'Other team');
     foreign
-      .prepare('INSERT INTO memberships (human_id,team_id,role) VALUES (?,?,?)')
-      .run(f.owner.id, otherTeam, 'owner');
+      .prepare('INSERT INTO memberships (human_id,team_id) VALUES (?,?)')
+      .run(f.owner.id, otherTeam);
     foreign.close();
     const foreignChannel = f.comm.createChannel(f.principal, otherTeam, {
       operationKey: key(),
