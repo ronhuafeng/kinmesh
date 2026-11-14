@@ -1,4 +1,11 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import {
+  Fragment,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react';
 import { flushSync } from 'react-dom';
 import * as Tabs from '@radix-ui/react-tabs';
 import { ChannelId, TaskId } from '../src/domain/contracts.js';
@@ -12,7 +19,7 @@ import { api, HttpError, MutationPermission, Offline } from './api.js';
 import { ActionForm, AddButton, InlineField, Notice } from './forms.js';
 import { AgentPage, Team } from './agents.js';
 import { OwnWorkerPage } from './setup.js';
-import { Chat, showMessage } from './chat.js';
+import { ChannelTopics, Chat, showMessage } from './chat.js';
 import {
   Board,
   blankDraft,
@@ -530,6 +537,11 @@ export function App() {
     setView('board');
   };
   const waiting = attentionCount(data.attention);
+  // The channels where something waits on you.
+  const waitingIn = new Set<string>([
+    ...data.attention.decide.map((d) => d.task.channelId),
+    ...data.attention.unstuck.map((d) => d.channelId),
+  ]);
   const commands: Command[] = [
     ...data.attention.decide.map(({ task, channelName }) => ({
       id: 'ask-' + task.id,
@@ -628,22 +640,49 @@ export function App() {
                     />
                   </div>
                   {data.channels.items.map((c) => (
-                    <button
-                      key={c.id}
-                      aria-current={
-                        // Only one place is current: a channel while you are
-                        // in its chat or board.
-                        channel?.id === c.id &&
-                        (tabValue === 'chat' || tabValue === 'board')
-                          ? 'page'
-                          : undefined
-                      }
-                      onClick={() => {
-                        selectChannel(c.id);
-                      }}
-                    >
-                      <span aria-hidden="true">#</span> {c.name}
-                    </button>
+                    <Fragment key={c.id}>
+                      <button
+                        aria-current={
+                          // Only one place is current: a channel while you are
+                          // in its chat or board.
+                          channel?.id === c.id &&
+                          (tabValue === 'chat' || tabValue === 'board')
+                            ? 'page'
+                            : undefined
+                        }
+                        onClick={() => {
+                          selectChannel(c.id);
+                        }}
+                      >
+                        <span aria-hidden="true">#</span> {c.name}
+                        {/* Something in this channel waits on you. */}
+                        {waitingIn.has(c.id) && (
+                          <span className="waiting-dot" title="Waiting on you">
+                            <span className="visually-hidden">
+                              Waiting on you
+                            </span>
+                          </span>
+                        )}
+                      </button>
+                      {channel?.id === c.id && channelPath && (
+                        <ChannelTopics
+                          data={data}
+                          channelPath={channelPath}
+                          topic={selection.topic}
+                          onTopic={(topic) => {
+                            leavePage();
+                            setView('chat');
+                            setSelection((old) => ({ ...old, topic }));
+                            setCursors({});
+                          }}
+                          next={next}
+                          onDone={refresh}
+                          onLeave={() => {
+                            selectChannel('');
+                          }}
+                        />
+                      )}
+                    </Fragment>
                   ))}
                   {addingChannel && (
                     <InlineField

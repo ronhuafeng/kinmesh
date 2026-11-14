@@ -203,7 +203,7 @@ Work that never froze expires after seven days. Frozen, uncertain and correlated
 
 ## Workspace snapshot
 
-`GET /api/workspace` is a human-owner read that reconstructs, from Kinmesh's own data: the team, joined and left channels, the selected channel's messages, topics and tasks, agent profiles and avatars, and channel membership of agents. It takes only bounded cursors and channel/topic selection, never an actor, and responds `Cache-Control: no-store`. Its `revision` changes exactly when what it shows changes; the read time and worker heartbeats that change nothing on screen are left out. The AG-UI snapshot below carries the same kind of `revision` for the agent's runs. Pages hold up to 100 channels and profiles and 50 messages, topics or tasks.
+`GET /api/workspace` is a human-owner read that reconstructs, from Kinmesh's own data: the team, joined and left channels, the selected channel's messages, topics and tasks, agent profiles and avatars, and channel membership of agents. It takes only bounded cursors and channel/topic selection, never an actor, and responds `Cache-Control: no-store`. Besides the topic page it carries `activeTopics`: up to 10 of the channel's topics, most recently active first (the time of a topic's latest message, or of the topic itself), and whether there are more. Its `revision` changes exactly when what it shows changes; the read time and worker heartbeats that change nothing on screen are left out. The AG-UI snapshot below carries the same kind of `revision` for the agent's runs. Pages hold up to 100 channels and profiles and 50 messages, topics or tasks.
 
 It also carries:
 

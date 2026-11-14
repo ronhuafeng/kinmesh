@@ -127,6 +127,11 @@ export const WorkspaceSnapshot = z.strictObject({
     .max(100),
   messages: pageOf(Message),
   topics: pageOf(Topic),
+  /** The channel's most recently active topics, newest first. */
+  activeTopics: z.strictObject({
+    items: z.array(Topic).max(10),
+    more: z.boolean(),
+  }),
   tasks: pageOf(Task),
 });
 export type WorkspaceSnapshot = z.infer<typeof WorkspaceSnapshot>;

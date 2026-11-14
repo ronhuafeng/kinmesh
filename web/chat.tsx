@@ -247,6 +247,114 @@ function Composer({
     </div>
   );
 }
+/**
+ * The current channel's topics, under it in the sidebar like a tree: "All",
+ * the ten most recently active, then the rest only when asked for, a "+" to
+ * start one, and leaving the channel.
+ */
+export function ChannelTopics({
+  data,
+  channelPath,
+  topic,
+  onTopic,
+  next,
+  onDone,
+  onLeave,
+}: {
+  data: WorkspaceSnapshot;
+  channelPath: string;
+  topic: string;
+  onTopic: (topic: string) => void;
+  next: (key: string, cursor: string | null) => void;
+  onDone: () => void;
+  onLeave: () => void;
+}) {
+  const [all, setAll] = useState(false);
+  const recent = data.activeTopics.items;
+  const shown = new Set(recent.map((t) => t.id));
+  // The topic you are in stays in sight even when it is not among the recent.
+  const current = data.topics.items.find(
+    (t) => t.id === topic && !shown.has(t.id),
+  );
+  const rest = all
+    ? data.topics.items.filter((t) => !shown.has(t.id) && t.id !== current?.id)
+    : [];
+  const row = (t: { id: string; title: string }) => (
+    <li key={t.id}>
+      <button
+        type="button"
+        aria-pressed={topic === t.id}
+        onClick={() => {
+          onTopic(t.id);
+        }}
+      >
+        {t.title}
+      </button>
+    </li>
+  );
+  return (
+    <div className="channel-topics">
+      <ul aria-label="Topics">
+        {recent.length > 0 && (
+          <li>
+            <button
+              type="button"
+              aria-pressed={topic === ''}
+              onClick={() => {
+                onTopic('');
+              }}
+            >
+              All
+            </button>
+          </li>
+        )}
+        {recent.map(row)}
+        {current && row(current)}
+        {rest.map(row)}
+        {data.activeTopics.more &&
+          (!all ? (
+            <li>
+              <button
+                type="button"
+                className="quiet"
+                onClick={() => {
+                  setAll(true);
+                }}
+              >
+                More topics
+              </button>
+            </li>
+          ) : (
+            data.topics.nextCursor && (
+              <li>
+                <button
+                  type="button"
+                  className="quiet"
+                  onClick={() => {
+                    next('topicsCursor', data.topics.nextCursor);
+                  }}
+                >
+                  More topics
+                </button>
+              </li>
+            )
+          ))}
+        <li>
+          <NewTopic channelPath={channelPath} onDone={onDone} />
+        </li>
+      </ul>
+      <div className="leave-channel">
+        <ActionForm
+          title="Channel membership"
+          path={channelPath + '/leave'}
+          build={() => ({})}
+          submit="Leave channel"
+          onDone={onLeave}
+        />
+      </div>
+    </div>
+  );
+}
 /** A topic starts from a "+" after the topics: one field, Enter creates it. */
 function NewTopic({
   channelPath,

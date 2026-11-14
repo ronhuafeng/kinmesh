@@ -140,7 +140,11 @@ it is the authority. Use the custom property for its role, never a raw colour.
 - **Composer**: multi-line input with the `@` mention popover, docked at the bottom
   of the chat; hints in the placeholder.
 - **Channels**: the sidebar lists joined channels; a channel you left can be rejoined
-  by name. Topics start from a `+` after the topics.
+  by name. A channel where something waits on you ends in a decision-coloured dot, the
+  size of a presence dot and on its edge. The current channel holds its topics under
+  it like a tree on a hairline trunk: "All", the ten most recently active, "More
+  topics" for the rest, a `+` that starts one, and "Leave channel". On a phone the
+  topics are pills above the conversation.
 - **Board**: five stage columns, the stages of the lifecycle: Proposed → Working →
   Review → Human sign-off → Done. Rework stays in Working (marked "Sent back");
   cancelled work goes to Done (marked "Cancelled", hidden until asked for). Columns sit

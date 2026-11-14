@@ -359,7 +359,7 @@ test('keyboard mention, and a message becomes a task in its topic', async ({
   await page.getByLabel('Topic title').fill('Billing');
   await page.getByLabel('Topic title').press('Enter');
   await page
-    .getByRole('group', { name: 'Topics' })
+    .getByRole('list', { name: 'Topics' })
     .getByRole('button', { name: 'Billing', exact: true })
     .click();
   // No wait for the topic refresh: typing must survive a background reload.
