@@ -26,9 +26,9 @@ import {
   connectTeam,
   call,
 } from './team-mcp-helpers.js';
+import type { TaskCreate } from '../src/domain/tasks.js';
 import {
   Task,
-  TaskCreate,
   TaskResult,
   TaskEvent,
   TaskExecution,
@@ -78,9 +78,12 @@ async function fixture() {
 }
 const denied401 = (e: unknown) =>
   e instanceof StreamableHTTPError && e.code === 401;
-/** Task input as an agent gives it: the tool's own shape, no acceptor. */
-const agentTaskInput = (topicId: string) =>
-  TaskCreate.omit({ acceptor: true }).parse(taskInput({ topicId }));
+/** Task input as an agent gives it: no acceptor, which it never names. */
+const agentTaskInput = (topicId: string) => {
+  const input: Partial<TaskCreate> = taskInput({ topicId });
+  delete input.acceptor;
+  return input;
+};
 
 await test('real Team MCP subprocess + independent SDK initializes, notifies, lists, pings, posts and performs developer/reviewer handoff without human acceptance', async () => {
   const f = await fixture();
