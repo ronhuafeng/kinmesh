@@ -38,7 +38,7 @@ await test('MOCK: intent is durably dispatching before an external effect; repea
       1,
     );
   } finally {
-    f.dispose();
+    await f.dispose();
   }
 });
 await test('MOCK: lost launch reply survives database reopen and reuses the exact native key', async () => {
@@ -53,7 +53,7 @@ await test('MOCK: lost launch reply survives database reopen and reuses the exac
     assert.equal(result.kind, 'uncertain');
     const original = f.wire.calls.find((c) => c.name === 't3_thread_launch');
     assert.ok(original);
-    f.store.close();
+    await f.store.close();
     reopened = f.open();
     const wire = new MockWire();
     const backend = await T3Backend.connect(wire, reopened.operations, options);
@@ -66,8 +66,8 @@ await test('MOCK: lost launch reply survives database reopen and reuses the exac
     );
     assert.deepEqual(recovered.reference, reference);
   } finally {
-    reopened?.close();
-    f.dispose();
+    await reopened?.close();
+    await f.dispose();
   }
 });
 await test('MOCK: changed payload, OAuth authority or actor cannot replay an uncertain operation', async () => {
@@ -99,7 +99,7 @@ await test('MOCK: changed payload, OAuth authority or actor cannot replay an unc
       (e) => e instanceof ExecutionFailure && e.kind === 'permission',
     );
   } finally {
-    f.dispose();
+    await f.dispose();
   }
 });
 await test('MOCK: same user operation key is isolated by actor and target endpoint', async () => {
@@ -117,7 +117,7 @@ await test('MOCK: same user operation key is isolated by actor and target endpoi
       .map((c) => c.args.clientRequestId);
     assert.equal(new Set(ids).size, 3);
   } finally {
-    f.dispose();
+    await f.dispose();
   }
 });
 await test('MOCK: failure of read after mutation retains a provisional reference and reconciles by read only', async () => {
@@ -141,7 +141,7 @@ await test('MOCK: failure of read after mutation retains a provisional reference
       1,
     );
   } finally {
-    f.dispose();
+    await f.dispose();
   }
 });
 await test('MOCK: concurrent pending calls and explicit permission denial cannot create unkeyed retries', async () => {
@@ -164,7 +164,7 @@ await test('MOCK: concurrent pending calls and explicit permission denial cannot
       1,
     );
   } finally {
-    f.dispose();
+    await f.dispose();
   }
 });
 await test('MOCK: cancellation before dispatch has no effect; in-flight cancellation is uncertain', async () => {
@@ -192,7 +192,7 @@ await test('MOCK: cancellation before dispatch has no effect; in-flight cancella
     assert.equal(result.kind, 'uncertain');
     assert.equal(result.reason, 'cancelled');
   } finally {
-    f.dispose();
+    await f.dispose();
   }
 });
 await test('MOCK: send and stop also persist/reuse stable operation keys', async () => {
@@ -220,6 +220,6 @@ await test('MOCK: send and stop also persist/reuse stable operation keys', async
       raw.close();
     }
   } finally {
-    f.dispose();
+    await f.dispose();
   }
 });

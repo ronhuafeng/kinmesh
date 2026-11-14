@@ -31,7 +31,7 @@ import {
   mockRead,
 } from './t3-helpers.js';
 const signal = () => new AbortController().signal;
-const mention = (
+const mention = async (
   f: Awaited<ReturnType<typeof inboxFixture>>,
   body = 'Human asks for a response',
 ) =>
@@ -41,12 +41,12 @@ const mention = (
     f.channelId,
     postInput({ body, mentions: [{ kind: 'agent', id: f.agent.id }] }),
   );
-function claim(f: Awaited<ReturnType<typeof inboxFixture>>) {
-  const c = f.inbox.claim([f.agent.id]);
+async function claim(f: Awaited<ReturnType<typeof inboxFixture>>) {
+  const c = await f.inbox.claim([f.agent.id]);
   assert.ok(c);
   return c;
 }
-function freeze(
+async function freeze(
   f: Awaited<ReturnType<typeof inboxFixture>>,
   c: Claim,
   executionReference = reference,
@@ -54,7 +54,7 @@ function freeze(
   assert.equal(f.workerPrincipal.kind, 'agent');
   const p = f.workerPrincipal;
   assert.equal(p.kind, 'agent');
-  f.inbox.freeze(
+  await f.inbox.freeze(
     c,
     p,
     FrozenLaunch.parse({
@@ -67,16 +67,23 @@ function freeze(
       input: { ...launch, message: 'Frozen fixture input' },
     }),
   );
-  f.inbox.remember(c, executionReference);
+  await f.inbox.remember(c, executionReference);
 }
 await test('inbox enqueue and outbox/receipt are atomic; exact replay is once and collision fails', async () => {
   const f = await inboxFixture();
   const raw = new Database(f.dbPath);
   try {
-    const input = postInput({ mentions: [{ kind: 'agent', id: f.agent.id }] });
-    const message = f.comm.post(f.principal, f.teamId, f.channelId, input);
+    const input = postInput({
+      mentions: [{ kind: 'agent', id: f.agent.id }],
+    });
+    const message = await f.comm.post(
+      f.principal,
+      f.teamId,
+      f.channelId,
+      input,
+    );
     assert.equal(
-      f.comm.post(f.principal, f.teamId, f.channelId, input).id,
+      (await f.comm.post(f.principal, f.teamId, f.channelId, input)).id,
       message.id,
     );
     assert.equal(f.rows().length, 1);
@@ -119,13 +126,13 @@ await test('inbox enqueue and outbox/receipt are atomic; exact replay is once an
 await test('MOCK external adapter: exact-run actual assistant is attributed and ACK/message/outbox/task/correlation commit together without acceptance', async () => {
   const f = await inboxFixture();
   try {
-    const source = mention(f);
-    const c = claim(f);
+    const source = await mention(f);
+    const c = await claim(f);
     await deliver(f.store, c, f.binding, f.factory, signal());
-    const row = f.inbox.get(c.id);
+    const row = await f.inbox.get(c.id);
     assert.equal(row.state, 'acked');
     assert.ok(row.resultMessageId);
-    const message = f.comm.message(
+    const message = await f.comm.message(
       f.principal,
       f.teamId,
       f.channelId,
@@ -145,7 +152,9 @@ await test('MOCK external adapter: exact-run actual assistant is attributed and 
       message.body,
       'Fixture assistant output; no real model was invoked.',
     );
-    const [reply] = f.inbox.repliesFor(f.teamId, f.channelId, [message.id]);
+    const [reply] = await f.inbox.repliesFor(f.teamId, f.channelId, [
+      message.id,
+    ]);
     assert.ok(reply);
     assert.equal(reply.runId, reference.runId);
     assert.equal(reply.state, 'succeeded');
@@ -159,16 +168,20 @@ await test('MOCK external adapter: exact-run actual assistant is attributed and 
       1,
       'result has no mentions, cannot wake itself',
     );
-    assert.equal(f.inbox.claim([f.agent.id]), undefined);
+    assert.equal(await f.inbox.claim([f.agent.id]), undefined);
     const reopened = f.open();
     try {
-      assert.equal(reopened.inbox.get(c.id).resultMessageId, message.id);
       assert.equal(
-        reopened.agents.correlations(f.principal, f.teamId, f.agent.id).length,
+        (await reopened.inbox.get(c.id)).resultMessageId,
+        message.id,
+      );
+      assert.equal(
+        (await reopened.agents.correlations(f.principal, f.teamId, f.agent.id))
+          .length,
         1,
       );
     } finally {
-      reopened.close();
+      await reopened.close();
     }
   } finally {
     await f.dispose();
@@ -179,41 +192,46 @@ for (const status of ['completed', 'failed'] as const)
     const f = await inboxFixture();
     const raw = new Database(f.dbPath);
     try {
-      const task = f.create({ owner: { kind: 'agent', id: f.agent.id } }).task;
+      const task = (
+        await f.create({ owner: { kind: 'agent', id: f.agent.id } })
+      ).task;
       f.wire.values.t3_thread_read = assistantRead('MOCK pending', 'waiting');
-      const first = claim(f);
+      const first = await claim(f);
       await deliver(f.store, first, f.binding, f.factory, signal());
-      const frozen = f.inbox.get(first.id);
+      const frozen = await f.inbox.get(first.id);
       assert.equal(frozen.state, 'waiting');
       assert.equal(frozen.reference, JSON.stringify(reference));
       // This is the same authorized command exposed by team_task_link_execution.
       // A provider may record its execution evidence before returning its result.
-      const linked = f.act(f.developer, task, {
+      const linked = await f.act(f.developer, task, {
         type: 'link-execution',
         reference,
         note: 'MOCK provider recorded its current Run before completion',
       });
       assert.ok(linked.executionLink);
-      mention(f, 'A later request must not be blocked by existing evidence');
-      assert.equal(f.inbox.claim([f.agent.id]), undefined);
+      await mention(
+        f,
+        'A later request must not be blocked by existing evidence',
+      );
+      assert.equal(await f.inbox.claim([f.agent.id]), undefined);
       const terminal = assistantRead('MOCK exact-run recovered result', status);
       if (status === 'failed') terminal.items = [];
       f.wire.values.t3_thread_read = terminal;
       due(f.dbPath);
       const reopened = f.open();
       try {
-        const recovered = reopened.inbox.claim([f.agent.id]);
+        const recovered = await reopened.inbox.claim([f.agent.id]);
         assert.ok(recovered);
         assert.equal(recovered.id, first.id);
         await deliver(reopened, recovered, f.binding, f.factory, signal());
-        const row = reopened.inbox.get(first.id);
+        const row = await reopened.inbox.get(first.id);
         assert.equal(
           row.state,
           'acked',
           'Existing task evidence must not strand Inbox publication',
         );
         assert.ok(row.resultMessageId);
-        const message = reopened.communication.message(
+        const message = await reopened.communication.message(
           f.principal,
           f.teamId,
           f.channelId,
@@ -244,12 +262,18 @@ for (const status of ['completed', 'failed'] as const)
           1,
         );
         assert.deepEqual(
-          reopened.tasks.executions(f.principal, f.teamId, f.channelId, task.id)
-            .items,
+          (
+            await reopened.tasks.executions(
+              f.principal,
+              f.teamId,
+              f.channelId,
+              task.id,
+            )
+          ).items,
           [linked.executionLink],
           'Reuse immutable evidence without changing its original author or duplicating it',
         );
-        const current = reopened.tasks.get(
+        const current = await reopened.tasks.get(
           f.principal,
           f.teamId,
           f.channelId,
@@ -258,11 +282,11 @@ for (const status of ['completed', 'failed'] as const)
         assert.equal(current.version, linked.task.version);
         assert.equal(current.state.status, 'in-progress');
         assert.throws(
-          () =>
+          async () =>
             reopened.inbox.ack(recovered, f.workerPrincipal, fixtureResult()),
           IdentityError,
         );
-        const following = reopened.inbox.claim([f.agent.id]);
+        const following = await reopened.inbox.claim([f.agent.id]);
         assert.ok(following);
         assert.notEqual(following.id, first.id);
         assert.equal(
@@ -270,7 +294,7 @@ for (const status of ['completed', 'failed'] as const)
           1,
         );
       } finally {
-        reopened.close();
+        await reopened.close();
       }
     } finally {
       raw.close();
@@ -280,28 +304,28 @@ for (const status of ['completed', 'failed'] as const)
 await test('MOCK SQLite publication reuses only the same task and exact Run, not nearby execution evidence', async () => {
   const f = await inboxFixture();
   try {
-    const task = f.create({ owner: { kind: 'agent', id: f.agent.id } }).task;
-    const otherRun = f.act(f.developer, task, {
+    const task = (await f.create({ owner: { kind: 'agent', id: f.agent.id } }))
+      .task;
+    const otherRun = await f.act(f.developer, task, {
       type: 'link-execution',
       reference: { ...reference, runId: 'different-mock-run' },
       note: 'MOCK other Run on the same task',
     });
-    const otherTask = f.create({
-      owner: { kind: 'agent', id: f.agent.id },
-    }).task;
-    const otherLink = f.act(f.developer, otherTask, {
+    const otherTask = (
+      await f.create({
+        owner: { kind: 'agent', id: f.agent.id },
+      })
+    ).task;
+    const otherLink = await f.act(f.developer, otherTask, {
       type: 'link-execution',
       reference,
       note: 'MOCK matching Run on a different task',
     });
-    const c = claim(f);
+    const c = await claim(f);
     await deliver(f.store, c, f.binding, f.factory, signal());
-    assert.equal(f.inbox.get(c.id).state, 'acked');
-    const links = f.tasks.executions(
-      f.principal,
-      f.teamId,
-      f.channelId,
-      task.id,
+    assert.equal((await f.inbox.get(c.id)).state, 'acked');
+    const links = (
+      await f.tasks.executions(f.principal, f.teamId, f.channelId, task.id)
     ).items;
     assert.equal(links.length, 2);
     const published = links.find(
@@ -312,7 +336,7 @@ await test('MOCK SQLite publication reuses only the same task and exact Run, not
     assert.notEqual(published.id, otherLink.executionLink?.id);
     assert.deepEqual(published.reference, reference);
     assert.equal(
-      f.tasks.get(f.principal, f.teamId, f.channelId, task.id).version,
+      (await f.tasks.get(f.principal, f.teamId, f.channelId, task.id)).version,
       otherRun.task.version,
     );
   } finally {
@@ -322,7 +346,7 @@ await test('MOCK SQLite publication reuses only the same task and exact Run, not
 await test('MOCK native terminal failure without assistant posts truthful notice and releases the same-agent queue', async () => {
   const f = await inboxFixture();
   try {
-    const source = mention(f);
+    const source = await mention(f);
     const failed = mockRead('failed');
     failed.items = [];
     // The exact Run failed even though a DIFFERENT later Run in its thread
@@ -342,13 +366,13 @@ await test('MOCK native terminal failure without assistant posts truthful notice
       pendingRequestCount: 1,
     });
     f.wire.values.t3_thread_read = failed;
-    const c = claim(f);
+    const c = await claim(f);
     await deliver(f.store, c, f.binding, f.factory, signal());
-    const row = f.inbox.get(c.id);
+    const row = await f.inbox.get(c.id);
     assert.equal(row.state, 'acked');
     assert.equal(row.reason, 'native-terminal-notice-published');
     assert.ok(row.resultMessageId);
-    const notice = f.comm.message(
+    const notice = await f.comm.message(
       f.principal,
       f.teamId,
       f.channelId,
@@ -356,7 +380,9 @@ await test('MOCK native terminal failure without assistant posts truthful notice
     );
     // Said plainly, never dressed up as the agent's answer.
     assert.equal(notice.body, 'The run in T3 failed before writing a reply.');
-    const [status] = f.inbox.repliesFor(f.teamId, f.channelId, [notice.id]);
+    const [status] = await f.inbox.repliesFor(f.teamId, f.channelId, [
+      notice.id,
+    ]);
     assert.ok(status);
     assert.equal(status.state, 'failed');
     assert.equal(status.answered, false);
@@ -366,16 +392,17 @@ await test('MOCK native terminal failure without assistant posts truthful notice
     assert.equal(notice.author.agentId, f.agent.id);
     const reopened = f.open();
     try {
-      assert.equal(reopened.inbox.get(c.id).state, 'acked');
+      assert.equal((await reopened.inbox.get(c.id)).state, 'acked');
       assert.equal(
-        reopened.agents.correlations(f.principal, f.teamId, f.agent.id).length,
+        (await reopened.agents.correlations(f.principal, f.teamId, f.agent.id))
+          .length,
         1,
       );
     } finally {
-      reopened.close();
+      await reopened.close();
     }
-    mention(f, 'Second independently authorized human request');
-    const following = claim(f);
+    await mention(f, 'Second independently authorized human request');
+    const following = await claim(f);
     assert.notEqual(following.id, c.id);
     const backend = await T3Backend.connect(
       f.wire,
@@ -459,18 +486,20 @@ for (const { failedTable, prelinked } of [
       const f = await inboxFixture();
       const raw = new Database(f.dbPath);
       try {
-        const task = f.create({
-          owner: { kind: 'agent', id: f.agent.id },
-        }).task;
-        const c = claim(f);
-        freeze(f, c);
+        const task = (
+          await f.create({
+            owner: { kind: 'agent', id: f.agent.id },
+          })
+        ).task;
+        const c = await claim(f);
+        await freeze(f, c);
         if (prelinked)
-          f.act(f.developer, task, {
+          await f.act(f.developer, task, {
             type: 'link-execution',
             reference,
             note: 'MOCK existing link survives failed ACK',
           });
-        const beforeTask = f.tasks.get(
+        const beforeTask = await f.tasks.get(
           f.principal,
           f.teamId,
           f.channelId,
@@ -506,17 +535,20 @@ for (const { failedTable, prelinked } of [
             condition +
             " BEGIN SELECT RAISE(ABORT,'fixture'); END",
         );
-        assert.throws(() => f.inbox.ack(c, f.workerPrincipal, fixtureResult()));
+        assert.throws(async () =>
+          f.inbox.ack(c, f.workerPrincipal, fixtureResult()),
+        );
         assert.deepEqual(counts(), before);
-        assert.equal(f.inbox.get(c.id).state, 'ready');
+        assert.equal((await f.inbox.get(c.id)).state, 'ready');
         assert.equal(
-          f.tasks.get(f.principal, f.teamId, f.channelId, task.id).version,
+          (await f.tasks.get(f.principal, f.teamId, f.channelId, task.id))
+            .version,
           prelinked ? 2 : 1,
         );
         raw.exec('DROP TRIGGER reject_ack');
-        const result = f.inbox.ack(c, f.workerPrincipal, fixtureResult());
-        assert.equal(f.inbox.get(c.id).resultMessageId, result.id);
-        const current = f.tasks.get(
+        const result = await f.inbox.ack(c, f.workerPrincipal, fixtureResult());
+        assert.equal((await f.inbox.get(c.id)).resultMessageId, result.id);
+        const current = await f.tasks.get(
           f.principal,
           f.teamId,
           f.channelId,
@@ -524,12 +556,18 @@ for (const { failedTable, prelinked } of [
         );
         assert.deepEqual(current, beforeTask);
         assert.equal(
-          f.tasks.executions(f.principal, f.teamId, f.channelId, task.id).items
-            .length,
+          (
+            await f.tasks.executions(
+              f.principal,
+              f.teamId,
+              f.channelId,
+              task.id,
+            )
+          ).items.length,
           1,
         );
         assert.throws(
-          () => f.inbox.ack(c, f.workerPrincipal, fixtureResult()),
+          async () => f.inbox.ack(c, f.workerPrincipal, fixtureResult()),
           IdentityError,
         );
         assert.equal(
@@ -556,32 +594,45 @@ for (const denied of [
     const raw = new Database(f.dbPath);
     try {
       if (denied === 'reassigned')
-        f.create({ owner: { kind: 'agent', id: f.agent.id } });
-      else mention(f);
-      const c = claim(f);
+        await f.create({ owner: { kind: 'agent', id: f.agent.id } });
+      else await mention(f);
+      const c = await claim(f);
       if (denied === 'disabled')
-        f.store.agents.lifecycle(f.principal, f.teamId, f.agent.id, 'disabled');
+        await f.store.agents.lifecycle(
+          f.principal,
+          f.teamId,
+          f.agent.id,
+          'disabled',
+        );
       if (denied === 'revoked')
-        f.store.agents.revoke(
+        await f.store.agents.revoke(
           f.principal,
           f.teamId,
           f.agent.id,
           f.inboxGrant.grant.id,
         );
       if (denied === 'removed')
-        f.comm.enroll(
+        await f.comm.enroll(
           f.principal,
           f.teamId,
           f.channelId,
-          { operationKey: key(), member: { kind: 'agent', id: f.agent.id } },
+          {
+            operationKey: key(),
+            member: { kind: 'agent', id: f.agent.id },
+          },
           'remove',
         );
       if (denied === 'scope') {
-        const g = f.store.agents.issue(f.principal, f.teamId, f.agent.id, {
-          label: 'Insufficient',
-          scopes: ['channels:read'],
-          lifetimeSeconds: 3600,
-        });
+        const g = await f.store.agents.issue(
+          f.principal,
+          f.teamId,
+          f.agent.id,
+          {
+            label: 'Insufficient',
+            scopes: ['channels:read'],
+            lifetimeSeconds: 3600,
+          },
+        );
         writeFileSync(f.binding.tokenFile, JSON.stringify({ token: g.token }), {
           mode: 0o600,
         });
@@ -606,8 +657,13 @@ for (const denied of [
       }
       if (denied === 'reassigned') {
         assert.ok(c.taskId);
-        const task = f.tasks.get(f.principal, f.teamId, f.channelId, c.taskId);
-        f.act(f.principal, task, {
+        const task = await f.tasks.get(
+          f.principal,
+          f.teamId,
+          f.channelId,
+          c.taskId,
+        );
+        await f.act(f.principal, task, {
           type: 'handoff',
           mode: 'work',
           recipient: { kind: 'agent', id: f.reviewer.id },
@@ -615,7 +671,7 @@ for (const denied of [
         });
       }
       await deliver(f.store, c, f.binding, f.factory, signal());
-      assert.equal(f.inbox.get(c.id).state, 'blocked');
+      assert.equal((await f.inbox.get(c.id)).state, 'blocked');
       assert.equal(f.wire.calls.length, 0);
       assert.equal(
         raw.prepare('SELECT count(*) FROM inbox_results').pluck().get(),
@@ -629,11 +685,11 @@ for (const denied of [
 await test('revocation after launch prevents publication and retains native reference for operator reconciliation', async () => {
   const f = await inboxFixture();
   try {
-    mention(f);
-    const c = claim(f);
-    f.wire.handler = (name) => {
+    await mention(f);
+    const c = await claim(f);
+    f.wire.handler = async (name) => {
       if (name === 't3_thread_read')
-        f.store.agents.revoke(
+        await f.store.agents.revoke(
           f.principal,
           f.teamId,
           f.agent.id,
@@ -642,9 +698,9 @@ await test('revocation after launch prevents publication and retains native refe
       return Promise.resolve(envelope(f.wire.values[name]));
     };
     await deliver(f.store, c, f.binding, f.factory, signal());
-    assert.equal(f.inbox.get(c.id).state, 'blocked');
-    assert.notEqual(f.inbox.get(c.id).reference, null);
-    assert.equal(f.inbox.get(c.id).resultMessageId, null);
+    assert.equal((await f.inbox.get(c.id)).state, 'blocked');
+    assert.notEqual((await f.inbox.get(c.id)).reference, null);
+    assert.equal((await f.inbox.get(c.id)).resultMessageId, null);
   } finally {
     await f.dispose();
   }
@@ -652,32 +708,34 @@ await test('revocation after launch prevents publication and retains native refe
 await test('context is bounded, source-attributed, preserves topic/task/memory reference and is frozen once', async () => {
   const f = await inboxFixture();
   try {
-    const topic = f.comm.createTopic(f.principal, f.teamId, f.channelId, {
+    const topic = await f.comm.createTopic(f.principal, f.teamId, f.channelId, {
       operationKey: key(),
       title: 'A topic',
     });
-    const task = f.create({
-      topicId: topic.id,
-      owner: { kind: 'agent', id: f.agent.id },
-      description: 'd'.repeat(4000),
-      criteria: Array.from(
-        { length: 20 },
-        (_, i) => String(i) + 'c'.repeat(400),
-      ),
-    }).task;
-    const c = claim(f);
-    const { context } = f.inbox.context(c, f.workerPrincipal);
+    const task = (
+      await f.create({
+        topicId: topic.id,
+        owner: { kind: 'agent', id: f.agent.id },
+        description: 'd'.repeat(4000),
+        criteria: Array.from(
+          { length: 20 },
+          (_, i) => String(i) + 'c'.repeat(400),
+        ),
+      })
+    ).task;
+    const c = await claim(f);
+    const { context } = await f.inbox.context(c, f.workerPrincipal);
     assert.equal(context.task?.id, task.id);
     assert.equal(context.topic?.id, topic.id);
     assert.equal(context.author.kind, 'human');
     assert.equal(context.memoryLocation, profileInput.memoryLocation);
     assert.equal(context.task.truncated, true);
     assert.ok(JSON.stringify(context).length < 10000);
-    freeze(f, c);
-    const old = f.inbox.get(c.id).launch;
+    await freeze(f, c);
+    const old = (await f.inbox.get(c.id)).launch;
     const p = f.workerPrincipal;
     assert.equal(p.kind, 'agent');
-    const same = f.inbox.freeze(c, p, {
+    const same = await f.inbox.freeze(c, p, {
       grantId: p.grantId,
       execution: {
         endpoint: options.endpoint,
@@ -694,15 +752,15 @@ await test('context is bounded, source-attributed, preserves topic/task/memory r
 await test('uncertain launch uses explicit reconciliation and identical native request ID after restart; no blind dispatch', async () => {
   const f = await inboxFixture();
   try {
-    mention(f);
-    const c = claim(f);
+    await mention(f);
+    const c = await claim(f);
     f.wire.handler = (name) =>
       name === 't3_thread_launch'
         ? Promise.reject(new Error('Fixture lost reply'))
         : Promise.resolve(envelope(f.wire.values[name]));
     await deliver(f.store, c, f.binding, f.factory, signal());
-    assert.equal(f.inbox.get(c.id).state, 'uncertain');
-    assert.ok(f.inbox.get(c.id).operationId);
+    assert.equal((await f.inbox.get(c.id)).state, 'uncertain');
+    assert.ok((await f.inbox.get(c.id)).operationId);
     const first = f.wire.calls.find((c) => c.name === 't3_thread_launch')?.args
       .clientRequestId;
     due(f.dbPath);
@@ -714,7 +772,7 @@ await test('uncertain launch uses explicit reconciliation and identical native r
         reopened.operations,
         options,
       );
-      const recovered = reopened.inbox.claim([f.agent.id]);
+      const recovered = await reopened.inbox.claim([f.agent.id]);
       assert.ok(recovered);
       await deliver(
         reopened,
@@ -732,12 +790,12 @@ await test('uncertain launch uses explicit reconciliation and identical native r
           }),
         signal(),
       );
-      assert.equal(reopened.inbox.get(c.id).state, 'acked');
+      assert.equal((await reopened.inbox.get(c.id)).state, 'acked');
       const calls = f.wire.calls.filter((c) => c.name === 't3_thread_launch');
       assert.equal(calls.length, 2);
       assert.ok(calls.every((c) => c.args.clientRequestId === first));
     } finally {
-      reopened.close();
+      await reopened.close();
     }
   } finally {
     await f.dispose();
@@ -746,9 +804,9 @@ await test('uncertain launch uses explicit reconciliation and identical native r
 await test('native connection unavailable keeps retryable work with bounded backoff and no retry exhaustion', async () => {
   const f = await inboxFixture();
   try {
-    mention(f);
+    await mention(f);
     for (let i = 0; i < 12; i++) {
-      const c = claim(f);
+      const c = await claim(f);
       await deliver(
         f.store,
         c,
@@ -756,7 +814,7 @@ await test('native connection unavailable keeps retryable work with bounded back
         () => Promise.reject(new Error('External unavailable')),
         signal(),
       );
-      const row = f.inbox.get(c.id);
+      const row = await f.inbox.get(c.id);
       assert.equal(row.state, 'ready');
       assert.ok(row.nextAttempt > Date.now() - 100);
       assert.equal(row.resultMessageId, null);
@@ -774,23 +832,23 @@ await test('leases fence every stale write and ACK; global capacity and per-agen
   const other = f.open();
   const raw = new Database(f.dbPath);
   try {
-    mention(f);
-    mention(f);
-    const c = claim(f);
-    freeze(f, c);
-    assert.equal(other.inbox.claim([f.agent.id]), undefined);
+    await mention(f);
+    await mention(f);
+    const c = await claim(f);
+    await freeze(f, c);
+    assert.equal(await other.inbox.claim([f.agent.id]), undefined);
     due(f.dbPath, true);
-    assert.throws(() => {
-      f.inbox.remember(c, reference);
+    assert.throws(async () => {
+      await f.inbox.remember(c, reference);
     }, IdentityError);
-    assert.throws(() => {
-      f.inbox.defer(c, 'ready', 'stale');
+    assert.throws(async () => {
+      await f.inbox.defer(c, 'ready', 'stale');
     }, IdentityError);
     assert.throws(
-      () => f.inbox.ack(c, f.workerPrincipal, fixtureResult()),
+      async () => f.inbox.ack(c, f.workerPrincipal, fixtureResult()),
       IdentityError,
     );
-    const next = other.inbox.claim([f.agent.id]);
+    const next = await other.inbox.claim([f.agent.id]);
     assert.ok(next);
     assert.equal(next.id, c.id);
     assert.equal(next.generation, c.generation + 1);
@@ -811,8 +869,8 @@ await test('leases fence every stale write and ACK; global capacity and per-agen
         ),
       IdentityError,
     );
-    other.inbox.ack(next, f.workerPrincipal, fixtureResult());
-    assert.ok(f.inbox.claim([f.agent.id]));
+    await other.inbox.ack(next, f.workerPrincipal, fixtureResult());
+    assert.ok(await f.inbox.claim([f.agent.id]));
     assert.equal(INBOX_CAPACITY, 2);
     assert.throws(() => raw.exec('DELETE FROM inbox_history'));
     assert.throws(() =>
@@ -821,7 +879,7 @@ await test('leases fence every stale write and ACK; global capacity and per-agen
     assert.throws(() => raw.exec('DELETE FROM agent_inbox'));
   } finally {
     raw.close();
-    other.close();
+    await other.close();
     await f.dispose();
   }
 });
@@ -831,14 +889,14 @@ for (const recovery of ['release', 'expired-lease'] as const)
     const other = f.open();
     const raw = new Database(f.dbPath);
     try {
-      mention(f, 'Older request to recover');
-      const older = claim(f);
-      freeze(f, older);
-      f.inbox.defer(older, 'blocked', 'fixture-blocked');
-      const frozen = f.inbox.get(older.id);
+      await mention(f, 'Older request to recover');
+      const older = await claim(f);
+      await freeze(f, older);
+      await f.inbox.defer(older, 'blocked', 'fixture-blocked');
+      const frozen = await f.inbox.get(older.id);
 
-      mention(f, 'Newer request already being processed');
-      const newer = other.inbox.claim([f.agent.id]);
+      await mention(f, 'Newer request already being processed');
+      const newer = await other.inbox.claim([f.agent.id]);
       assert.ok(newer);
       assert.notEqual(newer.id, older.id);
       const newerReference = {
@@ -846,31 +904,34 @@ for (const recovery of ['release', 'expired-lease'] as const)
         threadId: 'fixture-newer-thread',
         runId: 'fixture-newer-run',
       };
-      const newerResult = { ...fixtureResult(), reference: newerReference };
-      freeze(f, newer, newerReference);
-      f.inbox.resume(older.id);
+      const newerResult = {
+        ...fixtureResult(),
+        reference: newerReference,
+      };
+      await freeze(f, newer, newerReference);
+      await f.inbox.resume(older.id);
 
       assert.equal(
-        f.inbox.claim([f.agent.id]),
+        await f.inbox.claim([f.agent.id]),
         undefined,
         'Resuming an older row must not overlap a live newer same-agent lease',
       );
-      assert.equal(other.inbox.claim([f.agent.id]), undefined);
-      assert.equal(f.inbox.get(newer.id).claimToken, newer.claimToken);
+      assert.equal(await other.inbox.claim([f.agent.id]), undefined);
+      assert.equal((await f.inbox.get(newer.id)).claimToken, newer.claimToken);
 
       // The exclusion is per agent: another agent can use the remaining slot.
-      f.comm.post(
+      await f.comm.post(
         f.principal,
         f.teamId,
         f.channelId,
         postInput({ mentions: [{ kind: 'agent', id: f.reviewer.id }] }),
       );
-      const independent = other.inbox.claim([f.reviewer.id]);
+      const independent = await other.inbox.claim([f.reviewer.id]);
       assert.ok(independent);
-      other.inbox.defer(independent, 'blocked', 'fixture-blocked');
+      await other.inbox.defer(independent, 'blocked', 'fixture-blocked');
 
       if (recovery === 'release')
-        other.inbox.defer(newer, 'waiting', 'fixture-waiting');
+        await other.inbox.defer(newer, 'waiting', 'fixture-waiting');
       else {
         // Deterministic crash/clock fixture; no native T3 service or timers.
         raw
@@ -881,23 +942,23 @@ for (const recovery of ['release', 'expired-lease'] as const)
           IdentityError,
         );
       }
-      const recovered = other.inbox.claim([f.agent.id]);
+      const recovered = await other.inbox.claim([f.agent.id]);
       assert.ok(recovered);
       assert.equal(recovered.id, older.id);
       assert.equal(recovered.generation, older.generation + 1);
       assert.equal(recovered.launch, frozen.launch);
       assert.equal(recovered.reference, frozen.reference);
-      assert.equal(f.inbox.claim([f.agent.id]), undefined);
-      other.inbox.ack(recovered, f.workerPrincipal, fixtureResult());
+      assert.equal(await f.inbox.claim([f.agent.id]), undefined);
+      await other.inbox.ack(recovered, f.workerPrincipal, fixtureResult());
 
       due(f.dbPath);
-      const following = claim(f);
+      const following = await claim(f);
       assert.equal(following.id, newer.id);
       assert.equal(following.generation, newer.generation + 1);
       assert.equal(following.reference, JSON.stringify(newerReference));
-      f.inbox.ack(following, f.workerPrincipal, newerResult);
-      assert.equal(f.inbox.get(older.id).state, 'acked');
-      assert.equal(f.inbox.get(newer.id).state, 'acked');
+      await f.inbox.ack(following, f.workerPrincipal, newerResult);
+      assert.equal((await f.inbox.get(older.id)).state, 'acked');
+      assert.equal((await f.inbox.get(newer.id)).state, 'acked');
       assert.equal(
         raw.prepare('SELECT count(*) FROM inbox_results').pluck().get(),
         2,
@@ -905,7 +966,7 @@ for (const recovery of ['release', 'expired-lease'] as const)
       assert.equal(f.wire.calls.length, 0, 'Persistence-only MOCK evidence');
     } finally {
       raw.close();
-      other.close();
+      await other.close();
       await f.dispose();
     }
   });
@@ -915,12 +976,12 @@ await test('agent handoffs follow trusted audit chain, one target per chain, fin
   try {
     const members = [f.agent];
     for (let i = 1; i < 6; i++) {
-      const a = f.store.agents.create(f.principal, f.teamId, {
+      const a = await f.store.agents.create(f.principal, f.teamId, {
         ...profileInput,
         name: 'Chain ' + String(i),
       });
       members.push(a);
-      f.comm.enroll(
+      await f.comm.enroll(
         f.principal,
         f.teamId,
         f.channelId,
@@ -928,23 +989,26 @@ await test('agent handoffs follow trusted audit chain, one target per chain, fin
         'invite',
       );
     }
-    let task = f.create({ owner: { kind: 'agent', id: f.agent.id } }).task;
+    let task = (await f.create({ owner: { kind: 'agent', id: f.agent.id } }))
+      .task;
     for (let i = 0; i < 5; i++) {
       const a = members[i],
         next = members[i + 1];
       assert.ok(a);
       assert.ok(next);
-      const g = f.store.agents.issue(f.principal, f.teamId, a.id, {
+      const g = await f.store.agents.issue(f.principal, f.teamId, a.id, {
         label: 'Chain',
         scopes: ['channels:read', 'tasks:read', 'tasks:write'],
         lifetimeSeconds: 3600,
       });
-      task = f.act(f.store.agents.resolveToken(g.token), task, {
-        type: 'handoff',
-        mode: 'work',
-        recipient: { kind: 'agent', id: next.id },
-        note: 'Explicit work transfer',
-      }).task;
+      task = (
+        await f.act(await f.store.agents.resolveToken(g.token), task, {
+          type: 'handoff',
+          mode: 'work',
+          recipient: { kind: 'agent', id: next.id },
+          note: 'Explicit work transfer',
+        })
+      ).task;
     }
     assert.equal(f.rows().length, 5);
     assert.deepEqual(
@@ -952,11 +1016,12 @@ await test('agent handoffs follow trusted audit chain, one target per chain, fin
       [0, 1, 2, 3, 4],
     );
     assert.equal(
-      f.tasks.history(f.principal, f.teamId, f.channelId, task.id).items.length,
+      (await f.tasks.history(f.principal, f.teamId, f.channelId, task.id)).items
+        .length,
       6,
       'suppressed delivery does not erase task audit',
     );
-    f.act(f.principal, task, {
+    await f.act(f.principal, task, {
       type: 'handoff',
       mode: 'work',
       recipient: { kind: 'agent', id: f.agent.id },
@@ -964,7 +1029,7 @@ await test('agent handoffs follow trusted audit chain, one target per chain, fin
     });
     assert.equal(f.rows().length, 6);
     assert.equal(f.rows().at(-1)?.depth, 0);
-    f.comm.post(
+    await f.comm.post(
       f.agentPrincipal,
       f.teamId,
       f.channelId,
@@ -983,14 +1048,17 @@ await test('agent handoffs follow trusted audit chain, one target per chain, fin
 await test('task handoff A to B then B to A is suppressed by persisted root/target uniqueness', async () => {
   const f = await inboxFixture();
   try {
-    const task = f.create({ owner: { kind: 'agent', id: f.agent.id } }).task;
-    const transferred = f.act(f.developer, task, {
-      type: 'handoff',
-      mode: 'work',
-      recipient: { kind: 'agent', id: f.reviewer.id },
-      note: 'A to B',
-    }).task;
-    f.act(f.reviewPrincipal, transferred, {
+    const task = (await f.create({ owner: { kind: 'agent', id: f.agent.id } }))
+      .task;
+    const transferred = (
+      await f.act(f.developer, task, {
+        type: 'handoff',
+        mode: 'work',
+        recipient: { kind: 'agent', id: f.reviewer.id },
+        note: 'A to B',
+      })
+    ).task;
+    await f.act(f.reviewPrincipal, transferred, {
       type: 'handoff',
       mode: 'work',
       recipient: { kind: 'agent', id: f.agent.id },
@@ -1023,7 +1091,7 @@ await test('strict private worker config rejects symlinks, public modes, duplica
       WorkerConfig.safeParse({ ...f.workerConfig, unsafe: true }).success,
       false,
     );
-    const p = f.store.agents.get(f.principal, f.teamId, f.agent.id);
+    const p = await f.store.agents.get(f.principal, f.teamId, f.agent.id);
     await assert.rejects(t3Factory(f.store)(f.binding, p, signal()));
   } finally {
     await f.dispose();
@@ -1093,11 +1161,11 @@ await test('global capacity two is enforced across independent SQLite connection
   const f = await inboxFixture(),
     second = f.open();
   try {
-    const third = f.store.agents.create(f.principal, f.teamId, {
+    const third = await f.store.agents.create(f.principal, f.teamId, {
       ...profileInput,
       name: 'Capacity third',
     });
-    f.comm.enroll(
+    await f.comm.enroll(
       f.principal,
       f.teamId,
       f.channelId,
@@ -1105,23 +1173,23 @@ await test('global capacity two is enforced across independent SQLite connection
       'invite',
     );
     const ids = [f.agent.id, f.reviewer.id, third.id];
-    f.comm.post(
+    await f.comm.post(
       f.principal,
       f.teamId,
       f.channelId,
       postInput({ mentions: ids.map((id) => ({ kind: 'agent', id })) }),
     );
-    const first = f.inbox.claim(ids),
-      next = second.inbox.claim(ids);
+    const first = await f.inbox.claim(ids),
+      next = await second.inbox.claim(ids);
     assert.ok(first);
     assert.ok(next);
     assert.notEqual(first.agentId, next.agentId);
-    assert.equal(f.inbox.claim(ids), undefined);
-    assert.equal(second.inbox.claim(ids), undefined);
-    f.inbox.defer(first, 'blocked', 'fixture-blocked');
-    assert.ok(second.inbox.claim(ids));
+    assert.equal(await f.inbox.claim(ids), undefined);
+    assert.equal(await second.inbox.claim(ids), undefined);
+    await f.inbox.defer(first, 'blocked', 'fixture-blocked');
+    assert.ok(await second.inbox.claim(ids));
   } finally {
-    second.close();
+    await second.close();
     await f.dispose();
   }
 });
@@ -1129,33 +1197,33 @@ await test('never-dispatched expiry, bounded retry history, retained facts and r
   const f = await inboxFixture();
   const raw = new Database(f.dbPath);
   try {
-    mention(f);
+    await mention(f);
     const row = f.rows()[0];
     assert.ok(row);
     // Controlled clock fixture only: production code cannot edit expiry or source fields.
     raw.exec('DROP TRIGGER inbox_source_immutable');
     raw.prepare('UPDATE agent_inbox SET expires_at=1 WHERE id=?').run(row.id);
-    assert.equal(f.inbox.claim([f.agent.id]), undefined);
-    assert.equal(f.inbox.get(row.id).state, 'expired');
-    mention(f);
+    assert.equal(await f.inbox.claim([f.agent.id]), undefined);
+    assert.equal((await f.inbox.get(row.id)).state, 'expired');
+    await mention(f);
     for (let n = 0; n < 140; n++) {
-      const c = claim(f);
-      f.inbox.defer(c, 'ready', 'fixture-retry');
+      const c = await claim(f);
+      await f.inbox.defer(c, 'ready', 'fixture-retry');
       due(f.dbPath);
     }
-    const c = claim(f);
-    freeze(f, c);
+    const c = await claim(f);
+    await freeze(f, c);
     const count = () =>
       raw
         .prepare('SELECT count(*) FROM inbox_history WHERE delivery_id=?')
         .pluck()
         .get(c.id);
     assert.equal(count(), 127);
-    f.inbox.ack(c, f.workerPrincipal, fixtureResult());
+    await f.inbox.ack(c, f.workerPrincipal, fixtureResult());
     assert.equal(count(), 128);
-    assert.equal(f.inbox.get(c.id).attempts, 141);
+    assert.equal((await f.inbox.get(c.id)).attempts, 141);
     assert.equal(
-      f.comm.history(f.principal, f.teamId, f.channelId).items.length,
+      (await f.comm.history(f.principal, f.teamId, f.channelId)).items.length,
       3,
     );
     assert.equal(
@@ -1172,15 +1240,15 @@ await test('frozen T3 endpoint/authority and Kinmesh grant cannot switch after u
   for (const change of ['endpoint', 'authority', 'grant'] as const) {
     const f = await inboxFixture();
     try {
-      mention(f);
-      const c = claim(f);
+      await mention(f);
+      const c = await claim(f);
       f.wire.handler = (name) =>
         name === 't3_thread_launch'
           ? Promise.reject(new Error('Fixture disconnect'))
           : Promise.resolve(envelope(f.wire.values[name]));
       await deliver(f.store, c, f.binding, f.factory, signal());
       due(f.dbPath);
-      const next = claim(f);
+      const next = await claim(f);
       f.wire.handler = undefined;
       const identity = {
         endpoint: options.endpoint,
@@ -1195,7 +1263,7 @@ await test('frozen T3 endpoint/authority and Kinmesh grant cannot switch after u
       if (change === 'authority')
         identity.authority = 'different-approved-principal';
       if (change === 'grant') {
-        const rotated = f.store.agents.issue(
+        const rotated = await f.store.agents.issue(
           f.principal,
           f.teamId,
           f.agent.id,
@@ -1230,7 +1298,7 @@ await test('frozen T3 endpoint/authority and Kinmesh grant cannot switch after u
           Promise.resolve({ backend, identity, close: () => f.wire.close() }),
         signal(),
       );
-      assert.equal(f.inbox.get(c.id).state, 'blocked');
+      assert.equal((await f.inbox.get(c.id)).state, 'blocked');
       assert.equal(
         f.wire.calls.filter((c) => c.name === 't3_thread_launch').length,
         1,
@@ -1243,7 +1311,8 @@ await test('frozen T3 endpoint/authority and Kinmesh grant cannot switch after u
 await test('MOCK native waiting/pending approval remains waiting across retries without another launch or task acceptance', async () => {
   const f = await inboxFixture();
   try {
-    const task = f.create({ owner: { kind: 'agent', id: f.agent.id } }).task;
+    const task = (await f.create({ owner: { kind: 'agent', id: f.agent.id } }))
+      .task;
     // A pending approval belongs to this nonterminal Run, not a completed Run.
     const base = assistantRead('Fixture pending approval', 'waiting');
     const pending = {
@@ -1251,24 +1320,25 @@ await test('MOCK native waiting/pending approval remains waiting across retries 
       thread: { ...base.thread, pendingRequestCount: 1 },
     };
     f.wire.values.t3_thread_read = pending;
-    const first = claim(f);
+    const first = await claim(f);
     await deliver(f.store, first, f.binding, f.factory, signal());
-    assert.equal(f.inbox.get(first.id).state, 'waiting');
-    assert.equal(f.inbox.get(first.id).resultMessageId, null);
+    assert.equal((await f.inbox.get(first.id)).state, 'waiting');
+    assert.equal((await f.inbox.get(first.id)).resultMessageId, null);
     due(f.dbPath);
-    await deliver(f.store, claim(f), f.binding, f.factory, signal());
+    await deliver(f.store, await claim(f), f.binding, f.factory, signal());
     assert.equal(
       f.wire.calls.filter((c) => c.name === 't3_thread_launch').length,
       1,
     );
     assert.equal(
-      f.tasks.get(f.principal, f.teamId, f.channelId, task.id).state.status,
+      (await f.tasks.get(f.principal, f.teamId, f.channelId, task.id)).state
+        .status,
       'in-progress',
     );
     f.wire.values.t3_thread_read = assistantRead('Actual fixture result');
     due(f.dbPath);
-    await deliver(f.store, claim(f), f.binding, f.factory, signal());
-    assert.equal(f.inbox.get(first.id).state, 'acked');
+    await deliver(f.store, await claim(f), f.binding, f.factory, signal());
+    assert.equal((await f.inbox.get(first.id)).state, 'acked');
   } finally {
     await f.dispose();
   }
@@ -1277,9 +1347,9 @@ await test('lease lost inside publication rolls back downstream message/outbox/l
   const f = await inboxFixture();
   const raw = new Database(f.dbPath);
   try {
-    f.create({ owner: { kind: 'agent', id: f.agent.id } });
-    const c = claim(f);
-    freeze(f, c);
+    await f.create({ owner: { kind: 'agent', id: f.agent.id } });
+    const c = await claim(f);
+    await freeze(f, c);
     const counts = () =>
       [
         'messages',
@@ -1299,12 +1369,12 @@ await test('lease lost inside publication rolls back downstream message/outbox/l
       'CREATE TRIGGER fixture_lose_fence BEFORE INSERT ON inbox_results BEGIN UPDATE agent_inbox SET lease_until=1 WHERE id=NEW.delivery_id; END',
     );
     assert.throws(
-      () => f.inbox.ack(c, f.workerPrincipal, fixtureResult()),
+      async () => f.inbox.ack(c, f.workerPrincipal, fixtureResult()),
       IdentityError,
     );
     assert.deepEqual(counts(), before);
-    assert.equal(f.inbox.get(c.id).leaseUntil, c.leaseUntil);
-    assert.equal(f.inbox.get(c.id).state, 'ready');
+    assert.equal((await f.inbox.get(c.id)).leaseUntil, c.leaseUntil);
+    assert.equal((await f.inbox.get(c.id)).state, 'ready');
   } finally {
     raw.close();
     await f.dispose();
@@ -1313,36 +1383,42 @@ await test('lease lost inside publication rolls back downstream message/outbox/l
 await test('MOCK external adapter: explicit task handoff wakes authorized recipient once and publishes actual source-linked result', async () => {
   const f = await inboxFixture();
   try {
-    const profile = f.store.agents.get(f.principal, f.teamId, f.agent.id);
-    f.store.agents.update(f.principal, f.teamId, f.reviewer.id, {
+    const profile = await f.store.agents.get(f.principal, f.teamId, f.agent.id);
+    await f.store.agents.update(f.principal, f.teamId, f.reviewer.id, {
       ...profileInput,
       name: 'Reviewer',
       role: 'reviewer',
       preferences: profile.preferences,
     });
-    const grant = f.store.agents.issue(f.principal, f.teamId, f.reviewer.id, {
-      label: 'Inbox recipient',
-      scopes: [
-        'channels:read',
-        'channels:write',
-        'tasks:read',
-        'tasks:write',
-        'executions:write',
-      ],
-      lifetimeSeconds: 3600,
-    });
+    const grant = await f.store.agents.issue(
+      f.principal,
+      f.teamId,
+      f.reviewer.id,
+      {
+        label: 'Inbox recipient',
+        scopes: [
+          'channels:read',
+          'channels:write',
+          'tasks:read',
+          'tasks:write',
+          'executions:write',
+        ],
+        lifetimeSeconds: 3600,
+      },
+    );
     const tokenFile = join(f.directory, 'review-worker.json');
     writeFileSync(tokenFile, JSON.stringify({ token: grant.token }), {
       mode: 0o600,
     });
-    const task = f.create({ owner: { kind: 'agent', id: f.agent.id } }).task;
-    const handoff = f.act(f.developer, task, {
+    const task = (await f.create({ owner: { kind: 'agent', id: f.agent.id } }))
+      .task;
+    const handoff = await f.act(f.developer, task, {
       type: 'handoff',
       mode: 'work',
       recipient: { kind: 'agent', id: f.reviewer.id },
       note: 'Explicit delegated responsibility',
     });
-    const c = f.inbox.claim([f.reviewer.id]);
+    const c = await f.inbox.claim([f.reviewer.id]);
     assert.ok(c);
     assert.equal(c.eventId, handoff.eventId);
     assert.equal(c.depth, 1);
@@ -1353,10 +1429,10 @@ await test('MOCK external adapter: explicit task handoff wakes authorized recipi
       f.factory,
       signal(),
     );
-    const row = f.inbox.get(c.id);
+    const row = await f.inbox.get(c.id);
     assert.equal(row.state, 'acked');
     assert.ok(row.resultMessageId);
-    const message = f.comm.message(
+    const message = await f.comm.message(
       f.principal,
       f.teamId,
       f.channelId,
@@ -1365,9 +1441,10 @@ await test('MOCK external adapter: explicit task handoff wakes authorized recipi
     assert.equal(message.author.kind, 'agent');
     assert.equal(message.author.agentId, f.reviewer.id);
     assert.equal(message.sourceEventId, handoff.eventId);
-    assert.equal(f.inbox.claim([f.reviewer.id]), undefined);
+    assert.equal(await f.inbox.claim([f.reviewer.id]), undefined);
     assert.equal(
-      f.tasks.get(f.principal, f.teamId, f.channelId, task.id).state.status,
+      (await f.tasks.get(f.principal, f.teamId, f.channelId, task.id)).state
+        .status,
       'in-progress',
     );
   } finally {

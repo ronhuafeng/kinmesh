@@ -13,9 +13,9 @@ import { reference } from './t3-helpers.js';
 import { inboxFixture, due, fixtureResult } from './inbox-helpers.js';
 import { postInput } from './communication-helpers.js';
 import { forkWorker, message, stop } from './process-helpers.js';
-async function until(predicate: () => boolean) {
+async function until(predicate: () => boolean | Promise<boolean>) {
   const deadline = Date.now() + 10000;
-  while (!predicate()) {
+  while (!(await predicate())) {
     if (Date.now() > deadline) throw new Error('Fixture deadline');
     await delay(25);
   }
@@ -35,7 +35,7 @@ await test(
     const raw = new Database(f.dbPath);
     raw.pragma('busy_timeout=5000');
     try {
-      f.comm.post(
+      await f.comm.post(
         f.principal,
         f.teamId,
         f.channelId,
@@ -68,7 +68,7 @@ await test(
         .parse(raw.prepare('SELECT * FROM fixture_native_launches').get());
       assert.equal(native.transmissions, 1);
       assert.equal(
-        f.inbox.claim([f.agent.id]),
+        await f.inbox.claim([f.agent.id]),
         undefined,
         'neither process nor third connection can steal active lease',
       );
@@ -80,12 +80,12 @@ await test(
       const reopened = f.open();
       try {
         assert.equal(
-          reopened.inbox.claim([f.agent.id]),
+          await reopened.inbox.claim([f.agent.id]),
           undefined,
           'kill does not release durable lease',
         );
       } finally {
-        reopened.close();
+        await reopened.close();
       }
       due(f.dbPath, true);
       raw.exec(
@@ -94,7 +94,7 @@ await test(
       const recovery = worker(f.configPath);
       children.push(recovery);
       await message(recovery);
-      await until(() => f.inbox.get(stale.id).state === 'acked');
+      await until(async () => (await f.inbox.get(stale.id)).state === 'acked');
       await stop(recovery);
       assert.equal(
         raw
@@ -119,16 +119,16 @@ await test(
           .get(),
         native.request_id,
       );
-      assert.equal(f.inbox.get(stale.id).generation, 3);
+      assert.equal((await f.inbox.get(stale.id)).generation, 3);
       assert.equal(
         raw.prepare('SELECT count(*) FROM inbox_results').pluck().get(),
         1,
       );
-      assert.throws(() => {
-        f.inbox.defer(stale, 'uncertain', 'stale');
+      assert.throws(async () => {
+        await f.inbox.defer(stale, 'uncertain', 'stale');
       });
-      assert.throws(() => {
-        f.inbox.remember(stale, { operationId: randomOperation() });
+      assert.throws(async () => {
+        await f.inbox.remember(stale, { operationId: randomOperation() });
       });
     } finally {
       for (const c of children) await stop(c, 'SIGKILL');
@@ -146,7 +146,9 @@ await test(
     const raw = new Database(f.dbPath);
     raw.pragma('busy_timeout=5000');
     try {
-      const task = f.create({ owner: { kind: 'agent', id: f.agent.id } }).task;
+      const task = (
+        await f.create({ owner: { kind: 'agent', id: f.agent.id } })
+      ).task;
       const originalWorker = worker(f.configPath, 'prelinked-hold');
       children.push(originalWorker);
       await until(
@@ -165,16 +167,18 @@ await test(
       assert.equal(typeof requestId, 'string');
       await stop(originalWorker, 'SIGKILL');
       assert.equal(
-        f.inbox.claim([f.agent.id]),
+        await f.inbox.claim([f.agent.id]),
         undefined,
         'Crash cannot release the live lease',
       );
       due(f.dbPath, true);
       const recovery = worker(f.configPath);
       children.push(recovery);
-      await until(() => f.inbox.get(original.id).state === 'acked');
+      await until(
+        async () => (await f.inbox.get(original.id)).state === 'acked',
+      );
       await stop(recovery);
-      const result = f.inbox.get(original.id);
+      const result = await f.inbox.get(original.id);
       assert.equal(result.generation, original.generation + 1);
       assert.equal(result.reference, original.reference);
       assert.equal(result.launch, original.launch);
@@ -218,19 +222,22 @@ await test(
       );
       assert.ok(result.resultMessageId);
       assert.equal(
-        f.comm.message(
-          f.principal,
-          f.teamId,
-          f.channelId,
-          result.resultMessageId,
+        (
+          await f.comm.message(
+            f.principal,
+            f.teamId,
+            f.channelId,
+            result.resultMessageId,
+          )
         ).sourceEventId,
         original.eventId,
       );
       assert.equal(
-        f.tasks.get(f.principal, f.teamId, f.channelId, task.id).state.status,
+        (await f.tasks.get(f.principal, f.teamId, f.channelId, task.id)).state
+          .status,
         'in-progress',
       );
-      assert.throws(() =>
+      assert.throws(async () =>
         f.inbox.ack(stale, f.workerPrincipal, fixtureResult()),
       );
     } finally {
@@ -252,7 +259,7 @@ await test(
     const raw = new Database(f.dbPath);
     raw.pragma('busy_timeout=5000');
     try {
-      f.create({ owner: { kind: 'agent', id: f.agent.id } });
+      await f.create({ owner: { kind: 'agent', id: f.agent.id } });
       const originalWorker = worker(f.configPath, 'publication-hold');
       children.push(originalWorker);
       await until(() => f.rows()[0]?.reference !== null);
@@ -275,16 +282,16 @@ await test(
         .prepare('SELECT * FROM execution_operations')
         .get();
       await stop(originalWorker, 'SIGKILL');
-      assert.equal(f.inbox.claim([f.agent.id]), undefined);
+      assert.equal(await f.inbox.claim([f.agent.id]), undefined);
       due(f.dbPath, true);
       const recovery = worker(f.configPath);
       children.push(recovery);
-      await until(() => {
-        const row = f.inbox.get(original.id);
+      await until(async () => {
+        const row = await f.inbox.get(original.id);
         return row.generation > original.generation && row.claimToken === null;
       });
       await stop(recovery);
-      const result = f.inbox.get(original.id);
+      const result = await f.inbox.get(original.id);
       assert.equal(
         result.state,
         'acked',
@@ -294,7 +301,7 @@ await test(
       assert.equal(result.launch, original.launch);
       assert.equal(result.reference, original.reference);
       assert.deepEqual(
-        f.store.agents.correlations(f.principal, f.teamId, f.agent.id),
+        await f.store.agents.correlations(f.principal, f.teamId, f.agent.id),
         [existing],
       );
       assert.deepEqual(
@@ -325,7 +332,7 @@ await test(
           .get(),
         1,
       );
-      assert.throws(() =>
+      assert.throws(async () =>
         f.inbox.ack(stale, f.workerPrincipal, fixtureResult()),
       );
     } finally {
@@ -346,7 +353,7 @@ await test(
       writeFileSync(path, JSON.stringify({ ...f.workerConfig, bindings: [] }), {
         mode: 0o600,
       });
-      f.comm.post(
+      await f.comm.post(
         f.principal,
         f.teamId,
         f.channelId,

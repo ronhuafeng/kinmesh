@@ -312,13 +312,13 @@ await test(
   { timeout: 40000 },
   async () => {
     const seed = await inboxFixture();
-    seed.store.managed.saveConnection(
+    await seed.store.managed.saveConnection(
       seed.principal,
       seed.teamId,
       'https://t3.test/mcp',
       'env-live',
     );
-    const { token } = seed.store.managed.connect(
+    const { token } = await seed.store.managed.connect(
       seed.principal,
       seed.teamId,
       seed.agent.id,
@@ -333,7 +333,8 @@ await test(
       assert.equal(p.workers().length, 1);
       // The worker serves the connected agent: it reports liveness for it.
       await until(
-        () => seed.store.inbox.liveness(seed.teamId).map((r) => r.agentId),
+        async () =>
+          (await seed.store.inbox.liveness(seed.teamId)).map((r) => r.agentId),
         (ids) => ids.includes(seed.agent.id),
       );
       assert.equal(await p.stop(), 0);
@@ -367,7 +368,9 @@ await test(
           method: 'POST',
           headers: { 'content-type': 'application/json', cookie },
           body: JSON.stringify(
-            postInput({ mentions: [{ kind: 'agent', id: seed.agent.id }] }),
+            postInput({
+              mentions: [{ kind: 'agent', id: seed.agent.id }],
+            }),
           ),
         },
       );
@@ -421,7 +424,7 @@ await test(
         () => alive(nextWorker),
         (live) => !live,
       );
-      assert.equal(seed.store.ready(), true);
+      assert.equal(await seed.store.ready(), true);
     } finally {
       await f.dispose();
       await seed.dispose();
@@ -557,7 +560,7 @@ await test(
   { timeout: 25000 },
   async () => {
     const seed = await inboxFixture();
-    seed.comm.post(
+    await seed.comm.post(
       seed.principal,
       seed.teamId,
       seed.channelId,

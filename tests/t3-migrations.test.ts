@@ -6,7 +6,7 @@ import { migrateTo } from './migration-helpers.js';
 import { fixture } from './helpers.js';
 import { reference } from './t3-helpers.js';
 
-await test('execution lease migration preserves populated legacy journal, keys, authority fingerprint and provisional/terminal outcomes', () => {
+await test('execution lease migration preserves populated legacy journal, keys, authority fingerprint and provisional/terminal outcomes', async () => {
   const f = fixture();
   const rows = (
     ['prepared', 'dispatching', 'uncertain', 'known', 'rejected'] as const
@@ -52,13 +52,13 @@ await test('execution lease migration preserves populated legacy journal, keys, 
   let store = f.open();
   try {
     for (const r of rows) {
-      assert.deepEqual(store.operations.get(r.id), {
+      assert.deepEqual(await store.operations.get(r.id), {
         ...r,
         generation: 0,
         claimToken: null,
         leaseUntil: 0,
       });
-      const claim = store.operations.claim(r.id, true);
+      const claim = await store.operations.claim(r.id, true);
       if (r.phase === 'known' || r.phase === 'rejected')
         assert.equal(claim, undefined);
       else {
@@ -69,18 +69,18 @@ await test('execution lease migration preserves populated legacy journal, keys, 
         assert.equal(claim.reference, r.reference);
       }
     }
-    store.close();
+    await store.close();
     store = f.open();
     for (const r of rows) {
-      assert.equal(store.operations.get(r.id).requestId, r.requestId);
+      assert.equal((await store.operations.get(r.id)).requestId, r.requestId);
       assert.equal(
-        store.operations.claim(r.id, true),
+        await store.operations.claim(r.id, true),
         undefined,
         'Active and terminal claims survive reopen',
       );
     }
   } finally {
-    store.close();
+    await store.close();
     f.cleanup();
   }
 });

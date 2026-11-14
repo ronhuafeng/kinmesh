@@ -15,11 +15,11 @@ export function principal(request: FastifyRequest) {
 
 /** Only call with credentials from the verified session plugin or HTTP Authorization.
  * Actor labels, role messages and tool arguments are never credential inputs. */
-export function resolvePrincipal(
+export async function resolvePrincipal(
   store: Store,
   authorization: string | undefined,
   sessionToken: unknown,
-): Principal {
+): Promise<Principal> {
   if (authorization !== undefined) {
     // Reject mixed authority rather than silently choosing the more privileged principal.
     if (sessionToken !== undefined) throw new IdentityError(400);
@@ -28,7 +28,7 @@ export function resolvePrincipal(
     return store.agents.resolveToken(bearer);
   }
   // A session lives on the server: revoked, idle or too old, it ends here.
-  const humanId = store.sessions.resolve(sessionToken, Date.now());
+  const humanId = await store.sessions.resolve(sessionToken, Date.now());
   if (humanId === undefined) throw new IdentityError(401);
   return { kind: 'human', humanId };
 }

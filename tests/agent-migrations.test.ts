@@ -7,7 +7,7 @@ import { HumanId, TeamId } from '../src/domain/contracts.js';
 import { fixture } from './helpers.js';
 import { profileInput, grantInput, correlationInput } from './agent-helpers.js';
 
-await test('upgrade from populated foundation/adapter migrations preserves owner, operation journal and new agent state across reopen', () => {
+await test('upgrade from populated foundation/adapter migrations preserves owner, operation journal and new agent state across reopen', async () => {
   const f = fixture();
   const humanId = HumanId.parse(randomUUID());
   const teamId = TeamId.parse(randomUUID());
@@ -48,35 +48,43 @@ await test('upgrade from populated foundation/adapter migrations preserves owner
   let store = f.open();
   try {
     const principal = { kind: 'human', humanId } as const;
-    assert.equal(store.human(humanId)?.username, 'old-owner');
-    assert.equal(store.operations.get(operationId).phase, 'uncertain');
-    const agent = store.agents.create(principal, teamId, profileInput);
-    const credential = store.agents.issue(
+    assert.equal((await store.human(humanId))?.username, 'old-owner');
+    assert.equal((await store.operations.get(operationId)).phase, 'uncertain');
+    const agent = await store.agents.create(principal, teamId, profileInput);
+    const credential = await store.agents.issue(
       principal,
       teamId,
       agent.id,
       grantInput,
     );
-    const execution = store.agents.correlate(
-      store.agents.resolveToken(credential.token),
+    const execution = await store.agents.correlate(
+      await store.agents.resolveToken(credential.token),
       teamId,
       agent.id,
       correlationInput,
     );
-    store.close();
+    await store.close();
     store = f.open();
-    assert.equal(store.agents.get(principal, teamId, agent.id).id, agent.id);
     assert.equal(
-      store.agents.correlations(
-        store.agents.resolveToken(credential.token),
-        teamId,
-        agent.id,
+      (await store.agents.get(principal, teamId, agent.id)).id,
+      agent.id,
+    );
+    assert.equal(
+      (
+        await store.agents.correlations(
+          await store.agents.resolveToken(credential.token),
+          teamId,
+          agent.id,
+        )
       )[0]?.id,
       execution.id,
     );
-    assert.equal(store.operations.get(operationId).requestId.length > 0, true);
+    assert.equal(
+      (await store.operations.get(operationId)).requestId.length > 0,
+      true,
+    );
   } finally {
-    store.close();
+    await store.close();
     f.cleanup();
   }
 });

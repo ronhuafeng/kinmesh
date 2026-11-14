@@ -178,20 +178,22 @@ try {
   }
   if (!found) throw new Error('Missing read/post evidence');
   // The durable receipt proves exact operation-key execution, not just matching display text.
-  const principal = store.agents.resolveToken(
+  const principal = await store.agents.resolveToken(
     loadAgentToken(context.tokenFile),
   );
-  const task = store.tasks.get(
+  const task = await store.tasks.get(
     principal,
     context.teamId,
     context.channelId,
     context.taskId,
   );
-  const history = store.tasks.history(
-    principal,
-    context.teamId,
-    context.channelId,
-    task.id,
+  const history = (
+    await store.tasks.history(
+      principal,
+      context.teamId,
+      context.channelId,
+      task.id,
+    )
   ).items;
   if (
     history.length !== 3 ||
@@ -236,5 +238,5 @@ try {
   }
   await client?.close();
   await wire?.close();
-  store?.close();
+  await store?.close();
 }

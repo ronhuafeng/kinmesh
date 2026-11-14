@@ -128,10 +128,10 @@ export async function deliver(
     'authority';
   try {
     if (binding.agentId !== claim.agentId) throw new IdentityError(403);
-    const principal = store.agents.resolveToken(
+    const principal = await store.agents.resolveToken(
       loadAgentToken(binding.tokenFile),
     );
-    const { profile, context } = store.inbox.context(claim, principal);
+    const { profile, context } = await store.inbox.context(claim, principal);
     const preferences = profile.preferences;
     if (
       preferences.environmentId === null ||
@@ -147,7 +147,7 @@ export async function deliver(
       handle.identity.environmentId !== preferences.environmentId
     )
       throw new ExecutionFailure('incompatible');
-    const frozen = store.inbox.freeze(
+    const frozen = await store.inbox.freeze(
       claim,
       principal,
       FrozenLaunch.parse({
@@ -174,7 +174,7 @@ export async function deliver(
       throw new ExecutionFailure('conflict');
     stage = 'execution';
     signal.throwIfAborted();
-    let row = store.inbox.get(claim.id);
+    let row = await store.inbox.get(claim.id);
     // Crash before remember() re-enters the SAME frozen intent; T3Backend returns its durable journal outcome.
     if (row.reference === null) {
       const intent = inboxIntent(claim.agentId, claim.id);
@@ -183,8 +183,10 @@ export async function deliver(
           ? await handle.backend.launch(frozen.input, intent, signal)
           : await handle.backend.reconcile(intent, row.operationId, signal);
       if (dispatch.kind === 'uncertain') {
-        store.inbox.remember(claim, { operationId: dispatch.operationId });
-        store.inbox.defer(claim, 'uncertain', 'native-launch-uncertain');
+        await store.inbox.remember(claim, {
+          operationId: dispatch.operationId,
+        });
+        await store.inbox.defer(claim, 'uncertain', 'native-launch-uncertain');
         return;
       }
       if (
@@ -192,8 +194,8 @@ export async function deliver(
         !dispatch.reference.runId
       )
         throw new ExecutionFailure('incompatible');
-      store.inbox.remember(claim, dispatch.reference);
-      row = store.inbox.get(claim.id);
+      await store.inbox.remember(claim, dispatch.reference);
+      row = await store.inbox.get(claim.id);
     }
     const reference = Reference.parse(JSON.parse(row.reference ?? ''));
     if (reference.environmentId !== preferences.environmentId)
@@ -205,16 +207,16 @@ export async function deliver(
       signal,
     );
     if ('reason' in result) {
-      store.inbox.defer(claim, result.kind, result.reason);
+      await store.inbox.defer(claim, result.kind, result.reason);
       return;
     }
     stage = 'publication';
     signal.throwIfAborted();
     // Resolve again immediately before the fenced transaction; scopes/grant/assignment are rechecked inside it.
-    const current = store.agents.resolveToken(
+    const current = await store.agents.resolveToken(
       loadAgentToken(binding.tokenFile),
     );
-    store.inbox.ack(
+    await store.inbox.ack(
       claim,
       current,
       result.kind === 'terminal-notice' ? result.notice : result.result,
@@ -236,13 +238,13 @@ export async function deliver(
           ? ['permission', 'authentication'].includes(error.kind)
             ? 'native-access'
             : 'native-incompatible'
-          : store.inbox.blockedCause(claim, () =>
+          : await store.inbox.blockedCause(claim, () =>
               loadAgentToken(binding.tokenFile),
             )
         : stopping.aborted
           ? 'worker-stopping'
           : 'temporarily-unavailable';
-      store.inbox.defer(
+      await store.inbox.defer(
         claim,
         blocked ? 'blocked' : stage === 'execution' ? 'uncertain' : 'ready',
         reason,
@@ -260,11 +262,11 @@ export async function deliver(
 }
 /** Ordinary independently supervised process loop, sharing SQLite capacity/leases across processes. */
 /** Bindings for agents the owner connected from the workspace. */
-export function managedBindings(
+export async function managedBindings(
   store: Store,
   directory: string,
-): WorkerBinding[] {
-  return store.managed.workerBindings().map((b) =>
+): Promise<WorkerBinding[]> {
+  return (await store.managed.workerBindings()).map((b) =>
     WorkerBinding.parse({
       agentId: b.agentId,
       tokenFile: agentTokenFile(directory, b.agentId),
@@ -292,21 +294,21 @@ export async function runWorker(
       // Agents connected from the workspace join or leave without a restart;
       // a binding in the operator's configuration wins over a managed one.
       const next = new Map(
-        managedBindings(store, directory).map((b) => [b.agentId, b]),
+        (await managedBindings(store, directory)).map((b) => [b.agentId, b]),
       );
       for (const b of config.bindings) next.set(b.agentId, b);
       const gone = [...bindings.keys()].filter((id) => !next.has(id));
-      if (gone.length > 0) store.inbox.release(gone);
+      if (gone.length > 0) await store.inbox.release(gone);
       // New or removed agents show their state now, not at the next beat.
       if (gone.length > 0 || [...next.keys()].some((id) => !bindings.has(id)))
         lastBeat = 0;
       bindings = next;
       if (Date.now() - lastBeat >= INBOX_HEARTBEAT_MS) {
-        store.inbox.heartbeat([...bindings.keys()]);
+        await store.inbox.heartbeat([...bindings.keys()]);
         lastBeat = Date.now();
       }
       while (running.size < INBOX_CAPACITY && bindings.size > 0 && !stopped()) {
-        const claim = store.inbox.claim([...bindings.keys()]);
+        const claim = await store.inbox.claim([...bindings.keys()]);
         if (!claim) break;
         const binding = bindings.get(claim.agentId);
         if (!binding) throw new Error('Unknown binding');
@@ -330,7 +332,7 @@ export async function runWorker(
   } finally {
     await Promise.allSettled(running);
     try {
-      store.inbox.release([...bindings.keys()]);
+      await store.inbox.release([...bindings.keys()]);
     } catch {
       // Liveness goes stale on its own if the database is already gone.
     }

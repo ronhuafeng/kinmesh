@@ -547,7 +547,7 @@ test('complete real two-agent workflow, Human rework/acceptance, recovery and au
                 process.kill(worker, 'SIGKILL');
                 crashed = true;
                 assert.equal(
-                  store.inbox.claim([hub.agent('developer').profile.id]),
+                  await store.inbox.claim([hub.agent('developer').profile.id]),
                   undefined,
                 );
                 checks.concurrentClaimFenced = true;
@@ -1045,7 +1045,7 @@ test('complete real two-agent workflow, Human rework/acceptance, recovery and au
     }
     for (const close of [() => store?.close(), () => db?.close()]) {
       try {
-        close();
+        await close();
       } catch {
         cleanupIssues.push('DATABASE_CLOSE_FAILED');
       }

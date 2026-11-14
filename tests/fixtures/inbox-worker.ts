@@ -60,22 +60,22 @@ try {
             .pluck()
             .get();
           if (typeof id === 'string') {
-            const row = store.inbox.get(id);
+            const row = await store.inbox.get(id);
             const binding = config.bindings.find(
               (b) => b.agentId === row.agentId,
             );
             if (!binding || row.taskId === null)
               throw new Error('Missing fixture task');
-            const principal = store.agents.resolveToken(
+            const principal = await store.agents.resolveToken(
               loadAgentToken(binding.tokenFile),
             );
-            const task = store.tasks.get(
+            const task = await store.tasks.get(
               principal,
               row.teamId,
               row.channelId,
               row.taskId,
             );
-            store.tasks.command(
+            await store.tasks.command(
               principal,
               row.teamId,
               row.channelId,
@@ -113,5 +113,5 @@ try {
   );
 } finally {
   counter.close();
-  store.close();
+  await store.close();
 }

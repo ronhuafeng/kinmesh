@@ -29,37 +29,43 @@ const WORKER_INTERNALS = [
   'expiresAt',
   'position',
 ];
-const elsewhere = (f: Fixture) =>
-  f.comm.createChannel(f.principal, f.teamId, {
-    operationKey: key(),
-    name: 'elsewhere',
-  }).id;
+const elsewhere = async (f: Fixture) =>
+  (
+    await f.comm.createChannel(f.principal, f.teamId, {
+      operationKey: key(),
+      name: 'elsewhere',
+    })
+  ).id;
 
 await test('a decision waiting in another channel is listed, and only while I am a member', async () => {
   const f = await inboxFixture();
   try {
-    const other = elsewhere(f);
-    let task = f.create({ owner: null, reviewer: null }).task;
-    task = f.act(f.developer, task, { type: 'claim' }).task;
-    task = f.act(f.developer, task, {
-      type: 'request-review',
-      reviewer: { kind: 'agent', id: f.reviewer.id },
-      note: 'Ready',
-    }).task;
+    const other = await elsewhere(f);
+    let task = (await f.create({ owner: null, reviewer: null })).task;
+    task = (await f.act(f.developer, task, { type: 'claim' })).task;
+    task = (
+      await f.act(f.developer, task, {
+        type: 'request-review',
+        reviewer: { kind: 'agent', id: f.reviewer.id },
+        note: 'Ready',
+      })
+    ).task;
     // Waiting on the reviewer agent, not on me.
     assert.deepEqual((await snapshot(f, other)).attention.decide, []);
-    task = f.act(f.reviewPrincipal, task, {
-      type: 'review',
-      decision: 'approve',
-      note: 'Looks right',
-    }).task;
+    task = (
+      await f.act(f.reviewPrincipal, task, {
+        type: 'review',
+        decision: 'approve',
+        note: 'Looks right',
+      })
+    ).task;
     const decide = (await snapshot(f, other)).attention.decide;
     assert.deepEqual(
       decide.map((d) => [d.task.id, d.task.state.status, d.channelName]),
       [[task.id, 'awaiting-human', 'general']],
     );
     // Leaving the channel takes its asks with it.
-    f.comm.membership(
+    await f.comm.membership(
       f.principal,
       f.teamId,
       f.channelId,
@@ -75,8 +81,8 @@ await test('a decision waiting in another channel is listed, and only while I am
 await test('blocked deliveries and unwakeable agents are listed without worker internals', async () => {
   const f = await inboxFixture();
   try {
-    const other = elsewhere(f);
-    f.comm.post(
+    const other = await elsewhere(f);
+    await f.comm.post(
       f.principal,
       f.teamId,
       f.channelId,
@@ -89,12 +95,12 @@ await test('blocked deliveries and unwakeable agents are listed without worker i
     let attention = (await snapshot(f, other)).attention;
     assert.deepEqual(attention.connect, [{ agentId: f.agent.id, queued: 1 }]);
     assert.deepEqual(attention.unstuck, []);
-    f.inbox.heartbeat([f.agent.id]);
+    await f.inbox.heartbeat([f.agent.id]);
     assert.deepEqual((await snapshot(f, other)).attention.connect, []);
     // A blocking failure becomes something to unstick.
-    const claim = f.inbox.claim([f.agent.id]);
+    const claim = await f.inbox.claim([f.agent.id]);
     assert.ok(claim);
-    f.inbox.defer(claim, 'blocked', 'authority-or-contract-blocked');
+    await f.inbox.defer(claim, 'blocked', 'authority-or-contract-blocked');
     attention = (await snapshot(f, other)).attention;
     assert.equal(attention.unstuck.length, 1);
     const [item] = attention.unstuck;
@@ -104,7 +110,7 @@ await test('blocked deliveries and unwakeable agents are listed without worker i
     const [sent] = (await raw(f, other)).attention.unstuck;
     for (const internal of WORKER_INTERNALS)
       assert.equal(Object.hasOwn(sent ?? {}, internal), false, internal);
-    f.comm.membership(
+    await f.comm.membership(
       f.principal,
       f.teamId,
       f.channelId,

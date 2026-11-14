@@ -14,9 +14,9 @@ try {
     throw new Error('Mailbox outside the organization');
   const store = openStore(config.database);
   try {
-    store.linkMailbox(username, email);
+    await store.linkMailbox(username, email);
   } finally {
-    store.close();
+    await store.close();
   }
   console.info(`${username} now signs in as ${email}.`);
 } catch {

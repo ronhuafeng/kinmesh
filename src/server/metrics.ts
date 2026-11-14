@@ -69,9 +69,9 @@ export function createMetrics() {
         help: 'Inbox deliveries by state.',
         labelNames: ['state'],
         registers: [registry],
-        collect() {
+        async collect() {
           this.reset();
-          for (const { state, count } of store.inbox.countsByState())
+          for (const { state, count } of await store.inbox.countsByState())
             this.set({ state }, count);
         },
       });
@@ -87,8 +87,8 @@ export function createMetrics() {
         name: 'kinmesh_agents_awake',
         help: 'Agents a worker can wake now.',
         registers: [registry],
-        collect() {
-          this.set(store.inbox.awake(Date.now()).length);
+        async collect() {
+          this.set((await store.inbox.awake(Date.now())).length);
         },
       });
       new Gauge({

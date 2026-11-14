@@ -71,9 +71,9 @@ await test('channel/topic HTTP flow: owner enrolls persistent agent, exchanges a
     });
     assert.equal(first.statusCode, 201);
     const humanMessage = Message.parse(first.json<unknown>());
-    const event = f.comm
-      .events(f.principal, f.teamId, f.channelId)
-      .items.find((e) => e.fact.messageId === humanMessage.id);
+    const event = (
+      await f.comm.events(f.principal, f.teamId, f.channelId)
+    ).items.find((e) => e.fact.messageId === humanMessage.id);
     assert.ok(event);
     const follow = await f.app.inject({
       method: 'POST',
@@ -141,11 +141,11 @@ await test('channel/topic HTTP flow: owner enrolls persistent agent, exchanges a
 await test('every channel/history/detail/topic/mention/event endpoint hides inaccessible channel IDs and enforces team scope', async () => {
   const f = await communicationFixture();
   try {
-    const topic = f.comm.createTopic(f.principal, f.teamId, f.channelId, {
+    const topic = await f.comm.createTopic(f.principal, f.teamId, f.channelId, {
       operationKey: key(),
       title: 'Private',
     });
-    const msg = f.comm.post(
+    const msg = await f.comm.post(
       f.principal,
       f.teamId,
       f.channelId,
@@ -198,7 +198,7 @@ await test('every channel/history/detail/topic/mention/event endpoint hides inac
       () => f.comm.history(f.agentPrincipal, f.teamId, f.channelId),
       rejected(404),
     );
-    f.invite();
+    await f.invite();
     assert.equal(
       (
         await f.app.inject({
@@ -208,7 +208,7 @@ await test('every channel/history/detail/topic/mention/event endpoint hides inac
       ).statusCode,
       403,
     );
-    const other = f.comm.createChannel(f.principal, f.teamId, {
+    const other = await f.comm.createChannel(f.principal, f.teamId, {
       operationKey: key(),
       name: 'Other',
     });
@@ -229,38 +229,54 @@ await test('every channel/history/detail/topic/mention/event endpoint hides inac
 await test('membership leave/subscribe is self-only; removal prevents resubscription and replay cannot restore privileges', async () => {
   const f = await communicationFixture();
   try {
-    f.invite();
+    await f.invite();
     assert.throws(
-      () =>
+      async () =>
         f.comm.enroll(
           f.principal,
           f.teamId,
           f.channelId,
-          { operationKey: key(), member: { kind: 'human', id: f.owner.id } },
+          {
+            operationKey: key(),
+            member: { kind: 'human', id: f.owner.id },
+          },
           'remove',
         ),
       rejected(400),
     );
     const leave = { operationKey: key() };
-    f.comm.membership(f.agentPrincipal, f.teamId, f.channelId, leave, 'leave');
+    await f.comm.membership(
+      f.agentPrincipal,
+      f.teamId,
+      f.channelId,
+      leave,
+      'leave',
+    );
     assert.throws(
       () => f.comm.history(f.agentPrincipal, f.teamId, f.channelId),
       rejected(404),
     );
     assert.equal(
-      f.comm.membership(f.agentPrincipal, f.teamId, f.channelId, leave, 'leave')
-        .state,
+      (
+        await f.comm.membership(
+          f.agentPrincipal,
+          f.teamId,
+          f.channelId,
+          leave,
+          'leave',
+        )
+      ).state,
       'left',
     );
     const subscribe = { operationKey: key() };
-    f.comm.membership(
+    await f.comm.membership(
       f.agentPrincipal,
       f.teamId,
       f.channelId,
       subscribe,
       'subscribe',
     );
-    f.comm.enroll(
+    await f.comm.enroll(
       f.principal,
       f.teamId,
       f.channelId,
@@ -278,10 +294,13 @@ await test('membership leave/subscribe is self-only; removal prevents resubscrip
         ),
       rejected(404),
     );
-    assert.equal(f.comm.channels(f.agentPrincipal, f.teamId).items.length, 0);
-    f.invite();
     assert.equal(
-      f.comm.channel(f.agentPrincipal, f.teamId, f.channelId).id,
+      (await f.comm.channels(f.agentPrincipal, f.teamId)).items.length,
+      0,
+    );
+    await f.invite();
+    assert.equal(
+      (await f.comm.channel(f.agentPrincipal, f.teamId, f.channelId)).id,
       f.channelId,
     );
     const spoof = await f.app.inject({
@@ -316,7 +335,7 @@ await test('membership leave/subscribe is self-only; removal prevents resubscrip
 await test('mentions require real active joined human/agent members of this channel/team; causal references cannot cross channels', async () => {
   const f = await communicationFixture();
   try {
-    const other = f.store.agents.create(f.principal, f.teamId, {
+    const other = await f.store.agents.create(f.principal, f.teamId, {
       ...profileInput,
       name: 'Nonparticipant',
     });
@@ -325,7 +344,7 @@ await test('mentions require real active joined human/agent members of this chan
       { kind: 'human', id: HumanId.parse(randomUUID()) },
     ] as const)
       assert.throws(
-        () =>
+        async () =>
           f.comm.post(
             f.principal,
             f.teamId,
@@ -334,10 +353,15 @@ await test('mentions require real active joined human/agent members of this chan
           ),
         rejected(404),
       );
-    f.invite();
-    f.store.agents.lifecycle(f.principal, f.teamId, f.agent.id, 'disabled');
+    await f.invite();
+    await f.store.agents.lifecycle(
+      f.principal,
+      f.teamId,
+      f.agent.id,
+      'disabled',
+    );
     assert.throws(
-      () =>
+      async () =>
         f.comm.post(
           f.principal,
           f.teamId,
@@ -346,16 +370,22 @@ await test('mentions require real active joined human/agent members of this chan
         ),
       rejected(404),
     );
-    const second = f.comm.createChannel(f.principal, f.teamId, {
+    const second = await f.comm.createChannel(f.principal, f.teamId, {
       operationKey: key(),
       name: 'Other',
     });
-    const msg = f.comm.post(f.principal, f.teamId, second.id, postInput());
-    const topic = f.comm.createTopic(f.principal, f.teamId, second.id, {
+    const msg = await f.comm.post(
+      f.principal,
+      f.teamId,
+      second.id,
+      postInput(),
+    );
+    const topic = await f.comm.createTopic(f.principal, f.teamId, second.id, {
       operationKey: key(),
       title: 'Elsewhere',
     });
-    const event = f.comm.events(f.principal, f.teamId, second.id).items[0];
+    const event = (await f.comm.events(f.principal, f.teamId, second.id))
+      .items[0];
     assert.ok(event);
     for (const partial of [
       { sourceMessageId: msg.id },
@@ -363,12 +393,12 @@ await test('mentions require real active joined human/agent members of this chan
       { topicId: topic.id },
     ])
       assert.throws(
-        () =>
+        async () =>
           f.comm.post(f.principal, f.teamId, f.channelId, postInput(partial)),
         rejected(404),
       );
     assert.equal(
-      f.comm.history(f.principal, f.teamId, f.channelId).items.length,
+      (await f.comm.history(f.principal, f.teamId, f.channelId)).items.length,
       0,
     );
   } finally {
@@ -379,11 +409,11 @@ await test('mentions require real active joined human/agent members of this chan
 await test('message idempotency is actor/action/target scoped; same key replay preserves original ID/time/fact, collisions fail', async () => {
   const f = await communicationFixture();
   try {
-    f.invite();
+    await f.invite();
     const data = postInput();
-    const first = f.comm.post(f.principal, f.teamId, f.channelId, data);
+    const first = await f.comm.post(f.principal, f.teamId, f.channelId, data);
     assert.deepEqual(
-      f.comm.post(f.principal, f.teamId, f.channelId, data),
+      await f.comm.post(f.principal, f.teamId, f.channelId, data),
       first,
     );
     assert.throws(
@@ -394,22 +424,27 @@ await test('message idempotency is actor/action/target scoped; same key replay p
         }),
       rejected(409),
     );
-    const agent = f.comm.post(f.agentPrincipal, f.teamId, f.channelId, data);
+    const agent = await f.comm.post(
+      f.agentPrincipal,
+      f.teamId,
+      f.channelId,
+      data,
+    );
     assert.notEqual(first.id, agent.id);
-    const another = f.comm.createChannel(f.principal, f.teamId, {
+    const another = await f.comm.createChannel(f.principal, f.teamId, {
       operationKey: key(),
       name: 'Another',
     });
     assert.notEqual(
-      f.comm.post(f.principal, f.teamId, another.id, data).id,
+      (await f.comm.post(f.principal, f.teamId, another.id, data)).id,
       first.id,
     );
-    const facts = f.comm
-      .events(f.principal, f.teamId, f.channelId)
-      .items.filter((e) => e.fact.kind === 'message.posted');
+    const facts = (
+      await f.comm.events(f.principal, f.teamId, f.channelId)
+    ).items.filter((e) => e.fact.kind === 'message.posted');
     assert.equal(facts.length, 2);
     assert.equal(
-      f.comm.history(f.principal, f.teamId, f.channelId).items.length,
+      (await f.comm.history(f.principal, f.teamId, f.channelId)).items.length,
       2,
     );
   } finally {
@@ -421,9 +456,9 @@ await test('channel/topic/invite/leave/subscribe operations replay exactly and r
   const f = await communicationFixture();
   try {
     const input = { operationKey: key(), name: 'Planning' };
-    const channel = f.comm.createChannel(f.principal, f.teamId, input);
+    const channel = await f.comm.createChannel(f.principal, f.teamId, input);
     assert.deepEqual(
-      f.comm.createChannel(f.principal, f.teamId, input),
+      await f.comm.createChannel(f.principal, f.teamId, input),
       channel,
     );
     assert.throws(
@@ -435,14 +470,14 @@ await test('channel/topic/invite/leave/subscribe operations replay exactly and r
       rejected(409),
     );
     const topicInput = { operationKey: key(), title: 'Topic' };
-    const topic = f.comm.createTopic(
+    const topic = await f.comm.createTopic(
       f.principal,
       f.teamId,
       channel.id,
       topicInput,
     );
     assert.deepEqual(
-      f.comm.createTopic(f.principal, f.teamId, channel.id, topicInput),
+      await f.comm.createTopic(f.principal, f.teamId, channel.id, topicInput),
       topic,
     );
     assert.throws(
@@ -458,8 +493,20 @@ await test('channel/topic/invite/leave/subscribe operations replay exactly and r
       member: { kind: 'agent' as const, id: f.agent.id },
     };
     assert.deepEqual(
-      f.comm.enroll(f.principal, f.teamId, channel.id, invitation, 'invite'),
-      f.comm.enroll(f.principal, f.teamId, channel.id, invitation, 'invite'),
+      await f.comm.enroll(
+        f.principal,
+        f.teamId,
+        channel.id,
+        invitation,
+        'invite',
+      ),
+      await f.comm.enroll(
+        f.principal,
+        f.teamId,
+        channel.id,
+        invitation,
+        'invite',
+      ),
     );
     assert.throws(
       () =>
@@ -475,14 +522,14 @@ await test('channel/topic/invite/leave/subscribe operations replay exactly and r
     for (const action of ['leave', 'subscribe'] as const) {
       const operation = { operationKey: key() };
       assert.deepEqual(
-        f.comm.membership(
+        await f.comm.membership(
           f.agentPrincipal,
           f.teamId,
           channel.id,
           operation,
           action,
         ),
-        f.comm.membership(
+        await f.comm.membership(
           f.agentPrincipal,
           f.teamId,
           channel.id,
@@ -492,7 +539,7 @@ await test('channel/topic/invite/leave/subscribe operations replay exactly and r
       );
     }
     assert.equal(
-      f.comm.events(f.principal, f.teamId, channel.id).items.length,
+      (await f.comm.events(f.principal, f.teamId, channel.id)).items.length,
       5,
     );
   } finally {
@@ -503,20 +550,22 @@ await test('channel/topic/invite/leave/subscribe operations replay exactly and r
 await test('snapshot keyset pagination has deterministic no-skip/no-duplicate history under concurrent inserts and rejects cross-view cursors', async () => {
   const f = await communicationFixture();
   try {
-    f.invite();
-    const topic = f.comm.createTopic(f.principal, f.teamId, f.channelId, {
+    await f.invite();
+    const topic = await f.comm.createTopic(f.principal, f.teamId, f.channelId, {
       operationKey: key(),
       title: 'Topic',
     });
-    const original = Array.from({ length: 7 }, (_, i) =>
-      f.comm.post(
-        f.principal,
-        f.teamId,
-        f.channelId,
-        postInput({ body: String(i), topicId: topic.id }),
-      ),
-    );
-    const first = f.comm.history(f.principal, f.teamId, f.channelId, {
+    const original = [];
+    for (let i = 0; i < 7; i++)
+      original.push(
+        await f.comm.post(
+          f.principal,
+          f.teamId,
+          f.channelId,
+          postInput({ body: String(i), topicId: topic.id }),
+        ),
+      );
+    const first = await f.comm.history(f.principal, f.teamId, f.channelId, {
       limit: 2,
     });
     assert.ok(first.nextCursor);
@@ -524,18 +573,18 @@ await test('snapshot keyset pagination has deterministic no-skip/no-duplicate hi
     const ids = first.items.map((m) => m.id);
     const secondStore = f.open();
     try {
-      secondStore.communication.post(
+      await secondStore.communication.post(
         f.principal,
         f.teamId,
         f.channelId,
         postInput({ body: 'Concurrent' }),
       );
     } finally {
-      secondStore.close();
+      await secondStore.close();
     }
     let cursor: string | null = first.nextCursor;
     while (cursor !== null) {
-      const page = f.comm.history(f.principal, f.teamId, f.channelId, {
+      const page = await f.comm.history(f.principal, f.teamId, f.channelId, {
         limit: 2,
         cursor,
       });
@@ -548,7 +597,7 @@ await test('snapshot keyset pagination has deterministic no-skip/no-duplicate hi
     );
     assert.equal(new Set(ids).size, 7);
     assert.equal(
-      f.comm.history(f.principal, f.teamId, f.channelId).items.length,
+      (await f.comm.history(f.principal, f.teamId, f.channelId)).items.length,
       8,
     );
     assert.throws(
@@ -585,53 +634,57 @@ await test('channel/topic/outbox pages are bounded stable snapshots and new memb
   const f = await communicationFixture();
   try {
     for (let i = 0; i < 4; i++) {
-      f.comm.createChannel(f.principal, f.teamId, {
+      await f.comm.createChannel(f.principal, f.teamId, {
         operationKey: key(),
         name: 'Channel ' + String(i),
       });
-      f.comm.createTopic(f.principal, f.teamId, f.channelId, {
+      await f.comm.createTopic(f.principal, f.teamId, f.channelId, {
         operationKey: key(),
         title: 'Topic ' + String(i),
       });
     }
-    const channels = f.comm.channels(f.principal, f.teamId, { limit: 2 });
+    const channels = await f.comm.channels(f.principal, f.teamId, { limit: 2 });
     assert.ok(channels.nextCursor);
-    f.comm.createChannel(f.principal, f.teamId, {
+    await f.comm.createChannel(f.principal, f.teamId, {
       operationKey: key(),
       name: 'Later',
     });
-    const rest = f.comm.channels(f.principal, f.teamId, {
+    const rest = await f.comm.channels(f.principal, f.teamId, {
       limit: 100,
       cursor: channels.nextCursor,
     });
     assert.equal(channels.items.length + rest.items.length, 5);
-    const topics = f.comm.topics(f.principal, f.teamId, f.channelId, {
+    const topics = await f.comm.topics(f.principal, f.teamId, f.channelId, {
       limit: 2,
     });
     assert.ok(topics.nextCursor);
-    f.comm.createTopic(f.principal, f.teamId, f.channelId, {
+    await f.comm.createTopic(f.principal, f.teamId, f.channelId, {
       operationKey: key(),
       title: 'Later',
     });
     assert.equal(
-      f.comm.topics(f.principal, f.teamId, f.channelId, {
-        cursor: topics.nextCursor,
-      }).items.length,
+      (
+        await f.comm.topics(f.principal, f.teamId, f.channelId, {
+          cursor: topics.nextCursor,
+        })
+      ).items.length,
       2,
     );
-    const events = f.comm.events(f.principal, f.teamId, f.channelId, {
+    const events = await f.comm.events(f.principal, f.teamId, f.channelId, {
       limit: 2,
     });
     assert.ok(events.nextCursor);
     const eventsCursor = events.nextCursor;
-    f.comm.post(f.principal, f.teamId, f.channelId, postInput());
+    await f.comm.post(f.principal, f.teamId, f.channelId, postInput());
     assert.equal(
-      f.comm.events(f.principal, f.teamId, f.channelId, {
-        cursor: eventsCursor,
-      }).items.length,
+      (
+        await f.comm.events(f.principal, f.teamId, f.channelId, {
+          cursor: eventsCursor,
+        })
+      ).items.length,
       4,
     );
-    f.comm.membership(
+    await f.comm.membership(
       f.principal,
       f.teamId,
       f.channelId,
@@ -646,7 +699,9 @@ await test('channel/topic/outbox pages are bounded stable snapshots and new memb
       rejected(404),
     );
     assert.equal(
-      f.store.teamFor(f.owner.id)?.channels.some((c) => c.id === f.channelId),
+      (await f.store.teamFor(f.owner.id))?.channels.some(
+        (c) => c.id === f.channelId,
+      ),
       false,
     );
   } finally {
@@ -658,41 +713,46 @@ await test('outbox/mention/receipt failure rolls back messages and membership/ch
   const f = await communicationFixture();
   const raw = new Database(f.dbPath);
   try {
-    f.invite();
-    const before = f.comm.events(f.principal, f.teamId, f.channelId).items
-      .length;
+    await f.invite();
+    const before = (await f.comm.events(f.principal, f.teamId, f.channelId))
+      .items.length;
     raw.exec(
       "CREATE TRIGGER fail_outbox BEFORE INSERT ON communication_outbox BEGIN SELECT RAISE(ABORT,'test failure'); END",
     );
-    const data = postInput({ mentions: [{ kind: 'agent', id: f.agent.id }] });
+    const data = postInput({
+      mentions: [{ kind: 'agent', id: f.agent.id }],
+    });
     assert.throws(() => f.comm.post(f.principal, f.teamId, f.channelId, data));
     assert.equal(
-      f.comm.history(f.principal, f.teamId, f.channelId).items.length,
+      (await f.comm.history(f.principal, f.teamId, f.channelId)).items.length,
       0,
     );
     assert.equal(
       raw.prepare('SELECT count(*) FROM message_mentions').pluck().get(),
       0,
     );
-    assert.throws(() =>
+    assert.throws(async () =>
       f.comm.createTopic(f.principal, f.teamId, f.channelId, {
         operationKey: key(),
         title: 'Rollback',
       }),
     );
     assert.equal(
-      f.comm.topics(f.principal, f.teamId, f.channelId).items.length,
+      (await f.comm.topics(f.principal, f.teamId, f.channelId)).items.length,
       0,
     );
-    const total = f.comm.channels(f.principal, f.teamId).items.length;
-    assert.throws(() =>
+    const total = (await f.comm.channels(f.principal, f.teamId)).items.length;
+    assert.throws(async () =>
       f.comm.createChannel(f.principal, f.teamId, {
         operationKey: key(),
         name: 'Rollback',
       }),
     );
-    assert.equal(f.comm.channels(f.principal, f.teamId).items.length, total);
-    assert.throws(() =>
+    assert.equal(
+      (await f.comm.channels(f.principal, f.teamId)).items.length,
+      total,
+    );
+    assert.throws(async () =>
       f.comm.membership(
         f.agentPrincipal,
         f.teamId,
@@ -702,28 +762,28 @@ await test('outbox/mention/receipt failure rolls back messages and membership/ch
       ),
     );
     assert.equal(
-      f.comm.participant(f.agentPrincipal, f.teamId, f.channelId).state,
+      (await f.comm.participant(f.agentPrincipal, f.teamId, f.channelId)).state,
       'joined',
     );
     raw.exec('DROP TRIGGER fail_outbox');
-    const posted = f.comm.post(f.principal, f.teamId, f.channelId, data);
+    const posted = await f.comm.post(f.principal, f.teamId, f.channelId, data);
     assert.ok(posted.id);
     assert.equal(
-      f.comm.events(f.principal, f.teamId, f.channelId).items.length,
+      (await f.comm.events(f.principal, f.teamId, f.channelId)).items.length,
       before + 1,
     );
     raw.exec(
       "CREATE TRIGGER fail_receipt BEFORE INSERT ON communication_operations BEGIN SELECT RAISE(ABORT,'test failure'); END",
     );
-    assert.throws(() =>
+    assert.throws(async () =>
       f.comm.post(f.principal, f.teamId, f.channelId, postInput()),
     );
     assert.equal(
-      f.comm.history(f.principal, f.teamId, f.channelId).items.length,
+      (await f.comm.history(f.principal, f.teamId, f.channelId)).items.length,
       1,
     );
     assert.equal(
-      f.comm.events(f.principal, f.teamId, f.channelId).items.length,
+      (await f.comm.events(f.principal, f.teamId, f.channelId)).items.length,
       before + 1,
     );
   } finally {
@@ -735,13 +795,18 @@ await test('outbox/mention/receipt failure rolls back messages and membership/ch
 await test('revoked/disabled agent tokens and stale principals fail every channel/topic/history/message/mention/event read/write', async () => {
   const f = await communicationFixture();
   try {
-    f.invite();
-    const topic = f.comm.createTopic(f.principal, f.teamId, f.channelId, {
+    await f.invite();
+    const topic = await f.comm.createTopic(f.principal, f.teamId, f.channelId, {
       operationKey: key(),
       title: 'Topic',
     });
-    const msg = f.comm.post(f.principal, f.teamId, f.channelId, postInput());
-    f.store.agents.revoke(
+    const msg = await f.comm.post(
+      f.principal,
+      f.teamId,
+      f.channelId,
+      postInput(),
+    );
+    await f.store.agents.revoke(
       f.principal,
       f.teamId,
       f.agent.id,
@@ -774,11 +839,17 @@ await test('revoked/disabled agent tokens and stale principals fail every channe
       [f.channelPath + '/leave', { operationKey: key() }],
       [
         f.channelPath + '/participants/invite',
-        { operationKey: key(), member: { kind: 'human', id: f.owner.id } },
+        {
+          operationKey: key(),
+          member: { kind: 'human', id: f.owner.id },
+        },
       ],
       [
         f.channelPath + '/participants/remove',
-        { operationKey: key(), member: { kind: 'human', id: f.owner.id } },
+        {
+          operationKey: key(),
+          member: { kind: 'human', id: f.owner.id },
+        },
       ],
     ] as const)
       assert.equal(
@@ -797,16 +868,27 @@ await test('revoked/disabled agent tokens and stale principals fail every channe
       rejected(401),
     );
     assert.throws(
-      () => f.comm.post(f.agentPrincipal, f.teamId, f.channelId, postInput()),
+      async () =>
+        f.comm.post(f.agentPrincipal, f.teamId, f.channelId, postInput()),
       rejected(401),
     );
-    const fresh = f.store.agents.issue(f.principal, f.teamId, f.agent.id, {
-      label: 'Fresh',
-      scopes: ['channels:read', 'channels:write'],
-      lifetimeSeconds: 3600,
-    });
+    const fresh = await f.store.agents.issue(
+      f.principal,
+      f.teamId,
+      f.agent.id,
+      {
+        label: 'Fresh',
+        scopes: ['channels:read', 'channels:write'],
+        lifetimeSeconds: 3600,
+      },
+    );
     const headers = { authorization: 'Bearer ' + fresh.token };
-    f.store.agents.lifecycle(f.principal, f.teamId, f.agent.id, 'disabled');
+    await f.store.agents.lifecycle(
+      f.principal,
+      f.teamId,
+      f.agent.id,
+      'disabled',
+    );
     for (const url of reads)
       assert.equal((await f.app.inject({ url, headers })).statusCode, 401);
     assert.equal(
@@ -828,12 +910,17 @@ await test('revoked/disabled agent tokens and stale principals fail every channe
 await test('scope enforcement, actor spoofing, mixed human/agent authority and strict size/cursor schemas fail closed', async () => {
   const f = await communicationFixture();
   try {
-    f.invite();
-    const grant = f.store.agents.issue(f.principal, f.teamId, f.agent.id, {
-      label: 'Read only',
-      scopes: ['channels:read'],
-      lifetimeSeconds: 3600,
-    });
+    await f.invite();
+    const grant = await f.store.agents.issue(
+      f.principal,
+      f.teamId,
+      f.agent.id,
+      {
+        label: 'Read only',
+        scopes: ['channels:read'],
+        lifetimeSeconds: 3600,
+      },
+    );
     const headers = { authorization: 'Bearer ' + grant.token };
     assert.equal(
       (await f.app.inject({ url: f.channelPath + '/messages', headers }))
@@ -879,7 +966,10 @@ await test('scope enforcement, actor spoofing, mixed human/agent authority and s
       400,
     );
     for (const payload of [
-      { ...postInput(), author: { kind: 'human', humanId: f.owner.id } },
+      {
+        ...postInput(),
+        author: { kind: 'human', humanId: f.owner.id },
+      },
       { ...postInput(), body: 'x'.repeat(8001) },
       {
         ...postInput(),
@@ -915,12 +1005,14 @@ await test('scope enforcement, actor spoofing, mixed human/agent authority and s
         400,
       );
     assert.equal(
-      PostInput.safeParse({ ...postInput(), operationKey: 'invalid key' })
-        .success,
+      PostInput.safeParse({
+        ...postInput(),
+        operationKey: 'invalid key',
+      }).success,
       false,
     );
-    const fact = f.comm.events(f.principal, f.teamId, f.channelId).items[0]
-      ?.fact;
+    const fact = (await f.comm.events(f.principal, f.teamId, f.channelId))
+      .items[0]?.fact;
     assert.ok(fact);
     assert.equal(
       CommunicationFact.safeParse({
@@ -955,12 +1047,12 @@ await test('a channel shows only to those in it; any person in it manages it, as
       .run(id, 'participant', 'participant@example.com');
     raw.prepare('INSERT INTO memberships VALUES (?, ?)').run(id, f.teamId);
     const p: Principal = { kind: 'human', humanId: id };
-    assert.equal(f.comm.channels(p, f.teamId).items.length, 0);
+    assert.equal((await f.comm.channels(p, f.teamId)).items.length, 0);
     assert.throws(
       () => f.comm.channel(p, f.teamId, f.channelId),
       rejected(404),
     );
-    f.comm.enroll(
+    await f.comm.enroll(
       f.principal,
       f.teamId,
       f.channelId,
@@ -986,17 +1078,22 @@ await test('a channel shows only to those in it; any person in it manages it, as
     );
     // Not the one who set up the team, and still free to make a channel
     // and bring people into it.
-    const made = f.comm.createChannel(p, f.teamId, {
+    const made = await f.comm.createChannel(p, f.teamId, {
       operationKey: key(),
       name: 'Made by a member',
     });
     assert.equal(
-      f.comm.enroll(
-        p,
-        f.teamId,
-        made.id,
-        { operationKey: key(), member: { kind: 'human', id: f.owner.id } },
-        'invite',
+      (
+        await f.comm.enroll(
+          p,
+          f.teamId,
+          made.id,
+          {
+            operationKey: key(),
+            member: { kind: 'human', id: f.owner.id },
+          },
+          'invite',
+        )
       ).state,
       'joined',
     );
@@ -1006,22 +1103,24 @@ await test('a channel shows only to those in it; any person in it manages it, as
     raw
       .prepare('INSERT INTO memberships VALUES (?, ?)')
       .run(f.owner.id, foreign);
-    const foreignAgent = f.store.agents.create(
+    const foreignAgent = await f.store.agents.create(
       f.principal,
       foreign,
       profileInput,
     );
     assert.throws(
-      () =>
+      async () =>
         f.comm.post(
           f.principal,
           f.teamId,
           f.channelId,
-          postInput({ mentions: [{ kind: 'agent', id: foreignAgent.id }] }),
+          postInput({
+            mentions: [{ kind: 'agent', id: foreignAgent.id }],
+          }),
         ),
       rejected(404),
     );
-    assert.throws(() =>
+    assert.throws(async () =>
       f.comm.enroll(
         f.principal,
         f.teamId,
@@ -1043,8 +1142,8 @@ await test('service/DB reopen reconstructs full channel/topic history and mentio
   const f = await communicationFixture();
   let app: Awaited<ReturnType<typeof createApp>> | undefined;
   try {
-    f.invite();
-    const topic = f.comm.createTopic(f.principal, f.teamId, f.channelId, {
+    await f.invite();
+    const topic = await f.comm.createTopic(f.principal, f.teamId, f.channelId, {
       operationKey: key(),
       title: 'Persistent',
     });
@@ -1052,15 +1151,15 @@ await test('service/DB reopen reconstructs full channel/topic history and mentio
       topicId: topic.id,
       mentions: [{ kind: 'agent', id: f.agent.id }],
     });
-    const first = f.comm.post(f.principal, f.teamId, f.channelId, input);
-    f.comm.post(
+    const first = await f.comm.post(f.principal, f.teamId, f.channelId, input);
+    await f.comm.post(
       f.agentPrincipal,
       f.teamId,
       f.channelId,
       postInput({ topicId: topic.id, sourceMessageId: first.id }),
     );
-    const expected = f.comm.history(f.principal, f.teamId, f.channelId);
-    const facts = f.comm.events(f.principal, f.teamId, f.channelId);
+    const expected = await f.comm.history(f.principal, f.teamId, f.channelId);
+    const facts = await f.comm.events(f.principal, f.teamId, f.channelId);
     await f.app.close();
     const store = f.open();
     app = await createApp(f.config, store);
@@ -1071,15 +1170,16 @@ await test('service/DB reopen reconstructs full channel/topic history and mentio
     assert.equal(response.statusCode, 200);
     assert.deepEqual(pageOf(Message).parse(response.json<unknown>()), expected);
     assert.deepEqual(
-      store.communication.events(f.principal, f.teamId, f.channelId),
+      await store.communication.events(f.principal, f.teamId, f.channelId),
       facts,
     );
     assert.deepEqual(
-      store.communication.post(f.principal, f.teamId, f.channelId, input),
+      await store.communication.post(f.principal, f.teamId, f.channelId, input),
       first,
     );
     assert.equal(
-      store.agents.correlations(f.principal, f.teamId, f.agent.id).length,
+      (await store.agents.correlations(f.principal, f.teamId, f.agent.id))
+        .length,
       0,
     );
   } finally {
@@ -1091,27 +1191,39 @@ await test('service/DB reopen reconstructs full channel/topic history and mentio
 await test('late-invited agent reconstructs preexisting channel/topic history with no T3 execution or display-name mention parsing', async () => {
   const f = await communicationFixture();
   try {
-    const topic = f.comm.createTopic(f.principal, f.teamId, f.channelId, {
+    const topic = await f.comm.createTopic(f.principal, f.teamId, f.channelId, {
       operationKey: key(),
       title: 'Before subscription',
     });
-    const message = f.comm.post(
+    const message = await f.comm.post(
       f.principal,
       f.teamId,
       f.channelId,
       postInput({ topicId: topic.id, body: '@Developer is only text' }),
     );
     assert.equal(message.mentions.length, 0);
-    f.invite();
-    const history = f.comm.history(f.agentPrincipal, f.teamId, f.channelId);
+    await f.invite();
+    const history = await f.comm.history(
+      f.agentPrincipal,
+      f.teamId,
+      f.channelId,
+    );
     assert.deepEqual(history.items, [message]);
     assert.equal(
-      f.comm.history(f.agentPrincipal, f.teamId, f.channelId, {}, topic.id)
-        .items[0]?.id,
+      (
+        await f.comm.history(
+          f.agentPrincipal,
+          f.teamId,
+          f.channelId,
+          {},
+          topic.id,
+        )
+      ).items[0]?.id,
       message.id,
     );
     assert.equal(
-      f.store.agents.correlations(f.principal, f.teamId, f.agent.id).length,
+      (await f.store.agents.correlations(f.principal, f.teamId, f.agent.id))
+        .length,
       0,
     );
   } finally {

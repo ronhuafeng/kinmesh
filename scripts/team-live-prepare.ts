@@ -37,12 +37,14 @@ try {
   mkdirSync(directory, { mode: 0o700 }); // Refuse overwrite, even after a failed partial preparation.
   const database = join(directory, 'team.sqlite');
   store = openStore(database);
-  const humanId = store.signIn({
-    feishuId: 'live-owner',
-    email: 'live-owner@kinmesh.test',
-  }).id;
-  store.renameTeam(humanId, 'Disposable MCP acceptance');
-  const team = store.teamFor(humanId);
+  const humanId = (
+    await store.signIn({
+      feishuId: 'live-owner',
+      email: 'live-owner@kinmesh.test',
+    })
+  ).id;
+  await store.renameTeam(humanId, 'Disposable MCP acceptance');
+  const team = await store.teamFor(humanId);
   if (!team) throw new Error('Team missing');
   const channelId = team.channels[0]?.id;
   if (!channelId) throw new Error('Channel missing');
@@ -61,25 +63,25 @@ try {
         : { environmentId: null, providerId: null, modelId: null },
       memoryLocation: null,
     });
-  const developer = store.agents.create(
+  const developer = await store.agents.create(
     p,
     team.team.id,
     profile('Live Developer', 'developer'),
   );
-  const reviewer = store.agents.create(
+  const reviewer = await store.agents.create(
     p,
     team.team.id,
     profile('Live Reviewer', 'reviewer'),
   );
   for (const a of [developer, reviewer])
-    store.communication.enroll(
+    await store.communication.enroll(
       p,
       team.team.id,
       channelId,
       { operationKey: randomUUID(), member: { kind: 'agent', id: a.id } },
       'invite',
     );
-  const grant = store.agents.issue(p, team.team.id, developer.id, {
+  const grant = await store.agents.issue(p, team.team.id, developer.id, {
     label: 'Disposable provider MCP',
     scopes: [
       'channels:read',
@@ -95,7 +97,7 @@ try {
     mode: 0o600,
     flag: 'wx',
   });
-  const message = store.communication.post(p, team.team.id, channelId, {
+  const message = await store.communication.post(p, team.team.id, channelId, {
     operationKey: randomUUID(),
     body: 'kinmesh-read-proof-' + randomUUID(),
     topicId: null,
@@ -103,17 +105,19 @@ try {
     sourceMessageId: null,
     sourceEventId: null,
   });
-  const task = store.tasks.create(p, team.team.id, channelId, {
-    operationKey: randomUUID(),
-    title: 'Disposable provider responsibility',
-    description: 'Use only Team MCP. No human acceptance.',
-    criteria: ['Read, post, claim and reviewer handoff'],
-    topicId: null,
-    owner: null,
-    reviewer: null,
-    sourceMessageId: message.id,
-    sourceEventId: null,
-  }).task;
+  const task = (
+    await store.tasks.create(p, team.team.id, channelId, {
+      operationKey: randomUUID(),
+      title: 'Disposable provider responsibility',
+      description: 'Use only Team MCP. No human acceptance.',
+      criteria: ['Read, post, claim and reviewer handoff'],
+      topicId: null,
+      owner: null,
+      reviewer: null,
+      sourceMessageId: message.id,
+      sourceEventId: null,
+    })
+  ).task;
   const context = LiveContext.parse({
     version: 1,
     database,
@@ -140,5 +144,5 @@ try {
   );
   process.exitCode = 1;
 } finally {
-  store?.close();
+  await store?.close();
 }

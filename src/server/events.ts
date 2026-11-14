@@ -41,14 +41,18 @@ export function registerEvents(
     snapshot: (
       principal: Person,
       query: WorkspaceQuery,
-    ) => Revisioned & { team: { id: TeamId } };
-    t3Status: (principal: Principal, teamId: TeamId) => Revisioned;
-    runs: (principal: Person, teamId: TeamId, agentId: AgentId) => Revisioned;
+    ) => Promise<Revisioned & { team: { id: TeamId } }>;
+    t3Status: (principal: Principal, teamId: TeamId) => Promise<Revisioned>;
+    runs: (
+      principal: Person,
+      teamId: TeamId,
+      agentId: AgentId,
+    ) => Promise<Revisioned>;
     grants: (
       principal: Principal,
       teamId: TeamId,
       agentId: AgentId,
-    ) => Revisioned;
+    ) => Promise<Revisioned>;
   },
 ) {
   const open = new Map<() => void, string>();
@@ -56,38 +60,42 @@ export function registerEvents(
     for (const end of [...open.keys()]) end();
     done();
   });
-  app.get('/api/events', (request, reply) => {
+  app.get('/api/events', async (request, reply) => {
     const principal = request.principal;
     if (principal?.kind !== 'human') throw new IdentityError(403);
     const { page, ...place } = WatchQuery.parse(request.query);
     const resources = watched({ ...place, page });
     const session = request.session.get('session');
-    const readable = (read: () => Revisioned) => {
+    const readable = async (read: () => Promise<Revisioned>) => {
       try {
-        return read().revision;
+        return (await read()).revision;
       } catch (error) {
         if (error instanceof IdentityError) return UNREADABLE;
         throw error;
       }
     };
     /** The current revision of every watched resource. */
-    const look = () => {
-      const workspace = reads.snapshot(principal, place);
+    const look = async () => {
+      const workspace = await reads.snapshot(principal, place);
       const teamId = workspace.team.id;
       const now: Partial<Record<Resource, string>> = {};
       for (const resource of resources) {
         if (resource === 'workspace') now.workspace = workspace.revision;
         if (resource === 't3')
-          now.t3 = readable(() => reads.t3Status(principal, teamId));
+          now.t3 = await readable(() => reads.t3Status(principal, teamId));
         // Both pages are about one agent: `page.id`.
         if (resource === 'runs' && page)
-          now.runs = readable(() => reads.runs(principal, teamId, page.id));
+          now.runs = await readable(() =>
+            reads.runs(principal, teamId, page.id),
+          );
         if (resource === 'grants' && page)
-          now.grants = readable(() => reads.grants(principal, teamId, page.id));
+          now.grants = await readable(() =>
+            reads.grants(principal, teamId, page.id),
+          );
       }
       return now;
     };
-    let held = look();
+    let held = await look();
     const mine = [...open.values()].filter((h) => h === principal.humanId);
     if (open.size >= TOTAL || mine.length >= PER_HUMAN)
       return reply.code(429).send({ error: 'Too many requests' });
@@ -113,13 +121,13 @@ export function registerEvents(
     send(held);
 
     let pending = false;
-    const check = () => {
+    const check = async () => {
       pending = false;
       if (!open.has(end)) return;
       try {
         // A changed password or lost membership ends the stream at once.
-        resolvePrincipal(store, undefined, session);
-        const now = look();
+        await resolvePrincipal(store, undefined, session);
+        const now = await look();
         const changed: Partial<Record<Resource, string>> = {};
         for (const resource of resources) {
           const revision = now[resource];
@@ -132,14 +140,17 @@ export function registerEvents(
         end();
       }
     };
-    const unsubscribe = changes.subscribe(() => {
+    // Checks run one after another, so revisions go out in the order read.
+    let queue = Promise.resolve();
+    const schedule = () => {
       if (pending) return;
       pending = true;
-      setImmediate(check);
-    });
+      queue = queue.then(check);
+    };
+    const unsubscribe = changes.subscribe(schedule);
     const keepalive = setInterval(() => {
       response.write(': keepalive\n\n');
-      check();
+      schedule();
     }, KEEPALIVE_MS);
     const lifetime = setTimeout(end, LIFETIME_MS);
     function end() {

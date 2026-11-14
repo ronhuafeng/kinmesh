@@ -20,7 +20,7 @@ await test('worker liveness is projected per agent, ignores unknown IDs, goes st
         ).json<unknown>(),
       );
     assert.deepEqual((await snapshot()).wake, []);
-    f.inbox.heartbeat([f.agent.id, randomUUID()]);
+    await f.inbox.heartbeat([f.agent.id, randomUUID()]);
     const live = (await snapshot()).wake;
     assert.equal(live.length, 1);
     assert.equal(live[0]?.agentId, f.agent.id);
@@ -35,7 +35,7 @@ await test('worker liveness is projected per agent, ignores unknown IDs, goes st
       raw.close();
     }
     assert.equal((await snapshot()).wake[0]?.connected, false);
-    f.inbox.release([f.agent.id]);
+    await f.inbox.release([f.agent.id]);
     assert.deepEqual((await snapshot()).wake, []);
   } finally {
     await f.dispose();
@@ -52,15 +52,17 @@ await test('a running worker records liveness for its bindings and withdraws it 
       f.workerConfig,
       f.factory,
       stopping.signal,
-      () => {
-        seenWhileRunning = f.inbox.liveness(f.teamId).map((r) => r.agentId);
+      async () => {
+        seenWhileRunning = (await f.inbox.liveness(f.teamId)).map(
+          (r) => r.agentId,
+        );
         stopping.abort();
         return Promise.resolve();
       },
     );
     await running;
     assert.deepEqual(seenWhileRunning, [f.agent.id]);
-    assert.deepEqual(f.inbox.liveness(f.teamId), []);
+    assert.deepEqual(await f.inbox.liveness(f.teamId), []);
   } finally {
     await f.dispose();
   }
@@ -78,7 +80,7 @@ await test('workspace projects allow-listed delivery status for visible messages
           })
         ).json<unknown>(),
       );
-    const source = f.comm.post(
+    const source = await f.comm.post(
       f.principal,
       f.teamId,
       f.channelId,
@@ -115,7 +117,7 @@ await test('workspace projects allow-listed delivery status for visible messages
       'position',
     ])
       assert.equal(Object.hasOwn(sent ?? {}, internal), false, internal);
-    const claim = f.inbox.claim([f.agent.id]);
+    const claim = await f.inbox.claim([f.agent.id]);
     assert.ok(claim);
     await deliver(f.store, claim, f.binding, f.factory, signal());
     const replied = (await snapshot()).deliveries.find(
@@ -125,7 +127,8 @@ await test('workspace projects allow-listed delivery status for visible messages
     assert.ok(replied.resultMessageId);
     assert.notEqual(replied.updatedAt, null);
     // A task wake is visible on its task.
-    const task = f.create({ owner: { kind: 'agent', id: f.agent.id } }).task;
+    const task = (await f.create({ owner: { kind: 'agent', id: f.agent.id } }))
+      .task;
     assert.ok(
       (await snapshot()).deliveries.some(
         (d) => d.taskId === task.id && d.agentId === f.agent.id,

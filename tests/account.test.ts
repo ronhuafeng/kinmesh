@@ -155,11 +155,11 @@ await test('a handle is the mailbox name, numbered when taken', async () => {
   const h = await hub();
   try {
     const names = ['li@example.com', 'li@sub.example.com', 'x@example.com'].map(
-      (email) => h.store.signIn(feishuPerson(email)).username,
+      async (email) => (await h.store.signIn(feishuPerson(email))).username,
     );
     assert.deepEqual(names, ['member-li', 'member-li-2', 'member-x']);
     assert.equal(
-      h.store.signIn(feishuPerson('a.b+c@example.com')).username,
+      (await h.store.signIn(feishuPerson('a.b+c@example.com'))).username,
       'a-b-c',
     );
   } finally {
@@ -259,8 +259,11 @@ await test('a sign-in returns once, to the browser that began it, within ten min
     );
     // Too late.
     const now = Date.now();
-    const late = h.store.logins.begin(now);
-    assert.equal(h.store.logins.finish(late, now + LOGIN_STATE_MS), false);
+    const late = await h.store.logins.begin(now);
+    assert.equal(
+      await h.store.logins.finish(late, now + LOGIN_STATE_MS),
+      false,
+    );
     // Turning back at Feishu just returns home.
     const d = await begin(h.app);
     const declined = await back(
@@ -346,8 +349,8 @@ await test('a person from before Feishu is linked to their mailbox and signs in 
   const h = await hub();
   try {
     const raw = new Database(h.path);
-    const team = h.store.teamFor(
-      h.store.signIn(feishuPerson('first@example.com')).id,
+    const team = await h.store.teamFor(
+      (await h.store.signIn(feishuPerson('first@example.com'))).id,
     );
     assert.ok(team);
     raw
@@ -358,13 +361,13 @@ await test('a person from before Feishu is linked to their mailbox and signs in 
       .run('00000000-0000-4000-8000-000000000001', team.team.id);
     raw.close();
     // Not a mailbox someone else holds; not a person who does not exist.
-    assert.throws(() => {
-      h.store.linkMailbox('old-timer', 'first@example.com');
+    assert.throws(async () => {
+      await h.store.linkMailbox('old-timer', 'first@example.com');
     });
-    assert.throws(() => {
-      h.store.linkMailbox('nobody', 'n@example.com');
+    assert.throws(async () => {
+      await h.store.linkMailbox('nobody', 'n@example.com');
     });
-    h.store.linkMailbox('old-timer', 'old@example.com');
+    await h.store.linkMailbox('old-timer', 'old@example.com');
     const old = await signInAs(h.app, 'u-old|old@example.com');
     const them = await h.app.inject({ url: '/api/me', cookies: old });
     assert.equal(
@@ -372,8 +375,8 @@ await test('a person from before Feishu is linked to their mailbox and signs in 
       'old-timer',
     );
     // Once they have signed in with Feishu, their identity is settled.
-    assert.throws(() => {
-      h.store.linkMailbox('old-timer', 'other@example.com');
+    assert.throws(async () => {
+      await h.store.linkMailbox('old-timer', 'other@example.com');
     });
   } finally {
     await h.dispose();

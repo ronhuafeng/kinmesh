@@ -14,7 +14,7 @@ import { key } from './communication-helpers.js';
 import { profileInput } from './agent-helpers.js';
 import { postInput } from './communication-helpers.js';
 import { taskInput } from './task-helpers.js';
-await test('populated #1–#4 upgrade retains channel/message/outbox/profile/grant state without widening old task scopes', () => {
+await test('populated #1–#4 upgrade retains channel/message/outbox/profile/grant state without widening old task scopes', async () => {
   const f = fixture();
   const humanId = HumanId.parse(randomUUID()),
     teamId = TeamId.parse(randomUUID()),
@@ -62,39 +62,42 @@ await test('populated #1–#4 upgrade retains channel/message/outbox/profile/gra
   let store = f.open();
   try {
     assert.equal(
-      store.communication.history(p, teamId, channelId).items[0]?.id,
+      (await store.communication.history(p, teamId, channelId)).items[0]?.id,
       message.id,
     );
-    assert.deepEqual(store.communication.events(p, teamId, channelId), facts);
-    assert.equal(store.agents.get(p, teamId, agent.id).id, agent.id);
+    assert.deepEqual(
+      await store.communication.events(p, teamId, channelId),
+      facts,
+    );
+    assert.equal((await store.agents.get(p, teamId, agent.id)).id, agent.id);
     assert.throws(
-      () =>
+      async () =>
         store.tasks.list(
-          store.agents.resolveToken(oldGrant.token),
+          await store.agents.resolveToken(oldGrant.token),
           teamId,
           channelId,
         ),
       (error) => error instanceof IdentityError && error.statusCode === 403,
     );
-    const created = store.tasks.create(
+    const created = await store.tasks.create(
       p,
       teamId,
       channelId,
       taskInput({ sourceMessageId: message.id }),
     );
-    store.close();
+    await store.close();
     store = f.open();
     assert.deepEqual(
-      store.tasks.get(p, teamId, channelId, created.task.id),
+      await store.tasks.get(p, teamId, channelId, created.task.id),
       created.task,
     );
     assert.equal(
-      store.tasks.history(p, teamId, channelId, created.task.id).items[0]
-        ?.sourceEventId,
+      (await store.tasks.history(p, teamId, channelId, created.task.id))
+        .items[0]?.sourceEventId,
       null,
     );
   } finally {
-    store.close();
+    await store.close();
     f.cleanup();
   }
 });

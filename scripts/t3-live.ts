@@ -190,7 +190,7 @@ try {
   check(uncertain.kind === 'uncertain', 'LIVE_LOST_REPLY_UNCERTAIN');
   if (uncertain.kind !== 'uncertain') throw new Error('Expected uncertain');
   await wire.close();
-  store.close();
+  await store.close();
   store = openStore(config.KINMESH_T3_LIVE_DATABASE);
   const reopened = await T3Backend.connect(wire, store.operations, options);
   const reconciled = known(
@@ -245,5 +245,5 @@ try {
   }
   await wire?.close();
   await readWire?.close();
-  store?.close();
+  await store?.close();
 }

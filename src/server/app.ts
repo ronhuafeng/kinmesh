@@ -150,8 +150,8 @@ export async function createApp(
   );
   // Ready: the database answers (it opens only fully migrated) and the
   // supervised Inbox worker, when there is one, is connected.
-  app.get('/health', (_request, reply) => {
-    const ready = store.ready() && workerReady();
+  app.get('/health', async (_request, reply) => {
+    const ready = (await store.ready()) && workerReady();
     return reply.code(ready ? 200 : 503).send({
       status: ready ? 'ok' : 'unavailable',
       component: 'kinmesh-team-hub',
@@ -163,22 +163,22 @@ export async function createApp(
     config,
     options.feishu ?? feishuClient(config.feishu),
   );
-  app.post('/api/logout', (request, reply) => {
-    store.sessions.revoke(request.session.get('session'), Date.now());
+  app.post('/api/logout', async (request, reply) => {
+    await store.sessions.revoke(request.session.get('session'), Date.now());
     request.session.delete();
     return reply.code(204).send();
   });
   // Sign out everywhere: every session of yours ends, this one included.
-  app.post('/api/me/sessions/end', (request, reply) => {
+  app.post('/api/me/sessions/end', async (request, reply) => {
     const principal = request.principal;
     if (principal?.kind !== 'human') throw new IdentityError(403);
-    store.sessions.revokeAll(principal.humanId, Date.now());
+    await store.sessions.revokeAll(principal.humanId, Date.now());
     request.session.delete();
     return reply.code(204).send();
   });
   app.addHook('preHandler', async (request, reply) => {
     if (!request.url.startsWith('/api/')) return;
-    request.principal = resolvePrincipal(
+    request.principal = await resolvePrincipal(
       store,
       request.headers.authorization,
       request.session.get('session'),
@@ -217,19 +217,19 @@ export async function createApp(
     return p.humanId;
   };
   await app.register((protectedApi, _options, done) => {
-    protectedApi.get('/api/me', (request) => ({
-      human: store.human(human(request)),
+    protectedApi.get('/api/me', async (request) => ({
+      human: await store.human(human(request)),
     }));
-    protectedApi.get('/api/team', (request, reply) => {
-      const team = store.teamFor(human(request));
+    protectedApi.get('/api/team', async (request, reply) => {
+      const team = await store.teamFor(human(request));
       return team ?? reply.code(403).send({ error: 'Membership required' });
     });
     done();
   });
   if (beforeClose) app.addHook('preClose', beforeClose);
-  app.addHook('onClose', () => {
+  app.addHook('onClose', async () => {
     changes.close();
-    store.close();
+    await store.close();
   });
   await app.ready();
   return app;

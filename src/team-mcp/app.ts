@@ -28,14 +28,13 @@ export async function createTeamApp(config: TeamConfig, store: Store) {
       )
       .send({ error: 'Request rejected' });
   });
-  app.addHook('onRequest', (request, reply, done) => {
+  app.addHook('onRequest', async (request, reply) => {
     if (
       !config.hosts.includes(request.headers.host ?? '') ||
       (request.headers.origin !== undefined &&
         request.headers.origin !== config.origin)
     ) {
-      void reply.code(403).send({ error: 'Request rejected' });
-      return;
+      return reply.code(403).send({ error: 'Request rejected' });
     }
     if (
       request.headers.cookie !== undefined ||
@@ -44,26 +43,23 @@ export async function createTeamApp(config: TeamConfig, store: Store) {
       ) ||
       request.url !== '/mcp'
     ) {
-      void reply.code(400).send({ error: 'Request rejected' });
-      return;
+      return reply.code(400).send({ error: 'Request rejected' });
     }
     let agent;
     try {
-      agent = agentPrincipal(store, request.headers.authorization);
+      agent = await agentPrincipal(store, request.headers.authorization);
     } catch {
-      void reply
+      return reply
         .header('WWW-Authenticate', 'Bearer realm="kinmesh-team"')
         .code(401)
         .send({ error: 'Authentication required' });
-      return;
     }
     try {
       // Evidence for the workspace that this agent's provider reaches Team MCP.
-      store.managed.seenByTeamMcp(agent);
+      await store.managed.seenByTeamMcp(agent);
     } catch {
       // Evidence only: a failed write never refuses an authenticated request.
     }
-    done();
   });
   app.route({
     method: ['POST', 'GET', 'DELETE'],
@@ -104,8 +100,8 @@ export async function createTeamApp(config: TeamConfig, store: Store) {
       }
     },
   });
-  app.addHook('onClose', () => {
-    store.close();
+  app.addHook('onClose', async () => {
+    await store.close();
   });
   await app.ready();
   return app;

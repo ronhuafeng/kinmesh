@@ -1,3 +1,4 @@
+import type { Promised } from './promised.js';
 import { createHash, randomUUID } from 'node:crypto';
 import { and, eq, or, lte, gt, sql } from 'drizzle-orm';
 import type { BetterSQLite3Database } from 'drizzle-orm/better-sqlite3';
@@ -174,4 +175,5 @@ export function operationJournal(db: BetterSQLite3Database<typeof schema>) {
     },
   };
 }
-export type OperationJournal = ReturnType<typeof operationJournal>;
+/** The journal as the store gives it: asynchronous. */
+export type OperationJournal = Promised<ReturnType<typeof operationJournal>>;

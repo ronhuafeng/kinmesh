@@ -26,7 +26,7 @@ const rejected = (status: number) => (e: unknown) =>
 await test('task domain algebra rejects invalid commands/transitions and never lets an agent final-accept', async () => {
   const f = await taskFixture();
   try {
-    const task = f.create().task;
+    const task = (await f.create()).task;
     assert.throws(
       () =>
         transition(
@@ -61,13 +61,16 @@ await test('task domain algebra rejects invalid commands/transitions and never l
       }).success,
       false,
     );
-    const claimed = f.act(f.developer, task, { type: 'claim' }).task;
+    const claimed = (await f.act(f.developer, task, { type: 'claim' })).task;
     assert.throws(
       () =>
         transition(
           claimed,
           f.developer,
-          commandInput(claimed, { type: 'accept', note: 'I declare success' }),
+          commandInput(claimed, {
+            type: 'accept',
+            note: 'I declare success',
+          }),
           new Date().toISOString(),
         ),
       rejected(403),
@@ -99,7 +102,7 @@ await test('task domain algebra rejects invalid commands/transitions and never l
 await test('real task HTTP responsibility journey: human creation, developer claim/progress/reviewer handoff, technical approval and verified human acceptance', async () => {
   const f = await taskFixture();
   try {
-    const topic = f.comm.createTopic(f.principal, f.teamId, f.channelId, {
+    const topic = await f.comm.createTopic(f.principal, f.teamId, f.channelId, {
       operationKey: key(),
       title: 'Task context',
     });
@@ -198,9 +201,9 @@ await test('real task HTTP responsibility journey: human creation, developer cla
     assert.equal(events[4]?.author.kind, 'agent');
     assert.equal(events[3]?.before?.state.owner?.id, f.agent.id);
     assert.equal(events[3].after.state.owner?.id, f.agent.id);
-    const facts = f.comm
-      .events(f.principal, f.teamId, f.channelId)
-      .items.filter((e) => e.fact.kind === 'task.changed');
+    const facts = (
+      await f.comm.events(f.principal, f.teamId, f.channelId)
+    ).items.filter((e) => e.fact.kind === 'task.changed');
     assert.equal(facts.length, 6);
     assert.equal(facts.at(-1)?.fact.sourceEventId, facts.at(-2)?.fact.id);
     assert.throws(
@@ -219,51 +222,65 @@ await test('real task HTTP responsibility journey: human creation, developer cla
 await test('reviewer rework, owner resubmission, human rework/cancel and explicit work handoff preserve responsibility/history', async () => {
   const f = await taskFixture();
   try {
-    let task = f.create({ owner: { kind: 'agent', id: f.agent.id } }).task;
-    task = f.act(f.developer, task, {
-      type: 'request-review',
-      reviewer: { kind: 'agent', id: f.reviewer.id },
-      note: 'Review',
-    }).task;
-    task = f.act(f.reviewPrincipal, task, {
-      type: 'review',
-      decision: 'rework',
-      note: 'Needs fixes',
-    }).task;
+    let task = (await f.create({ owner: { kind: 'agent', id: f.agent.id } }))
+      .task;
+    task = (
+      await f.act(f.developer, task, {
+        type: 'request-review',
+        reviewer: { kind: 'agent', id: f.reviewer.id },
+        note: 'Review',
+      })
+    ).task;
+    task = (
+      await f.act(f.reviewPrincipal, task, {
+        type: 'review',
+        decision: 'rework',
+        note: 'Needs fixes',
+      })
+    ).task;
     assert.equal(task.state.status, 'rework-requested');
-    task = f.act(f.developer, task, { type: 'progress', note: 'Fixed' }).task;
-    task = f.act(f.principal, task, {
-      type: 'rework',
-      note: 'Human requests clarification',
-    }).task;
+    task = (await f.act(f.developer, task, { type: 'progress', note: 'Fixed' }))
+      .task;
+    task = (
+      await f.act(f.principal, task, {
+        type: 'rework',
+        note: 'Human requests clarification',
+      })
+    ).task;
     assert.equal(task.state.status, 'rework-requested');
-    task = f.act(f.developer, task, {
-      type: 'handoff',
-      recipient: { kind: 'agent', id: f.reviewer.id },
-      mode: 'work',
-      note: 'Transfer work ownership',
-    }).task;
+    task = (
+      await f.act(f.developer, task, {
+        type: 'handoff',
+        recipient: { kind: 'agent', id: f.reviewer.id },
+        mode: 'work',
+        note: 'Transfer work ownership',
+      })
+    ).task;
     assert.equal(task.state.owner?.id, f.reviewer.id);
     assert.equal(task.state.reviewer, null);
     assert.throws(
       () => f.act(f.developer, task, { type: 'progress', note: 'Old owner' }),
       rejected(403),
     );
-    task = f.act(f.principal, task, {
-      type: 'cancel',
-      note: 'Human cancels scope',
-    }).task;
+    task = (
+      await f.act(f.principal, task, {
+        type: 'cancel',
+        note: 'Human cancels scope',
+      })
+    ).task;
     assert.equal(task.state.status, 'cancelled');
     assert.throws(
       () => f.act(f.reviewPrincipal, task, { type: 'claim' }),
       rejected(409),
     );
-    const unclaimed = f.create().task;
+    const unclaimed = (await f.create()).task;
     assert.equal(
-      f.act(f.principal, unclaimed, {
-        type: 'cancel',
-        note: 'Cancel unclaimed',
-      }).task.state.status,
+      (
+        await f.act(f.principal, unclaimed, {
+          type: 'cancel',
+          note: 'Cancel unclaimed',
+        })
+      ).task.state.status,
       'cancelled',
     );
   } finally {
@@ -273,7 +290,7 @@ await test('reviewer rework, owner resubmission, human rework/cancel and explici
 
 await test('two different authenticated agent processes race one proposed task; SQL guarded claim has exactly one winner and one audit/fact', async () => {
   const f = await taskFixture();
-  const task = f.create().task;
+  const task = (await f.create()).task;
   const children = [f.developerGrant.token, f.reviewerGrant.token].map(
     (token) =>
       forkWorker(
@@ -291,24 +308,26 @@ await test('two different authenticated agent processes race one proposed task; 
   );
   try {
     assert.deepEqual(await race(children, 15000), ['conflict', 'won']);
-    const final = f.tasks.get(f.principal, f.teamId, f.channelId, task.id);
+    const final = await f.tasks.get(
+      f.principal,
+      f.teamId,
+      f.channelId,
+      task.id,
+    );
     assert.equal(final.version, 2);
     assert.ok(
       [f.agent.id, f.reviewer.id].some((id) => id === final.state.owner?.id),
     );
     assert.equal(
-      f.tasks
-        .history(f.principal, f.teamId, f.channelId, task.id)
-        .items.filter((e) => e.action === 'claim').length,
+      (
+        await f.tasks.history(f.principal, f.teamId, f.channelId, task.id)
+      ).items.filter((e) => e.action === 'claim').length,
       1,
     );
     assert.equal(
-      f.comm
-        .events(f.principal, f.teamId, f.channelId)
-        .items.filter(
-          (e) =>
-            e.fact.kind === 'task.changed' && e.fact.taskAction === 'claim',
-        ).length,
+      (await f.comm.events(f.principal, f.teamId, f.channelId)).items.filter(
+        (e) => e.fact.kind === 'task.changed' && e.fact.taskAction === 'claim',
+      ).length,
       1,
     );
   } finally {
@@ -321,9 +340,14 @@ await test('task operation receipts survive replay, are actor/action/target scop
   const f = await taskFixture();
   try {
     const input = taskInput();
-    const created = f.tasks.create(f.principal, f.teamId, f.channelId, input);
+    const created = await f.tasks.create(
+      f.principal,
+      f.teamId,
+      f.channelId,
+      input,
+    );
     assert.deepEqual(
-      f.tasks.create(f.principal, f.teamId, f.channelId, input),
+      await f.tasks.create(f.principal, f.teamId, f.channelId, input),
       created,
     );
     assert.throws(
@@ -335,7 +359,7 @@ await test('task operation receipts survive replay, are actor/action/target scop
       rejected(409),
     );
     const command = commandInput(created.task, { type: 'claim' });
-    const claimed = f.tasks.command(
+    const claimed = await f.tasks.command(
       f.developer,
       f.teamId,
       f.channelId,
@@ -343,7 +367,7 @@ await test('task operation receipts survive replay, are actor/action/target scop
       command,
     );
     assert.deepEqual(
-      f.tasks.command(
+      await f.tasks.command(
         f.developer,
         f.teamId,
         f.channelId,
@@ -366,7 +390,7 @@ await test('task operation receipts survive replay, are actor/action/target scop
     });
     if (progress.type !== 'progress')
       throw new Error('Expected progress command');
-    const progressed = f.tasks.command(
+    const progressed = await f.tasks.command(
       f.developer,
       f.teamId,
       f.channelId,
@@ -382,7 +406,7 @@ await test('task operation receipts survive replay, are actor/action/target scop
       rejected(409),
     );
     assert.deepEqual(
-      f.tasks.command(
+      await f.tasks.command(
         f.developer,
         f.teamId,
         f.channelId,
@@ -391,12 +415,14 @@ await test('task operation receipts survive replay, are actor/action/target scop
       ),
       claimed,
     );
-    const another = f.create().task;
+    const another = (await f.create()).task;
     assert.equal(
-      f.tasks.command(f.developer, f.teamId, f.channelId, another.id, {
-        ...command,
-        expectedVersion: 1,
-      }).task.id,
+      (
+        await f.tasks.command(f.developer, f.teamId, f.channelId, another.id, {
+          ...command,
+          expectedVersion: 1,
+        })
+      ).task.id,
       another.id,
     );
     assert.throws(
@@ -411,7 +437,7 @@ await test('task operation receipts survive replay, are actor/action/target scop
       rejected(409),
     );
     assert.throws(
-      () =>
+      async () =>
         f.tasks.command(f.developer, f.teamId, f.channelId, created.task.id, {
           type: 'progress',
           expectedVersion: 2,
@@ -421,7 +447,8 @@ await test('task operation receipts survive replay, are actor/action/target scop
       rejected(409),
     );
     assert.equal(
-      f.tasks.get(f.principal, f.teamId, f.channelId, created.task.id).version,
+      (await f.tasks.get(f.principal, f.teamId, f.channelId, created.task.id))
+        .version,
       progressed.task.version,
     );
   } finally {
@@ -432,7 +459,8 @@ await test('task operation receipts survive replay, are actor/action/target scop
 await test('external execution links are multiple immutable references and never provider status or task acceptance', async () => {
   const f = await taskFixture();
   try {
-    let task = f.create({ owner: { kind: 'agent', id: f.agent.id } }).task;
+    let task = (await f.create({ owner: { kind: 'agent', id: f.agent.id } }))
+      .task;
     const command = commandInput(task, {
       type: 'link-execution',
       reference: {
@@ -443,7 +471,7 @@ await test('external execution links are multiple immutable references and never
       },
       note: 'Execution evidence reference only',
     });
-    const first = f.tasks.command(
+    const first = await f.tasks.command(
       f.developer,
       f.teamId,
       f.channelId,
@@ -453,23 +481,31 @@ await test('external execution links are multiple immutable references and never
     task = first.task;
     assert.equal(task.state.status, 'in-progress');
     assert.deepEqual(
-      f.tasks.command(f.developer, f.teamId, f.channelId, task.id, command),
+      await f.tasks.command(
+        f.developer,
+        f.teamId,
+        f.channelId,
+        task.id,
+        command,
+      ),
       first,
     );
-    task = f.act(f.developer, task, {
-      type: 'link-execution',
-      reference: {
-        backend: 't3',
-        environmentId: 'external-environment',
-        threadId: 'external-thread',
-        runId: 'run-two',
-      },
-      note: 'Another execution',
-    }).task;
+    task = (
+      await f.act(f.developer, task, {
+        type: 'link-execution',
+        reference: {
+          backend: 't3',
+          environmentId: 'external-environment',
+          threadId: 'external-thread',
+          runId: 'run-two',
+        },
+        note: 'Another execution',
+      })
+    ).task;
     assert.equal(task.state.status, 'in-progress');
     assert.equal(
-      f.tasks.executions(f.principal, f.teamId, f.channelId, task.id).items
-        .length,
+      (await f.tasks.executions(f.principal, f.teamId, f.channelId, task.id))
+        .items.length,
       2,
     );
     assert.throws(
@@ -507,12 +543,15 @@ await test("the assigned reviewer/owner and the task's acceptor control decision
   const f = await taskFixture();
   const raw = new Database(f.dbPath);
   try {
-    let task = f.create({ owner: { kind: 'agent', id: f.agent.id } }).task;
-    task = f.act(f.developer, task, {
-      type: 'request-review',
-      reviewer: { kind: 'agent', id: f.reviewer.id },
-      note: 'Review',
-    }).task;
+    let task = (await f.create({ owner: { kind: 'agent', id: f.agent.id } }))
+      .task;
+    task = (
+      await f.act(f.developer, task, {
+        type: 'request-review',
+        reviewer: { kind: 'agent', id: f.reviewer.id },
+        note: 'Review',
+      })
+    ).task;
     assert.throws(
       () =>
         f.act(f.developer, task, {
@@ -531,11 +570,13 @@ await test("the assigned reviewer/owner and the task's acceptor control decision
         }),
       rejected(403),
     );
-    task = f.act(f.reviewPrincipal, task, {
-      type: 'review',
-      decision: 'approve',
-      note: 'Assigned reviewer approves',
-    }).task;
+    task = (
+      await f.act(f.reviewPrincipal, task, {
+        type: 'review',
+        decision: 'approve',
+        note: 'Assigned reviewer approves',
+      })
+    ).task;
     // Another person of the team, in the channel, is not the acceptor.
     {
       const humanId = HumanId.parse(randomUUID());
@@ -545,7 +586,7 @@ await test("the assigned reviewer/owner and the task's acceptor control decision
       raw
         .prepare('INSERT INTO memberships VALUES (?, ?)')
         .run(humanId, f.teamId);
-      f.comm.enroll(
+      await f.comm.enroll(
         f.principal,
         f.teamId,
         f.channelId,
@@ -579,8 +620,8 @@ await test("the assigned reviewer/owner and the task's acceptor control decision
 await test('all task reads/writes enforce team/channel access; missing task IDs and cross-channel references are hidden', async () => {
   const f = await taskFixture();
   try {
-    const task = f.create().task;
-    const other = f.comm.createChannel(f.principal, f.teamId, {
+    const task = (await f.create()).task;
+    const other = await f.comm.createChannel(f.principal, f.teamId, {
       operationKey: key(),
       name: 'Private',
     });
@@ -616,7 +657,7 @@ await test('all task reads/writes enforce team/channel access; missing task IDs 
       ).statusCode,
       403,
     );
-    f.comm.enroll(
+    await f.comm.enroll(
       f.principal,
       f.teamId,
       f.channelId,
@@ -628,7 +669,7 @@ await test('all task reads/writes enforce team/channel access; missing task IDs 
       rejected(404),
     );
     assert.throws(
-      () =>
+      async () =>
         f.tasks.command(
           f.developer,
           f.teamId,
@@ -638,7 +679,7 @@ await test('all task reads/writes enforce team/channel access; missing task IDs 
         ),
       rejected(404),
     );
-    const topic = f.comm.createTopic(f.principal, f.teamId, other.id, {
+    const topic = await f.comm.createTopic(f.principal, f.teamId, other.id, {
       operationKey: key(),
       title: 'Different channel',
     });
@@ -651,10 +692,10 @@ await test('all task reads/writes enforce team/channel access; missing task IDs 
 await test('revocation and disable block every task route and stale principals, including historical receipt replay', async () => {
   const f = await taskFixture();
   try {
-    const task = f.create().task;
+    const task = (await f.create()).task;
     const command = commandInput(task, { type: 'claim' });
-    f.tasks.command(f.developer, f.teamId, f.channelId, task.id, command);
-    f.store.agents.revoke(
+    await f.tasks.command(f.developer, f.teamId, f.channelId, task.id, command);
+    await f.store.agents.revoke(
       f.principal,
       f.teamId,
       f.agent.id,
@@ -711,7 +752,11 @@ await test('revocation and disable block every task route and stale principals, 
               method: 'POST',
               url: f.taskPath + '/' + task.id + '/' + type,
               headers,
-              payload: { operationKey: key(), expectedVersion: 2, ...body },
+              payload: {
+                operationKey: key(),
+                expectedVersion: 2,
+                ...body,
+              },
             })
           ).statusCode,
           401,
@@ -723,7 +768,12 @@ await test('revocation and disable block every task route and stale principals, 
         f.tasks.command(f.developer, f.teamId, f.channelId, task.id, command),
       rejected(401),
     );
-    f.store.agents.lifecycle(f.principal, f.teamId, f.reviewer.id, 'disabled');
+    await f.store.agents.lifecycle(
+      f.principal,
+      f.teamId,
+      f.reviewer.id,
+      'disabled',
+    );
     await check(f.reviewerHeaders);
   } finally {
     await f.dispose();
@@ -733,22 +783,26 @@ await test('revocation and disable block every task route and stale principals, 
 await test('task scope separation and filtered shared outbox prevent channel-only grants from reading task facts or decisions', async () => {
   const f = await taskFixture();
   try {
-    let task = f.create().task;
+    let task = (await f.create()).task;
     assert.equal(
       (await f.app.inject({ url: f.taskPath, headers: f.headers })).statusCode,
       403,
     );
-    const limited = f.comm.events(f.agentPrincipal, f.teamId, f.channelId);
+    const limited = await f.comm.events(
+      f.agentPrincipal,
+      f.teamId,
+      f.channelId,
+    );
     assert.equal(
       limited.items.some((e) => e.fact.kind === 'task.changed'),
       false,
     );
-    const hiddenFact = f.comm
-      .events(f.principal, f.teamId, f.channelId)
-      .items.find((e) => e.fact.kind === 'task.changed');
+    const hiddenFact = (
+      await f.comm.events(f.principal, f.teamId, f.channelId)
+    ).items.find((e) => e.fact.kind === 'task.changed');
     assert.ok(hiddenFact);
     assert.throws(
-      () =>
+      async () =>
         f.comm.post(
           f.agentPrincipal,
           f.teamId,
@@ -759,33 +813,40 @@ await test('task scope separation and filtered shared outbox prevent channel-onl
     );
 
     assert.equal(
-      f.comm
-        .events(f.developer, f.teamId, f.channelId)
-        .items.some((e) => e.fact.kind === 'task.changed'),
+      (await f.comm.events(f.developer, f.teamId, f.channelId)).items.some(
+        (e) => e.fact.kind === 'task.changed',
+      ),
       true,
     );
-    const onlyWrite = f.store.agents.issue(f.principal, f.teamId, f.agent.id, {
-      label: 'Missing read',
-      scopes: ['channels:read', 'tasks:write'],
-      lifetimeSeconds: 3600,
-    });
+    const onlyWrite = await f.store.agents.issue(
+      f.principal,
+      f.teamId,
+      f.agent.id,
+      {
+        label: 'Missing read',
+        scopes: ['channels:read', 'tasks:write'],
+        lifetimeSeconds: 3600,
+      },
+    );
     assert.throws(
-      () =>
+      async () =>
         f.tasks.get(
-          f.store.agents.resolveToken(onlyWrite.token),
+          await f.store.agents.resolveToken(onlyWrite.token),
           f.teamId,
           f.channelId,
           task.id,
         ),
       rejected(403),
     );
-    task = f.act(f.developer, task, { type: 'claim' }).task;
-    task = f.act(f.developer, task, {
-      type: 'request-review',
-      reviewer: { kind: 'agent', id: f.reviewer.id },
-      note: 'Review',
-    }).task;
-    const onlyRead = f.store.agents.issue(
+    task = (await f.act(f.developer, task, { type: 'claim' })).task;
+    task = (
+      await f.act(f.developer, task, {
+        type: 'request-review',
+        reviewer: { kind: 'agent', id: f.reviewer.id },
+        note: 'Review',
+      })
+    ).task;
+    const onlyRead = await f.store.agents.issue(
       f.principal,
       f.teamId,
       f.reviewer.id,
@@ -796,8 +857,8 @@ await test('task scope separation and filtered shared outbox prevent channel-onl
       },
     );
     assert.throws(
-      () =>
-        f.act(f.store.agents.resolveToken(onlyRead.token), task, {
+      async () =>
+        f.act(await f.store.agents.resolveToken(onlyRead.token), task, {
           type: 'review',
           decision: 'approve',
           note: 'No review scope',
@@ -812,7 +873,7 @@ await test('task scope separation and filtered shared outbox prevent channel-onl
 await test('strict task HTTP input, size bounds, actor spoofing and mixed authority reject invalid requests without secret echo', async () => {
   const f = await taskFixture();
   try {
-    const task = f.create().task;
+    const task = (await f.create()).task;
     for (const headers of [
       { ...f.developerHeaders, 'x-kinmesh-actor': f.owner.id },
     ])
@@ -841,7 +902,10 @@ await test('strict task HTTP input, size bounds, actor spoofing and mixed author
     );
     for (const payload of [
       { ...taskInput(), acceptorHumanId: f.owner.id },
-      { ...taskInput(), creator: { kind: 'human', humanId: f.owner.id } },
+      {
+        ...taskInput(),
+        creator: { kind: 'human', humanId: f.owner.id },
+      },
       { ...taskInput(), criteria: [] },
       { ...taskInput(), description: 'secret-canary'.repeat(5000) },
     ]) {
@@ -894,10 +958,10 @@ await test('task CAS, audit, link and shared outbox roll back together on inject
   const f = await taskFixture();
   const raw = new Database(f.dbPath);
   try {
-    const created = f.create();
+    const created = await f.create();
     const task = created.task;
-    const before = f.comm.events(f.principal, f.teamId, f.channelId).items
-      .length;
+    const before = (await f.comm.events(f.principal, f.teamId, f.channelId))
+      .items.length;
     const command = commandInput(task, { type: 'claim' });
     raw.exec(
       "CREATE TRIGGER fail_task_audit BEFORE INSERT ON task_events BEGIN SELECT RAISE(ABORT,'test rollback'); END",
@@ -906,20 +970,23 @@ await test('task CAS, audit, link and shared outbox roll back together on inject
       f.tasks.command(f.developer, f.teamId, f.channelId, task.id, command),
     );
     assert.equal(
-      f.tasks.get(f.principal, f.teamId, f.channelId, task.id).state.status,
+      (await f.tasks.get(f.principal, f.teamId, f.channelId, task.id)).state
+        .status,
       'proposed',
     );
     assert.equal(
-      f.comm.events(f.principal, f.teamId, f.channelId).items.length,
+      (await f.comm.events(f.principal, f.teamId, f.channelId)).items.length,
       before,
     );
     raw.exec('DROP TRIGGER fail_task_audit');
-    const claimed = f.tasks.command(
-      f.developer,
-      f.teamId,
-      f.channelId,
-      task.id,
-      command,
+    const claimed = (
+      await f.tasks.command(
+        f.developer,
+        f.teamId,
+        f.channelId,
+        task.id,
+        command,
+      )
     ).task;
     raw.exec(
       "CREATE TRIGGER fail_task_outbox BEFORE INSERT ON communication_outbox BEGIN SELECT RAISE(ABORT,'test rollback'); END",
@@ -932,12 +999,12 @@ await test('task CAS, audit, link and shared outbox roll back together on inject
       }),
     );
     assert.equal(
-      f.tasks.executions(f.principal, f.teamId, f.channelId, task.id).items
-        .length,
+      (await f.tasks.executions(f.principal, f.teamId, f.channelId, task.id))
+        .items.length,
       0,
     );
     assert.equal(
-      f.tasks.get(f.principal, f.teamId, f.channelId, task.id).version,
+      (await f.tasks.get(f.principal, f.teamId, f.channelId, task.id)).version,
       2,
     );
     assert.throws(() => f.create());
@@ -949,7 +1016,7 @@ await test('task CAS, audit, link and shared outbox roll back together on inject
       f.act(f.developer, claimed, { type: 'progress', note: 'Not persisted' }),
     );
     assert.equal(
-      f.tasks.get(f.principal, f.teamId, f.channelId, task.id).version,
+      (await f.tasks.get(f.principal, f.teamId, f.channelId, task.id)).version,
       2,
     );
     raw.exec('DROP TRIGGER fail_task_receipt');
@@ -961,9 +1028,9 @@ await test('task CAS, audit, link and shared outbox roll back together on inject
       'DELETE FROM tasks',
     ])
       assert.throws(() => raw.exec(sql));
-    const fact = f.comm
-      .events(f.principal, f.teamId, f.channelId)
-      .items.find((e) => e.fact.id === created.eventId);
+    const fact = (
+      await f.comm.events(f.principal, f.teamId, f.channelId)
+    ).items.find((e) => e.fact.id === created.eventId);
     assert.ok(fact);
     assert.equal(TaskFact.safeParse(fact.fact).success, true);
   } finally {
@@ -975,19 +1042,20 @@ await test('task CAS, audit, link and shared outbox roll back together on inject
 await test('task/history/execution snapshot pages are bounded and stable under interleaved creation and progress', async () => {
   const f = await taskFixture();
   try {
-    const originals = Array.from({ length: 5 }, () => f.create().task);
-    const first = f.tasks.list(f.developer, f.teamId, f.channelId, {
+    const originals = [];
+    for (let i = 0; i < 5; i++) originals.push((await f.create()).task);
+    const first = await f.tasks.list(f.developer, f.teamId, f.channelId, {
       limit: 2,
     });
     assert.ok(first.nextCursor);
     const cursor = first.nextCursor;
     const other = f.open();
     try {
-      other.tasks.create(f.principal, f.teamId, f.channelId, taskInput());
+      await other.tasks.create(f.principal, f.teamId, f.channelId, taskInput());
     } finally {
-      other.close();
+      await other.close();
     }
-    const rest = f.tasks.list(f.developer, f.teamId, f.channelId, {
+    const rest = await f.tasks.list(f.developer, f.teamId, f.channelId, {
       cursor,
       limit: 100,
     });
@@ -995,15 +1063,19 @@ await test('task/history/execution snapshot pages are bounded and stable under i
       [...first.items, ...rest.items].map((t) => t.id),
       originals.map((t) => t.id),
     );
-    let task = f.act(f.developer, originals[0] ?? f.create().task, {
-      type: 'claim',
-    }).task;
+    let task = (
+      await f.act(f.developer, originals[0] ?? (await f.create()).task, {
+        type: 'claim',
+      })
+    ).task;
     for (let i = 0; i < 3; i++)
-      task = f.act(f.developer, task, {
-        type: 'progress',
-        note: 'Step ' + String(i),
-      }).task;
-    const history = f.tasks.history(
+      task = (
+        await f.act(f.developer, task, {
+          type: 'progress',
+          note: 'Step ' + String(i),
+        })
+      ).task;
+    const history = await f.tasks.history(
       f.developer,
       f.teamId,
       f.channelId,
@@ -1012,11 +1084,14 @@ await test('task/history/execution snapshot pages are bounded and stable under i
     );
     assert.ok(history.nextCursor);
     const hc = history.nextCursor;
-    task = f.act(f.developer, task, { type: 'progress', note: 'Later' }).task;
+    task = (await f.act(f.developer, task, { type: 'progress', note: 'Later' }))
+      .task;
     assert.equal(
-      f.tasks.history(f.developer, f.teamId, f.channelId, task.id, {
-        cursor: hc,
-      }).items.length,
+      (
+        await f.tasks.history(f.developer, f.teamId, f.channelId, task.id, {
+          cursor: hc,
+        })
+      ).items.length,
       3,
     );
     assert.throws(
@@ -1051,23 +1126,26 @@ await test('service reopen preserves task ownership/criteria/review decisions, e
   const f = await taskFixture();
   let app: Awaited<ReturnType<typeof createApp>> | undefined;
   try {
-    let task = f.create({ owner: { kind: 'agent', id: f.agent.id } }).task;
-    task = f.act(f.developer, task, {
-      type: 'link-execution',
-      reference: {
-        backend: 't3',
-        environmentId: 'env',
-        threadId: 'thread',
-        runId: 'run',
-      },
-      note: 'Reference',
-    }).task;
+    let task = (await f.create({ owner: { kind: 'agent', id: f.agent.id } }))
+      .task;
+    task = (
+      await f.act(f.developer, task, {
+        type: 'link-execution',
+        reference: {
+          backend: 't3',
+          environmentId: 'env',
+          threadId: 'thread',
+          runId: 'run',
+        },
+        note: 'Reference',
+      })
+    ).task;
     const command = commandInput(task, {
       type: 'request-review',
       reviewer: { kind: 'agent', id: f.reviewer.id },
       note: 'Persist review',
     });
-    const result = f.tasks.command(
+    const result = await f.tasks.command(
       f.developer,
       f.teamId,
       f.channelId,
@@ -1075,13 +1153,13 @@ await test('service reopen preserves task ownership/criteria/review decisions, e
       command,
     );
     task = result.task;
-    const history = f.tasks.history(
+    const history = await f.tasks.history(
       f.principal,
       f.teamId,
       f.channelId,
       task.id,
     );
-    const facts = f.comm.events(f.principal, f.teamId, f.channelId);
+    const facts = await f.comm.events(f.principal, f.teamId, f.channelId);
     await f.app.close();
     const store = f.open();
     app = await createApp(f.config, store);
@@ -1092,8 +1170,8 @@ await test('service reopen preserves task ownership/criteria/review decisions, e
     assert.equal(response.statusCode, 200);
     assert.deepEqual(Task.parse(response.json<unknown>()), task);
     assert.deepEqual(
-      store.tasks.command(
-        store.agents.resolveToken(f.developerGrant.token),
+      await store.tasks.command(
+        await store.agents.resolveToken(f.developerGrant.token),
         f.teamId,
         f.channelId,
         task.id,
@@ -1102,16 +1180,22 @@ await test('service reopen preserves task ownership/criteria/review decisions, e
       result,
     );
     assert.deepEqual(
-      store.tasks.history(f.principal, f.teamId, f.channelId, task.id),
+      await store.tasks.history(f.principal, f.teamId, f.channelId, task.id),
       history,
     );
     assert.deepEqual(
-      store.communication.events(f.principal, f.teamId, f.channelId),
+      await store.communication.events(f.principal, f.teamId, f.channelId),
       facts,
     );
     assert.equal(
-      store.tasks.executions(f.principal, f.teamId, f.channelId, task.id).items
-        .length,
+      (
+        await store.tasks.executions(
+          f.principal,
+          f.teamId,
+          f.channelId,
+          task.id,
+        )
+      ).items.length,
       1,
     );
   } finally {
@@ -1123,13 +1207,22 @@ await test('service reopen preserves task ownership/criteria/review decisions, e
 await test('designated human can recover disabled-owner responsibility with an audited work handoff and fresh review', async () => {
   const f = await taskFixture();
   try {
-    let task = f.act(f.developer, f.create().task, { type: 'claim' }).task;
-    task = f.act(f.developer, task, {
-      type: 'request-review',
-      reviewer: { kind: 'agent', id: f.reviewer.id },
-      note: 'Review before disable',
-    }).task;
-    f.store.agents.lifecycle(f.principal, f.teamId, f.agent.id, 'disabled');
+    let task = (
+      await f.act(f.developer, (await f.create()).task, { type: 'claim' })
+    ).task;
+    task = (
+      await f.act(f.developer, task, {
+        type: 'request-review',
+        reviewer: { kind: 'agent', id: f.reviewer.id },
+        note: 'Review before disable',
+      })
+    ).task;
+    await f.store.agents.lifecycle(
+      f.principal,
+      f.teamId,
+      f.agent.id,
+      'disabled',
+    );
     assert.throws(
       () =>
         f.act(f.developer, task, { type: 'progress', note: 'Old credential' }),
@@ -1153,20 +1246,19 @@ await test('designated human can recover disabled-owner responsibility with an a
     assert.deepEqual(task.state.owner, { kind: 'agent', id: f.reviewer.id });
     assert.equal(task.state.reviewer, null);
     assert.equal(task.acceptorHumanId, f.owner.id);
-    const history = f.tasks.history(
-      f.principal,
-      f.teamId,
-      f.channelId,
-      task.id,
+    const history = (
+      await f.tasks.history(f.principal, f.teamId, f.channelId, task.id)
     ).items;
     const last = history.at(-1);
     assert.equal(last?.author.kind, 'human');
     assert.deepEqual(last.before?.state.owner, principalMember(f.developer));
     assert.deepEqual(last.after.state.owner, task.state.owner);
-    task = f.act(f.reviewPrincipal, task, {
-      type: 'progress',
-      note: 'Resumed by new owner',
-    }).task;
+    task = (
+      await f.act(f.reviewPrincipal, task, {
+        type: 'progress',
+        note: 'Resumed by new owner',
+      })
+    ).task;
     assert.throws(
       () =>
         f.act(f.principal, task, {

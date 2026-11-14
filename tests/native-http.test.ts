@@ -16,11 +16,16 @@ import {
 } from '../src/inbox/managed.js';
 
 /** Record the team's T3 connection; returns where its credential lives. */
-function connectTeam(
+async function connectTeam(
   f: Awaited<ReturnType<typeof agentFixture>>,
   endpoint: string,
 ) {
-  f.store.managed.saveConnection(f.principal, f.teamId, endpoint, 'env-one');
+  await f.store.managed.saveConnection(
+    f.principal,
+    f.teamId,
+    endpoint,
+    'env-one',
+  );
   const directory = managedDirectory(f.dbPath);
   privateDirectory(directory);
   return t3AuthFile(directory);
@@ -58,7 +63,7 @@ await test('native HTTP: without a team T3 connection it is 503 without expiring
       (await f.app.inject({ url: '/api/me', cookies: f.cookies })).statusCode,
       200,
     );
-    const other = f.store.agents.create(f.principal, f.teamId, {
+    const other = await f.store.agents.create(f.principal, f.teamId, {
       ...profileInput,
       name: 'Other native observer',
     });
@@ -76,7 +81,7 @@ await test('native HTTP: without a team T3 connection it is 503 without expiring
         status,
       );
     assert.deepEqual(
-      f.store.agents.getCorrelation(
+      await f.store.agents.getCorrelation(
         f.principal,
         f.teamId,
         f.agent.id,
@@ -84,9 +89,9 @@ await test('native HTTP: without a team T3 connection it is 503 without expiring
       ),
       execution,
     );
-    assert.throws(() =>
+    assert.throws(async () =>
       f.store.agents.getCorrelation(
-        f.store.agents.resolveToken(f.grant.token),
+        await f.store.agents.resolveToken(f.grant.token),
         f.teamId,
         f.agent.id,
         execution.id,
@@ -106,7 +111,7 @@ await test('MOCK HTTP: private credential/issuer/environment failures return gen
   const mock = await mockNativeServer();
   const f = await agentFixture();
   // The team's own T3 connection, as Connect T3 leaves it.
-  const authFile = connectTeam(f, mock.endpoint);
+  const authFile = await connectTeam(f, mock.endpoint);
   try {
     const execution = await f.execution();
     const url = f.path + '/executions/' + execution.id + '/native';
@@ -149,9 +154,9 @@ await test('MOCK HTTP: private credential/issuer/environment failures return gen
 await test('MOCK SDK/HTTP: official protocol reads only two tools, validates returned link and hides upstream auth/status errors', async () => {
   const mock = await mockNativeServer();
   const f = await agentFixture();
-  saveCredential(connectTeam(f, mock.endpoint), mock.credential);
+  saveCredential(await connectTeam(f, mock.endpoint), mock.credential);
   try {
-    const execution = f.store.agents.correlate(
+    const execution = await f.store.agents.correlate(
       f.principal,
       f.teamId,
       f.agent.id,

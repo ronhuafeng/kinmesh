@@ -27,25 +27,29 @@ if (scenario === 'sdk') {
   );
   const store = openStore(c.database);
   try {
-    const p = store.agents.resolveToken(loadAgentToken(c.tokenFile));
-    let task = store.tasks.get(p, c.teamId, c.channelId, c.taskId);
+    const p = await store.agents.resolveToken(loadAgentToken(c.tokenFile));
+    let task = await store.tasks.get(p, c.teamId, c.channelId, c.taskId);
     assert.equal(task.state.status, 'proposed');
     assert.equal(task.version, 1);
     if (scenario === 'team') {
       assert.equal(process.env.KINMESH_INBOX_CONFIG, undefined);
-      task = store.tasks.command(p, c.teamId, c.channelId, c.taskId, {
-        type: 'claim',
-        expectedVersion: 1,
-        operationKey: randomUUID(),
-      }).task;
-      task = store.tasks.command(p, c.teamId, c.channelId, c.taskId, {
-        type: 'handoff',
-        expectedVersion: 2,
-        operationKey: randomUUID(),
-        mode: 'review',
-        recipient: { kind: 'agent', id: c.reviewerId },
-        note: 'Fixture only; no provider',
-      }).task;
+      task = (
+        await store.tasks.command(p, c.teamId, c.channelId, c.taskId, {
+          type: 'claim',
+          expectedVersion: 1,
+          operationKey: randomUUID(),
+        })
+      ).task;
+      task = (
+        await store.tasks.command(p, c.teamId, c.channelId, c.taskId, {
+          type: 'handoff',
+          expectedVersion: 2,
+          operationKey: randomUUID(),
+          mode: 'review',
+          recipient: { kind: 'agent', id: c.reviewerId },
+          note: 'Fixture only; no provider',
+        })
+      ).task;
       assert.equal(task.state.status, 'review-requested');
       assert.equal(task.version, 3);
     } else {
@@ -58,7 +62,7 @@ if (scenario === 'sdk') {
       assert.equal(process.env.KINMESH_T3_AUTH_FILE, undefined);
     }
   } finally {
-    store.close();
+    await store.close();
   }
 }
 writeFileSync(join(directory, 'fixture-stage-passed'), scenario, {

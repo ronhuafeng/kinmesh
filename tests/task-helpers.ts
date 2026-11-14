@@ -29,8 +29,8 @@ export const commandInput = (task: Task, input: CommandData) =>
   });
 export async function taskFixture() {
   const f = await communicationFixture();
-  f.invite();
-  const developerGrant = f.store.agents.issue(
+  await f.invite();
+  const developerGrant = await f.store.agents.issue(
     f.principal,
     f.teamId,
     f.agent.id,
@@ -40,20 +40,20 @@ export async function taskFixture() {
       lifetimeSeconds: 3600,
     },
   );
-  const developer = f.store.agents.resolveToken(developerGrant.token);
-  const reviewer = f.store.agents.create(f.principal, f.teamId, {
+  const developer = await f.store.agents.resolveToken(developerGrant.token);
+  const reviewer = await f.store.agents.create(f.principal, f.teamId, {
     ...profileInput,
     name: 'Reviewer',
     role: 'reviewer',
   });
-  f.comm.enroll(
+  await f.comm.enroll(
     f.principal,
     f.teamId,
     f.channelId,
     { operationKey: key(), member: { kind: 'agent', id: reviewer.id } },
     'invite',
   );
-  const reviewerGrant = f.store.agents.issue(
+  const reviewerGrant = await f.store.agents.issue(
     f.principal,
     f.teamId,
     reviewer.id,
@@ -63,7 +63,9 @@ export async function taskFixture() {
       lifetimeSeconds: 3600,
     },
   );
-  const reviewPrincipal = f.store.agents.resolveToken(reviewerGrant.token);
+  const reviewPrincipal = await f.store.agents.resolveToken(
+    reviewerGrant.token,
+  );
   const tasks = f.store.tasks;
   const taskPath = f.channelPath + '/tasks';
   const create = (input: Partial<TaskCreate> = {}) =>

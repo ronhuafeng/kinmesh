@@ -11,51 +11,66 @@ await test('every task action reads as a plain sentence in history', async () =>
     const dev = { kind: 'agent', id: f.agent.id } as const;
     const rev = { kind: 'agent', id: f.reviewer.id } as const;
     // A: claim → progress → link → review → approve → accept.
-    let a = f.create({ owner: null, reviewer: null }).task;
-    a = f.act(f.developer, a, { type: 'claim' }).task;
-    a = f.act(f.developer, a, { type: 'progress', note: 'Halfway' }).task;
-    a = f.act(f.developer, a, {
-      type: 'link-execution',
-      reference: {
-        backend: 't3',
-        environmentId: 'env',
-        threadId: 'thread',
-        runId: 'run',
-      },
-      note: 'Run reference',
-    }).task;
-    a = f.act(f.developer, a, {
-      type: 'request-review',
-      reviewer: rev,
-      note: 'Ready',
-    }).task;
-    a = f.act(f.reviewPrincipal, a, {
-      type: 'review',
-      decision: 'approve',
-      note: 'Looks right',
-    }).task;
-    a = f.act(f.principal, a, { type: 'accept', note: 'Ship it' }).task;
+    let a = (await f.create({ owner: null, reviewer: null })).task;
+    a = (await f.act(f.developer, a, { type: 'claim' })).task;
+    a = (await f.act(f.developer, a, { type: 'progress', note: 'Halfway' }))
+      .task;
+    a = (
+      await f.act(f.developer, a, {
+        type: 'link-execution',
+        reference: {
+          backend: 't3',
+          environmentId: 'env',
+          threadId: 'thread',
+          runId: 'run',
+        },
+        note: 'Run reference',
+      })
+    ).task;
+    a = (
+      await f.act(f.developer, a, {
+        type: 'request-review',
+        reviewer: rev,
+        note: 'Ready',
+      })
+    ).task;
+    a = (
+      await f.act(f.reviewPrincipal, a, {
+        type: 'review',
+        decision: 'approve',
+        note: 'Looks right',
+      })
+    ).task;
+    a = (await f.act(f.principal, a, { type: 'accept', note: 'Ship it' })).task;
     // B: handoff (work) → handoff (review) → changes → rework → cancel.
-    let b = f.create({ owner: dev, reviewer: null }).task;
-    b = f.act(f.principal, b, {
-      type: 'handoff',
-      mode: 'work',
-      recipient: me,
-      note: 'I will take this',
-    }).task;
-    b = f.act(f.principal, b, {
-      type: 'handoff',
-      mode: 'review',
-      recipient: rev,
-      note: 'Please check',
-    }).task;
-    b = f.act(f.reviewPrincipal, b, {
-      type: 'review',
-      decision: 'rework',
-      note: 'Missing tests',
-    }).task;
-    b = f.act(f.principal, b, { type: 'rework', note: 'Add tests' }).task;
-    b = f.act(f.principal, b, { type: 'cancel', note: 'Superseded' }).task;
+    let b = (await f.create({ owner: dev, reviewer: null })).task;
+    b = (
+      await f.act(f.principal, b, {
+        type: 'handoff',
+        mode: 'work',
+        recipient: me,
+        note: 'I will take this',
+      })
+    ).task;
+    b = (
+      await f.act(f.principal, b, {
+        type: 'handoff',
+        mode: 'review',
+        recipient: rev,
+        note: 'Please check',
+      })
+    ).task;
+    b = (
+      await f.act(f.reviewPrincipal, b, {
+        type: 'review',
+        decision: 'rework',
+        note: 'Missing tests',
+      })
+    ).task;
+    b = (await f.act(f.principal, b, { type: 'rework', note: 'Add tests' }))
+      .task;
+    b = (await f.act(f.principal, b, { type: 'cancel', note: 'Superseded' }))
+      .task;
     const data = WorkspaceSnapshot.parse(
       (
         await f.app.inject({
@@ -64,11 +79,11 @@ await test('every task action reads as a plain sentence in history', async () =>
         })
       ).json<unknown>(),
     );
-    const lines = (id: typeof a.id) =>
-      f.tasks
-        .history(f.principal, f.teamId, f.channelId, id)
-        .items.map((e) => historySentence(e, data));
-    const sentences = [...lines(a.id), ...lines(b.id)];
+    const lines = async (id: typeof a.id) =>
+      (await f.tasks.history(f.principal, f.teamId, f.channelId, id)).items.map(
+        (e) => historySentence(e, data),
+      );
+    const sentences = [...(await lines(a.id)), ...(await lines(b.id))];
     const expected = [
       /^You created the task$/,
       /^Developer took it on$/,

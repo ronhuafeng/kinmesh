@@ -15,14 +15,19 @@ export const postInput = (overrides: Partial<PostInput> = {}) =>
   });
 export async function communicationFixture() {
   const f = await agentFixture();
-  const credential = f.store.agents.issue(f.principal, f.teamId, f.agent.id, {
-    label: 'communication test',
-    scopes: ['channels:read', 'channels:write'],
-    lifetimeSeconds: 3600,
-  });
-  const agentPrincipal = f.store.agents.resolveToken(credential.token);
+  const credential = await f.store.agents.issue(
+    f.principal,
+    f.teamId,
+    f.agent.id,
+    {
+      label: 'communication test',
+      scopes: ['channels:read', 'channels:write'],
+      lifetimeSeconds: 3600,
+    },
+  );
+  const agentPrincipal = await f.store.agents.resolveToken(credential.token);
   const channelId = ChannelId.parse(
-    f.store.teamFor(f.owner.id)?.channels[0]?.id,
+    (await f.store.teamFor(f.owner.id))?.channels[0]?.id,
   );
   const channelPath = `/api/teams/${f.teamId}/channels/${channelId}`;
   const channelsPath = `/api/teams/${f.teamId}/channels`;

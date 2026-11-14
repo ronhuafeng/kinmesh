@@ -12,8 +12,8 @@ import { key, postInput } from './communication-helpers.js';
 
 type Fixture = Awaited<ReturnType<typeof inboxFixture>>;
 const signal = () => new AbortController().signal;
-function mention(f: Fixture) {
-  f.comm.post(
+async function mention(f: Fixture) {
+  await f.comm.post(
     f.principal,
     f.teamId,
     f.channelId,
@@ -22,21 +22,21 @@ function mention(f: Fixture) {
       mentions: [{ kind: 'agent', id: f.agent.id }],
     }),
   );
-  const claim = f.inbox.claim([f.agent.id]);
+  const claim = await f.inbox.claim([f.agent.id]);
   assert.ok(claim);
   return claim;
 }
 /** Deliver once after `lose` removed a precondition; return the recorded cause. */
 async function causeAfter(
-  lose: (f: Fixture) => void,
+  lose: (f: Fixture) => Promise<void>,
   binding = (f: Fixture) => f.binding,
 ) {
   const f = await inboxFixture();
   try {
-    const claim = mention(f);
-    lose(f);
+    const claim = await mention(f);
+    await lose(f);
     await deliver(f.store, claim, binding(f), f.factory, signal());
-    const row = f.inbox.get(claim.id);
+    const row = await f.inbox.get(claim.id);
     assert.equal(row.state, 'blocked', row.reason);
     return row.reason;
   } finally {
@@ -46,8 +46,8 @@ async function causeAfter(
 
 await test('a blocked delivery records the precondition it lost, not one catch-all reason', async () => {
   assert.equal(
-    await causeAfter((f) => {
-      f.store.agents.revoke(
+    await causeAfter(async (f) => {
+      await f.store.agents.revoke(
         f.principal,
         f.teamId,
         f.agent.id,
@@ -57,18 +57,26 @@ await test('a blocked delivery records the precondition it lost, not one catch-a
     'credential-invalid',
   );
   assert.equal(
-    await causeAfter((f) => {
-      f.store.agents.lifecycle(f.principal, f.teamId, f.agent.id, 'disabled');
+    await causeAfter(async (f) => {
+      await f.store.agents.lifecycle(
+        f.principal,
+        f.teamId,
+        f.agent.id,
+        'disabled',
+      );
     }),
     'agent-disabled',
   );
   assert.equal(
-    await causeAfter((f) => {
-      f.comm.enroll(
+    await causeAfter(async (f) => {
+      await f.comm.enroll(
         f.principal,
         f.teamId,
         f.channelId,
-        { operationKey: key(), member: { kind: 'agent', id: f.agent.id } },
+        {
+          operationKey: key(),
+          member: { kind: 'agent', id: f.agent.id },
+        },
         'remove',
       );
     }),
@@ -77,7 +85,7 @@ await test('a blocked delivery records the precondition it lost, not one catch-a
   // The worker's own setup check: its binding names another provider.
   assert.equal(
     await causeAfter(
-      () => undefined,
+      () => Promise.resolve(),
       (f) => ({ ...f.binding, isolatedProviderId: 'another' }),
     ),
     'native-incompatible',
@@ -87,7 +95,7 @@ await test('a blocked delivery records the precondition it lost, not one catch-a
 await test('an owner resumes a blocked delivery over HTTP with every resume invariant kept', async () => {
   const f = await inboxFixture();
   try {
-    const claim = mention(f);
+    const claim = await mention(f);
     const resume = (id: string, operationKey: string, headers = {}) =>
       f.app.inject({
         method: 'POST',
@@ -97,13 +105,13 @@ await test('an owner resumes a blocked delivery over HTTP with every resume inva
       });
     // Not blocked yet: nothing to resume.
     assert.equal((await resume(claim.id, key())).statusCode, 409);
-    f.inbox.defer(claim, 'blocked', 'credential-invalid');
+    await f.inbox.defer(claim, 'blocked', 'credential-invalid');
     // Agents never reach owner recovery, even with every scope.
     const agent = await resume(claim.id, key(), {
       authorization: 'Bearer ' + f.inboxGrant.token,
     });
     assert.equal(agent.statusCode, 403);
-    assert.equal(f.inbox.get(claim.id).state, 'blocked');
+    assert.equal((await f.inbox.get(claim.id)).state, 'blocked');
     assert.equal((await resume(randomUUID(), key())).statusCode, 404);
     const operation = key();
     const first = await resume(claim.id, operation);
@@ -112,7 +120,7 @@ await test('an owner resumes a blocked delivery over HTTP with every resume inva
       z.object({ id: z.uuid() }).parse(first.json<unknown>()).id,
       claim.id,
     );
-    const row = f.inbox.get(claim.id);
+    const row = await f.inbox.get(claim.id);
     // Never dispatched: it re-enters as uncertain with its frozen intent.
     assert.equal(row.state, 'uncertain');
     assert.equal(row.reason, 'owner-resume');
@@ -128,9 +136,9 @@ await test('an owner resumes a blocked delivery over HTTP with every resume inva
 await test('owner resume needs access to the delivery’s channel', async () => {
   const f = await inboxFixture();
   try {
-    const claim = mention(f);
-    f.inbox.defer(claim, 'blocked', 'not-in-channel');
-    f.comm.membership(
+    const claim = await mention(f);
+    await f.inbox.defer(claim, 'blocked', 'not-in-channel');
+    await f.comm.membership(
       f.principal,
       f.teamId,
       f.channelId,
@@ -144,7 +152,7 @@ await test('owner resume needs access to the delivery’s channel', async () => 
       payload: { operationKey: key() },
     });
     assert.notEqual(denied.statusCode, 200);
-    assert.equal(f.inbox.get(claim.id).state, 'blocked');
+    assert.equal((await f.inbox.get(claim.id)).state, 'blocked');
   } finally {
     await f.dispose();
   }
@@ -153,19 +161,19 @@ await test('owner resume needs access to the delivery’s channel', async () => 
 await test('resume cannot bypass a revoked credential, and task work reports lost assignment', async () => {
   const f = await inboxFixture();
   try {
-    const claim = mention(f);
-    f.store.agents.revoke(
+    const claim = await mention(f);
+    await f.store.agents.revoke(
       f.principal,
       f.teamId,
       f.agent.id,
       f.inboxGrant.grant.id,
     );
     await deliver(f.store, claim, f.binding, f.factory, signal());
-    f.inbox.resume(claim.id);
-    const again = f.inbox.claim([f.agent.id]);
+    await f.inbox.resume(claim.id);
+    const again = await f.inbox.claim([f.agent.id]);
     assert.equal(again?.id, claim.id);
     await deliver(f.store, again, f.binding, f.factory, signal());
-    const row = f.inbox.get(claim.id);
+    const row = await f.inbox.get(claim.id);
     assert.equal(row.state, 'blocked');
     assert.equal(row.reason, 'credential-invalid');
     assert.equal(row.operationId, null);
@@ -174,11 +182,11 @@ await test('resume cannot bypass a revoked credential, and task work reports los
   }
   const g = await inboxFixture();
   try {
-    g.create({ owner: { kind: 'agent', id: g.agent.id } });
-    const claim = g.inbox.claim([g.agent.id]);
+    await g.create({ owner: { kind: 'agent', id: g.agent.id } });
+    const claim = await g.inbox.claim([g.agent.id]);
     assert.ok(claim?.taskId);
     assert.equal(
-      g.inbox.blockedCause(claim, () => g.inboxGrant.token),
+      await g.inbox.blockedCause(claim, () => g.inboxGrant.token),
       'not-assigned',
     );
   } finally {
@@ -189,7 +197,7 @@ await test('resume cannot bypass a revoked credential, and task work reports los
 await test('a request that never reached T3 is retried under a reconnected T3; one that may have reached it is not', async () => {
   const f = await inboxFixture();
   try {
-    const claim = mention(f);
+    const claim = await mention(f);
     const worker = f.workerPrincipal;
     if (worker.kind !== 'agent') throw new Error('Agent principal expected');
     const frozen = (authority: string) =>
@@ -203,16 +211,16 @@ await test('a request that never reached T3 is retried under a reconnected T3; o
         input: launch,
       });
     // Frozen under a read-only grant that T3 then refused before any dispatch.
-    f.inbox.freeze(claim, f.workerPrincipal, frozen('read-only'));
-    const refrozen = f.inbox.freeze(
+    await f.inbox.freeze(claim, f.workerPrincipal, frozen('read-only'));
+    const refrozen = await f.inbox.freeze(
       claim,
       f.workerPrincipal,
       frozen('supervised'),
     );
     assert.equal(refrozen.execution.authority, 'supervised');
-    assert.equal(f.inbox.get(claim.id).reason, 'launch-refrozen');
+    assert.equal((await f.inbox.get(claim.id)).reason, 'launch-refrozen');
     // Once an operation may exist natively, the authority is pinned for good.
-    f.inbox.remember(claim, { operationId: 'native-operation' });
+    await f.inbox.remember(claim, { operationId: 'native-operation' });
     assert.throws(
       () => f.inbox.freeze(claim, f.workerPrincipal, frozen('another')),
       (error: unknown) =>

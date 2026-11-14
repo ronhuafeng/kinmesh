@@ -18,11 +18,12 @@ import { options, reference, launch } from './t3-helpers.js';
 
 async function prepared() {
   const f = await inboxFixture();
-  const task = f.create({ owner: { kind: 'agent', id: f.agent.id } }).task;
-  const claim = f.inbox.claim([f.agent.id]);
+  const task = (await f.create({ owner: { kind: 'agent', id: f.agent.id } }))
+    .task;
+  const claim = await f.inbox.claim([f.agent.id]);
   assert.ok(claim);
   assert.equal(f.workerPrincipal.kind, 'agent');
-  f.inbox.freeze(
+  await f.inbox.freeze(
     claim,
     f.workerPrincipal,
     FrozenLaunch.parse({
@@ -35,7 +36,7 @@ async function prepared() {
       input: launch,
     }),
   );
-  f.inbox.remember(claim, reference);
+  await f.inbox.remember(claim, reference);
   return { ...f, task, claim };
 }
 const counts = (raw: Database.Database) =>
@@ -76,7 +77,7 @@ for (const other of [
       const f = await prepared();
       const raw = new Database(f.dbPath);
       try {
-        const existing = f.store.agents.correlate(
+        const existing = await f.store.agents.correlate(
           f.principal,
           f.teamId,
           f.agent.id,
@@ -86,8 +87,8 @@ for (const other of [
             invocationId: null,
           },
         );
-        f.inbox.ack(f.claim, f.workerPrincipal, fixtureResult());
-        const correlations = f.store.agents.correlations(
+        await f.inbox.ack(f.claim, f.workerPrincipal, fixtureResult());
+        const correlations = await f.store.agents.correlations(
           f.principal,
           f.teamId,
           f.agent.id,
@@ -101,7 +102,7 @@ for (const other of [
           raw.prepare('SELECT correlation_id FROM inbox_results').pluck().get(),
           existing.id,
         );
-        assert.equal(f.inbox.get(f.claim.id).state, 'acked');
+        assert.equal((await f.inbox.get(f.claim.id)).state, 'acked');
       } finally {
         raw.close();
         await f.dispose();
@@ -122,7 +123,7 @@ for (const denied of [
       const f = await prepared();
       const raw = new Database(f.dbPath);
       try {
-        const existing = f.store.agents.correlate(
+        const existing = await f.store.agents.correlate(
           f.principal,
           f.teamId,
           denied === 'other-agent' ? f.reviewer.id : f.agent.id,
@@ -133,30 +134,37 @@ for (const denied of [
           },
         );
         if (denied === 'revoked')
-          f.store.agents.revoke(
+          await f.store.agents.revoke(
             f.principal,
             f.teamId,
             f.agent.id,
             f.inboxGrant.grant.id,
           );
         if (denied === 'removed')
-          f.comm.enroll(
+          await f.comm.enroll(
             f.principal,
             f.teamId,
             f.channelId,
-            { operationKey: key(), member: { kind: 'agent', id: f.agent.id } },
+            {
+              operationKey: key(),
+              member: { kind: 'agent', id: f.agent.id },
+            },
             'remove',
           );
         if (denied === 'expired-lease') due(f.dbPath, true);
         const before = counts(raw);
         assert.throws(
-          () => f.inbox.ack(f.claim, f.workerPrincipal, fixtureResult()),
+          async () => f.inbox.ack(f.claim, f.workerPrincipal, fixtureResult()),
           IdentityError,
         );
         assert.deepEqual(counts(raw), before);
-        assert.equal(f.inbox.get(f.claim.id).resultMessageId, null);
+        assert.equal((await f.inbox.get(f.claim.id)).resultMessageId, null);
         assert.deepEqual(
-          f.store.agents.correlations(f.principal, f.teamId, existing.agentId),
+          await f.store.agents.correlations(
+            f.principal,
+            f.teamId,
+            existing.agentId,
+          ),
           [existing],
         );
       } finally {
@@ -173,7 +181,7 @@ for (const failedTable of ['inbox_results', 'inbox_history'])
       const f = await prepared();
       const raw = new Database(f.dbPath);
       try {
-        const existing = f.store.agents.correlate(
+        const existing = await f.store.agents.correlate(
           f.principal,
           f.teamId,
           f.agent.id,
@@ -189,16 +197,16 @@ for (const failedTable of ['inbox_results', 'inbox_history'])
             failedTable +
             " BEGIN SELECT RAISE(ABORT,'fixture'); END",
         );
-        assert.throws(() =>
+        assert.throws(async () =>
           f.inbox.ack(f.claim, f.workerPrincipal, fixtureResult()),
         );
         assert.deepEqual(counts(raw), before);
-        assert.equal(f.inbox.get(f.claim.id).resultMessageId, null);
+        assert.equal((await f.inbox.get(f.claim.id)).resultMessageId, null);
         raw.exec('DROP TRIGGER reject_correlated_ack');
-        f.inbox.ack(f.claim, f.workerPrincipal, fixtureResult());
-        assert.equal(f.inbox.get(f.claim.id).state, 'acked');
+        await f.inbox.ack(f.claim, f.workerPrincipal, fixtureResult());
+        assert.equal((await f.inbox.get(f.claim.id)).state, 'acked');
         assert.deepEqual(
-          f.store.agents.correlations(f.principal, f.teamId, f.agent.id),
+          await f.store.agents.correlations(f.principal, f.teamId, f.agent.id),
           [existing],
         );
         assert.equal(
@@ -217,7 +225,7 @@ for (const failedTable of ['inbox_results', 'inbox_history'])
           existing.id,
         );
         assert.throws(
-          () => f.inbox.ack(f.claim, f.workerPrincipal, fixtureResult()),
+          async () => f.inbox.ack(f.claim, f.workerPrincipal, fixtureResult()),
           IdentityError,
         );
       } finally {
@@ -232,9 +240,11 @@ for (const status of ['completed', 'failed'] as const)
     const f = await inboxFixture();
     const raw = new Database(f.dbPath);
     try {
-      const task = f.create({ owner: { kind: 'agent', id: f.agent.id } }).task;
+      const task = (
+        await f.create({ owner: { kind: 'agent', id: f.agent.id } })
+      ).task;
       f.wire.values.t3_thread_read = assistantRead('MOCK pending', 'waiting');
-      const first = f.inbox.claim([f.agent.id]);
+      const first = await f.inbox.claim([f.agent.id]);
       assert.ok(first);
       await deliver(
         f.store,
@@ -243,7 +253,7 @@ for (const status of ['completed', 'failed'] as const)
         f.factory,
         new AbortController().signal,
       );
-      const frozen = f.inbox.get(first.id);
+      const frozen = await f.inbox.get(first.id);
       assert.equal(frozen.state, 'waiting');
       assert.equal(frozen.reference, JSON.stringify(reference));
 
@@ -263,13 +273,13 @@ for (const status of ['completed', 'failed'] as const)
       });
       assert.equal(response.statusCode, 201);
       const existing = Correlation.parse(response.json<unknown>());
-      f.comm.post(
+      await f.comm.post(
         f.principal,
         f.teamId,
         f.channelId,
         postInput({ mentions: [{ kind: 'agent', id: f.agent.id }] }),
       );
-      assert.equal(f.inbox.claim([f.agent.id]), undefined);
+      assert.equal(await f.inbox.claim([f.agent.id]), undefined);
 
       const terminal = assistantRead('MOCK recovered assistant result', status);
       if (status === 'failed') terminal.items = [];
@@ -277,7 +287,7 @@ for (const status of ['completed', 'failed'] as const)
       due(f.dbPath);
       const reopened = f.open();
       try {
-        const recovered = reopened.inbox.claim([f.agent.id]);
+        const recovered = await reopened.inbox.claim([f.agent.id]);
         assert.ok(recovered);
         assert.equal(recovered.id, first.id);
         const backend = await T3Backend.connect(
@@ -301,7 +311,7 @@ for (const status of ['completed', 'failed'] as const)
             }),
           new AbortController().signal,
         );
-        const row = reopened.inbox.get(first.id);
+        const row = await reopened.inbox.get(first.id);
         assert.equal(
           row.state,
           'acked',
@@ -310,7 +320,7 @@ for (const status of ['completed', 'failed'] as const)
         assert.equal(row.launch, frozen.launch);
         assert.equal(row.reference, frozen.reference);
         assert.ok(row.resultMessageId);
-        const message = reopened.communication.message(
+        const message = await reopened.communication.message(
           f.principal,
           f.teamId,
           f.channelId,
@@ -327,7 +337,7 @@ for (const status of ['completed', 'failed'] as const)
           ),
         );
         assert.deepEqual(
-          reopened.agents.correlations(f.principal, f.teamId, f.agent.id),
+          await reopened.agents.correlations(f.principal, f.teamId, f.agent.id),
           [existing],
         );
         assert.equal(
@@ -339,17 +349,25 @@ for (const status of ['completed', 'failed'] as const)
           1,
         );
         assert.equal(
-          reopened.agents.runtimeEvents(
-            f.principal,
-            f.teamId,
-            f.agent.id,
-            existing.id,
+          (
+            await reopened.agents.runtimeEvents(
+              f.principal,
+              f.teamId,
+              f.agent.id,
+              existing.id,
+            )
           ).length,
           1,
         );
         assert.equal(
-          reopened.tasks.get(f.principal, f.teamId, f.channelId, task.id).state
-            .status,
+          (
+            await reopened.tasks.get(
+              f.principal,
+              f.teamId,
+              f.channelId,
+              task.id,
+            )
+          ).state.status,
           'in-progress',
         );
         assert.equal(
@@ -357,11 +375,11 @@ for (const status of ['completed', 'failed'] as const)
           1,
           'Recovery must only read the remembered Run',
         );
-        const next = reopened.inbox.claim([f.agent.id]);
+        const next = await reopened.inbox.claim([f.agent.id]);
         assert.ok(next);
         assert.notEqual(next.id, first.id);
       } finally {
-        reopened.close();
+        await reopened.close();
       }
     } finally {
       raw.close();

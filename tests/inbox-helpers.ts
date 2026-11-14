@@ -92,7 +92,7 @@ export function due(path: string, expiredLease = false) {
 }
 export async function inboxFixture() {
   const f = await taskFixture();
-  f.store.agents.update(f.principal, f.teamId, f.agent.id, {
+  await f.store.agents.update(f.principal, f.teamId, f.agent.id, {
     ...profileInput,
     preferences: {
       environmentId: reference.environmentId,
@@ -100,7 +100,7 @@ export async function inboxFixture() {
       modelId: launch.model.modelId,
     },
   });
-  const grant = f.store.agents.issue(f.principal, f.teamId, f.agent.id, {
+  const grant = await f.store.agents.issue(f.principal, f.teamId, f.agent.id, {
     label: 'Disposable inbox test',
     scopes: [
       'agents:read',
@@ -150,7 +150,7 @@ export async function inboxFixture() {
     workerConfig: config,
     configPath,
     inboxGrant: grant,
-    workerPrincipal: f.store.agents.resolveToken(grant.token),
+    workerPrincipal: await f.store.agents.resolveToken(grant.token),
     wire,
     factory,
     inbox: f.store.inbox,

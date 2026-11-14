@@ -95,7 +95,7 @@ export function releasePlanFromEnvironment(env: NodeJS.ProcessEnv) {
     );
   return loadReleasePlan(env.KINMESH_RELEASE_CONFIG);
 }
-export function loadReleasePlan(path: string): ReleaseStage[] {
+export async function loadReleasePlan(path: string): Promise<ReleaseStage[]> {
   privateFile(path);
   const config = ReleaseConfig.parse(JSON.parse(readFileSync(path, 'utf8')));
   privateDirectory(config.sdk.directory, 'kinmesh-t3-live-');
@@ -140,15 +140,15 @@ export function loadReleasePlan(path: string): ReleaseStage[] {
   )
     throw new Error('Dedicated provider instance per stage required');
   // Validate both databases and grants before opening any native connection.
-  validateFixture(team, false);
-  validateFixture(inbox, true);
+  await validateFixture(team, false);
+  await validateFixture(inbox, true);
   const profileStore = openStore(inbox.database);
   let modelId: string;
   try {
-    const principal = profileStore.agents.resolveToken(
+    const principal = await profileStore.agents.resolveToken(
       loadAgentToken(binding.tokenFile),
     );
-    const profile = profileStore.agents.authorize(
+    const profile = await profileStore.agents.authorize(
       principal,
       inbox.teamId,
       inbox.agentId,
@@ -162,7 +162,7 @@ export function loadReleasePlan(path: string): ReleaseStage[] {
       throw new Error('Inbox native preferences required');
     modelId = profile.preferences.modelId;
   } finally {
-    profileStore.close();
+    await profileStore.close();
   }
   const common = (c: z.infer<typeof Native>) => ({
     KINMESH_T3_ENDPOINT: c.endpoint,
@@ -215,14 +215,16 @@ export function loadReleasePlan(path: string): ReleaseStage[] {
     },
   ];
 }
-export function validateFixture(
+export async function validateFixture(
   context: z.infer<typeof LiveContext>,
   inbox: boolean,
 ) {
   privateFile(context.database, Number.MAX_SAFE_INTEGER);
   const store = openStore(context.database);
   try {
-    const p = store.agents.resolveToken(loadAgentToken(context.tokenFile));
+    const p = await store.agents.resolveToken(
+      loadAgentToken(context.tokenFile),
+    );
     if (
       p.kind !== 'agent' ||
       p.agentId !== context.agentId ||
@@ -237,8 +239,8 @@ export function validateFixture(
         ? (['executions:write', 'executions:read'] as const)
         : (['tasks:write'] as const)),
     ] as const)
-      store.agents.teamAccess(p, context.teamId, scope);
-    const task = store.tasks.get(
+      await store.agents.teamAccess(p, context.teamId, scope);
+    const task = await store.tasks.get(
       p,
       context.teamId,
       context.channelId,
@@ -247,10 +249,10 @@ export function validateFixture(
     if (
       task.state.status !== 'proposed' ||
       task.version !== 1 ||
-      store.inbox.status().some((r) => r.count > 0)
+      (await store.inbox.status()).some((r) => r.count > 0)
     )
       throw new Error('Fresh task and Inbox required');
-    store.communication.message(
+    await store.communication.message(
       p,
       context.teamId,
       context.channelId,
@@ -260,13 +262,13 @@ export function validateFixture(
       { kind: 'agent', id: context.reviewerId },
       { kind: 'human', id: context.humanId },
     ] as const)
-      store.communication.validateParticipant(
+      await store.communication.validateParticipant(
         p,
         context.teamId,
         context.channelId,
         target,
       );
-    const reviewer = store.agents.get(
+    const reviewer = await store.agents.get(
       { kind: 'human', humanId: context.humanId },
       context.teamId,
       context.reviewerId,
@@ -274,7 +276,7 @@ export function validateFixture(
     if (reviewer.lifecycle !== 'active')
       throw new Error('Active reviewer required');
   } finally {
-    store.close();
+    await store.close();
   }
 }
 /** No inherited Kinmesh configuration, dotenv, NODE_OPTIONS or shared local Provider home. */

@@ -10,12 +10,12 @@ const ChannelPath = z.object({ teamId: TeamId, channelId: ChannelId });
 const TaskPath = ChannelPath.extend({ taskId: TaskId });
 export function registerTasks(app: FastifyInstance, store: Store) {
   const base = '/api/teams/:teamId/channels/:channelId/tasks';
-  app.post(base, (request, reply) => {
+  app.post(base, async (request, reply) => {
     const { teamId, channelId } = ChannelPath.parse(request.params);
     return reply
       .code(201)
       .send(
-        store.tasks.create(
+        await store.tasks.create(
           principal(request),
           teamId,
           channelId,
@@ -23,7 +23,7 @@ export function registerTasks(app: FastifyInstance, store: Store) {
         ),
       );
   });
-  app.get(base, (request) => {
+  app.get(base, async (request) => {
     const { teamId, channelId } = ChannelPath.parse(request.params);
     return store.tasks.list(
       principal(request),
@@ -32,7 +32,7 @@ export function registerTasks(app: FastifyInstance, store: Store) {
       PageInput.parse(request.query),
     );
   });
-  app.get(base + '/:taskId', (request) => {
+  app.get(base + '/:taskId', async (request) => {
     const { teamId, channelId, taskId } = TaskPath.parse(request.params);
     return store.tasks.get(principal(request), teamId, channelId, taskId);
   });
@@ -47,7 +47,7 @@ export function registerTasks(app: FastifyInstance, store: Store) {
     'cancel',
     'link-execution',
   ] as const) {
-    app.post(base + '/:taskId/' + type, (request) => {
+    app.post(base + '/:taskId/' + type, async (request) => {
       const { teamId, channelId, taskId } = TaskPath.parse(request.params);
       const body = z.record(z.string(), z.unknown()).parse(request.body);
       if ('type' in body) throw new IdentityError(400);
@@ -60,7 +60,7 @@ export function registerTasks(app: FastifyInstance, store: Store) {
       );
     });
   }
-  app.get(base + '/:taskId/history', (request) => {
+  app.get(base + '/:taskId/history', async (request) => {
     const { teamId, channelId, taskId } = TaskPath.parse(request.params);
     return store.tasks.history(
       principal(request),
@@ -70,7 +70,7 @@ export function registerTasks(app: FastifyInstance, store: Store) {
       PageInput.parse(request.query),
     );
   });
-  app.get(base + '/:taskId/executions', (request) => {
+  app.get(base + '/:taskId/executions', async (request) => {
     const { teamId, channelId, taskId } = TaskPath.parse(request.params);
     return store.tasks.executions(
       principal(request),

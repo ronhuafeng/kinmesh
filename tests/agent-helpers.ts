@@ -54,8 +54,8 @@ export async function agentFixture(overrides: Partial<Config> = {}) {
     },
   );
   const cookies = await signInAs(app, 'owner@example.com');
-  const owner = store.signIn(feishuPerson('owner@example.com'));
-  const team = store.teamFor(owner.id);
+  const owner = await store.signIn(feishuPerson('owner@example.com'));
+  const team = await store.teamFor(owner.id);
   assert.ok(team);
   const principal: Principal = { kind: 'human', humanId: owner.id };
   const base = `/api/teams/${team.team.id}/agents`;
