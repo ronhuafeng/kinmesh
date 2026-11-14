@@ -283,7 +283,11 @@ for (const status of ['completed', 'failed'] as const)
         f.channelId,
         postInput({ mentions: [{ kind: 'agent', id: f.agent.id }] }),
       );
-      assert.equal(await f.inbox.claim([f.agent.id]), undefined);
+      // A run already in T3 holds the agent's next message back no longer.
+      const later = await f.inbox.claim([f.agent.id]);
+      assert.ok(later);
+      assert.notEqual(later.id, first.id);
+      await f.inbox.defer(later, 'ready', 'fixture-later');
 
       const terminal = assistantRead('MOCK recovered assistant result', status);
       if (status === 'failed') terminal.items = [];
