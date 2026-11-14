@@ -93,9 +93,25 @@ export function operationJournal(d: Database) {
           )
           .limit(1);
         const row = Row.parse(found);
-        if (row.fingerprint !== fingerprint)
+        if (row.fingerprint === fingerprint) return row;
+        // A send to a thread T3 no longer has did nothing, so the key may
+        // carry another operation instead, such as a new thread.
+        if (row.phase !== 'rejected' || row.rejection !== 'gone')
           throw new ExecutionFailure('conflict');
-        return row;
+        const [replaced] = await q()
+          .update(table)
+          .set({
+            requestId: randomUUID(),
+            fingerprint,
+            tool,
+            payload: JSON.stringify(payload),
+            phase: 'prepared',
+            rejection: null,
+            reference: null,
+          })
+          .where(eq(table.id, row.id))
+          .returning();
+        return Row.parse(replaced);
       });
     },
     get,
@@ -164,7 +180,7 @@ export function operationJournal(d: Database) {
     },
     async rejected(
       row: ClaimedOperation,
-      kind: 'authentication' | 'permission',
+      kind: 'authentication' | 'permission' | 'gone',
     ) {
       const done = await q()
         .update(table)

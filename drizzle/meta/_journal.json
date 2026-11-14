@@ -15,6 +15,13 @@
       "when": 1794633660833,
       "tag": "0001_rules",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1794694047009,
+      "tag": "0002_gone_thread",
+      "breakpoints": true
     }
   ]
 }

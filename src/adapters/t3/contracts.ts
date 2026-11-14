@@ -269,6 +269,8 @@ export class ValidatedTools {
       const failure = NativeFailure.safeParse(value);
       if (failure.success && failure.data.code === 'capability_denied')
         throw new ExecutionFailure('permission');
+      if (failure.success && failure.data.code === 'thread_not_found')
+        throw new ExecutionFailure('gone');
       throw new ExecutionFailure('incompatible');
     }
     if (!validator.output(value)) throw new ExecutionFailure('incompatible');

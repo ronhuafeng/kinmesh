@@ -462,6 +462,35 @@ export function inboxRepository(
       });
     },
     /**
+     * The conversation's thread is gone from T3, so this delivery starts a
+     * new one. Only a delivery not in T3 can; the journal lets its key carry
+     * the new thread only because T3 refused the send.
+     */
+    restart(c: Claim, p: Principal, launch: z.infer<typeof FrozenLaunch>) {
+      return atomic(async () => {
+        await authorized(c, p);
+        const value = FrozenLaunch.parse(launch);
+        const row = await get(c.id);
+        if (row.launch === null || row.reference !== null)
+          throw new IdentityError(409);
+        const frozen = FrozenLaunch.parse(decode(row.launch));
+        if (
+          p.kind !== 'agent' ||
+          value.grantId !== p.grantId ||
+          frozen.grantId !== p.grantId ||
+          value.conversation !== undefined ||
+          JSON.stringify(frozen.execution) !== JSON.stringify(value.execution)
+        )
+          throw new IdentityError(403);
+        await update(c, {
+          launch: JSON.stringify(value),
+          reason: 'launch-refrozen',
+        });
+        await history(await get(c.id), 'launch-refrozen');
+        return value;
+      });
+    },
+    /**
      * The agent's conversation in the delivery's topic, or in its channel
      * outside topics: the thread the latest of its other deliveries there
      * reached, the T3 authority and
