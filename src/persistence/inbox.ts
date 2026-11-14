@@ -384,7 +384,6 @@ export function inboxRepository(
                     title: task.title,
                     description: task.description.slice(0, 2000),
                     status: task.state.status,
-                    version: task.version,
                     criteria: task.criteria
                       .slice(0, 5)
                       .map((v) => v.slice(0, 200)),
