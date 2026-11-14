@@ -49,7 +49,9 @@ export function openStore(path: string) {
         new URL('../../drizzle', import.meta.url),
       ),
     });
-    const broken = z.array(z.unknown()).parse(sqlite.pragma('foreign_key_check'));
+    const broken = z
+      .array(z.unknown())
+      .parse(sqlite.pragma('foreign_key_check'));
     if (broken.length > 0)
       throw new Error('Migrated database has broken references');
     sqlite.pragma('foreign_keys = ON');

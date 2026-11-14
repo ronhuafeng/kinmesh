@@ -953,9 +953,7 @@ await test('a channel shows only to those in it; any person in it manages it, as
     raw
       .prepare('INSERT INTO humans (id, username, email) VALUES (?, ?, ?)')
       .run(id, 'participant', 'participant@example.com');
-    raw
-      .prepare('INSERT INTO memberships VALUES (?, ?)')
-      .run(id, f.teamId);
+    raw.prepare('INSERT INTO memberships VALUES (?, ?)').run(id, f.teamId);
     const p: Principal = { kind: 'human', humanId: id };
     assert.equal(f.comm.channels(p, f.teamId).items.length, 0);
     assert.throws(

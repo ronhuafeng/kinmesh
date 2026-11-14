@@ -183,8 +183,7 @@ export function transition(
   const owns = state.owner !== null && memberKey(state.owner) === memberKey(p);
   // Only the task's acceptor decides on it.
   const finalHuman =
-    principal.kind === 'human' &&
-    principal.humanId === current.acceptorHumanId;
+    principal.kind === 'human' && principal.humanId === current.acceptorHumanId;
   const work = () => {
     if (!owns) throw new IdentityError(403);
   };
