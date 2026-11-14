@@ -14,6 +14,8 @@ function who(code: string) {
     : [`u-${code.trim().toLowerCase()}`, code];
   return { union: union ?? '', mailbox: mailbox ?? '' };
 }
+/** The organization the stand-ins say everyone belongs to. */
+export const STAND_IN_ORGANIZATION = 'Stand-in Co';
 /** The identity the stand-ins give a mailbox, for writing to the store directly. */
 export const feishuPerson = (mailbox: string) => ({
   feishuId: who(mailbox).union,
@@ -36,6 +38,7 @@ export const standInFeishu: Feishu = {
     if (code.startsWith('fail')) return Promise.reject(new Error('refused'));
     return Promise.resolve(`token:${code}`);
   },
+  organization: () => Promise.resolve(STAND_IN_ORGANIZATION),
   profile(token) {
     const { union, mailbox } = who(token.slice('token:'.length));
     return Promise.resolve({
@@ -114,6 +117,29 @@ export async function startFeishuStandIn() {
           }),
         );
       });
+      return;
+    }
+    if (
+      url.pathname === '/open-apis/auth/v3/tenant_access_token/internal' &&
+      request.method === 'POST'
+    ) {
+      response
+        .writeHead(200, { 'content-type': 'application/json' })
+        .end(JSON.stringify({ code: 0, tenant_access_token: 'stand-in-app' }));
+      return;
+    }
+    if (url.pathname === '/open-apis/tenant/v2/tenant/query') {
+      const app = request.headers.authorization === 'Bearer stand-in-app';
+      response.writeHead(app ? 200 : 400, {
+        'content-type': 'application/json',
+      });
+      response.end(
+        JSON.stringify(
+          app
+            ? { code: 0, data: { tenant: { name: STAND_IN_ORGANIZATION } } }
+            : { code: 99991672, msg: 'Access denied' },
+        ),
+      );
       return;
     }
     if (url.pathname === '/open-apis/authen/v1/user_info') {

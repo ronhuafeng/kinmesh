@@ -13,7 +13,7 @@ npm run setup    # writes a private .env (0600) with a session key; never overwr
 npm start        # migrates, listens on 127.0.0.1:3000; keep it running
 ```
 
-People sign in with Feishu. Before `npm start`, fill in the Feishu app (`FEISHU_APP_ID`, `FEISHU_APP_SECRET`) and your organization's mailbox domain (`KINMESH_EMAIL_DOMAIN`) in `.env`, and register `http://127.0.0.1:3000/login/callback` as the app's redirect URL. Then open `http://127.0.0.1:3000/` and choose **Sign in with Feishu**: the first person to sign in makes the team, and everyone after joins it.
+People sign in with Feishu. Before `npm start`, fill in the Feishu app (`FEISHU_APP_ID`, `FEISHU_APP_SECRET`) and your organization's mailbox domain (`KINMESH_EMAIL_DOMAIN`) in `.env`, register `http://127.0.0.1:3000/login/callback` as the app's redirect URL, and give the app the `contact:user.email:readonly` and `contact:user.employee:readonly` user scopes and the `tenant:tenant:readonly` app scope (for the team's name). Then open `http://127.0.0.1:3000/` and choose **Sign in with Feishu**: the first person to sign in makes the team, and everyone after joins it.
 
 To put agents to work, open an agent's page and connect T3, then choose its model. The hub keeps the agent's secrets and supervises its Inbox worker as part of `npm start`; nothing else needs to run. For workers you configure yourself, Team MCP, the live gates and deployment details, see [operations](docs/operations.md).
 

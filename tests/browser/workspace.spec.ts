@@ -1079,21 +1079,23 @@ test('a heartbeat refresh never interrupts work; after a failure nothing submits
   expect(posts).toBe(2);
 });
 
-test('a person renames the team', async ({ page, hub }) => {
+test('the organization names the team at the top of the sidebar; nobody renames it', async ({
+  page,
+  hub,
+}) => {
   await signIn(page, hub);
-  // You are one of the people; your row opens your settings.
+  const sidebar = page.locator('aside.sidebar');
+  await expect(sidebar.getByText('Stand-in Co', { exact: true })).toBeVisible();
+  // Your page has nothing to type: only signing out.
   await page
     .getByRole('region', { name: 'People in this channel' })
     .getByRole('button', { name: /^browser_owner/ })
     .click();
   const settings = page.getByRole('region', { name: 'Settings' });
-  const team = settings.getByRole('form', { name: 'Team name' });
-  await team.getByLabel('Team name').fill('Fieldnotes');
-  await team.getByRole('button', { name: 'Save name' }).click();
   await expect(
-    page.getByRole('status').filter({ hasText: 'Team renamed.' }),
+    settings.getByRole('button', { name: 'Sign out everywhere' }),
   ).toBeVisible();
-  await expect(team.getByLabel('Team name')).toHaveValue('Fieldnotes');
+  await expect(settings.getByRole('textbox')).toHaveCount(0);
 });
 
 test('someone outside the organization is turned back, and a reload starts clean', async ({

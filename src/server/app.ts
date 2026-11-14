@@ -14,7 +14,7 @@ import Fastify, { type FastifyRequest } from 'fastify';
 import secureSession from '@fastify/secure-session';
 import rateLimit from '@fastify/rate-limit';
 import { randomUUID } from 'node:crypto';
-import { SESSION_LIFETIME_MS, TeamName } from '../domain/contracts.js';
+import { SESSION_LIFETIME_MS } from '../domain/contracts.js';
 import type { Store } from '../persistence/store.js';
 import type { Config } from './config.js';
 import { describeFailure } from '../diagnostics.js';
@@ -202,12 +202,6 @@ export async function createApp(
     protectedApi.get('/api/team', (request, reply) => {
       const team = store.teamFor(human(request));
       return team ?? reply.code(403).send({ error: 'Membership required' });
-    });
-    // The owner renames the team; the name is what everyone sees.
-    protectedApi.put('/api/team', (request) => {
-      const id = human(request);
-      const { name } = z.strictObject({ name: TeamName }).parse(request.body);
-      return store.renameTeam(id, name);
     });
     done();
   });

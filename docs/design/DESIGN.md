@@ -112,6 +112,9 @@ it is the authority. Use the custom property for its role, never a raw colour.
 - Labels, IDs, timestamps, status text, counts: **JetBrains Mono**, 11–12 px, uppercase
   for column headers.
 - Body 14–15 px, line height 1.55. Message text 15 px.
+- The team name only: the system's **Song** serif (Songti SC, then Source Han / Noto
+  Serif CJK), 700, slightly open tracking, 18 px (15 px when long). Nothing else uses
+  it.
 
 ## Shape and spacing
 
@@ -183,9 +186,13 @@ it is the authority. Use the custom property for its role, never a raw colour.
   A row leaves when its cause is resolved; there is nothing to dismiss. Expired
   deliveries are not listed; they stay on their message's delivery line.
 - **Settings**: your own row among the sidebar's people opens your page; the account
-  is not shown anywhere else, so the page has no face or name of its own. The team
-  name (everyone sees it) is typed in place and confirmed by the round arrow. The page
-  ends with **Sign out everywhere**, a quiet row in the danger colour.
+  is not shown anywhere else, so the page has no face or name of its own. It holds
+  only **Sign out everywhere**, a quiet row in the danger colour (and **Sign out** on
+  a phone).
+- **Team name**: the organization's name as Feishu gives it, never typed here, heads
+  the sidebar above search as a wordmark — no logo or avatar. One line; a name of more
+  than 12 characters is set smaller and wraps onto a second line, cut there with an
+  ellipsis, its full name on hover. Its text starts on the headings' edge.
 - **Sign in**: the brand and the team's promise beside one card, **Welcome** and a
   single **Sign in with Feishu** button (a link drawn as the primary button). When
   Feishu sends someone back unsigned, the card says why in one line — not part of
@@ -203,7 +210,7 @@ it is the authority. Use the custom property for its role, never a raw colour.
 
 Below 720 px the places stack instead of sitting side by side:
 
-- **Home** is the sidebar: search, the channels (full-width rows, the waiting dot),
+- **Home** is the sidebar: the team name, search, the channels (full-width rows, the waiting dot),
   then the team as the gallery of faces with its add tile. No channel is current here.
 - **Bottom tabs**: Home, Inbox (with how many things wait on you) and You (your face),
   under Home and the pages they open.

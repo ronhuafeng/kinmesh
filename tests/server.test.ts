@@ -194,9 +194,12 @@ await test('request limits and schema errors do not echo submitted secrets', asy
   try {
     const cookies = await signInAs(app, 'owner@example.com');
     const secret = 'validation-sensitive-canary';
+    const { team } = (await app.inject({ url: '/api/team', cookies })).json<{
+      team: { id: string };
+    }>();
     const invalid = await app.inject({
-      method: 'PUT',
-      url: '/api/team',
+      method: 'POST',
+      url: `/api/teams/${team.id}/channels`,
       cookies,
       payload: { name: secret, unexpected: secret },
     });

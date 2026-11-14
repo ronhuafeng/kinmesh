@@ -19,6 +19,8 @@ export interface Feishu {
   /** The user's access token for an authorization code. */
   exchange(code: string, redirectUri: string): Promise<string>;
   profile(accessToken: string): Promise<FeishuProfile>;
+  /** The organization's name, read as the app itself (tenant:tenant:readonly). */
+  organization(): Promise<string>;
 }
 
 /**
@@ -26,7 +28,7 @@ export interface Feishu {
  * and no token, ever reaches an error message or a log.
  */
 export class FeishuFailure extends Error {
-  constructor(stage: 'token' | 'profile', status: number) {
+  constructor(stage: 'token' | 'profile' | 'tenant', status: number) {
     super(`feishu_${stage}_${String(status)}`);
     this.name = 'FeishuFailure';
   }
@@ -37,6 +39,13 @@ const Envelope = z.looseObject({
   error: z.string().optional(),
   access_token: z.string().optional(),
   data: z.looseObject({ access_token: z.string().optional() }).optional(),
+});
+const Tenant = z.looseObject({
+  code: z.number().optional(),
+  tenant_access_token: z.string().optional(),
+  data: z
+    .looseObject({ tenant: z.looseObject({ name: z.string() }).optional() })
+    .optional(),
 });
 const Profile = z.looseObject({
   code: z.number().optional(),
@@ -124,6 +133,43 @@ export function feishuClient(config: Config['feishu']): Feishu {
         enterprise: body.data.data.enterprise_email,
         tenant: body.data.data.tenant_key,
       };
+    },
+    async organization() {
+      const issued = await fetch(
+        new URL('/open-apis/auth/v3/tenant_access_token/internal', open),
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            app_id: config.appId,
+            app_secret: config.appSecret,
+          }),
+          signal: AbortSignal.timeout(8000),
+        },
+      );
+      const token = Tenant.safeParse(await read(issued));
+      if (!issued.ok || !token.success || !token.data.tenant_access_token)
+        throw new FeishuFailure('tenant', issued.status);
+      const response = await fetch(
+        new URL('/open-apis/tenant/v2/tenant/query', open),
+        {
+          headers: {
+            Authorization: `Bearer ${token.data.tenant_access_token}`,
+            Accept: 'application/json',
+          },
+          signal: AbortSignal.timeout(8000),
+        },
+      );
+      const body = Tenant.safeParse(await read(response));
+      const name = body.success ? body.data.data?.tenant?.name : undefined;
+      if (
+        !response.ok ||
+        !body.success ||
+        (body.data.code !== undefined && body.data.code !== 0) ||
+        name === undefined
+      )
+        throw new FeishuFailure('tenant', response.status);
+      return name;
     },
   };
 }
