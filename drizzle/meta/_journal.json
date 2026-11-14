@@ -92,6 +92,13 @@
       "when": 1794621584574,
       "tag": "0012_feishu_login",
       "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "6",
+      "when": 1794623146483,
+      "tag": "0013_feishu_identity",
+      "breakpoints": true
     }
   ]
 }

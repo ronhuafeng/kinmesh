@@ -3,6 +3,7 @@ import { forkWorker, message, stop } from './process-helpers.js';
 import assert from 'node:assert/strict';
 import Database from 'better-sqlite3';
 import { fixture } from './helpers.js';
+import { feishuPerson } from './feishu.js';
 import { readFileSync } from 'node:fs';
 import { z } from 'zod';
 import { HumanId } from '../src/domain/contracts.js';
@@ -15,14 +16,17 @@ await test('deterministic migrations enable WAL and foreign keys; the team survi
   const f = fixture();
   try {
     const store = f.open();
-    const created = store.signIn('owner@example.com');
+    const created = store.signIn(feishuPerson('owner@example.com'));
     store.close();
     const reopened = f.open();
     assert.equal(reopened.teamFor(created.id)?.channels[0]?.name, 'general');
-    assert.deepEqual(reopened.signIn('owner@example.com'), created);
+    assert.deepEqual(
+      reopened.signIn(feishuPerson('owner@example.com')),
+      created,
+    );
     assert.equal(reopened.human(created.id)?.username, 'owner');
     // Whoever comes next joins that team; there is never a second.
-    const other = reopened.signIn('other@example.com');
+    const other = reopened.signIn(feishuPerson('other@example.com'));
     assert.equal(
       reopened.teamFor(other.id)?.team.id,
       reopened.teamFor(created.id)?.team.id,
@@ -47,7 +51,7 @@ await test('database rejects invalid role, orphan membership, duplicate channel,
   const f = fixture();
   const store = f.open();
   try {
-    const human = store.signIn('owner@example.com');
+    const human = store.signIn(feishuPerson('owner@example.com'));
     const team = store.teamFor(human.id);
     assert.ok(team);
     const created = { human, team: team.team };
@@ -73,15 +77,21 @@ await test('database rejects invalid role, orphan membership, duplicate channel,
       assert.throws(() => raw.prepare('UPDATE teams SET name = ?').run(' '));
       assert.throws(() =>
         raw
-          .prepare('INSERT INTO humans VALUES (?, ?, ?)')
-          .run('second', 'owner', 'second@example.com'),
+          .prepare('INSERT INTO humans (id, username) VALUES (?, ?)')
+          .run('second', 'owner'),
       );
-      // One person per mailbox.
+      // One person per Feishu identity; a mailbox may pass to someone new.
+      const identity = feishuPerson('owner@example.com').feishuId;
       assert.throws(() =>
         raw
-          .prepare('INSERT INTO humans VALUES (?, ?, ?)')
-          .run('third', 'third', 'owner@example.com'),
+          .prepare(
+            'INSERT INTO humans (id, username, feishu_id) VALUES (?, ?, ?)',
+          )
+          .run('third', 'third', identity),
       );
+      raw
+        .prepare('INSERT INTO humans (id, username, email) VALUES (?, ?, ?)')
+        .run('fourth', 'fourth', 'owner@example.com');
     } finally {
       raw.close();
     }
@@ -106,7 +116,7 @@ await test('WAL recovers a committed team and discards an interrupted writer tra
     await stop(child, 'SIGKILL');
     const recovered = f.open();
     try {
-      const owner = recovered.signIn('owner@example.com');
+      const owner = recovered.signIn(feishuPerson('owner@example.com'));
       assert.equal(recovered.teamFor(owner.id)?.team.name, 'Committed team');
     } finally {
       recovered.close();

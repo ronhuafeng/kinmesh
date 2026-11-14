@@ -21,7 +21,7 @@ try {
   console.info(`${username} now signs in as ${email}.`);
 } catch {
   console.error(
-    'Not linked. Usage: npm run link-human -- <username> <mailbox>; the person must exist, the mailbox must be in the organization domain and not taken.',
+    'Not linked. Usage: npm run link-human -- <username> <mailbox>; the person must exist and not have signed in with Feishu yet, and the mailbox must be in the organization domain and not held by anyone else.',
   );
   process.exitCode = 1;
 }

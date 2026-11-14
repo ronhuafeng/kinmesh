@@ -4,7 +4,13 @@ import { createApp } from '../src/server/app.js';
 import { LOGIN_STATE_MS } from '../src/domain/contracts.js';
 import type { Feishu } from '../src/server/feishu.js';
 import { fixture } from './helpers.js';
-import { signInAs, standInFeishu, startFeishuStandIn } from './feishu.js';
+import {
+  feishuPerson,
+  signInAs,
+  standInFeishu,
+  startFeishuStandIn,
+} from './feishu.js';
+import Database from 'better-sqlite3';
 import { FeishuFailure, feishuClient } from '../src/server/feishu.js';
 
 async function hub(feishu: Feishu = standInFeishu) {
@@ -21,6 +27,7 @@ async function hub(feishu: Feishu = standInFeishu) {
     },
   );
   return {
+    path: f.path,
     store,
     app,
     async dispose() {
@@ -97,7 +104,7 @@ await test('the first person makes the team; everyone after joins it and #genera
       theirs.json<Team>().channels.map((c) => c.name),
       ['general'],
     );
-    // The same mailbox is the same person, however it is written.
+    // Signing in again is the same person, however the mailbox is written.
     const again = await signInAs(h.app, 'ada.lovelace@example.com');
     const same = await h.app.inject({ url: '/api/me', cookies: again });
     assert.deepEqual(same.json<unknown>(), me.json<unknown>());
@@ -110,37 +117,58 @@ await test('a handle is the mailbox name, numbered when taken', async () => {
   const h = await hub();
   try {
     const names = ['li@example.com', 'li@sub.example.com', 'x@example.com'].map(
-      (email) => h.store.signIn(email).username,
+      (email) => h.store.signIn(feishuPerson(email)).username,
     );
     assert.deepEqual(names, ['member-li', 'member-li-2', 'member-x']);
-    assert.equal(h.store.signIn('a.b+c@example.com').username, 'a-b-c');
+    assert.equal(
+      h.store.signIn(feishuPerson('a.b+c@example.com')).username,
+      'a-b-c',
+    );
   } finally {
     await h.dispose();
   }
 });
 
 await test('only a mailbox in the organization, from a tenant, signs in', async () => {
+  const eve = { union: 'u-eve', tenant: 't' };
   const profiles: Record<string, Awaited<ReturnType<Feishu['profile']>>> = {
-    outside: { enterprise: 'eve@other.com', email: null, tenant: 't' },
-    lookalike: { enterprise: 'eve@example.com.evil', email: null, tenant: 't' },
-    tenantless: { enterprise: 'eve@example.com', email: null, tenant: '' },
-    personal: { enterprise: null, email: 'eve@example.com', tenant: 't' },
+    outside: { ...eve, enterprise: 'eve@other.com', email: null },
+    lookalike: { ...eve, enterprise: 'eve@example.com.evil', email: null },
+    tenantless: {
+      ...eve,
+      enterprise: 'eve@example.com',
+      email: null,
+      tenant: '',
+    },
+    nobody: { ...eve, union: '', enterprise: 'eve@example.com', email: null },
+    personal: {
+      ...eve,
+      union: 'u-ivy',
+      enterprise: null,
+      email: 'ivy@example.com',
+    },
     enterprise: {
+      ...eve,
       enterprise: 'eve.work@example.com',
       email: 'eve@example.com',
-      tenant: 't',
     },
   };
+
   const h = await hub({
     ...standInFeishu,
     exchange: (code) => Promise.resolve(code),
     profile: (token) =>
       Promise.resolve(
-        profiles[token] ?? { enterprise: null, email: null, tenant: null },
+        profiles[token] ?? {
+          union: null,
+          enterprise: null,
+          email: null,
+          tenant: null,
+        },
       ),
   });
   try {
-    for (const code of ['outside', 'lookalike', 'tenantless']) {
+    for (const code of ['outside', 'lookalike', 'tenantless', 'nobody']) {
       const { state, cookies } = await begin(h.app);
       const response = await back(
         h.app,
@@ -153,10 +181,10 @@ await test('only a mailbox in the organization, from a tenant, signs in', async 
         undefined,
       );
     }
-    // The account's own address counts when it is in the domain; the
-    // enterprise address wins when both are.
+    // Without a Feishu enterprise mailbox, the account's own admits; the
+    // enterprise mailbox wins when there are both.
     for (const [code, username] of [
-      ['personal', 'eve'],
+      ['personal', 'ivy'],
       ['enterprise', 'eve-work'],
     ] as const) {
       const { state, cookies } = await begin(h.app);
@@ -272,14 +300,58 @@ await test('people signing in at once are one team, and one person each', async 
   }
 });
 
+await test('a person is their Feishu identity, whatever happens to their mailbox', async () => {
+  const h = await hub();
+  try {
+    const me = async (code: string) => {
+      const cookies = await signInAs(h.app, code);
+      return (await h.app.inject({ url: '/api/me', cookies })).json<{
+        human: { id: string; username: string };
+      }>().human;
+    };
+    const ada = await me('u-ada|ada@example.com');
+    // A renamed mailbox is still Ada.
+    assert.deepEqual(await me('u-ada|lovelace@example.com'), ada);
+    // Her old mailbox, handed to someone new, is someone new.
+    const next = await me('u-next|ada@example.com');
+    assert.notEqual(next.id, ada.id);
+  } finally {
+    await h.dispose();
+  }
+});
+
 await test('a person from before Feishu is linked to their mailbox and signs in as themself', async () => {
   const h = await hub();
   try {
-    const before = h.store.signIn('old@example.com');
-    h.store.linkMailbox(before.username, 'renamed@example.com');
-    assert.deepEqual(h.store.signIn('renamed@example.com'), before);
+    const raw = new Database(h.path);
+    const team = h.store.teamFor(
+      h.store.signIn(feishuPerson('first@example.com')).id,
+    );
+    assert.ok(team);
+    raw
+      .prepare('INSERT INTO humans (id, username) VALUES (?, ?)')
+      .run('00000000-0000-4000-8000-000000000001', 'old-timer');
+    raw
+      .prepare('INSERT INTO memberships VALUES (?, ?, ?)')
+      .run('00000000-0000-4000-8000-000000000001', team.team.id, 'owner');
+    raw.close();
+    // Not a mailbox someone else holds; not a person who does not exist.
+    assert.throws(() => {
+      h.store.linkMailbox('old-timer', 'first@example.com');
+    });
     assert.throws(() => {
       h.store.linkMailbox('nobody', 'n@example.com');
+    });
+    h.store.linkMailbox('old-timer', 'old@example.com');
+    const old = await signInAs(h.app, 'u-old|old@example.com');
+    const them = await h.app.inject({ url: '/api/me', cookies: old });
+    assert.equal(
+      them.json<{ human: { username: string } }>().human.username,
+      'old-timer',
+    );
+    // Once they have signed in with Feishu, their identity is settled.
+    assert.throws(() => {
+      h.store.linkMailbox('old-timer', 'other@example.com');
     });
   } finally {
     await h.dispose();
@@ -319,8 +391,9 @@ await test('the Feishu client reads a profile that leaves fields out, and names 
       ),
     );
     assert.deepEqual(profile, {
-      email: undefined,
+      union: 'u-ada@example.com',
       enterprise: 'ada@example.com',
+      email: undefined,
       tenant: 'stand-in',
     });
     // Feishu's own error envelope, with a 200, is still a refusal.

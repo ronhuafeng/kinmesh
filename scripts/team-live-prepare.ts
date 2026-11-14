@@ -37,7 +37,10 @@ try {
   mkdirSync(directory, { mode: 0o700 }); // Refuse overwrite, even after a failed partial preparation.
   const database = join(directory, 'team.sqlite');
   store = openStore(database);
-  const humanId = store.signIn('live-owner@kinmesh.test').id;
+  const humanId = store.signIn({
+    feishuId: 'live-owner',
+    email: 'live-owner@kinmesh.test',
+  }).id;
   store.renameTeam(humanId, 'Disposable MCP acceptance');
   const team = store.teamFor(humanId);
   if (!team) throw new Error('Team missing');

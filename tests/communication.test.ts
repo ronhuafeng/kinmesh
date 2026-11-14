@@ -951,7 +951,7 @@ await test('human nonowner team membership alone does not expose channels; owner
   try {
     const id = HumanId.parse(randomUUID());
     raw
-      .prepare('INSERT INTO humans VALUES (?, ?, ?)')
+      .prepare('INSERT INTO humans (id, username, email) VALUES (?, ?, ?)')
       .run(id, 'participant', 'participant@example.com');
     raw
       .prepare('INSERT INTO memberships VALUES (?, ?, ?)')
