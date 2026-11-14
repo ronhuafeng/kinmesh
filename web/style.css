@@ -1102,9 +1102,6 @@ button.author-link:hover:not(:disabled) {
   border-left: 2px solid var(--agent);
   padding-left: 0.6rem;
 }
-.column-switcher {
-  display: none;
-}
 .board-column[data-status='awaiting-human'] .column-heading {
   color: var(--decision-text);
 }
@@ -1400,43 +1397,43 @@ body > #root > .notice {
     margin-bottom: 1.5rem;
   }
 }
-/* Phone: one column, views move to a bottom bar. */
-@media (max-width: 720px) {
-  .column-switcher {
-    display: flex;
-    gap: 0.35rem;
-    overflow-x: auto;
-    margin: 0 -1rem 0.75rem;
-    padding: 0 1rem 0.25rem;
-  }
-  .column-switcher button {
-    flex: none;
-    display: inline-flex;
-    align-items: center;
-    gap: 0.4rem;
-    background: var(--surface);
-    color: var(--ink-muted);
-    border-color: var(--hairline-strong);
-    border-radius: 999px;
-    padding: 0.3rem 0.75rem;
-    font-size: 0.8rem;
-  }
-  .column-switcher button::before {
-    content: '';
-    width: 0.45rem;
-    height: 0.45rem;
-    border-radius: 50%;
-    background: var(--tone);
-  }
-  .column-switcher button[aria-pressed='true'] {
-    border-color: var(--tone);
-    color: var(--ink);
-    background: color-mix(in srgb, var(--tone) 10%, var(--surface));
-  }
-  .column-switcher .count {
-    font-size: 0.72rem;
-    color: var(--ink-subtle);
-  }
+/* A narrow board picks one stage with these pills; they scroll sideways
+ * without showing a scrollbar. */
+.column-switcher {
+  display: none;
+  gap: 0.35rem;
+  overflow-x: auto;
+  scrollbar-width: none;
+  margin: 0 0 0.75rem;
+  padding: 0 0 0.25rem;
+}
+.column-switcher button {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  background: var(--surface);
+  color: var(--ink-muted);
+  border-color: var(--hairline-strong);
+  border-radius: 999px;
+  padding: 0.3rem 0.75rem;
+  font-size: 0.8rem;
+}
+.column-switcher button::before {
+  content: '';
+  width: 0.45rem;
+  height: 0.45rem;
+  border-radius: 50%;
+  background: var(--tone);
+}
+.column-switcher button[aria-pressed='true'] {
+  border-color: var(--tone);
+  color: var(--ink);
+  background: color-mix(in srgb, var(--tone) 10%, var(--surface));
+}
+.column-switcher .count {
+  font-size: 0.72rem;
+  color: var(--ink-subtle);
 }
 
 /* ------------------------------------------------------------------
@@ -2759,8 +2756,12 @@ button.roster-person:hover:not(:disabled) {
   text-transform: uppercase;
   color: var(--ink-muted);
 }
-@media (max-width: 720px) {
-  /* A phone shows one stage at a time. */
+/* A narrow board shows one stage at a time: on a phone, on a tablet held
+ * upright, and on a wide tablet beside an open task. */
+@media (max-width: 1023px) {
+  .column-switcher {
+    display: flex;
+  }
   .board {
     display: block;
     overflow: visible;
@@ -2770,6 +2771,28 @@ button.roster-person:hover:not(:disabled) {
   }
   .board-column[data-current] {
     display: grid;
+  }
+  /* The chosen pill already names the stage. */
+  .board-column .column-heading {
+    display: none;
+  }
+}
+@media (min-width: 1024px) and (max-width: 1279px) {
+  .view-content[data-beside] .column-switcher {
+    display: flex;
+  }
+  .view-content[data-beside] .board {
+    display: block;
+    overflow: visible;
+  }
+  .view-content[data-beside] .board-column {
+    display: none;
+  }
+  .view-content[data-beside] .board-column[data-current] {
+    display: grid;
+  }
+  .view-content[data-beside] .board-column .column-heading {
+    display: none;
   }
 }
 .task-card .card-marker {
@@ -3540,4 +3563,48 @@ button.new-agent-go {
     background: none;
     text-decoration: underline;
   }
+}
+/* ------------------------------------------------------------------
+ * Tablet (721–1279 px): the sidebar stays beside the content, sized for a
+ * finger. Touch has no Esc, so a page leads back from its bar; the sidebar
+ * already says where you are, so the bar holds only the way back.
+ * ------------------------------------------------------------------ */
+@media (min-width: 721px) and (max-width: 1279px) {
+  .page-bar {
+    display: flex;
+    margin: 0 0 0.25rem;
+  }
+  .page-bar-title {
+    display: none;
+  }
+  /* A finger's target: 44 px. */
+  .sidebar nav > button,
+  button.person {
+    min-height: 44px;
+  }
+}
+/* A wide tablet keeps the board, one stage, beside the task that is open. */
+@media (min-width: 1024px) and (max-width: 1279px) {
+  .view-content[data-beside] {
+    display: grid;
+    grid-template-columns: minmax(16rem, 22rem) minmax(0, 1fr);
+    align-items: start;
+    column-gap: 1.5rem;
+  }
+  .view-content[data-beside] > [role='tabpanel'] {
+    display: block;
+    grid-column: 1;
+    grid-row: 1;
+  }
+  .view-content[data-beside] > .page {
+    grid-column: 2;
+    grid-row: 1;
+    min-width: 0;
+    padding-left: 1.5rem;
+    border-left: 1px solid var(--hairline);
+  }
+}
+/* The card whose task is open beside the board. */
+.task-card[data-open] {
+  box-shadow: inset 3px 0 0 var(--primary);
 }

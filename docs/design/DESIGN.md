@@ -209,6 +209,15 @@ Below 720 px the places stack instead of sitting side by side:
 - **You** ends with Sign out, in the danger colour; the header's power icon is for wider
   screens.
 
+## Tablet
+
+From 721 to 1279 px the sidebar stays beside the content, sized for a finger (rows of
+44 px). Touch has no Esc, so a page leads back from a bar at its top-left; the sidebar
+already says where you are, so the bar holds only the way back. Held upright (below
+1024 px) the board shows one stage at a time and a page replaces the view. Held wide,
+an open task sits beside the board — one stage, its card marked by a green edge —
+instead of replacing it.
+
 ## Motion
 
 Short and purposeful (160–320 ms, ease-out or gentle spring). Cards travel between

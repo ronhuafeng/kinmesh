@@ -1550,3 +1550,27 @@ test('a reload keeps the place and unsent work; Back returns to where you were',
   await page.goBack();
   await expect(task).toBeVisible();
 });
+
+test('a wide tablet keeps the board, one stage, beside the task that is open', async ({
+  page,
+  hub,
+}) => {
+  await onboard(page, hub);
+  await page.setViewportSize({ width: 1194, height: 834 });
+  await page.getByRole('tab', { name: 'Board', exact: true }).click();
+  await page.getByRole('button', { name: 'New task' }).first().click();
+  const task = page.getByRole('region', { name: 'New task', exact: true });
+  await expect(task).toBeVisible();
+  // The board stays, one stage at a time, and the page leads back by touch.
+  const board = page.getByRole('region', { name: 'Task board' });
+  await expect(board).toBeVisible();
+  await expect(board.getByRole('group', { name: 'Stages' })).toBeVisible();
+  const [left, right] = await Promise.all([
+    board.boundingBox(),
+    task.boundingBox(),
+  ]);
+  expect(left && right && left.x + left.width <= right.x).toBe(true);
+  await task.getByRole('button', { name: 'Back', exact: true }).click();
+  await expect(task).toHaveCount(0);
+  await expect(board).toBeVisible();
+});
