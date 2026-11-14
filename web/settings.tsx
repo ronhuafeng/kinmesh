@@ -2,7 +2,7 @@ import { useState } from 'react';
 import type { WorkspaceSnapshot } from '../src/workspace/contracts.js';
 import { useRequest, value } from './api.js';
 import { Notice } from './forms.js';
-import { ArrowIcon } from './icons.js';
+import { ArrowIcon, PowerIcon } from './icons.js';
 import { Page } from './ui.js';
 
 /**
@@ -15,11 +15,14 @@ export function SettingsPage({
   onClose,
   onDone,
   onNotify,
+  onSignOut,
 }: {
   data: WorkspaceSnapshot;
   onClose: () => void;
   onDone: () => void;
   onNotify: (message: string) => void;
+  /** On a phone, where the header's power icon is not shown. */
+  onSignOut?: () => void;
 }) {
   const team = useRequest({ 400: 'Use 1–80 characters.' });
   const password = useRequest({
@@ -31,7 +34,7 @@ export function SettingsPage({
   const [current, setCurrent] = useState('');
   const [next, setNext] = useState('');
   return (
-    <Page label="Settings" onClose={onClose}>
+    <Page label="Settings" onClose={onClose} bar={false}>
       <div className="page-body you">
         <form
           className="you-row"
@@ -155,6 +158,12 @@ export function SettingsPage({
           </span>
           {password.error && <Notice>{password.error}</Notice>}
         </form>
+        {onSignOut && (
+          <button type="button" className="you-sign-out" onClick={onSignOut}>
+            <PowerIcon />
+            Sign out
+          </button>
+        )}
       </div>
     </Page>
   );

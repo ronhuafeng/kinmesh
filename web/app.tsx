@@ -33,11 +33,17 @@ import {
 } from './tasks.js';
 import type { TaskDraft } from './tasks.js';
 import { joinedAgents } from './names.js';
-import { Avatar, AvatarImages, Presence, workerConnected } from './ui.js';
+import {
+  Avatar,
+  AvatarImages,
+  Presence,
+  usePhone,
+  workerConnected,
+} from './ui.js';
 import { CommandPalette } from './palette.js';
 import { InboxPage, attentionCount } from './inbox.js';
 import { SettingsPage } from './settings.js';
-import { MenuIcon, PowerIcon } from './icons.js';
+import { BackIcon, HomeIcon, InboxIcon, PowerIcon } from './icons.js';
 import type { Command } from './palette.js';
 /** Tabs, plus one agent's own page reached from them. */
 type View = 'chat' | 'board' | 'team' | 'agent';
@@ -155,7 +161,8 @@ export function App() {
   const [agentId, setAgentId] = useState(initial.agent);
   const [backTo, setBackTo] = useState<Tab>('team');
   // Phone only: the people, you among them, sit behind a menu button.
-  const [menuOpen, setMenuOpen] = useState(false);
+  // A phone stacks the places: Home, a channel, a page.
+  const phone = usePhone();
   const [addingChannel, setAddingChannel] = useState(false);
   const [data, setData] = useState<WorkspaceSnapshot | null>(null);
   const [status, setStatus] = useState<
@@ -411,7 +418,8 @@ export function App() {
     // A channel in the sidebar leads away from any open page.
     setFocus(null);
     setDraft(null);
-    if (view === 'agent') setView('chat');
+    // On a phone the team is on Home, so a channel opens on its chat.
+    if (view === 'agent' || (phone && view === 'team')) setView('chat');
   };
   if (status === 'signedout')
     return (
@@ -504,6 +512,33 @@ export function App() {
       : onPage
         ? 'page'
         : view;
+  /**
+   * Where a phone is: Home (the channels and the team), a channel, a page
+   * pushed over it, or a page reached from the bottom tabs. A wider screen
+   * shows them side by side and ignores this.
+   */
+  const screen =
+    focus?.kind === 'inbox' || focus?.kind === 'settings'
+      ? 'tab'
+      : onPage || view === 'agent'
+        ? 'page'
+        : !selection.channel || view === 'team'
+          ? 'home'
+          : 'channel';
+  const signOut = () => {
+    if (!canAct) return;
+    void api('/api/logout', { method: 'POST' })
+      .then(() => {
+        toSignedOut('');
+      })
+      .catch(() => {
+        setError('Sign out failed. Reconnect and try again.');
+      });
+  };
+  const goHome = () => {
+    selectChannel('');
+    setView('chat');
+  };
   /** Any tab leads away from a page, even the one it sits on. */
   const leavePage = () => {
     setFocus(null);
@@ -609,25 +644,11 @@ export function App() {
       <LiveContext.Provider value={liveReads}>
         <AvatarImages.Provider value={avatarImages}>
           <Offline value={!canAct && !switching}>
-            <div className="workspace-shell">
-              <aside
-                className="sidebar"
-                data-menu={menuOpen ? 'open' : undefined}
-              >
+            <div className="workspace-shell" data-screen={screen}>
+              <aside className="sidebar">
                 {/* Search first; the team's name lives in Settings. */}
                 <div className="sidebar-top">
                   <CommandPalette commands={commands} />
-                  <button
-                    type="button"
-                    className="quiet icon-button sidebar-menu"
-                    aria-label="Menu"
-                    aria-expanded={menuOpen}
-                    onClick={() => {
-                      setMenuOpen((open) => !open);
-                    }}
-                  >
-                    <MenuIcon />
-                  </button>
                 </div>
                 <nav aria-label="Channels">
                   <div className="nav-heading">
@@ -646,7 +667,8 @@ export function App() {
                           // Only one place is current: a channel while you are
                           // in its chat or board.
                           channel?.id === c.id &&
-                          (tabValue === 'chat' || tabValue === 'board')
+                          (tabValue === 'chat' || tabValue === 'board') &&
+                          !(phone && screen === 'home')
                             ? 'page'
                             : undefined
                         }
@@ -714,6 +736,17 @@ export function App() {
                   >
                     More channels
                   </button>
+                )}
+                {/* On a phone, Home holds the team: the gallery of faces. */}
+                {phone && (
+                  <div className="home-team">
+                    <Team
+                      data={data}
+                      channelPath={null}
+                      onDone={refresh}
+                      openAgent={openAgent}
+                    />
+                  </div>
                 )}
                 <section
                   className="people"
@@ -794,10 +827,21 @@ export function App() {
                   }}
                 >
                   <header className="workspace-header">
-                    {/* The sidebar already shows the channel (or agent) you are
-                      in, so the page never repeats it: the title is there for
-                      screen readers only, the same on every view. */}
-                    <h1 className="visually-hidden">
+                    {/* A phone shows no sidebar beside a channel: its bar leads
+                      back Home and says where you are. */}
+                    {phone && (
+                      <button
+                        type="button"
+                        className="quiet icon-button header-back"
+                        aria-label="Back"
+                        onClick={goHome}
+                      >
+                        <BackIcon />
+                      </button>
+                    )}
+                    {/* Beside the sidebar the page never repeats where you are:
+                      the title is there for screen readers only. */}
+                    <h1 className={phone ? 'header-title' : 'visually-hidden'}>
                       {pageAgent
                         ? pageAgent.name
                         : view === 'team'
@@ -819,23 +863,29 @@ export function App() {
                       <Tabs.Trigger value="board" onClick={leavePage}>
                         Board
                       </Tabs.Trigger>
-                      <Tabs.Trigger value="team" onClick={leavePage}>
-                        Team
-                      </Tabs.Trigger>
+                      {/* On a phone the team is on Home and the Inbox is a
+                        bottom tab. */}
+                      {!phone && (
+                        <Tabs.Trigger value="team" onClick={leavePage}>
+                          Team
+                        </Tabs.Trigger>
+                      )}
                       {/* What waits on you across the team; an empty inbox
                         needs no number. */}
-                      <Tabs.Trigger
-                        value="inbox"
-                        onClick={() => {
-                          setDraft(null);
-                          setFocus({ kind: 'inbox' });
-                        }}
-                      >
-                        Inbox
-                        {waiting > 0 && (
-                          <span className="count">{waiting}</span>
-                        )}
-                      </Tabs.Trigger>
+                      {!phone && (
+                        <Tabs.Trigger
+                          value="inbox"
+                          onClick={() => {
+                            setDraft(null);
+                            setFocus({ kind: 'inbox' });
+                          }}
+                        >
+                          Inbox
+                          {waiting > 0 && (
+                            <span className="count">{waiting}</span>
+                          )}
+                        </Tabs.Trigger>
+                      )}
                     </Tabs.List>
                     <div className="header-end">
                       {/* Healthy is silent: the pill appears only when something is off. */}
@@ -863,26 +913,17 @@ export function App() {
                           )}
                         </div>
                       )}
-                      <button
-                        className="quiet icon-button"
-                        aria-label="Sign out"
-                        title="Sign out"
-                        disabled={!canAct}
-                        onClick={() => {
-                          if (!canAct) return;
-                          void api('/api/logout', { method: 'POST' })
-                            .then(() => {
-                              toSignedOut('');
-                            })
-                            .catch(() => {
-                              setError(
-                                'Sign out failed. Reconnect and try again.',
-                              );
-                            });
-                        }}
-                      >
-                        <PowerIcon />
-                      </button>
+                      {!phone && (
+                        <button
+                          className="quiet icon-button"
+                          aria-label="Sign out"
+                          title="Sign out"
+                          disabled={!canAct}
+                          onClick={signOut}
+                        >
+                          <PowerIcon />
+                        </button>
+                      )}
                     </div>
                   </header>
                   {error && (
@@ -967,6 +1008,7 @@ export function App() {
                         onClose={closeFocus}
                         onDone={refresh}
                         onNotify={notify}
+                        {...(phone ? { onSignOut: signOut } : {})}
                       />
                     )}
 
@@ -1068,6 +1110,45 @@ export function App() {
                   </fieldset>
                 </Tabs.Root>
               </main>
+              {/* A phone's three places at the bottom of Home and of the pages
+                  they open; a channel or a pushed page has the screen. */}
+              {phone && (
+                <nav className="phone-tabs" aria-label="Places">
+                  <button
+                    type="button"
+                    aria-current={screen === 'home' ? 'page' : undefined}
+                    onClick={goHome}
+                  >
+                    <HomeIcon />
+                    <span>Home</span>
+                  </button>
+                  <button
+                    type="button"
+                    aria-current={focus?.kind === 'inbox' ? 'page' : undefined}
+                    onClick={() => {
+                      setDraft(null);
+                      setFocus({ kind: 'inbox' });
+                    }}
+                  >
+                    <InboxIcon />
+                    <span>Inbox</span>
+                    {waiting > 0 && <span className="count">{waiting}</span>}
+                  </button>
+                  <button
+                    type="button"
+                    aria-current={
+                      focus?.kind === 'settings' ? 'page' : undefined
+                    }
+                    onClick={() => {
+                      setDraft(null);
+                      setFocus({ kind: 'settings' });
+                    }}
+                  >
+                    <Avatar kind="human" name={data.human.username} size="sm" />
+                    <span>You</span>
+                  </button>
+                </nav>
+              )}
               {toast && (
                 <div className="toast" key={toast.id} role="status">
                   {toast.message}

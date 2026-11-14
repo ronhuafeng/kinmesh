@@ -47,7 +47,9 @@ that isn't needed. Check a change against these before it ships.
 **Navigation**
 
 9. No headings where the structure already says it (a separator, not "In this
-   channel"); no back links — the sidebar and tabs navigate, Esc goes back.
+   channel"); no back links — the sidebar and tabs navigate, Esc goes back. A phone
+   is the exception: no sidebar sits beside a channel or page and there is no Esc, so
+   its bar leads back.
 10. The object is the link: a name, a card, a row. No separate "Open" buttons.
 11. One current place is highlighted at a time: a channel or person in the sidebar, or
     a tab. Plain words ("Inbox").
@@ -191,6 +193,21 @@ it is the authority. Use the custom property for its role, never a raw colour.
   now** lives in the command palette (⌘K / Ctrl+K).
 - **Uncertain send**: when a request's outcome is unknown, the form keeps exactly what
   was sent and offers **Retry same action**; nothing is resent on its own.
+
+## Phone
+
+Below 720 px the places stack instead of sitting side by side:
+
+- **Home** is the sidebar: search, the channels (full-width rows, the waiting dot),
+  then the team as the gallery of faces with its add tile. No channel is current here.
+- **Bottom tabs**: Home, Inbox (with how many things wait on you) and You (your face),
+  under Home and the pages they open.
+- **A channel** has the screen under a bar: back to Home, `# name`, then Chat | Board.
+  Its topics are pills above the conversation; there is no bottom bar.
+- **A page** (agent, task, a worker you run) opens under its own bar: back, then what it
+  is — the agent's name, or a task's channel since its title leads the page.
+- **You** ends with Sign out, in the danger colour; the header's power icon is for wider
+  screens.
 
 ## Motion
 

@@ -84,19 +84,28 @@ test('real workspace onboarding, mentions and reconnect on a phone', async ({
   context,
   hub,
 }) => {
-  await page.setViewportSize({ width: 375, height: 1000 });
   const errors: string[] = [];
   page.on('pageerror', (error) => errors.push(error.message));
   await onboard(page, hub);
-  // On a phone, channel actions and the account sit behind the menu.
-  const openMenu = async () => {
-    const menu = page.getByRole('button', { name: 'Menu' });
-    if ((await menu.getAttribute('aria-expanded')) !== 'true')
-      await menu.click();
-  };
-  await openMenu();
   await createChannel(page, 'design');
   await register(page, 'Ada', 'developer');
+  // A phone stacks the places: Home holds the channels and the team.
+  await page.setViewportSize({ width: 375, height: 1000 });
+  const places = page.getByRole('navigation', { name: 'Places' });
+  await expect(places.getByRole('button', { name: 'Home' })).toHaveAttribute(
+    'aria-current',
+    'page',
+  );
+  await expect(agentRow(page, 'Ada')).toBeVisible();
+  await page
+    .getByRole('navigation', { name: 'Channels' })
+    .getByRole('button', { name: 'design', exact: true })
+    .click();
+  // A channel has the screen, under a bar that says where it is.
+  await expect(
+    page.getByRole('heading', { name: '# design', exact: true }),
+  ).toBeVisible();
+  await expect(places).toBeHidden();
   await page.getByRole('tab', { name: 'Chat', exact: true }).click();
   await page.getByRole('button', { name: 'Start a topic' }).click();
   await page.getByLabel('Topic title').fill('Release planning');
@@ -162,7 +171,10 @@ test('real workspace onboarding, mentions and reconnect on a phone', async ({
     .evaluateAll((elements) => elements.map((e) => e.id));
   expect(new Set(ids).size).toBe(ids.length);
   expect(errors).toEqual([]);
-  await openMenu();
+  // Back leads Home; signing out is the last row of You.
+  await page.getByRole('button', { name: 'Back', exact: true }).click();
+  await expect(places).toBeVisible();
+  await places.getByRole('button', { name: 'You' }).click();
   await page.getByRole('button', { name: 'Sign out', exact: true }).click();
   await expect(
     page.getByRole('heading', { name: 'Welcome back' }),
@@ -1399,8 +1411,9 @@ test('MOCK UI only: strict native observation renders separate exact state/link 
   context,
   hub,
 }) => {
-  await page.setViewportSize({ width: 375, height: 1000 });
   const observation = await openMockNativeCard(page, context.request, hub);
+  // The agent's page, on a phone.
+  await page.setViewportSize({ width: 375, height: 1000 });
   let body: unknown = observation;
   let status = 200;
   await page.route('**/executions/*/native', async (route) => {
