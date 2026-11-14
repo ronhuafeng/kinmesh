@@ -184,14 +184,6 @@ KINMESH_INBOX_CONFIG=/private/kinmesh/inbox.json npm run inbox:worker -- resume 
 
 Resume keeps the frozen intent, authority and native key. Never mint a new delivery or key to hide an ambiguous one.
 
-The claims' run-slot protocol is modeled in TLA+ in `tests/model/Inbox.tla`, with its action-to-SQL mapping. Checking it is recommended, not required: after changing a claim rule, change the model to match and, if you can spare the time, check it with Java 11+ and the TLA+ tools 1.8.0:
-
-```sh
-TLA2TOOLS=/path/to/tla2tools.jar npm run model:inbox
-```
-
-Each configuration without a bug must pass every property it names, and each known-bad variant (`MCInbox.<bug>.cfg`) must break the one property it names. The full check takes hours and gigabytes of temporary state (removed when it ends), so CI does not run it.
-
 Delivery, source and result identities are kept forever for idempotency; per-delivery diagnostic history is capped at 128 snapshots. There is no purge or disk quota: at storage thresholds stop intake, take a [backup](#backup-and-restore) and archive the installation.
 
 ## Live and native gates
