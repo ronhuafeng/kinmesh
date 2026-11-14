@@ -549,9 +549,7 @@ await test('Team MCP transactions roll back on outbox failure and retries recove
   try {
     const { client } = await f.connect();
     const db = rawDatabase(f.dbPath);
-    await db.exec(
-      "CREATE TRIGGER test_mcp_failure BEFORE INSERT ON communication_outbox BEGIN SELECT RAISE(ABORT,'test failure'); END",
-    );
+    await db.trigger('test_mcp_failure', 'communication_outbox');
     const input = { channelId: f.channelId, ...postInput() };
     const failure = await call(client, 'team_messages_send', input, Message);
     assert.ok(!failure.ok && failure.error.code === 'conflict');
@@ -559,7 +557,7 @@ await test('Team MCP transactions roll back on outbox failure and retries recove
       (await f.comm.history(f.principal, f.teamId, f.channelId)).items.length,
       0,
     );
-    await db.exec('DROP TRIGGER test_mcp_failure');
+    await db.dropTrigger('test_mcp_failure', 'communication_outbox');
     await db.close();
     const sent = await call(client, 'team_messages_send', input, Message);
     assert.ok(sent.ok);
@@ -659,20 +657,23 @@ await test('Team SDK topic/task creation, scoped request-review and external ref
     assert.ok(requested.ok);
     const db = rawDatabase(f.dbPath);
     const counts = () =>
-      [
-        'tasks',
-        'task_events',
-        'task_executions',
-        'communication_outbox',
-        'communication_operations',
-      ].map(
-        async (table) =>
-          z
-            .object({ n: z.number() })
-            .parse(await db.prepare('SELECT COUNT(*) AS n FROM ' + table).get())
-            .n,
+      Promise.all(
+        [
+          'tasks',
+          'task_events',
+          'task_executions',
+          'communication_outbox',
+          'communication_operations',
+        ].map(
+          async (table) =>
+            z
+              .object({ n: z.number() })
+              .parse(
+                await db.prepare('SELECT COUNT(*) AS n FROM ' + table).get(),
+              ).n,
+        ),
       );
-    const before = counts();
+    const before = await counts();
     assert.ok(
       (
         await call(
@@ -720,7 +721,7 @@ await test('Team SDK topic/task creation, scoped request-review and external ref
       pageOf(TaskExecution),
     );
     assert.ok(refs.ok && refs.data.items.length === 1);
-    assert.deepEqual(counts(), before);
+    assert.deepEqual(await counts(), before);
     await db.close();
   } finally {
     await f.cleanup();

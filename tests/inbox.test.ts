@@ -96,30 +96,30 @@ await test('inbox enqueue and outbox/receipt are atomic; exact replay is once an
       IdentityError,
     );
     const counts = () =>
-      [
-        'messages',
-        'communication_outbox',
-        'communication_operations',
-        'agent_inbox',
-        'inbox_history',
-        'tasks',
-        'task_events',
-      ].map((t) =>
-        raw
-          .prepare('SELECT count(*) FROM ' + t)
-          .pluck()
-          .get(),
+      Promise.all(
+        [
+          'messages',
+          'communication_outbox',
+          'communication_operations',
+          'agent_inbox',
+          'inbox_history',
+          'tasks',
+          'task_events',
+        ].map((t) =>
+          raw
+            .prepare('SELECT count(*) FROM ' + t)
+            .pluck()
+            .get(),
+        ),
       );
-    const before = counts();
-    await raw.exec(
-      "CREATE TRIGGER reject_inbox BEFORE INSERT ON agent_inbox BEGIN SELECT RAISE(ABORT,'fixture'); END",
-    );
+    const before = await counts();
+    await raw.trigger('reject_inbox', 'agent_inbox');
     await assert.rejects(() => mention(f));
-    assert.deepEqual(counts(), before);
+    assert.deepEqual(await counts(), before);
     await assert.rejects(() =>
       f.create({ owner: { kind: 'agent', id: f.agent.id } }),
     );
-    assert.deepEqual(counts(), before);
+    assert.deepEqual(await counts(), before);
   } finally {
     await raw.close();
     await f.dispose();
@@ -526,34 +526,34 @@ for (const { failedTable, prelinked } of [
           'inbox_history',
         ];
         const counts = () =>
-          tables.map((t) =>
-            raw
-              .prepare('SELECT count(*) FROM ' + t)
-              .pluck()
-              .get(),
+          Promise.all(
+            tables.map((t) =>
+              raw
+                .prepare('SELECT count(*) FROM ' + t)
+                .pluck()
+                .get(),
+            ),
           );
-        const before = counts();
-        const condition =
+        const before = await counts();
+        await raw.trigger(
+          'reject_ack',
+          failedTable,
+          undefined,
           failedTable === 'inbox_history'
-            ? " WHEN NEW.reason='assistant-result-published'"
-            : '';
-        await raw.exec(
-          'CREATE TRIGGER reject_ack BEFORE INSERT ON ' +
-            failedTable +
-            condition +
-            " BEGIN SELECT RAISE(ABORT,'fixture'); END",
+            ? "NEW.reason = 'assistant-result-published'"
+            : undefined,
         );
         await assert.rejects(async () =>
           f.inbox.ack(c, f.workerPrincipal, fixtureResult()),
         );
-        assert.deepEqual(counts(), before);
+        assert.deepEqual(await counts(), before);
         assert.equal((await f.inbox.get(c.id)).state, 'ready');
         assert.equal(
           (await f.tasks.get(f.principal, f.teamId, f.channelId, task.id))
             .version,
           prelinked ? 2 : 1,
         );
-        await raw.exec('DROP TRIGGER reject_ack');
+        await raw.dropTrigger('reject_ack', failedTable);
         const result = await f.inbox.ack(c, f.workerPrincipal, fixtureResult());
         assert.equal((await f.inbox.get(c.id)).resultMessageId, result.id);
         const current = await f.tasks.get(
@@ -1253,7 +1253,7 @@ await test('never-dispatched expiry, bounded retry history, retained facts and r
     const row = (await f.rows())[0];
     assert.ok(row);
     // Controlled clock fixture only: production code cannot edit expiry or source fields.
-    await raw.exec('DROP TRIGGER inbox_source_immutable');
+    await raw.exec('DROP TRIGGER inbox_source_immutable ON agent_inbox');
     await raw
       .prepare('UPDATE agent_inbox SET expires_at=1 WHERE id=?')
       .run(row.id);
@@ -1405,28 +1405,32 @@ await test('lease lost inside publication rolls back downstream message/outbox/l
     const c = await claim(f);
     await freeze(f, c);
     const counts = () =>
-      [
-        'messages',
-        'communication_outbox',
-        'task_events',
-        'task_executions',
-        'agent_correlations',
-        'inbox_results',
-      ].map((t) =>
-        raw
-          .prepare('SELECT count(*) FROM ' + t)
-          .pluck()
-          .get(),
+      Promise.all(
+        [
+          'messages',
+          'communication_outbox',
+          'task_events',
+          'task_executions',
+          'agent_correlations',
+          'inbox_results',
+        ].map((t) =>
+          raw
+            .prepare('SELECT count(*) FROM ' + t)
+            .pluck()
+            .get(),
+        ),
       );
-    const before = counts();
-    await raw.exec(
-      'CREATE TRIGGER fixture_lose_fence BEFORE INSERT ON inbox_results BEGIN UPDATE agent_inbox SET lease_until=1 WHERE id=NEW.delivery_id; END',
+    const before = await counts();
+    await raw.trigger(
+      'fixture_lose_fence',
+      'inbox_results',
+      'UPDATE agent_inbox SET lease_until = 1 WHERE id = NEW.delivery_id;',
     );
     await assert.rejects(
       async () => f.inbox.ack(c, f.workerPrincipal, fixtureResult()),
       IdentityError,
     );
-    assert.deepEqual(counts(), before);
+    assert.deepEqual(await counts(), before);
     assert.equal((await f.inbox.get(c.id)).leaseUntil, c.leaseUntil);
     assert.equal((await f.inbox.get(c.id)).state, 'ready');
   } finally {
