@@ -153,7 +153,7 @@ for (const denied of [
           );
         if (denied === 'expired-lease') due(f.dbPath, true);
         const before = counts(raw);
-        assert.throws(
+        await assert.rejects(
           async () => f.inbox.ack(f.claim, f.workerPrincipal, fixtureResult()),
           IdentityError,
         );
@@ -197,7 +197,7 @@ for (const failedTable of ['inbox_results', 'inbox_history'])
             failedTable +
             " BEGIN SELECT RAISE(ABORT,'fixture'); END",
         );
-        assert.throws(async () =>
+        await assert.rejects(async () =>
           f.inbox.ack(f.claim, f.workerPrincipal, fixtureResult()),
         );
         assert.deepEqual(counts(raw), before);
@@ -224,7 +224,7 @@ for (const failedTable of ['inbox_results', 'inbox_history'])
           raw.prepare('SELECT correlation_id FROM inbox_results').pluck().get(),
           existing.id,
         );
-        assert.throws(
+        await assert.rejects(
           async () => f.inbox.ack(f.claim, f.workerPrincipal, fixtureResult()),
           IdentityError,
         );

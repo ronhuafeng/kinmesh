@@ -274,11 +274,11 @@ await test('connecting an agent gives the hub’s worker a private credential th
     );
     assert.equal((await connect()).statusCode, 200);
     assert.notEqual(loadAgentToken(tokenFile), token);
-    assert.throws(() => f.store.agents.resolveToken(token));
+    await assert.rejects(() => f.store.agents.resolveToken(token));
     // Disabling revokes it; re-enabling a connected agent gives a fresh one.
     await f.call('POST', f.agentPath + '/lifecycle', { lifecycle: 'disabled' });
     const revoked = loadAgentToken(tokenFile);
-    assert.throws(() => f.store.agents.resolveToken(revoked));
+    await assert.rejects(() => f.store.agents.resolveToken(revoked));
     await f.call('POST', f.agentPath + '/lifecycle', { lifecycle: 'active' });
     assert.ok(await f.store.agents.resolveToken(loadAgentToken(tokenFile)));
     // Revoking the worker credential from the list disconnects the agent.
@@ -303,7 +303,7 @@ await test('connecting an agent gives the hub’s worker a private credential th
       204,
     );
     assert.equal(existsSync(tokenFile), false);
-    assert.throws(() => f.store.agents.resolveToken(last));
+    await assert.rejects(() => f.store.agents.resolveToken(last));
     // A model is required, and agents never reach these routes.
     assert.equal(
       (

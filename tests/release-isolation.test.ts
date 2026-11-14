@@ -196,7 +196,7 @@ await test('aggregate executes all preflights before isolated credential-free st
       );
       assert.ok(existsSync(join(s.directory, '.release-consumed')));
     }
-    assert.throws(f.plan, /consumed/);
+    await assert.rejects(f.plan, /consumed/);
   } finally {
     f.dispose();
   }
@@ -215,7 +215,7 @@ await test('aggregate refuses missing opt-in, missing release config and the leg
         KINMESH_INBOX_LIVE: '1',
       },
     ])
-      assert.throws(() => releasePlanFromEnvironment(env));
+      await assert.rejects(() => releasePlanFromEnvironment(env));
     assert.equal(
       (
         await releasePlanFromEnvironment({
@@ -416,7 +416,7 @@ for (const [name, mutate] of invalid)
     try {
       assert.equal((await f.plan()).length, 3);
       mutate(f);
-      assert.throws(f.plan);
+      await assert.rejects(f.plan);
       for (const dir of [f.sdk, f.teamDir, f.inboxDir])
         assert.equal(existsSync(join(dir, '.release-consumed')), false);
     } finally {
@@ -473,7 +473,7 @@ await test('a native stage failure blocks all later stages and prevents fixture 
       ),
     );
     assert.deepEqual(calls, ['sdk']);
-    assert.throws(f.plan, /consumed/);
+    await assert.rejects(f.plan, /consumed/);
   } finally {
     f.dispose();
   }

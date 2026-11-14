@@ -124,10 +124,10 @@ await test(
         raw.prepare('SELECT count(*) FROM inbox_results').pluck().get(),
         1,
       );
-      assert.throws(async () => {
+      await assert.rejects(async () => {
         await f.inbox.defer(stale, 'uncertain', 'stale');
       });
-      assert.throws(async () => {
+      await assert.rejects(async () => {
         await f.inbox.remember(stale, { operationId: randomOperation() });
       });
     } finally {
@@ -237,7 +237,7 @@ await test(
           .status,
         'in-progress',
       );
-      assert.throws(async () =>
+      await assert.rejects(async () =>
         f.inbox.ack(stale, f.workerPrincipal, fixtureResult()),
       );
     } finally {
@@ -332,7 +332,7 @@ await test(
           .get(),
         1,
       );
-      assert.throws(async () =>
+      await assert.rejects(async () =>
         f.inbox.ack(stale, f.workerPrincipal, fixtureResult()),
       );
     } finally {

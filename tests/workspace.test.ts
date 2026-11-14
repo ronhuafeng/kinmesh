@@ -157,7 +157,7 @@ await test('execution projection bounds SQL history and preserves last appended 
     assert.equal(latest.events.length, 100);
     assert.equal(latest.eventsTruncated, true);
     assert.equal(latest.events.at(-1)?.state, 'waiting');
-    assert.throws(async () =>
+    await assert.rejects(async () =>
       f.store.agents.workspaceExecutions(
         await f.store.agents.resolveToken(f.grant.token),
         f.teamId,

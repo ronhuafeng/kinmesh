@@ -56,7 +56,7 @@ await test('a task is decided by the person who asked for it, or by whom they na
     ).task;
     assert.equal(named.acceptorHumanId, g.human.id);
     // Only someone in the channel can be named, and never by an agent.
-    assert.throws(
+    await assert.rejects(
       async () =>
         f.store.tasks.create(
           f.principal,
@@ -66,7 +66,7 @@ await test('a task is decided by the person who asked for it, or by whom they na
         ),
       rejected(404),
     );
-    assert.throws(
+    await assert.rejects(
       async () =>
         f.store.tasks.create(
           f.developer,
@@ -92,7 +92,7 @@ await test('a task is decided by the person who asked for it, or by whom they na
         note: 'Fine',
       })
     ).task;
-    assert.throws(
+    await assert.rejects(
       () => f.act(f.principal, task, { type: 'accept', note: 'Not mine' }),
       rejected(403),
     );

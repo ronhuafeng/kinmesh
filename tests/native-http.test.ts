@@ -89,7 +89,7 @@ await test('native HTTP: without a team T3 connection it is 503 without expiring
       ),
       execution,
     );
-    assert.throws(async () =>
+    await assert.rejects(async () =>
       f.store.agents.getCorrelation(
         await f.store.agents.resolveToken(f.grant.token),
         f.teamId,

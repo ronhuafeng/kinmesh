@@ -154,9 +154,14 @@ await test('the team is named after the organization, and a sign-in goes on with
 await test('a handle is the mailbox name, numbered when taken', async () => {
   const h = await hub();
   try {
-    const names = ['li@example.com', 'li@sub.example.com', 'x@example.com'].map(
-      async (email) => (await h.store.signIn(feishuPerson(email))).username,
-    );
+    // One after another: each handle depends on those taken before it.
+    const names = [];
+    for (const email of [
+      'li@example.com',
+      'li@sub.example.com',
+      'x@example.com',
+    ])
+      names.push((await h.store.signIn(feishuPerson(email))).username);
     assert.deepEqual(names, ['member-li', 'member-li-2', 'member-x']);
     assert.equal(
       (await h.store.signIn(feishuPerson('a.b+c@example.com'))).username,
@@ -361,10 +366,10 @@ await test('a person from before Feishu is linked to their mailbox and signs in 
       .run('00000000-0000-4000-8000-000000000001', team.team.id);
     raw.close();
     // Not a mailbox someone else holds; not a person who does not exist.
-    assert.throws(async () => {
+    await assert.rejects(async () => {
       await h.store.linkMailbox('old-timer', 'first@example.com');
     });
-    assert.throws(async () => {
+    await assert.rejects(async () => {
       await h.store.linkMailbox('nobody', 'n@example.com');
     });
     await h.store.linkMailbox('old-timer', 'old@example.com');
@@ -375,7 +380,7 @@ await test('a person from before Feishu is linked to their mailbox and signs in 
       'old-timer',
     );
     // Once they have signed in with Feishu, their identity is settled.
-    assert.throws(async () => {
+    await assert.rejects(async () => {
       await h.store.linkMailbox('old-timer', 'other@example.com');
     });
   } finally {

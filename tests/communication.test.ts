@@ -194,7 +194,7 @@ await test('every channel/history/detail/topic/mention/event endpoint hides inac
         ).statusCode,
         404,
       );
-    assert.throws(
+    await assert.rejects(
       () => f.comm.history(f.agentPrincipal, f.teamId, f.channelId),
       rejected(404),
     );
@@ -230,7 +230,7 @@ await test('membership leave/subscribe is self-only; removal prevents resubscrip
   const f = await communicationFixture();
   try {
     await f.invite();
-    assert.throws(
+    await assert.rejects(
       async () =>
         f.comm.enroll(
           f.principal,
@@ -252,7 +252,7 @@ await test('membership leave/subscribe is self-only; removal prevents resubscrip
       leave,
       'leave',
     );
-    assert.throws(
+    await assert.rejects(
       () => f.comm.history(f.agentPrincipal, f.teamId, f.channelId),
       rejected(404),
     );
@@ -283,7 +283,7 @@ await test('membership leave/subscribe is self-only; removal prevents resubscrip
       { operationKey: key(), member: { kind: 'agent', id: f.agent.id } },
       'remove',
     );
-    assert.throws(
+    await assert.rejects(
       () =>
         f.comm.membership(
           f.agentPrincipal,
@@ -343,7 +343,7 @@ await test('mentions require real active joined human/agent members of this chan
       { kind: 'agent', id: other.id },
       { kind: 'human', id: HumanId.parse(randomUUID()) },
     ] as const)
-      assert.throws(
+      await assert.rejects(
         async () =>
           f.comm.post(
             f.principal,
@@ -360,7 +360,7 @@ await test('mentions require real active joined human/agent members of this chan
       f.agent.id,
       'disabled',
     );
-    assert.throws(
+    await assert.rejects(
       async () =>
         f.comm.post(
           f.principal,
@@ -392,7 +392,7 @@ await test('mentions require real active joined human/agent members of this chan
       { sourceEventId: event.fact.id },
       { topicId: topic.id },
     ])
-      assert.throws(
+      await assert.rejects(
         async () =>
           f.comm.post(f.principal, f.teamId, f.channelId, postInput(partial)),
         rejected(404),
@@ -416,7 +416,7 @@ await test('message idempotency is actor/action/target scoped; same key replay p
       await f.comm.post(f.principal, f.teamId, f.channelId, data),
       first,
     );
-    assert.throws(
+    await assert.rejects(
       () =>
         f.comm.post(f.principal, f.teamId, f.channelId, {
           ...data,
@@ -461,7 +461,7 @@ await test('channel/topic/invite/leave/subscribe operations replay exactly and r
       await f.comm.createChannel(f.principal, f.teamId, input),
       channel,
     );
-    assert.throws(
+    await assert.rejects(
       () =>
         f.comm.createChannel(f.principal, f.teamId, {
           ...input,
@@ -480,7 +480,7 @@ await test('channel/topic/invite/leave/subscribe operations replay exactly and r
       await f.comm.createTopic(f.principal, f.teamId, channel.id, topicInput),
       topic,
     );
-    assert.throws(
+    await assert.rejects(
       () =>
         f.comm.createTopic(f.principal, f.teamId, channel.id, {
           ...topicInput,
@@ -508,7 +508,7 @@ await test('channel/topic/invite/leave/subscribe operations replay exactly and r
         'invite',
       ),
     );
-    assert.throws(
+    await assert.rejects(
       () =>
         f.comm.enroll(
           f.principal,
@@ -600,7 +600,7 @@ await test('snapshot keyset pagination has deterministic no-skip/no-duplicate hi
       (await f.comm.history(f.principal, f.teamId, f.channelId)).items.length,
       8,
     );
-    assert.throws(
+    await assert.rejects(
       () =>
         f.comm.history(
           f.principal,
@@ -611,14 +611,14 @@ await test('snapshot keyset pagination has deterministic no-skip/no-duplicate hi
         ),
       rejected(400),
     );
-    assert.throws(
+    await assert.rejects(
       () =>
         f.comm.history(f.agentPrincipal, f.teamId, f.channelId, {
           cursor: firstCursor,
         }),
       rejected(400),
     );
-    assert.throws(
+    await assert.rejects(
       () =>
         f.comm.events(f.principal, f.teamId, f.channelId, {
           cursor: firstCursor,
@@ -691,7 +691,7 @@ await test('channel/topic/outbox pages are bounded stable snapshots and new memb
       { operationKey: key() },
       'leave',
     );
-    assert.throws(
+    await assert.rejects(
       () =>
         f.comm.events(f.principal, f.teamId, f.channelId, {
           cursor: eventsCursor,
@@ -722,7 +722,9 @@ await test('outbox/mention/receipt failure rolls back messages and membership/ch
     const data = postInput({
       mentions: [{ kind: 'agent', id: f.agent.id }],
     });
-    assert.throws(() => f.comm.post(f.principal, f.teamId, f.channelId, data));
+    await assert.rejects(() =>
+      f.comm.post(f.principal, f.teamId, f.channelId, data),
+    );
     assert.equal(
       (await f.comm.history(f.principal, f.teamId, f.channelId)).items.length,
       0,
@@ -731,7 +733,7 @@ await test('outbox/mention/receipt failure rolls back messages and membership/ch
       raw.prepare('SELECT count(*) FROM message_mentions').pluck().get(),
       0,
     );
-    assert.throws(async () =>
+    await assert.rejects(async () =>
       f.comm.createTopic(f.principal, f.teamId, f.channelId, {
         operationKey: key(),
         title: 'Rollback',
@@ -742,7 +744,7 @@ await test('outbox/mention/receipt failure rolls back messages and membership/ch
       0,
     );
     const total = (await f.comm.channels(f.principal, f.teamId)).items.length;
-    assert.throws(async () =>
+    await assert.rejects(async () =>
       f.comm.createChannel(f.principal, f.teamId, {
         operationKey: key(),
         name: 'Rollback',
@@ -752,7 +754,7 @@ await test('outbox/mention/receipt failure rolls back messages and membership/ch
       (await f.comm.channels(f.principal, f.teamId)).items.length,
       total,
     );
-    assert.throws(async () =>
+    await assert.rejects(async () =>
       f.comm.membership(
         f.agentPrincipal,
         f.teamId,
@@ -775,7 +777,7 @@ await test('outbox/mention/receipt failure rolls back messages and membership/ch
     raw.exec(
       "CREATE TRIGGER fail_receipt BEFORE INSERT ON communication_operations BEGIN SELECT RAISE(ABORT,'test failure'); END",
     );
-    assert.throws(async () =>
+    await assert.rejects(async () =>
       f.comm.post(f.principal, f.teamId, f.channelId, postInput()),
     );
     assert.equal(
@@ -863,11 +865,11 @@ await test('revoked/disabled agent tokens and stale principals fail every channe
         ).statusCode,
         401,
       );
-    assert.throws(
+    await assert.rejects(
       () => f.comm.history(f.agentPrincipal, f.teamId, f.channelId),
       rejected(401),
     );
-    assert.throws(
+    await assert.rejects(
       async () =>
         f.comm.post(f.agentPrincipal, f.teamId, f.channelId, postInput()),
       rejected(401),
@@ -1048,7 +1050,7 @@ await test('a channel shows only to those in it; any person in it manages it, as
     raw.prepare('INSERT INTO memberships VALUES (?, ?)').run(id, f.teamId);
     const p: Principal = { kind: 'human', humanId: id };
     assert.equal((await f.comm.channels(p, f.teamId)).items.length, 0);
-    assert.throws(
+    await assert.rejects(
       () => f.comm.channel(p, f.teamId, f.channelId),
       rejected(404),
     );
@@ -1099,7 +1101,7 @@ await test('a channel shows only to those in it; any person in it manages it, as
     );
     const foreign = TeamId.parse(randomUUID());
     raw.prepare('INSERT INTO teams VALUES (?, ?)').run(foreign, 'Foreign');
-    assert.throws(() => f.comm.channels(p, foreign), rejected(403));
+    await assert.rejects(() => f.comm.channels(p, foreign), rejected(403));
     raw
       .prepare('INSERT INTO memberships VALUES (?, ?)')
       .run(f.owner.id, foreign);
@@ -1108,7 +1110,7 @@ await test('a channel shows only to those in it; any person in it manages it, as
       foreign,
       profileInput,
     );
-    assert.throws(
+    await assert.rejects(
       async () =>
         f.comm.post(
           f.principal,
@@ -1120,7 +1122,7 @@ await test('a channel shows only to those in it; any person in it manages it, as
         ),
       rejected(404),
     );
-    assert.throws(async () =>
+    await assert.rejects(async () =>
       f.comm.enroll(
         f.principal,
         f.teamId,
