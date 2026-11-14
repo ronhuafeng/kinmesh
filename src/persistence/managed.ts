@@ -110,8 +110,9 @@ export function managedRepository(
     },
     /**
      * Point the agent at the connected T3 environment and the chosen provider
-     * and model, and give the worker a fresh credential. Reconnecting rotates
-     * the old one. The caller writes the returned token to its private file.
+     * and model. An agent the worker already serves keeps its credential, so
+     * a run under way can still post its answer; otherwise the worker gets a
+     * new one, whose token the caller writes to its private file.
      */
     connect(
       p: Principal,
@@ -143,10 +144,14 @@ export function managedRepository(
           (await agents.grants(p, teamId, agentId)).some(
             (g) => g.id === old.grantId && g.revokedAt === null,
           );
-        const issued =
-          old !== null && live
-            ? await agents.rotate(p, teamId, agentId, old.grantId, input)
-            : await agents.issue(p, teamId, agentId, input);
+        if (old !== null && live) {
+          await q()
+            .update(s.managedBindings)
+            .set({ providerId })
+            .where(eq(s.managedBindings.agentId, agentId));
+          return null;
+        }
+        const issued = await agents.issue(p, teamId, agentId, input);
         const row = { grantId: issued.grant.id, providerId };
         await q()
           .insert(s.managedBindings)

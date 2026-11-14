@@ -251,7 +251,7 @@ await test('connecting an agent gives the hub’s worker a private credential th
       snapshot.managed.map((m) => [m.agentId, m.providerId]),
       [[f.agent.id, 'isolated-dev']],
     );
-    // The hub rotates by reconnecting; a browser rotation would strand the worker.
+    // Only the hub hands the worker its credential; a browser rotation would strand it.
     const managed = await f.store.managed.binding(
       f.principal,
       f.teamId,
@@ -272,9 +272,42 @@ await test('connecting an agent gives the hub’s worker a private credential th
       ).statusCode,
       409,
     );
-    assert.equal((await connect()).statusCode, 200);
-    assert.notEqual(loadAgentToken(tokenFile), token);
-    await assert.rejects(() => f.store.agents.resolveToken(token));
+    // Choosing another model changes what it runs on, not its credential:
+    // a run under way can still post its answer.
+    const grantsBefore = await f.store.agents.grants(
+      f.principal,
+      f.teamId,
+      f.agent.id,
+    );
+    assert.equal(
+      (
+        await f.call('POST', f.agentPath + '/connect', {
+          providerId: 'isolated-other',
+          modelId: 'model-b',
+        })
+      ).statusCode,
+      200,
+    );
+    assert.equal(loadAgentToken(tokenFile), token);
+    assert.ok(await f.store.agents.resolveToken(token));
+    assert.deepEqual(
+      await f.store.agents.grants(f.principal, f.teamId, f.agent.id),
+      grantsBefore,
+    );
+    assert.deepEqual(
+      (await f.store.agents.get(f.principal, f.teamId, f.agent.id)).preferences,
+      {
+        environmentId: 'env-live',
+        providerId: 'isolated-other',
+        modelId: 'model-b',
+      },
+    );
+    assert.deepEqual(
+      (await managedBindings(f.store, f.directory)).map(
+        (b) => b.isolatedProviderId,
+      ),
+      ['isolated-other'],
+    );
     // Disabling revokes it; re-enabling a connected agent gives a fresh one.
     await f.call('POST', f.agentPath + '/lifecycle', { lifecycle: 'disabled' });
     const revoked = loadAgentToken(tokenFile);
@@ -383,13 +416,15 @@ await test('the hub’s worker serves a connected agent without a restart and le
       (await f.inbox.liveness(f.teamId)).map((r) => r.agentId);
     await delay(200);
     assert.deepEqual(await live(), []);
-    const { token } = await f.store.managed.connect(
+    const issued = await f.store.managed.connect(
       f.principal,
       f.teamId,
       f.agent.id,
       { providerId: 'isolated-dev', modelId: 'model-a' },
       WORKER_GRANT,
     );
+    assert.ok(issued);
+    const { token } = issued;
     writeAgentToken(managedDirectory(f.directory), f.agent.id, token);
     await delay(300);
     assert.deepEqual(await live(), [f.agent.id]);

@@ -34,6 +34,8 @@ function blockedText(reason: string, name: string) {
       return `T3 refused ${name}’s access: reconnect T3 and choose Supervised`;
     case 'native-incompatible':
       return `${name}’s model isn’t available in T3: choose another one`;
+    case 'authority-changed':
+      return `${name} was reconnected while this ran in T3, so its answer can’t be posted: ask again`;
     case 'environment-changed':
       return `T3 is no longer the environment ${name} was connected to: connect ${name} again`;
     default:
@@ -229,6 +231,7 @@ export function Recovery({
           </button>
         )}
       {reason !== 'not-assigned' &&
+        reason !== 'authority-changed' &&
         reason !== 'agent-disabled' &&
         reason !== 'not-in-channel' && (
           <button
