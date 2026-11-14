@@ -1530,7 +1530,7 @@ test('a reload keeps the place and unsent work; Back returns to where you were',
   await page.reload();
   await expect(task).toBeVisible();
   // The Inbox is a place too, and Back leaves it for the task again.
-  await page.getByRole('button', { name: /^Inbox/ }).click();
+  await page.getByRole('tab', { name: /^Inbox/ }).click();
   await expect(page).toHaveURL(/inbox/);
   await page.goBack();
   await expect(task).toBeVisible();
