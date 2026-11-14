@@ -173,9 +173,7 @@ function Activity({
   function loseAccess() {
     snapshotRequest.current?.abort();
     setSnapshot(null);
-    setError(
-      'You no longer have access to this activity. Sign in again.',
-    );
+    setError('You no longer have access to this activity. Sign in again.');
   }
   useEffect(() => {
     const controller = new AbortController();

@@ -174,7 +174,12 @@ await test('team-scoped unique profile names, cross-team IDs and nonmember mutat
       name: 'Member’s agent',
       capabilities: ['review'],
     });
-    const issued = f.store.agents.issue(member, f.teamId, theirs.id, grantInput);
+    const issued = f.store.agents.issue(
+      member,
+      f.teamId,
+      theirs.id,
+      grantInput,
+    );
     const rotated = f.store.agents.rotate(
       member,
       f.teamId,

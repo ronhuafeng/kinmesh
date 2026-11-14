@@ -503,7 +503,7 @@ await test('external execution links are multiple immutable references and never
   }
 });
 
-await test('the assigned reviewer/owner and the task\'s acceptor control decisions, never another person of the team or a descriptive role', async () => {
+await test("the assigned reviewer/owner and the task's acceptor control decisions, never another person of the team or a descriptive role", async () => {
   const f = await taskFixture();
   const raw = new Database(f.dbPath);
   try {

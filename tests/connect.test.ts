@@ -117,8 +117,8 @@ await test('a person who did not set up the instance connects T3 and registers a
     f.approve();
     await settle();
     assert.equal(
-      Status.parse((await as('GET', f.team + '/t3')).json<unknown>())
-        .connection?.environmentId,
+      Status.parse((await as('GET', f.team + '/t3')).json<unknown>()).connection
+        ?.environmentId,
       'env-live',
     );
     const registered = await as('POST', f.team + '/agents', {
