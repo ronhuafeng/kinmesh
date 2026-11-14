@@ -52,11 +52,12 @@ await test('populated main/PR18 migration preserves every baseline row and activ
     upgraded = openStore(oldPath);
     const after = new Database(oldPath);
     try {
-      for (const name of names)
-        assert.deepEqual(
-          after.prepare('SELECT * FROM ' + name + ' ORDER BY rowid').all(),
-          source.prepare('SELECT * FROM ' + name + ' ORDER BY rowid').all(),
-        );
+      for (const name of names) {
+        // The baseline had no mailbox; one arrives only from Feishu sign-in.
+        const columns = name === 'humans' ? 'id, username' : '*';
+        const read = `SELECT ${columns} FROM ${name} ORDER BY rowid`;
+        assert.deepEqual(after.prepare(read).all(), source.prepare(read).all());
+      }
       assert.deepEqual(upgraded.operations.get(operation.id), lease);
       assert.equal(upgraded.operations.claim(operation.id, true), undefined);
       assert.deepEqual(upgraded.inbox.status(), []);
