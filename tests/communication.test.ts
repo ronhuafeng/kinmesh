@@ -945,7 +945,7 @@ await test('scope enforcement, actor spoofing, mixed human/agent authority and s
   }
 });
 
-await test('human nonowner team membership alone does not expose channels; owner invite grants scoped participation, not management', async () => {
+await test('a channel shows only to those in it; any person in it manages it, as everyone is equal', async () => {
   const f = await communicationFixture();
   const raw = new Database(f.dbPath);
   try {
@@ -954,8 +954,8 @@ await test('human nonowner team membership alone does not expose channels; owner
       .prepare('INSERT INTO humans (id, username, email) VALUES (?, ?, ?)')
       .run(id, 'participant', 'participant@example.com');
     raw
-      .prepare('INSERT INTO memberships VALUES (?, ?, ?)')
-      .run(id, f.teamId, 'member');
+      .prepare('INSERT INTO memberships VALUES (?, ?)')
+      .run(id, f.teamId);
     const p: Principal = { kind: 'human', humanId: id };
     assert.equal(f.comm.channels(p, f.teamId).items.length, 0);
     assert.throws(
@@ -986,31 +986,28 @@ await test('human nonowner team membership alone does not expose channels; owner
       ).statusCode,
       201,
     );
-    assert.throws(
-      () =>
-        f.comm.createChannel(p, f.teamId, {
-          operationKey: key(),
-          name: 'Escalate',
-        }),
-      rejected(403),
-    );
-    assert.throws(
-      () =>
-        f.comm.enroll(
-          p,
-          f.teamId,
-          f.channelId,
-          { operationKey: key(), member: { kind: 'agent', id: f.agent.id } },
-          'invite',
-        ),
-      rejected(403),
+    // Not the one who set up the team, and still free to make a channel
+    // and bring people into it.
+    const made = f.comm.createChannel(p, f.teamId, {
+      operationKey: key(),
+      name: 'Made by a member',
+    });
+    assert.equal(
+      f.comm.enroll(
+        p,
+        f.teamId,
+        made.id,
+        { operationKey: key(), member: { kind: 'human', id: f.owner.id } },
+        'invite',
+      ).state,
+      'joined',
     );
     const foreign = TeamId.parse(randomUUID());
     raw.prepare('INSERT INTO teams VALUES (?, ?)').run(foreign, 'Foreign');
     assert.throws(() => f.comm.channels(p, foreign), rejected(403));
     raw
-      .prepare('INSERT INTO memberships VALUES (?, ?, ?)')
-      .run(f.owner.id, foreign, 'owner');
+      .prepare('INSERT INTO memberships VALUES (?, ?)')
+      .run(f.owner.id, foreign);
     const foreignAgent = f.store.agents.create(
       f.principal,
       foreign,

@@ -354,8 +354,8 @@ await test('a person from before Feishu is linked to their mailbox and signs in 
       .prepare('INSERT INTO humans (id, username) VALUES (?, ?)')
       .run('00000000-0000-4000-8000-000000000001', 'old-timer');
     raw
-      .prepare('INSERT INTO memberships VALUES (?, ?, ?)')
-      .run('00000000-0000-4000-8000-000000000001', team.team.id, 'owner');
+      .prepare('INSERT INTO memberships VALUES (?, ?)')
+      .run('00000000-0000-4000-8000-000000000001', team.team.id);
     raw.close();
     // Not a mailbox someone else holds; not a person who does not exist.
     assert.throws(() => {

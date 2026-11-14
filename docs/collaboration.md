@@ -4,7 +4,7 @@ Kinmesh owns team identity, communication, task responsibility and human accepta
 
 ## Principals and agent identities
 
-A deployment holds one team, named after the organization: at every sign-in the hub reads the organization's name from Feishu, as the app (`tenant:tenant:readonly`), and renames the team to it; when Feishu cannot say, the name stays. Nobody renames the team in Kinmesh. A person is their Feishu identity, admitted by an organization mailbox ([sign-in](security.md#sign-in-and-sessions)); their handle is, at their first sign-in, the mailbox's name with characters other than `a–z`, `0–9`, `_` and `-` turned into `-`, prefixed `member-` when shorter than three characters, and numbered (`-2`, `-3`…) when taken. The first person to sign in creates the team and its `general` channel; each person after joins the team and `general`.
+A deployment holds one team, and everyone in it is an equal member: there are no roles, so any person may use the workspace, manage channels and agents, and connect T3; deciding on a task is its acceptor's alone (below). A person who leaves the organization can no longer sign in through Feishu; their history stays. The team is named after the organization: at every sign-in the hub reads the organization's name from Feishu, as the app (`tenant:tenant:readonly`), and renames the team to it; when Feishu cannot say, the name stays. Nobody renames the team in Kinmesh. A person is their Feishu identity, admitted by an organization mailbox ([sign-in](security.md#sign-in-and-sessions)); their handle is, at their first sign-in, the mailbox's name with characters other than `a–z`, `0–9`, `_` and `-` turned into `-`, prefixed `member-` when shorter than three characters, and numbered (`-2`, `-3`…) when taken. The first person to sign in creates the team and its `general` channel; each person after joins the team and `general`.
 
 Every protected request resolves its principal again: a human from the verified encrypted session, an agent from `Authorization: Bearer <grant>`. Mixing both is rejected. Actor headers (`X-Kinmesh-Actor`, `X-Actor-Id`, `X-Member-Id`, `X-User-Id`), actor/identity/role query fields and author fields in bodies are rejected; a declared message role is never identity. Repositories recheck grant, scopes, lifecycle, team and channel membership inside each transaction, so a revocation takes effect on the next operation.
 
@@ -12,24 +12,24 @@ A branded `AgentId` is independent of `HumanId` and of every T3 identifier (envi
 
 Let `A = /api/teams/:teamId/agents` and `P = A/:agentId`. IDs are UUIDs.
 
-| Method/path                             | Policy / body                                                                               |
-| --------------------------------------- | ------------------------------------------------------------------------------------------- |
-| `POST A`                                | Human team owner; full profile; 201                                                         |
-| `GET A`                                 | Human team owner; includes disabled profiles                                                |
-| `GET P`                                 | Owner, or the matching active agent with `agents:read`                                      |
-| `PUT P`                                 | Owner; replaces the full editable profile; IDs, team and creation time forbidden            |
-| `PUT P/avatar`, `DELETE P/avatar`       | Owner or the agent itself; body is the image (see [security](security.md#agent-avatars))    |
-| `GET P/avatar`                          | Owner, or the matching agent with `agents:read`; 404 when none                              |
-| `POST P/lifecycle`                      | Owner; `{ "lifecycle": "active" }` or `disabled`                                            |
-| `POST P/grants`                         | Owner, active agent; grant input; 201 `{grant,token}`, `Cache-Control: no-store`            |
-| `GET P/grants`                          | Owner; `{grants, revision}`: metadata, scopes, expiry, revocation; never a hash or secret   |
-| `POST P/grants/:grantId/revoke`         | Owner; 204; final                                                                           |
-| `POST P/grants/:grantId/rotate`         | Owner; grant input; atomic revoke + new secret; 201; 409 for the hub's own worker grant     |
-| `GET P/audit`                           | Owner; immutable profile, grant, avatar and association history                             |
-| `POST P/executions`                     | Owner or matching agent with `executions:write`; active profile; immutable correlation; 201 |
-| `GET P/executions`                      | Owner or matching agent with `executions:read`                                              |
-| `POST P/executions/:executionId/events` | Owner or matching agent with `executions:write`; active profile; `{state}`; 201             |
-| `GET P/executions/:executionId/events`  | Owner or matching agent with `executions:read`; append-only reports                         |
+| Method/path                             | Policy / body                                                                                  |
+| --------------------------------------- | ---------------------------------------------------------------------------------------------- |
+| `POST A`                                | Any person of the team; full profile; 201                                                      |
+| `GET A`                                 | Any person of the team; includes disabled profiles                                             |
+| `GET P`                                 | A person, or the matching active agent with `agents:read`                                      |
+| `PUT P`                                 | A person; replaces the full editable profile; IDs, team and creation time forbidden            |
+| `PUT P/avatar`, `DELETE P/avatar`       | A person or the agent itself; body is the image (see [security](security.md#agent-avatars))    |
+| `GET P/avatar`                          | A person, or the matching agent with `agents:read`; 404 when none                              |
+| `POST P/lifecycle`                      | A person; `{ "lifecycle": "active" }` or `disabled`                                            |
+| `POST P/grants`                         | A person, active agent; grant input; 201 `{grant,token}`, `Cache-Control: no-store`            |
+| `GET P/grants`                          | A person; `{grants, revision}`: metadata, scopes, expiry, revocation; never a hash or secret   |
+| `POST P/grants/:grantId/revoke`         | A person; 204; final                                                                           |
+| `POST P/grants/:grantId/rotate`         | A person; grant input; atomic revoke + new secret; 201; 409 for the hub's own worker grant     |
+| `GET P/audit`                           | A person; immutable profile, grant, avatar and association history                             |
+| `POST P/executions`                     | A person or matching agent with `executions:write`; active profile; immutable correlation; 201 |
+| `GET P/executions`                      | A person or matching agent with `executions:read`                                              |
+| `POST P/executions/:executionId/events` | A person or matching agent with `executions:write`; active profile; `{state}`; 201             |
+| `GET P/executions/:executionId/events`  | A person or matching agent with `executions:read`; append-only reports                         |
 
 A profile is:
 
@@ -61,7 +61,7 @@ Grant input is `{ "label": "…", "scopes": [...], "lifetimeSeconds": 3600 }`: l
 | `tasks:review`                        | Technical review as the assigned reviewer                     |
 | `executions:read`, `executions:write` | Reading; recording execution correlations and runtime reports |
 
-Scopes are checked independently of channel membership, task assignment and role, and never widen when a profile changes. Only the human owner issues, rotates or revokes grants; agents cannot create identities, edit profiles or lifecycle, or administer grants. Human `member` memberships confer no owner administration.
+Scopes are checked independently of channel membership, task assignment and role, and never widen when a profile changes. Any person of the team issues, rotates or revokes grants; agents cannot create identities, edit profiles or lifecycle, or administer grants. There are no roles: everyone of the team is an equal member.
 
 Disabling an agent sets its lifecycle, revokes **all** its grants and writes audit in one transaction. Reactivation keeps identity and history but never restores old grants; when the agent is connected from the workspace, the hub issues its worker a fresh credential. Disabling does not stop T3 work already running or revoke T3 OAuth grants.
 
@@ -77,29 +77,29 @@ SQLite composite foreign keys bind grants, correlations and audit to agent membe
 
 Let `C = /api/teams/:teamId/channels` and `P = C/:channelId`. Every write takes a caller-generated `operationKey` (1–128 of ASCII letters, digits, `.`, `_`, `:`, `-`); reuse it only to retry the same logical operation.
 
-| Method/path                          | Input / policy                                                             |
-| ------------------------------------ | -------------------------------------------------------------------------- |
-| `POST C`                             | `{operationKey,name}`; human team owner; 201, creator enrolled             |
-| `GET C`                              | Page of joined channels                                                    |
-| `GET C?membership=left`              | The caller's own left channels (up to 100); removed ones never listed      |
-| `GET P`                              | Channel metadata; joined membership required                               |
-| `GET P/membership`                   | Caller's own membership                                                    |
-| `POST P/subscribe`                   | `{operationKey}`; rejoin a channel the caller left                         |
-| `POST P/leave`                       | `{operationKey}`; leaves only the caller                                   |
-| `POST P/participants/invite`         | `{operationKey,member}`; joined human owner; enrolls an active team member |
-| `POST P/participants/remove`         | Same input; joined human owner                                             |
-| `POST P/topics`                      | `{operationKey,title}`; joined participant; 201                            |
-| `GET P/topics`, `GET P/topics/:id`   | Topic page; topic metadata in this channel                                 |
-| `GET P/topics/:topicId/messages`     | Topic history page                                                         |
-| `POST P/messages`                    | Post input below; joined participant; 201                                  |
-| `GET P/messages`                     | Channel timeline page, including topic messages                            |
-| `GET P/messages/:messageId`          | Immutable message                                                          |
-| `GET P/messages/:messageId/mentions` | Structured mentions; same authorization as the message                     |
-| `GET P/events`                       | Page of outbox facts for this channel                                      |
+| Method/path                          | Input / policy                                                          |
+| ------------------------------------ | ----------------------------------------------------------------------- |
+| `POST C`                             | `{operationKey,name}`; any person of the team; 201, creator enrolled    |
+| `GET C`                              | Page of joined channels                                                 |
+| `GET C?membership=left`              | The caller's own left channels (up to 100); removed ones never listed   |
+| `GET P`                              | Channel metadata; joined membership required                            |
+| `GET P/membership`                   | Caller's own membership                                                 |
+| `POST P/subscribe`                   | `{operationKey}`; rejoin a channel the caller left                      |
+| `POST P/leave`                       | `{operationKey}`; leaves only the caller                                |
+| `POST P/participants/invite`         | `{operationKey,member}`; a joined person; enrolls an active team member |
+| `POST P/participants/remove`         | Same input; a joined person                                             |
+| `POST P/topics`                      | `{operationKey,title}`; joined participant; 201                         |
+| `GET P/topics`, `GET P/topics/:id`   | Topic page; topic metadata in this channel                              |
+| `GET P/topics/:topicId/messages`     | Topic history page                                                      |
+| `POST P/messages`                    | Post input below; joined participant; 201                               |
+| `GET P/messages`                     | Channel timeline page, including topic messages                         |
+| `GET P/messages/:messageId`          | Immutable message                                                       |
+| `GET P/messages/:messageId/mentions` | Structured mentions; same authorization as the message                  |
+| `GET P/events`                       | Page of outbox facts for this channel                                   |
 
-Reads require human team membership or an active agent grant with `channels:read`, **plus** joined channel membership; owners have no implicit bypass. Agent writes also need `channels:write`. Human members participate in enrolled channels but cannot create channels or manage participants; agents never can. Unknown and inaccessible channels return the same 404 and never appear in lists. Status codes: 401 invalid credentials, 403 missing scope/team/owner right, 400 schema or cursor error, 409 idempotency or uniqueness conflict. Errors never echo input.
+Reads require human team membership or an active agent grant with `channels:read`, **plus** joined channel membership; nobody has an implicit bypass. Agent writes also need `channels:write`. A person creates channels and manages the participants of channels they are in; agents never can. Unknown and inaccessible channels return the same 404 and never appear in lists. Status codes: 401 invalid credentials, 403 missing scope or team, 400 schema or cursor error, 409 idempotency or uniqueness conflict. Errors never echo input.
 
-Membership states are `joined`, `left` (the member may resubscribe) and `removed` (only an owner's invite restores it). Owners cannot remove themselves; they leave. Joining `general` on first sign-in is the one exception to: no public channel discovery and no self-join.
+Membership states are `joined`, `left` (the member may resubscribe) and `removed` (only an invite restores it). Nobody removes themselves; they leave. Joining `general` on first sign-in is the one exception to: no public channel discovery and no self-join.
 
 Post input (every field required; null means absent):
 
@@ -120,7 +120,7 @@ A mention target must be an active, joined participant of this channel; duplicat
 
 Let `T = /api/teams/:teamId/channels/:channelId/tasks`. Every route rechecks joined channel membership. Agents also need `channels:read` and `tasks:read`; commands need `tasks:write`, except review, which needs `tasks:review`.
 
-Any joined member with write authority may create an unowned task or one owned by themselves. Only a human team owner may preassign another member or a reviewer. The creating human owner becomes the immutable `acceptorHumanId`; for other creators the server designates the lowest-ID joined human owner (409 if none). Clients cannot choose or change the acceptor, and no other owner can accept. The acceptor must still be a joined team owner when deciding.
+Any joined member with write authority may create an unowned task or one owned by themselves; a person may also preassign another member or a reviewer, an agent may not. A creating person becomes the immutable `acceptorHumanId`; for an agent the server designates the lowest-ID joined person of the channel (409 if none). Clients cannot choose or change the acceptor, and only the acceptor accepts, sends back or cancels. The acceptor must still be a joined member when deciding.
 
 | Command                 | Legal state / actor                                            | Result                                                     |
 | ----------------------- | -------------------------------------------------------------- | ---------------------------------------------------------- |
@@ -187,7 +187,7 @@ Enqueue never grants authority. Before dispatch and again at publication the wor
 
 A delivery is `ready`, `waiting`, `uncertain`, `blocked`, `acked` or `expired`. A blocked delivery records a cause a person can fix: `agent-disabled`, `credential-invalid`, `not-in-channel`, `not-assigned`, `native-access`, `native-incompatible`, or `authority-or-contract-blocked` when none of these applies.
 
-Owners resume a blocked delivery with `POST /api/teams/:teamId/deliveries/:deliveryId/resume` (owner session and channel read access; agent bearers are refused; keyed, so a retry replays). Resume keeps the frozen intent, authority and native request key, and authority is rechecked at dispatch and publication, so it cannot revive a revoked credential or switch to another.
+Any person resumes a blocked delivery with `POST /api/teams/:teamId/deliveries/:deliveryId/resume` (a person's session and channel read access; agent bearers are refused; keyed, so a retry replays). Resume keeps the frozen intent, authority and native request key, and authority is rechecked at dispatch and publication, so it cannot revive a revoked credential or switch to another.
 
 Before any native effect, the worker freezes the source context, model, Kinmesh grant and T3 endpoint/environment/authority. Each delivery has the stable native identity `actor=inbox-agent:<AgentId>`, `operationKey=inbox:<DeliveryId>`. Changing the T3 authority, grant or model after freezing blocks the delivery rather than starting a new operation elsewhere. The one exception is a launch that provably never reached T3 (no operation ID, reference or journal entry): it is frozen again under the current authority. A database trigger enforces the same rule.
 
@@ -205,13 +205,13 @@ Work that never froze expires after seven days. Frozen, uncertain and correlated
 
 ## Workspace snapshot
 
-`GET /api/workspace` is a human-owner read that reconstructs, from Kinmesh's own data: the team, joined and left channels, the selected channel's messages, topics and tasks, agent profiles and avatars, and channel membership of agents. It takes only bounded cursors and channel/topic selection, never an actor, and responds `Cache-Control: no-store`. Besides the topic page it carries `activeTopics`: up to 10 of the channel's topics, most recently active first (the time of a topic's latest message, or of the topic itself), and whether there are more. Its `revision` changes exactly when what it shows changes; the read time and worker heartbeats that change nothing on screen are left out. The AG-UI snapshot below carries the same kind of `revision` for the agent's runs. Pages hold up to 100 channels and profiles and 50 messages, topics or tasks.
+`GET /api/workspace` is a person's read that reconstructs, from Kinmesh's own data: the team, joined and left channels, the selected channel's messages, topics and tasks, agent profiles and avatars, and channel membership of agents. It takes only bounded cursors and channel/topic selection, never an actor, and responds `Cache-Control: no-store`. Besides the topic page it carries `activeTopics`: up to 10 of the channel's topics, most recently active first (the time of a topic's latest message, or of the topic itself), and whether there are more. Its `revision` changes exactly when what it shows changes; the read time and worker heartbeats that change nothing on screen are left out. The AG-UI snapshot below carries the same kind of `revision` for the agent's runs. Pages hold up to 100 channels and profiles and 50 messages, topics or tasks.
 
 It also carries:
 
 - `deliveries` — for the visible messages and tasks: delivery ID, agent, source, state, reason, times and the reply message. Claims, frozen launches, operation IDs and native references stay in the worker.
 - `replies` — for visible agent replies: outcome, model and T3 identifiers.
-- `attention` — what waits on the signed-in owner across joined channels: `decide` (tasks awaiting their sign-off, review or rework; up to 50), `unstuck` (blocked deliveries; up to 50) and `connect` (agents with queued work and no live worker).
+- `attention` — what waits on the signed-in person across joined channels: `decide` (tasks awaiting their sign-off, review or rework; up to 50), `unstuck` (blocked deliveries; up to 50) and `connect` (agents with queued work and no live worker).
 - `wake` — per agent, when a worker last recorded it and whether that is within 90 seconds (see [worker liveness](operations.md#worker-liveness)).
 - `managed`, `teamMcp` — agents the hub runs, and when an agent's credential last reached Team MCP. Team MCP presence is evidence, not authority.
 - `nativeT3Origin` — the origin of the team's T3 connection, used to [check a run](t3.md#checking-a-run), or null before Connect T3.

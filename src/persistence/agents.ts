@@ -109,12 +109,14 @@ export function agentRepository(db: BetterSQLite3Database<typeof s>) {
       )
       .get();
     if (membership === undefined) throw new IdentityError(403);
-    return { role: membership.role };
   }
-  /** The team's human owner; everyone else is refused. */
-  function owner(p: Principal, teamId: TeamId) {
-    if (teamAccess(p, teamId).role !== 'owner' || p.kind !== 'human')
-      throw new IdentityError(403);
+  /**
+   * A person of the team: any member, since everyone is equal; an agent is
+   * refused.
+   */
+  function person(p: Principal, teamId: TeamId) {
+    teamAccess(p, teamId);
+    if (p.kind !== 'human') throw new IdentityError(403);
   }
   function access(
     p: Principal,
@@ -125,7 +127,7 @@ export function agentRepository(db: BetterSQLite3Database<typeof s>) {
     Principal.parse(p);
     TeamId.parse(teamId);
     AgentId.parse(agentId);
-    if (p.kind === 'human') owner(p, teamId);
+    if (p.kind === 'human') person(p, teamId);
     else {
       const current = checkedGrant(p);
       if (
@@ -137,12 +139,12 @@ export function agentRepository(db: BetterSQLite3Database<typeof s>) {
     }
     return profile(teamId, agentId);
   }
-  /** The team owner, or the agent acting on its own profile. */
+  /** A person of the team, or the agent acting on its own profile. */
   function self(p: Principal, teamId: TeamId, agentId: AgentId) {
     Principal.parse(p);
     TeamId.parse(teamId);
     AgentId.parse(agentId);
-    if (p.kind === 'human') owner(p, teamId);
+    if (p.kind === 'human') person(p, teamId);
     else {
       checkedGrant(p);
       if (p.teamId !== teamId || p.agentId !== agentId)
@@ -181,7 +183,7 @@ export function agentRepository(db: BetterSQLite3Database<typeof s>) {
     agentId: AgentId,
     input: GrantInput,
   ) {
-    owner(p, teamId);
+    person(p, teamId);
     if (p.kind !== 'human' || profile(teamId, agentId).lifecycle !== 'active')
       throw new IdentityError(409);
     const data = GrantInput.parse(input);
@@ -231,7 +233,7 @@ export function agentRepository(db: BetterSQLite3Database<typeof s>) {
     agentId: AgentId,
     grantId: string,
   ) {
-    owner(p, teamId);
+    person(p, teamId);
     profile(teamId, agentId);
     grantFor(teamId, agentId, grantId);
     db.update(s.agentGrants)
@@ -292,10 +294,10 @@ export function agentRepository(db: BetterSQLite3Database<typeof s>) {
     },
     authorize: access,
     teamAccess,
-    owner,
+    person,
     create(p: Principal, teamId: TeamId, input: ProfileInput) {
       return atomic(() => {
-        owner(p, teamId);
+        person(p, teamId);
         const data = ProfileInput.parse(input);
         const agent = Agent.parse({
           ...data,
@@ -320,7 +322,7 @@ export function agentRepository(db: BetterSQLite3Database<typeof s>) {
       return access(p, teamId, agentId, 'agents:read');
     },
     list(p: Principal, teamId: TeamId) {
-      owner(p, teamId);
+      person(p, teamId);
       return db
         .select({ id: s.agents.id })
         .from(s.agents)
@@ -328,10 +330,10 @@ export function agentRepository(db: BetterSQLite3Database<typeof s>) {
         .all()
         .map((r) => profile(teamId, AgentId.parse(r.id)));
     },
-    /** Bounded owner projection. Existing list/identity API contracts remain unchanged. */
+    /** Bounded projection for people. Existing list/identity API contracts remain unchanged. */
     workspaceProfiles(p: Principal, teamId: TeamId) {
       return atomic(() => {
-        owner(p, teamId);
+        person(p, teamId);
         const rows = db
           .select({ id: s.agents.id })
           .from(s.agents)
@@ -398,7 +400,7 @@ export function agentRepository(db: BetterSQLite3Database<typeof s>) {
       input: ProfileInput,
     ) {
       return atomic(() => {
-        owner(p, teamId);
+        person(p, teamId);
         profile(teamId, agentId);
         const data = ProfileInput.parse(input);
         db.update(s.agents)
@@ -414,7 +416,7 @@ export function agentRepository(db: BetterSQLite3Database<typeof s>) {
         return profile(teamId, agentId);
       });
     },
-    /** Set an agent's picture: the team owner, or the agent itself. */
+    /** Set an agent's picture: a person of the team, or the agent itself. */
     setAvatar(p: Principal, teamId: TeamId, agentId: AgentId, bytes: Buffer) {
       return atomic(() => {
         self(p, teamId, agentId);
@@ -463,7 +465,7 @@ export function agentRepository(db: BetterSQLite3Database<typeof s>) {
     },
     /** Which agents have a picture, and since when; no image bytes. */
     avatars(p: Principal, teamId: TeamId) {
-      owner(p, teamId);
+      person(p, teamId);
       return db
         .select({
           agentId: s.agentAvatars.agentId,
@@ -480,7 +482,7 @@ export function agentRepository(db: BetterSQLite3Database<typeof s>) {
       lifecycle: 'active' | 'disabled',
     ) {
       return atomic(() => {
-        owner(p, teamId);
+        person(p, teamId);
         profile(teamId, agentId);
         z.enum(['active', 'disabled']).parse(lifecycle);
         db.update(s.agents)
@@ -517,7 +519,7 @@ export function agentRepository(db: BetterSQLite3Database<typeof s>) {
       input: GrantInput,
     ) {
       return atomic(() => {
-        owner(p, teamId);
+        person(p, teamId);
         if (grantFor(teamId, agentId, grantId).revokedAt !== null)
           throw new IdentityError(409);
         revoke(p, teamId, agentId, grantId);
@@ -525,7 +527,7 @@ export function agentRepository(db: BetterSQLite3Database<typeof s>) {
       });
     },
     grants(p: Principal, teamId: TeamId, agentId: AgentId) {
-      owner(p, teamId);
+      person(p, teamId);
       profile(teamId, agentId);
       return db
         .select({
@@ -582,9 +584,9 @@ export function agentRepository(db: BetterSQLite3Database<typeof s>) {
         return correlation(teamId, agentId, id);
       });
     },
-    /** Exact immutable association, restricted to a currently authorized human owner. */
+    /** Exact immutable association, restricted to a currently authorized person of the team. */
     getCorrelation(p: Principal, teamId: TeamId, agentId: AgentId, id: string) {
-      owner(p, teamId);
+      person(p, teamId);
       profile(teamId, AgentId.parse(agentId));
       return correlation(teamId, agentId, id);
     },
@@ -638,7 +640,7 @@ export function agentRepository(db: BetterSQLite3Database<typeof s>) {
         .map((r) => RuntimeEvent.parse({ ...r, author: parseJson(r.author) }));
     },
     audit(p: Principal, teamId: TeamId, agentId: AgentId) {
-      owner(p, teamId);
+      person(p, teamId);
       profile(teamId, agentId);
       return db
         .select()

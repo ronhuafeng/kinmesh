@@ -26,6 +26,6 @@ Before exposing Kinmesh beyond this machine, read [security](docs/security.md).
 | [AGENTS.md](AGENTS.md)                 | Development guidelines: checks, merging, documentation rules, who owns which fact |
 | [Design](docs/design/DESIGN.md)        | Design principles and all UI look, behaviour and wording                          |
 | [Collaboration](docs/collaboration.md) | Domain model and HTTP API: identities, channels, tasks, Inbox, workspace snapshot |
-| [T3 and Team MCP](docs/t3.md)          | T3 adapter, owner sign-in, supported T3, Team MCP tools and provider setup        |
+| [T3 and Team MCP](docs/t3.md)          | T3 adapter, T3 sign-in, supported T3, Team MCP tools and provider setup           |
 | [Operations](docs/operations.md)       | Running the hub and worker, live gates, release check, CI                         |
 | [Security](docs/security.md)           | Every security rule and limit                                                     |

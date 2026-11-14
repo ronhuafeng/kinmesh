@@ -599,17 +599,18 @@ export function inboxRepository(
         ? 'not-assigned'
         : 'authority-or-contract-blocked';
     },
-    // Operator-local recovery; owners use resumeAsOwner. Neither mints a new native operation key.
+    // Operator-local recovery; people use resumeByPerson. Neither mints a new native operation key.
     resume(id: string) {
       atomic(() => {
         reopen(id, 'operator-resume');
       });
     },
     /**
-     * Owner recovery from the workspace: the same resume, for a delivery in a
-     * channel the owner can read. Retrying the same operation key replays.
+     * Recovery from the workspace: the same resume, by any person of the
+     * team, for a delivery in a channel they can read. Retrying the same
+     * operation key replays.
      */
-    resumeAsOwner(
+    resumeByPerson(
       p: Principal,
       teamId: string,
       id: string,
@@ -617,7 +618,7 @@ export function inboxRepository(
     ) {
       return atomic(() => {
         if (p.kind !== 'human') throw new IdentityError(403);
-        agents.owner(p, TeamId.parse(teamId));
+        agents.person(p, TeamId.parse(teamId));
         const row = db
           .select()
           .from(t)

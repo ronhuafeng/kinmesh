@@ -36,16 +36,16 @@ Kinmesh is a single-node service for one organization, with a loopback listener.
 
 ## Agent avatars
 
-`PUT /api/teams/:teamId/agents/:agentId/avatar` accepts only the image bytes, typed `image/png`, `image/jpeg` or `image/webp`, at most 128 KiB. The type is decided from the content's signature, so SVG and anything else is refused. Only the team owner or the agent itself may set or remove it. Avatars are served with their detected type, `nosniff` and a sandboxing CSP.
+`PUT /api/teams/:teamId/agents/:agentId/avatar` accepts only the image bytes, typed `image/png`, `image/jpeg` or `image/webp`, at most 128 KiB. The type is decided from the content's signature, so SVG and anything else is refused. Only a person of the team or the agent itself may set or remove it. Avatars are served with their detected type, `nosniff` and a sandboxing CSP.
 
 ## Hub-held worker secrets
 
-For agents connected from the workspace, the hub holds the worker's Kinmesh tokens and the team's T3 OAuth credential as files in `<database directory>/managed/`. The directory is 0700 and must be owned by the hub's user and not a symlink; each file is 0600 and written atomically. They are never put in SQLite, logs, responses or the browser. Back up and protect the directory like the database. Every connect, disconnect and T3 route requires an owner session; agent bearers are refused. Revoking the hub's worker grant disconnects the agent; that grant cannot be rotated from the browser.
+For agents connected from the workspace, the hub holds the worker's Kinmesh tokens and the team's T3 OAuth credential as files in `<database directory>/managed/`. The directory is 0700 and must be owned by the hub's user and not a symlink; each file is 0600 and written atomically. They are never put in SQLite, logs, responses or the browser. Back up and protect the directory like the database. Every connect, disconnect and T3 route requires a person's session; agent bearers are refused. Revoking the hub's worker grant disconnects the agent; that grant cannot be rotated from the browser.
 
 ## T3 credentials
 
 - T3 OAuth credential files are 0600, outside the repository, owned by the service user; loading rejects symlinks and shared, executable, oversized or wrong-endpoint files, and any scope beyond `orchestration:read` and `orchestration:operate`.
-- Kinmesh asks for Supervised (`approval-required`) authority, never Full access, and never approves on the owner's behalf. Authorization URLs and callback values are never printed to logs; manual mode writes only to the controlling terminal. Never paste pairing codes, callback URLs or tokens into chat, issues or prompts.
+- Kinmesh asks for Supervised (`approval-required`) authority, never Full access, and never approves on anyone's behalf. Authorization URLs and callback values are never printed to logs; manual mode writes only to the controlling terminal. Never paste pairing codes, callback URLs or tokens into chat, issues or prompts.
 - Workers never open consent or widen authority. A frozen delivery cannot move to a different T3 authority unless it provably never reached T3.
 - **Check in T3** reads only, through the team's T3 connection; nothing in the request chooses the endpoint, credential, environment or thread. Every native failure is one generic error, and a T3 link is shown only after validating it against the team's T3 origin and the exact thread.
 - The workspace probe for a local T3 contacts only `127.0.0.1:3773`.

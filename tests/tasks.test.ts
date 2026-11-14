@@ -33,7 +33,6 @@ await test('task domain algebra rejects invalid commands/transitions and never l
           task,
           f.developer,
           commandInput(task, { type: 'progress', note: 'No owner' }),
-          false,
           new Date().toISOString(),
         ),
       rejected(403),
@@ -44,7 +43,6 @@ await test('task domain algebra rejects invalid commands/transitions and never l
           task,
           f.principal,
           commandInput(task, { type: 'accept', note: 'Premature' }),
-          true,
           new Date().toISOString(),
         ),
       rejected(409),
@@ -70,7 +68,6 @@ await test('task domain algebra rejects invalid commands/transitions and never l
           claimed,
           f.developer,
           commandInput(claimed, { type: 'accept', note: 'I declare success' }),
-          true,
           new Date().toISOString(),
         ),
       rejected(403),
@@ -85,7 +82,6 @@ await test('task domain algebra rejects invalid commands/transitions and never l
             reviewer: principalMember(f.developer),
             note: 'Self review',
           }),
-          false,
           new Date().toISOString(),
         ),
       rejected(409),
@@ -507,7 +503,7 @@ await test('external execution links are multiple immutable references and never
   }
 });
 
-await test('assigned reviewer/owner and designated current human owner control decisions, never arbitrary channel humans or descriptive roles', async () => {
+await test('the assigned reviewer/owner and the task\'s acceptor control decisions, never another person of the team or a descriptive role', async () => {
   const f = await taskFixture();
   const raw = new Database(f.dbPath);
   try {
@@ -540,14 +536,15 @@ await test('assigned reviewer/owner and designated current human owner control d
       decision: 'approve',
       note: 'Assigned reviewer approves',
     }).task;
-    for (const role of ['member', 'owner'] as const) {
+    // Another person of the team, in the channel, is not the acceptor.
+    {
       const humanId = HumanId.parse(randomUUID());
       raw
         .prepare('INSERT INTO humans (id, username, email) VALUES (?, ?, ?)')
-        .run(humanId, 'other-' + role, `other-${role}@example.com`);
+        .run(humanId, 'other-person', 'other-person@example.com');
       raw
-        .prepare('INSERT INTO memberships VALUES (?,?,?)')
-        .run(humanId, f.teamId, role);
+        .prepare('INSERT INTO memberships VALUES (?, ?)')
+        .run(humanId, f.teamId);
       f.comm.enroll(
         f.principal,
         f.teamId,
@@ -555,7 +552,7 @@ await test('assigned reviewer/owner and designated current human owner control d
         { operationKey: key(), member: { kind: 'human', id: humanId } },
         'invite',
       );
-      const cookies = await signInAs(f.app, `other-${role}@example.com`);
+      const cookies = await signInAs(f.app, 'other-person@example.com');
       for (const action of ['accept', 'rework', 'cancel'])
         assert.equal(
           (
@@ -573,17 +570,6 @@ await test('assigned reviewer/owner and designated current human owner control d
           403,
         );
     }
-    raw
-      .prepare("UPDATE memberships SET role='member' WHERE human_id=?")
-      .run(f.owner.id);
-    assert.throws(
-      () =>
-        f.act(f.principal, task, {
-          type: 'accept',
-          note: 'Lost owner membership',
-        }),
-      rejected(403),
-    );
   } finally {
     raw.close();
     await f.dispose();
