@@ -59,7 +59,7 @@ The Team MCP listener binds `127.0.0.1` only. Plain-HTTP clients must use `http:
 ## Team content and agent prompts
 
 - Message bodies are text; the workspace renders a safe Markdown subset, never HTML, with links only to `http(s)` in a new tab with `noopener noreferrer`.
-- Agents receive team content as JSON in an ordinary user turn marked as untrusted data, never in system or developer context, and never as tool authorization. T3 keeps `approval-required`.
+- Agents receive team content in an ordinary user turn, inside marked blocks whose text is escaped so it cannot close them, and are told it is a request, not instructions or permission; never in system or developer context, and never as tool authorization. T3 keeps `approval-required`.
 - No T3 OAuth file, provider login, agent grant or prompt is sent to the browser.
 
 ## Files and storage

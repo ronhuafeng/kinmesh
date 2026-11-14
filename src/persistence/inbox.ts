@@ -108,6 +108,26 @@ export function inboxRepository(
       createdAt: dbNow,
     });
   }
+  /** A person or agent by the name the workspace shows. */
+  async function authorName(author: z.infer<typeof OutboxFact>['author']) {
+    const row =
+      author.kind === 'human'
+        ? (
+            await q()
+              .select({ name: s.humans.username })
+              .from(s.humans)
+              .where(eq(s.humans.id, author.humanId))
+              .limit(1)
+          )[0]
+        : (
+            await q()
+              .select({ name: s.agents.name })
+              .from(s.agents)
+              .where(eq(s.agents.id, author.agentId))
+              .limit(1)
+          )[0];
+    return row?.name ?? 'someone';
+  }
   /** Blocked → retry with the frozen intent; never a new native operation key. */
   async function reopen(id: string, reason: DeliveryReason) {
     const row = await get(id);
@@ -343,21 +363,14 @@ export function inboxRepository(
         return {
           profile,
           context: SourceContext.parse({
-            deliveryId: c.id,
-            eventId: c.eventId,
-            rootId: c.rootId,
-            depth: c.depth,
-            agentId: c.agentId,
-            teamId: c.teamId,
             channelId: c.channelId,
             channelName: channel.name,
-            author: fact.author,
-            topic: topic === null ? null : { id: topic.id, title: topic.title },
+            author: await authorName(fact.author),
+            topic: topic === null ? null : topic.title,
             message:
               message === null
                 ? null
                 : {
-                    id: message.id,
                     body: message.body.slice(0, 4000),
                     truncated: message.body.length > 4000,
                   },
@@ -366,6 +379,8 @@ export function inboxRepository(
                 ? null
                 : {
                     id: task.id,
+                    change:
+                      fact.kind === 'task.changed' ? fact.taskAction : null,
                     title: task.title,
                     description: task.description.slice(0, 2000),
                     status: task.state.status,

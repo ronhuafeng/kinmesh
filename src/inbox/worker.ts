@@ -202,7 +202,11 @@ export async function deliver(
             title: `Kinmesh: ${profile.name} in #${context.channelName}`,
             mode: 'approval-required',
             model,
-            message: wakePrompt(context, conversation === undefined),
+            message: wakePrompt(
+              context,
+              profile.name,
+              conversation === undefined,
+            ),
           },
           ...(conversation === undefined ? {} : { conversation }),
         }),
