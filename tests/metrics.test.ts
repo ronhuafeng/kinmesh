@@ -50,6 +50,7 @@ await test('the hub is live while it answers, and ready only with its worker', a
 
 await test('/metrics reports the hub in Prometheus text, and nothing about anyone', async () => {
   const h = await hub(() => true, 8);
+  // Limits are per client: someone else floods; this machine still reads.
   try {
     const mailbox = 'ada.lovelace@example.com';
     const cookies = await signInAs(h.app, mailbox);
@@ -69,8 +70,11 @@ await test('/metrics reports the hub in Prometheus text, and nothing about anyon
       url: `/api/teams/${team.team.id}/channels/${channel.id}/messages`,
       cookies,
     });
-    // Over the limit, at least once.
-    for (let i = 0; i < 10; i++) await h.app.inject({ url: '/health/live' });
+    for (let i = 0; i < 10; i++)
+      await h.app.inject({
+        url: '/health/live',
+        remoteAddress: '198.51.100.9',
+      });
     const metrics = await h.app.inject({ url: '/metrics' });
     assert.equal(metrics.statusCode, 200);
     assert.match(String(metrics.headers['content-type']), /text\/plain/);
