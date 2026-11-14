@@ -10,8 +10,9 @@ import { loadAgentToken } from '../../src/team-mcp/client.js';
 const config = loadWorkerConfig(process.argv[2] ?? '');
 const store = await openStore(config.database);
 const counter = rawDatabase(config.database);
+// Workers start together; one at a time makes the table.
 await counter.exec(
-  'CREATE TABLE IF NOT EXISTS fixture_native_launches (request_id TEXT PRIMARY KEY, transmissions INTEGER NOT NULL)',
+  'SELECT pg_advisory_lock(1); CREATE TABLE IF NOT EXISTS fixture_native_launches (request_id TEXT PRIMARY KEY, transmissions INTEGER NOT NULL); SELECT pg_advisory_unlock(1)',
 );
 const stopping = new AbortController();
 for (const s of ['SIGTERM', 'SIGINT'])
@@ -32,7 +33,7 @@ try {
           if (typeof id !== 'string') throw new Error('Missing native key');
           await counter
             .prepare(
-              'INSERT INTO fixture_native_launches VALUES (?,1) ON CONFLICT(request_id) DO UPDATE SET transmissions=transmissions+1',
+              'INSERT INTO fixture_native_launches VALUES (?,1) ON CONFLICT(request_id) DO UPDATE SET transmissions=fixture_native_launches.transmissions+1',
             )
             .run(id);
           process.send?.('outbound');

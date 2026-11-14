@@ -5,9 +5,9 @@ import { randomUUID } from 'node:crypto';
 import { deliveryScopes, inboxIntent } from '../src/domain/inbox.js';
 import { WORKER_GRANT } from '../src/server/connect.js';
 
-await test('inbox launch identity is exactly what the 0009 immutability trigger matches', () => {
+await test('inbox launch identity is exactly what the delivery immutability rule matches', () => {
   const sql = readFileSync(
-    new URL('../drizzle/0009_refreeze_undispatched.sql', import.meta.url),
+    new URL('../drizzle/0001_rules.sql', import.meta.url),
     'utf8',
   );
   const match =
