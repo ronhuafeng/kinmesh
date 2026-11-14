@@ -818,7 +818,7 @@ await test('database constraints enforce immutable identity/history, final revoc
       'DELETE FROM agent_correlations',
       'UPDATE agent_audit SET detail = detail',
       'DELETE FROM agent_audit',
-      'UPDATE agent_grants SET agent_id = agent_id',
+      "UPDATE agent_grants SET token_hash = repeat('b', 64)",
     ])
       await assert.rejects(() => raw.exec(sql));
     await f.store.agents.runtimeEvent(
@@ -846,7 +846,7 @@ await test('database constraints enforce immutable identity/history, final revoc
     await assert.rejects(() =>
       raw
         .prepare(
-          'INSERT INTO agent_correlations SELECT ?, agent_id, ?, reference_key, reference, provider_session_id, invocation_id, author, created_at FROM agent_correlations LIMIT 1',
+          'INSERT INTO agent_correlations (id, agent_id, team_id, reference_key, reference, provider_session_id, invocation_id, author, created_at) SELECT ?, agent_id, ?, reference_key, reference, provider_session_id, invocation_id, author, created_at FROM agent_correlations LIMIT 1',
         )
         .run(randomUUID(), teamId),
     );
@@ -869,9 +869,7 @@ await test('audit failure rolls back profile changes, disable/revocation and rot
   const f = await agentFixture();
   const raw = rawDatabase(f.dbPath);
   try {
-    await raw.exec(
-      "CREATE TRIGGER reject_test_audit BEFORE INSERT ON agent_audit BEGIN SELECT RAISE(ABORT, 'test rollback'); END",
-    );
+    await raw.trigger('reject_test_audit', 'agent_audit');
     await assert.rejects(() =>
       f.store.agents.update(f.principal, f.teamId, f.agent.id, {
         ...profileInput,

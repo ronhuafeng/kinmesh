@@ -716,9 +716,7 @@ await test('outbox/mention/receipt failure rolls back messages and membership/ch
     await f.invite();
     const before = (await f.comm.events(f.principal, f.teamId, f.channelId))
       .items.length;
-    await raw.exec(
-      "CREATE TRIGGER fail_outbox BEFORE INSERT ON communication_outbox BEGIN SELECT RAISE(ABORT,'test failure'); END",
-    );
+    await raw.trigger('fail_outbox', 'communication_outbox');
     const data = postInput({
       mentions: [{ kind: 'agent', id: f.agent.id }],
     });
@@ -767,16 +765,14 @@ await test('outbox/mention/receipt failure rolls back messages and membership/ch
       (await f.comm.participant(f.agentPrincipal, f.teamId, f.channelId)).state,
       'joined',
     );
-    await raw.exec('DROP TRIGGER fail_outbox');
+    await raw.dropTrigger('fail_outbox', 'communication_outbox');
     const posted = await f.comm.post(f.principal, f.teamId, f.channelId, data);
     assert.ok(posted.id);
     assert.equal(
       (await f.comm.events(f.principal, f.teamId, f.channelId)).items.length,
       before + 1,
     );
-    await raw.exec(
-      "CREATE TRIGGER fail_receipt BEFORE INSERT ON communication_operations BEGIN SELECT RAISE(ABORT,'test failure'); END",
-    );
+    await raw.trigger('fail_receipt', 'communication_operations');
     await assert.rejects(async () =>
       f.comm.post(f.principal, f.teamId, f.channelId, postInput()),
     );

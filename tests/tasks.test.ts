@@ -963,9 +963,7 @@ await test('task CAS, audit, link and shared outbox roll back together on inject
     const before = (await f.comm.events(f.principal, f.teamId, f.channelId))
       .items.length;
     const command = commandInput(task, { type: 'claim' });
-    await raw.exec(
-      "CREATE TRIGGER fail_task_audit BEFORE INSERT ON task_events BEGIN SELECT RAISE(ABORT,'test rollback'); END",
-    );
+    await raw.trigger('fail_task_audit', 'task_events');
     await assert.rejects(() =>
       f.tasks.command(f.developer, f.teamId, f.channelId, task.id, command),
     );
@@ -978,7 +976,7 @@ await test('task CAS, audit, link and shared outbox roll back together on inject
       (await f.comm.events(f.principal, f.teamId, f.channelId)).items.length,
       before,
     );
-    await raw.exec('DROP TRIGGER fail_task_audit');
+    await raw.dropTrigger('fail_task_audit', 'task_events');
     const claimed = (
       await f.tasks.command(
         f.developer,
@@ -988,9 +986,7 @@ await test('task CAS, audit, link and shared outbox roll back together on inject
         command,
       )
     ).task;
-    await raw.exec(
-      "CREATE TRIGGER fail_task_outbox BEFORE INSERT ON communication_outbox BEGIN SELECT RAISE(ABORT,'test rollback'); END",
-    );
+    await raw.trigger('fail_task_outbox', 'communication_outbox');
     await assert.rejects(() =>
       f.act(f.developer, claimed, {
         type: 'link-execution',
@@ -1008,10 +1004,8 @@ await test('task CAS, audit, link and shared outbox roll back together on inject
       2,
     );
     await assert.rejects(() => f.create());
-    await raw.exec('DROP TRIGGER fail_task_outbox');
-    await raw.exec(
-      "CREATE TRIGGER fail_task_receipt BEFORE INSERT ON communication_operations BEGIN SELECT RAISE(ABORT,'test rollback'); END",
-    );
+    await raw.dropTrigger('fail_task_outbox', 'communication_outbox');
+    await raw.trigger('fail_task_receipt', 'communication_operations');
     await assert.rejects(() =>
       f.act(f.developer, claimed, { type: 'progress', note: 'Not persisted' }),
     );
@@ -1019,7 +1013,7 @@ await test('task CAS, audit, link and shared outbox roll back together on inject
       (await f.tasks.get(f.principal, f.teamId, f.channelId, task.id)).version,
       2,
     );
-    await raw.exec('DROP TRIGGER fail_task_receipt');
+    await raw.dropTrigger('fail_task_receipt', 'communication_operations');
     for (const sql of [
       "UPDATE tasks SET criteria='[]'",
       'UPDATE tasks SET owner_key=NULL',

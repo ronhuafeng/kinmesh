@@ -40,22 +40,24 @@ async function prepared() {
   return { ...f, task, claim };
 }
 const counts = (raw: RawDatabase) =>
-  [
-    'messages',
-    'communication_outbox',
-    'communication_operations',
-    'agent_correlations',
-    'agent_runtime_events',
-    'agent_audit',
-    'task_executions',
-    'task_events',
-    'inbox_results',
-    'inbox_history',
-  ].map((table) =>
-    raw
-      .prepare('SELECT count(*) FROM ' + table)
-      .pluck()
-      .get(),
+  Promise.all(
+    [
+      'messages',
+      'communication_outbox',
+      'communication_operations',
+      'agent_correlations',
+      'agent_runtime_events',
+      'agent_audit',
+      'task_executions',
+      'task_events',
+      'inbox_results',
+      'inbox_history',
+    ].map((table) =>
+      raw
+        .prepare('SELECT count(*) FROM ' + table)
+        .pluck()
+        .get(),
+    ),
   );
 
 for (const other of [
@@ -155,12 +157,12 @@ for (const denied of [
             'remove',
           );
         if (denied === 'expired-lease') await due(f.dbPath, true);
-        const before = counts(raw);
+        const before = await counts(raw);
         await assert.rejects(
           async () => f.inbox.ack(f.claim, f.workerPrincipal, fixtureResult()),
           IdentityError,
         );
-        assert.deepEqual(counts(raw), before);
+        assert.deepEqual(await counts(raw), before);
         assert.equal((await f.inbox.get(f.claim.id)).resultMessageId, null);
         assert.deepEqual(
           await f.store.agents.correlations(
@@ -194,18 +196,14 @@ for (const failedTable of ['inbox_results', 'inbox_history'])
             invocationId: 'retained-invocation',
           },
         );
-        const before = counts(raw);
-        await raw.exec(
-          'CREATE TRIGGER reject_correlated_ack BEFORE INSERT ON ' +
-            failedTable +
-            " BEGIN SELECT RAISE(ABORT,'fixture'); END",
-        );
+        const before = await counts(raw);
+        await raw.trigger('reject_correlated_ack', failedTable);
         await assert.rejects(async () =>
           f.inbox.ack(f.claim, f.workerPrincipal, fixtureResult()),
         );
-        assert.deepEqual(counts(raw), before);
+        assert.deepEqual(await counts(raw), before);
         assert.equal((await f.inbox.get(f.claim.id)).resultMessageId, null);
-        await raw.exec('DROP TRIGGER reject_correlated_ack');
+        await raw.dropTrigger('reject_correlated_ack', failedTable);
         await f.inbox.ack(f.claim, f.workerPrincipal, fixtureResult());
         assert.equal((await f.inbox.get(f.claim.id)).state, 'acked');
         assert.deepEqual(

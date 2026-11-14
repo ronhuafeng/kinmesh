@@ -115,8 +115,9 @@ await test('the first person makes the team; everyone after joins it and #genera
 });
 
 await test('the team is named after the organization, and a sign-in goes on without it', async () => {
-  let name: Promise<string> = Promise.resolve('为沃科技');
-  const h = await hub({ ...standInFeishu, organization: () => name });
+  // What Feishu answers, made when asked: a refusal made ahead would go unhandled.
+  let name = () => Promise.resolve('为沃科技');
+  const h = await hub({ ...standInFeishu, organization: () => name() });
   try {
     const teamName = async (cookies: Record<string, string>) =>
       (await h.app.inject({ url: '/api/team', cookies })).json<{
@@ -127,13 +128,13 @@ await test('the team is named after the organization, and a sign-in goes on with
       '为沃科技',
     );
     // Renamed in Feishu, renamed here at the next sign-in.
-    name = Promise.resolve('  Weiwo  ');
+    name = () => Promise.resolve('  Weiwo  ');
     assert.equal(
       await teamName(await signInAs(h.app, 'b@example.com')),
       'Weiwo',
     );
     // Feishu can't say: the name stays, and so does the person.
-    name = Promise.reject(new Error('tenant query refused'));
+    name = () => Promise.reject(new Error('tenant query refused'));
     assert.equal(
       await teamName(await signInAs(h.app, 'c@example.com')),
       'Weiwo',
