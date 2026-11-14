@@ -214,6 +214,10 @@ export function registerWorkspace(
         nativeT3Origin: t3Origin,
         human,
         team: membership.team,
+        people: store.people(teamId, now),
+        joinedHumanIds: channel
+          ? store.communication.joinedHumans(principal, teamId, channel.id)
+          : [],
         channels,
         channel,
         leftChannels: store.communication.leftChannels(principal, teamId),

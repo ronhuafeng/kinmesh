@@ -24,6 +24,8 @@ import {
   Membership,
   TeamName,
   LOGIN_STATE_MS,
+  PRESENCE_MS,
+  type TeamId,
   SESSION_IDLE_MS,
   SESSION_LIFETIME_MS,
   SESSION_TOUCH_MS,
@@ -295,6 +297,41 @@ export function openStore(path: string) {
         ...membership.team,
         name: TeamName.parse(name),
       });
+    },
+    /** The people of a team, by name, and whether each is online now. */
+    people(teamId: TeamId, now: number) {
+      const online = new Set(this.online(now));
+      return db
+        .select({ id: tables.humans.id, username: tables.humans.username })
+        .from(tables.humans)
+        .innerJoin(
+          tables.memberships,
+          eq(tables.memberships.humanId, tables.humans.id),
+        )
+        .where(eq(tables.memberships.teamId, teamId))
+        .orderBy(asc(tables.humans.username))
+        .limit(100)
+        .all()
+        .map((row) => ({
+          ...Human.parse(row),
+          online: online.has(row.id),
+        }));
+    },
+    /** Who has used a live session within the presence window. */
+    online(now: number) {
+      return db
+        .selectDistinct({ id: tables.sessions.humanId })
+        .from(tables.sessions)
+        .where(
+          and(
+            isNull(tables.sessions.revokedAt),
+            gt(tables.sessions.lastSeenAt, now - PRESENCE_MS),
+            gt(tables.sessions.createdAt, now - SESSION_LIFETIME_MS),
+          ),
+        )
+        .orderBy(asc(tables.sessions.humanId))
+        .all()
+        .map((row) => row.id);
     },
     human(id: HumanId) {
       const row = db

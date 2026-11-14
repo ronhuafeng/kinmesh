@@ -5,7 +5,13 @@ import { Agent, Correlation, RuntimeEvent } from '../domain/agents.js';
 import { Reference } from '../domain/execution.js';
 import { nativeThreadUrl } from './links.js';
 import { Status, TERMINAL } from '../adapters/t3/contracts.js';
-import { Human, Team, AgentId, ChannelId } from '../domain/contracts.js';
+import {
+  Human,
+  HumanId,
+  Team,
+  AgentId,
+  ChannelId,
+} from '../domain/contracts.js';
 import { TopicId } from '../domain/communication.js';
 import {
   ChannelView,
@@ -49,6 +55,10 @@ export const WorkspaceSnapshot = z.strictObject({
     .nullable(),
   human: Human,
   team: Team,
+  /** Everyone of the team, you included, and who is online now. */
+  people: z.array(Human.extend({ online: z.boolean() })).max(100),
+  /** The people in the open channel. */
+  joinedHumanIds: z.array(HumanId).max(100),
   channels: pageOf(ChannelView),
   channel: ChannelView.nullable(),
   /** Channels the human left and may rejoin (never removed ones). */

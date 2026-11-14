@@ -78,6 +78,43 @@ test('a desktop workspace loads without sideways scrolling', async ({
     ),
   ).toBe(true);
 });
+test('a second person of the organization signs in to the same workspace and sees who is there', async ({
+  page,
+  browser,
+  hub,
+}) => {
+  await signIn(page, hub, 'ada@example.com');
+  const composer = page.getByRole('form', { name: 'Message your team' });
+  await composer.getByLabel('Message', { exact: true }).fill('Hello, team');
+  await composer.getByRole('button', { name: 'Send message' }).click();
+  await expect(page.getByText('Hello, team', { exact: true })).toBeVisible();
+  // Someone else, in their own browser.
+  const theirs = await browser.newContext();
+  try {
+    const grace = await theirs.newPage();
+    await signIn(grace, hub, 'grace@example.com');
+    await expect(grace.getByText('Hello, team', { exact: true })).toBeVisible();
+    // The message is Ada's by name, and Ada is among the people here.
+    await expect(
+      grace
+        .getByRole('list', { name: 'Channel messages' })
+        .getByRole('listitem')
+        .filter({ hasText: 'Hello, team' }),
+    ).toContainText('ada');
+    const people = grace.getByRole('region', {
+      name: 'People in this channel',
+    });
+    await expect(people.getByText('ada', { exact: true })).toBeVisible();
+    // And Ada sees Grace arrive, online, without reloading.
+    await expect(
+      page
+        .getByRole('region', { name: 'People in this channel' })
+        .getByText('grace', { exact: true }),
+    ).toBeVisible();
+  } finally {
+    await theirs.close();
+  }
+});
 test('real workspace onboarding, mentions and reconnect on a phone', async ({
   page,
   context,

@@ -590,6 +590,17 @@ export function Team({
             <Presence online />
           </span>
         </li>
+        {data.people
+          .filter((person) => person.id !== data.human.id)
+          .map((person) => (
+            <li key={person.id} className="roster-tile" data-kind="human">
+              <span className="roster-person">
+                <Avatar kind="human" name={person.username} size="xl" />
+                <span className="roster-name">{person.username}</span>
+                <Presence online={person.online} />
+              </span>
+            </li>
+          ))}
         {data.agents.map((agent) => {
           const awake = workerConnected(data.wake, agent.id);
           return (
