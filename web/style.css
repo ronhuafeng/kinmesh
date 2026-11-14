@@ -549,37 +549,15 @@ textarea {
   background: var(--sunken);
   border-right: 1px solid var(--hairline);
 }
-button.inbox-link {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  background: transparent;
-  color: var(--ink);
-  border-color: transparent;
-}
-/* Open, it is the current place, marked like a current channel. */
-button.inbox-link[aria-pressed='true'] {
-  background: var(--surface);
-  border-color: var(--hairline);
-}
-button.inbox-link:hover:not(:disabled) {
-  background: var(--hover);
-  border-color: transparent;
-}
-button.inbox-link .count {
-  font-size: 0.75rem;
-  color: var(--ink-muted);
-}
-button.inbox-link[data-count] {
-  border-color: var(--decision);
-  color: var(--decision-text);
-  background: var(--decision-soft);
-}
-button.inbox-link[data-count] .count {
-  color: #fff;
-  background: var(--decision);
-  border-radius: 999px;
+/* The Inbox tab carries how many things wait on you, in the decision colour. */
+.view-switch .count {
+  margin-left: 0.4rem;
   padding: 0 0.45rem;
+  border-radius: 999px;
+  background: var(--decision);
+  color: #fff;
+  font-size: 0.72rem;
+  line-height: 1.1rem;
 }
 .nav-heading h2 {
   font-family: var(--mono);
@@ -1379,7 +1357,7 @@ body > #root > .notice {
     bottom: 0;
     z-index: 15;
     display: grid;
-    grid-template-columns: repeat(3, 1fr);
+    grid-template-columns: repeat(4, 1fr);
     padding: 0.4rem 0.6rem calc(0.4rem + env(safe-area-inset-bottom));
     border-radius: 0;
     border: 0;
@@ -1988,16 +1966,6 @@ button.reply-to {
 /* Your page: your face, then facts typed in place, one per row. */
 .you {
   gap: 0;
-}
-.you-face {
-  display: grid;
-  justify-items: center;
-  gap: 0.6rem;
-  padding: 1rem 0 1.5rem;
-  border-bottom: 1px solid var(--hairline);
-}
-.you-face strong {
-  font-size: 1.05rem;
 }
 .you-row {
   display: grid;

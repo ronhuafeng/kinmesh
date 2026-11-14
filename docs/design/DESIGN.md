@@ -49,7 +49,8 @@ that isn't needed. Check a change against these before it ships.
 9. No headings where the structure already says it (a separator, not "In this
    channel"); no back links — the sidebar and tabs navigate, Esc goes back.
 10. The object is the link: a name, a card, a row. No separate "Open" buttons.
-11. One current place is highlighted in the sidebar at a time. Plain words ("Inbox").
+11. One current place is highlighted at a time: a channel or person in the sidebar, or
+    a tab. Plain words ("Inbox").
 12. A reload keeps the place and the unsent work: every page has an address, Back
     works, drafts survive in the tab.
 
@@ -169,14 +170,14 @@ it is the authority. Use the custom property for its role, never a raw colour.
 - **Credential once**: a newly issued token appears once, with copy and download,
   and is gone when dismissed.
 - **Team**: a gallery of faces with names and presence; the last tile adds an agent.
-- **Inbox**: everything across the team waiting on you, one list, newest first: tasks
-  for your sign-off, review or rework; stuck deliveries; agents with queued work and
-  no worker. A row is a face, what it is, where and when, an orange or red rule for a
+- **Inbox**: the tab after Team, with how many things wait on you. Everything across
+  the team waiting on you, one list, newest first: tasks for your sign-off, review or
+  rework; stuck deliveries; agents with queued work and no worker. A row is a face, what it is, where and when, an orange or red rule for a
   decision or a problem; the row opens where it is resolved (task, channel or agent).
   A row leaves when its cause is resolved; there is nothing to dismiss. Expired
   deliveries are not listed; they stay on their message's delivery line.
 - **Settings**: your own row among the sidebar's people opens your page; the account
-  is not shown anywhere else. Like an agent's About: your face and name, then one row
+  is not shown anywhere else, so the page has no face or name of its own. One row
   per fact typed in place — the team name (everyone sees it) and your password (the
   current one, then the new) — each confirmed by the round arrow. A changed password
   signs out every other session.

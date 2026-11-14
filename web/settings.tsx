@@ -3,11 +3,11 @@ import type { WorkspaceSnapshot } from '../src/workspace/contracts.js';
 import { useRequest, value } from './api.js';
 import { Notice } from './forms.js';
 import { ArrowIcon } from './icons.js';
-import { Avatar, Page } from './ui.js';
+import { Page } from './ui.js';
 
 /**
- * Your own page: your face and name, then the two things only you set, as
- * facts typed in place. Each confirms with the round arrow once there is
+ * Your own page: the two things only you set, as facts typed in place. Whose
+ * page it is shows in the sidebar, where your row is highlighted. Each confirms with the round arrow once there is
  * something to confirm.
  */
 export function SettingsPage({
@@ -33,10 +33,6 @@ export function SettingsPage({
   return (
     <Page label="Settings" onClose={onClose}>
       <div className="page-body you">
-        <div className="you-face">
-          <Avatar kind="human" name={data.human.username} size="xl" />
-          <strong>{data.human.username}</strong>
-        </div>
         <form
           className="you-row"
           aria-label="Team name"

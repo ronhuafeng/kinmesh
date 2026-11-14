@@ -543,7 +543,7 @@ test('the Inbox gathers what waits on me across channels and leads to the fix', 
   await onboard(page, hub);
   await register(page, 'Ada', 'developer');
   // What the Inbox lists, and when: tests/attention.test.ts.
-  const needs = page.getByRole('button', { name: /^Inbox/ });
+  const needs = page.getByRole('tab', { name: /^Inbox/ });
   await page.getByRole('tab', { name: 'Chat', exact: true }).click();
   const composer = page.getByRole('form', { name: 'Message your team' });
   await composer
