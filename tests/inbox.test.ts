@@ -745,8 +745,13 @@ await test('context is bounded, source-attributed, preserves topic/task/memory r
     const c = await claim(f);
     const { context } = await f.inbox.context(c, f.workerPrincipal);
     assert.equal(context.task?.id, task.id);
-    assert.equal(context.topic?.id, topic.id);
-    assert.equal(context.author.kind, 'human');
+    assert.equal(context.topic, topic.title);
+    // People by name, as the workspace shows them; no internal identifiers.
+    assert.doesNotMatch(context.author, /^[0-9a-f-]{36}$/);
+    assert.equal(
+      Object.keys(context).some((k) => k.endsWith('Id') && k !== 'channelId'),
+      false,
+    );
     assert.equal(context.memoryLocation, profileInput.memoryLocation);
     assert.equal(context.task.truncated, true);
     assert.ok(JSON.stringify(context).length < 10000);

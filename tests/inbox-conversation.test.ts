@@ -104,14 +104,17 @@ await test('an agent keeps one T3 conversation per channel: later messages conti
     // One thread: the first message started it, the second continued it.
     const [launch] = calls(f, 't3_thread_launch');
     assert.equal(calls(f, 't3_thread_launch').length, 1);
-    assert.match(String(launch?.message), /^You are in a Kinmesh channel/);
+    assert.match(
+      String(launch?.message),
+      /^You are .+, an agent in the Kinmesh channel #/,
+    );
     const sends = calls(f, 't3_thread_send');
     assert.equal(sends.length, 1);
     const [sent] = sends;
     assert.ok(sent);
     assert.equal(sent.threadId, launched.threadId);
     assert.equal(sent.mode, 'auto');
-    assert.match(String(sent.message), /^A new Kinmesh event/);
+    assert.match(String(sent.message), /^<message from="[^"]+">\n/);
     // Its run is read after the answer already published, not from the start.
     const reads = calls(f, 't3_thread_read');
     assert.equal(reads.at(-1)?.afterPosition, 2);
@@ -213,7 +216,7 @@ await test('another model starts a new conversation', async () => {
     assert.equal(calls(f, 't3_thread_send').length, 0);
     assert.match(
       String(calls(f, 't3_thread_launch')[1]?.message),
-      /^You are in a Kinmesh channel/,
+      /^You are .+, an agent in the Kinmesh channel #/,
     );
   } finally {
     await f.dispose();
