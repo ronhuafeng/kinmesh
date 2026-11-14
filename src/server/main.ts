@@ -69,11 +69,11 @@ try {
   stopping.signal.throwIfAborted();
   await supervisor?.prepare();
   stopping.signal.throwIfAborted();
-  await app.listen({ host: '127.0.0.1', port: config.port });
+  await app.listen({ host: config.host, port: config.port });
   stopping.signal.throwIfAborted();
   await supervisor?.activate();
   stopping.signal.throwIfAborted();
-  console.info('Kinmesh Team Hub ready on configured loopback port.');
+  console.info('Kinmesh Team Hub ready on its configured address.');
   await once(stopping.signal, 'abort');
 } catch (error) {
   if (!stopping.signal.aborted) {

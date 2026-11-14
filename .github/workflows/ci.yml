@@ -49,3 +49,33 @@ jobs:
       - run: npm run build
       - name: Real Chromium against Kinmesh; native T3 DTO cases remain fixtures
         run: npm run test:browser
+  image:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - name: Build the image (publishing is a separate, deliberate step)
+        run: docker build -t kinmesh:ci .
+      - name: The container is healthy against a fresh database
+        run: |
+          docker run -d --name kinmesh \
+            -e KINMESH_SESSION_KEY="$(openssl rand -hex 32)" \
+            -e FEISHU_APP_ID=cli_ci -e FEISHU_APP_SECRET=ci-secret \
+            -e KINMESH_EMAIL_DOMAIN=example.com \
+            kinmesh:ci
+          for _ in $(seq 1 30); do
+            status="$(docker inspect -f '{{.State.Health.Status}}' kinmesh)"
+            [ "$status" = healthy ] && break
+            [ "$status" = unhealthy ] && break
+            sleep 2
+          done
+          docker logs kinmesh
+          test "$status" = healthy
+      - name: It runs as a non-root user and carries no tests, secrets or source maps
+        run: |
+          test "$(docker exec kinmesh id -u)" != 0
+          docker exec kinmesh sh -c 'test ! -e /app/tests && test ! -e /app/.env && test -z "$(find /app/dist -name "*.map" -o -name "*.ts")"'
+      - if: always()
+        run: docker rm -f kinmesh || true

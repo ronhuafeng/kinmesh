@@ -1,0 +1,15 @@
+# The image is built from source; nothing local, secret or generated goes in.
+.git
+.github
+.claude
+node_modules
+dist
+web-dist
+artifacts
+test-results
+playwright-report
+.store
+.env
+.env.*
+!.env.example
+*.log
