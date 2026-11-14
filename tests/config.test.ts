@@ -6,7 +6,18 @@ import { signInAs, standInFeishu } from './feishu.js';
 
 await test('configuration rejects absent secrets, invalid ports and non-loopback plaintext origins', () => {
   assert.throws(() => loadConfig({}));
-  const env = { KINMESH_SESSION_KEY: 'b'.repeat(64), ...feishuEnv };
+  const env = {
+    KINMESH_SESSION_KEY: 'b'.repeat(64),
+    KINMESH_DATABASE_URL: 'postgres://kinmesh@127.0.0.1:5432/kinmesh',
+    ...feishuEnv,
+  };
+  // Without a PostgreSQL database there is nowhere to keep the team.
+  for (const url of [
+    '',
+    'sqlite:.store/kinmesh.sqlite',
+    '.store/kinmesh.sqlite',
+  ])
+    assert.throws(() => loadConfig({ ...env, KINMESH_DATABASE_URL: url }));
   // Without the Feishu app or the organization's domain, nobody could sign in.
   for (const key of Object.keys(feishuEnv))
     assert.throws(() => loadConfig({ ...env, [key]: '' }));

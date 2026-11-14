@@ -3,13 +3,26 @@
  * its name, code, the database constraint it broke and its stack. Never
  * request bodies, cookies, credentials or anything a remote service sent.
  */
-export function describeFailure(error: unknown) {
+export function describeFailure(error: unknown): Record<string, unknown> {
   if (!(error instanceof Error)) return { error: typeof error };
-  const record = error as Error & { code?: unknown; constraint?: unknown };
+  // drizzle's wrapper repeats the query and its values; PostgreSQL's own
+  // error, which it wraps, says what failed without them.
+  if ('query' in error && 'params' in error && error.cause instanceof Error)
+    return describeFailure(error.cause);
+  const record = error as Error & {
+    code?: unknown;
+    constraint?: unknown;
+    constraint_name?: unknown;
+    table_name?: unknown;
+  };
   const constraint =
     typeof record.constraint === 'string'
       ? record.constraint
-      : /constraint failed: (.+)$/.exec(error.message)?.[1];
+      : typeof record.constraint_name === 'string'
+        ? [record.table_name, record.constraint_name]
+            .filter((part) => typeof part === 'string')
+            .join('.')
+        : undefined;
   const cause = error.cause instanceof Error ? error.cause : null;
   const causeCode = cause && 'code' in cause ? cause.code : undefined;
   return {

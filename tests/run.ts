@@ -11,7 +11,14 @@ const database = await startTestDatabase();
 try {
   const child = spawn(
     process.execPath,
-    ['--import', 'tsx', '--test', ...process.argv.slice(2)],
+    // A test that never settles fails by name instead of stalling the run.
+    [
+      '--import',
+      'tsx',
+      '--test',
+      '--test-timeout=120000',
+      ...process.argv.slice(2),
+    ],
     { stdio: 'inherit' },
   );
   const [code] = z
