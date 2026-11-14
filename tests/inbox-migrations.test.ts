@@ -45,7 +45,13 @@ await test('populated main/PR18 migration preserves every baseline row and activ
     old.prepare('ATTACH DATABASE ? AS fixture_source').run(f.dbPath);
     for (const name of names) {
       assert.match(name, /^[a-z_]+$/);
-      old.exec('INSERT INTO ' + name + ' SELECT * FROM fixture_source.' + name);
+      // People are the one table whose columns changed since this baseline;
+      // a password hash stands in for the column that held them then.
+      old.exec(
+        name === 'humans'
+          ? "INSERT INTO humans SELECT id, username, 'baseline-hash' FROM fixture_source.humans"
+          : 'INSERT INTO ' + name + ' SELECT * FROM fixture_source.' + name,
+      );
     }
     old.exec('DETACH DATABASE fixture_source');
     old.close();
