@@ -12,6 +12,7 @@ import {
   type SQL,
 } from 'drizzle-orm';
 import { z } from 'zod';
+import type { AnyPgColumn } from 'drizzle-orm/pg-core';
 import * as s from './schema.js';
 import type { agentRepository } from './agents.js';
 import type { communicationRepository } from './communication.js';
@@ -46,6 +47,12 @@ import {
 
 const decode = (value: string): unknown => JSON.parse(value);
 /** The advisory lock claims take turns under (any fixed 64-bit key). */
+/**
+ * `column` is one of `ids`, sent as one array: a worker serves any number of
+ * agents, where a parameter each would meet PostgreSQL's limit.
+ */
+const among = (column: AnyPgColumn, ids: readonly string[]) =>
+  sql`${column} = any(${sql.param(ids)}::text[])`;
 const CLAIM_LOCK = 0x6b696e6d657368n;
 export function inboxRepository(
   d: Database,
@@ -239,7 +246,7 @@ export function inboxRepository(
       return row === undefined ? undefined : Delivery.parse(row);
     },
     claim(agentIds: AgentId[]) {
-      const ids = z.array(AgentId).min(1).max(32).parse(agentIds);
+      const ids = z.array(AgentId).min(1).parse(agentIds);
       return atomic(async () => {
         // Claims keep rules across rows (the hub's capacity, one active
         // delivery per agent), so they take turns, across processes: a lock
@@ -257,7 +264,7 @@ export function inboxRepository(
           })
           .where(
             and(
-              inArray(t.agentId, ids),
+              among(t.agentId, ids),
               eq(t.state, 'ready'),
               sql`${t.launch} IS NULL`,
               lte(t.expiresAt, dbNow),
@@ -283,7 +290,7 @@ export function inboxRepository(
             .from(t)
             .where(
               and(
-                inArray(t.agentId, ids),
+                among(t.agentId, ids),
                 inArray(t.state, ['ready', 'waiting', 'uncertain']),
                 lte(t.nextAttempt, dbNow),
                 lte(t.leaseUntil, dbNow),
@@ -689,7 +696,7 @@ export function inboxRepository(
         for (const agent of await q()
           .select({ id: s.agents.id, teamId: s.agents.teamId })
           .from(s.agents)
-          .where(inArray(s.agents.id, ids)))
+          .where(among(s.agents.id, ids)))
           await q()
             .insert(s.inboxBindings)
             .values({
@@ -709,7 +716,7 @@ export function inboxRepository(
       if (ids.length === 0) return;
       await q()
         .delete(s.inboxBindings)
-        .where(inArray(s.inboxBindings.agentId, ids));
+        .where(among(s.inboxBindings.agentId, ids));
     },
     /**
      * Read-only delivery view for a channel page: mention deliveries of the
