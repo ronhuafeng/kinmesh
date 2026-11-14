@@ -17,8 +17,26 @@ The hub writes JSON lines to standard output: one record per failure, with its r
 | `KINMESH_ORIGIN`, `KINMESH_PORT`     | Public origin (an HTTPS origin, or exactly `http://127.0.0.1:<port>`) and listener port              |
 | `KINMESH_INBOX_CONFIG`               | Optional operator worker configuration (below)                                                       |
 | `KINMESH_RATE_LIMIT`                 | Requests per minute per client (default 60); see [security](security.md)                             |
+| `KINMESH_TRUSTED_PROXIES`            | The reverse proxies, comma-separated addresses or CIDR ranges; required with an HTTPS origin         |
 
 `npm start` reads `.env` if present; managed deployments may inject the same variables instead. Missing or malformed values fail startup.
+
+### Behind a reverse proxy
+
+A loopback origin is for one person on this machine. A team reaches the hub through an HTTPS reverse proxy on the same host: `KINMESH_ORIGIN` is the public origin (Feishu's redirect URL is that origin plus `/login/callback`) and `KINMESH_TRUSTED_PROXIES` names the proxy, so limits apply per person rather than to everyone at once. The proxy passes the original `Host`, sets `X-Forwarded-For`, keeps `/api/events` unbuffered (the hub also sends `X-Accel-Buffering: no`) with a read timeout above 30 seconds, and logs no bodies, cookies or `Authorization` headers. With nginx:
+
+```nginx
+location / {
+  proxy_pass http://127.0.0.1:3000;
+  proxy_set_header Host $host;
+  proxy_set_header X-Forwarded-For $remote_addr;
+  proxy_http_version 1.1;
+  proxy_buffering off;
+  proxy_read_timeout 60s;
+}
+```
+
+with `KINMESH_ORIGIN=https://kinmesh.example.com` and `KINMESH_TRUSTED_PROXIES=127.0.0.1`.
 
 A person who used Kinmesh before Feishu sign-in keeps their identity by being linked to their mailbox before their first Feishu sign-in: `npm run link-human -- <username> <mailbox>`. Unlinked, they would sign in as someone new. Linking refuses a mailbox another person holds and a person who has already signed in with Feishu.
 
