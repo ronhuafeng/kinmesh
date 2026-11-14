@@ -91,8 +91,9 @@ export function agentRepository(db: BetterSQLite3Database<typeof s>) {
         throw new IdentityError(403);
       return { role: 'agent' as const };
     }
+    // Only whether they exist: nothing else about a person is needed here.
     const human = db
-      .select()
+      .select({ id: s.humans.id })
       .from(s.humans)
       .where(eq(s.humans.id, p.humanId))
       .get();
