@@ -155,9 +155,12 @@ await test('MOCK external adapter: exact-run actual assistant is attributed and 
       message.body,
       'Fixture assistant output; no real model was invoked.',
     );
-    const [reply] = await f.inbox.repliesFor(f.teamId, f.channelId, [
-      message.id,
-    ]);
+    const [reply] = await f.store.inboxViews.repliesFor(
+      f.principal,
+      f.teamId,
+      f.channelId,
+      [message.id],
+    );
     assert.ok(reply);
     assert.equal(reply.runId, reference.runId);
     assert.equal(reply.state, 'succeeded');
@@ -389,9 +392,12 @@ await test('MOCK native terminal failure without assistant posts truthful notice
     );
     // Said plainly, never dressed up as the agent's answer.
     assert.equal(notice.body, 'The run in T3 failed before writing a reply.');
-    const [status] = await f.inbox.repliesFor(f.teamId, f.channelId, [
-      notice.id,
-    ]);
+    const [status] = await f.store.inboxViews.repliesFor(
+      f.principal,
+      f.teamId,
+      f.channelId,
+      [notice.id],
+    );
     assert.ok(status);
     assert.equal(status.state, 'failed');
     assert.equal(status.answered, false);
@@ -1202,7 +1208,9 @@ await test('a worker bound to any number of agents claims for the last of them, 
     // Its liveness, then its delivery: the worker's loop does both each turn.
     await f.inbox.heartbeat(ids);
     assert.deepEqual(
-      (await f.inbox.liveness(f.teamId)).map((r) => r.agentId).sort(),
+      (await f.store.inboxViews.liveness(f.principal, f.teamId))
+        .map((r) => r.agentId)
+        .sort(),
       [...ids].sort(),
     );
     const claimed = await f.inbox.claim(ids);
@@ -1215,7 +1223,10 @@ await test('a worker bound to any number of agents claims for the last of them, 
     await f.inbox.heartbeat(many);
     assert.equal(await f.inbox.claim(many), undefined);
     await f.inbox.release(many);
-    assert.deepEqual(await f.inbox.liveness(f.teamId), []);
+    assert.deepEqual(
+      await f.store.inboxViews.liveness(f.principal, f.teamId),
+      [],
+    );
   } finally {
     await f.dispose();
   }

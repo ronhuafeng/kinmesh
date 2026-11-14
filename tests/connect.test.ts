@@ -413,7 +413,9 @@ await test('the hub’s worker serves a connected agent without a restart and le
       stopping.signal,
     );
     const live = async () =>
-      (await f.inbox.liveness(f.teamId)).map((r) => r.agentId);
+      (await f.store.inboxViews.liveness(f.principal, f.teamId)).map(
+        (r) => r.agentId,
+      );
     await delay(200);
     assert.deepEqual(await live(), []);
     const issued = await f.store.managed.connect(

@@ -54,11 +54,14 @@ export function managedRepository(
       return connection(teamId);
     },
     /**
-     * The one T3 a team uses, for reads the caller has already authorized
-     * (the workspace snapshot, checking a run): no secrets in the row.
+     * The one T3 a team uses, for anyone of the team, a person or one of its
+     * agents (checking a run): no secrets in the row.
      */
-    teamConnection(teamId: TeamId) {
-      return connection(teamId);
+    teamConnection(p: Principal, teamId: TeamId) {
+      return atomic(async () => {
+        await agents.teamAccess(p, teamId);
+        return connection(teamId);
+      });
     },
     async saveConnection(
       p: Principal,
@@ -83,16 +86,19 @@ export function managedRepository(
       await person(p, teamId);
       return binding(teamId, agentId);
     },
-    /** Agents of one team the hub's worker serves. */
-    teamBindings(teamId: TeamId) {
-      return q()
-        .select({
-          agentId: s.managedBindings.agentId,
-          providerId: s.managedBindings.providerId,
-          grantId: s.managedBindings.grantId,
-        })
-        .from(s.managedBindings)
-        .where(eq(s.managedBindings.teamId, teamId));
+    /** Agents of one team the hub's worker serves, for a person of it. */
+    teamBindings(p: Principal, teamId: TeamId) {
+      return atomic(async () => {
+        await person(p, teamId);
+        return await q()
+          .select({
+            agentId: s.managedBindings.agentId,
+            providerId: s.managedBindings.providerId,
+            grantId: s.managedBindings.grantId,
+          })
+          .from(s.managedBindings)
+          .where(eq(s.managedBindings.teamId, teamId));
+      });
     },
     /** Every agent the hub's worker serves, with its team's T3 endpoint. */
     workerBindings() {
@@ -199,14 +205,18 @@ export function managedRepository(
           setWhere: sql`${s.teamMcpPresence.lastSeenAt} < ${now - PRESENCE_MS}`,
         });
     },
-    teamMcpPresence(teamId: TeamId) {
-      return q()
-        .select({
-          agentId: s.teamMcpPresence.agentId,
-          lastSeenAt: s.teamMcpPresence.lastSeenAt,
-        })
-        .from(s.teamMcpPresence)
-        .where(eq(s.teamMcpPresence.teamId, teamId));
+    /** When each of the team's agents last reached Team MCP, for a person of it. */
+    teamMcpPresence(p: Principal, teamId: TeamId) {
+      return atomic(async () => {
+        await person(p, teamId);
+        return await q()
+          .select({
+            agentId: s.teamMcpPresence.agentId,
+            lastSeenAt: s.teamMcpPresence.lastSeenAt,
+          })
+          .from(s.teamMcpPresence)
+          .where(eq(s.teamMcpPresence.teamId, teamId));
+      });
     },
   };
 }

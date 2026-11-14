@@ -1,10 +1,11 @@
 import { managedRepository } from './managed.js';
 import { inboxRepository } from './inbox.js';
+import { inboxViews } from './inbox-views.js';
 import { taskRepository } from './tasks.js';
 import { communicationRepository } from './communication.js';
 import { asc } from 'drizzle-orm';
 import { agentRepository } from './agents.js';
-import { IdentityError } from '../domain/agents.js';
+import { IdentityError, type Principal } from '../domain/agents.js';
 import { operationJournal } from './operations.js';
 import { eq, and, gt, isNull, lte } from 'drizzle-orm';
 import { createHash, randomBytes, randomUUID } from 'node:crypto';
@@ -65,6 +66,8 @@ export async function openStore(url: string) {
       /** Which database this is, to tell it from a replacement. */
       identity: d.identity,
       inbox: inboxRepository(d, agentStore, communicationStore, tasks),
+      /** What the workspace shows a person about deliveries and workers. */
+      inboxViews: inboxViews(d, agentStore, communicationStore),
       tasks,
       communication: communicationStore,
       operations: operationJournal(d),
@@ -282,24 +285,33 @@ export async function openStore(url: string) {
           name: TeamName.parse(name),
         });
       },
-      /** The people of a team, by name, and whether each is online now. */
-      async people(teamId: TeamId, now: number) {
-        const online = new Set(await this.online(now));
-        return (
-          await q()
-            .select({ id: tables.humans.id, username: tables.humans.username })
-            .from(tables.humans)
-            .innerJoin(
-              tables.memberships,
-              eq(tables.memberships.humanId, tables.humans.id),
-            )
-            .where(eq(tables.memberships.teamId, teamId))
-            .orderBy(asc(tables.humans.username))
-            .limit(100)
-        ).map((row) => ({
-          ...Human.parse(row),
-          online: online.has(row.id),
-        }));
+      /**
+       * The people of a team, by name, and whether each is online now: for
+       * anyone of the team.
+       */
+      people(p: Principal, teamId: TeamId, now: number) {
+        return atomic(async () => {
+          await agentStore.teamAccess(p, teamId);
+          const online = new Set(await this.online(now));
+          return (
+            await q()
+              .select({
+                id: tables.humans.id,
+                username: tables.humans.username,
+              })
+              .from(tables.humans)
+              .innerJoin(
+                tables.memberships,
+                eq(tables.memberships.humanId, tables.humans.id),
+              )
+              .where(eq(tables.memberships.teamId, teamId))
+              .orderBy(asc(tables.humans.username))
+              .limit(100)
+          ).map((row) => ({
+            ...Human.parse(row),
+            online: online.has(row.id),
+          }));
+        });
       },
       /** Who has used a live session within the presence window. */
       async online(now: number) {

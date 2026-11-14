@@ -361,7 +361,9 @@ await test(
       // The worker serves the connected agent: it reports liveness for it.
       await until(
         async () =>
-          (await seed.store.inbox.liveness(seed.teamId)).map((r) => r.agentId),
+          (
+            await seed.store.inboxViews.liveness(seed.principal, seed.teamId)
+          ).map((r) => r.agentId),
         (ids) => ids.includes(seed.agent.id),
       );
       assert.equal(await p.stop(), 0);
