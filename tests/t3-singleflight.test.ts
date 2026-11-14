@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import type { ChildProcess } from 'node:child_process';
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
-import Database from 'better-sqlite3';
+import { rawDatabase } from './raw.js';
 import { ExecutionFailure } from '../src/domain/execution.js';
 import { T3Backend } from '../src/adapters/t3/backend.js';
 import {
@@ -46,7 +46,7 @@ async function lost(f: Awaited<ReturnType<typeof backendFixture>>) {
 }
 await test('MOCK F1: two independent SQLite connections reconciling uncertain launch send exactly one outbound retry', async () => {
   const f = await backendFixture();
-  const second = f.open();
+  const second = await f.open();
   const firstWire = new MockWire(),
     secondWire = new MockWire();
   const wires = [firstWire, secondWire];
@@ -92,7 +92,7 @@ await test('MOCK F1: two independent SQLite connections reconciling uncertain la
 });
 await test('MOCK F1: reconciliation cannot resend while initial dispatch holds an active durable claim', async () => {
   const f = await backendFixture();
-  const second = f.open();
+  const second = await f.open();
   const wire = new MockWire();
   const gate = barrier([f.wire, wire]);
   const pending: Promise<unknown>[] = [];
@@ -102,11 +102,11 @@ await test('MOCK F1: reconciliation cannot resend while initial dispatch holds a
     pending.push(first);
     // The first dispatch is held at T3, its claim active.
     await gate.reached;
-    const db = new Database(f.path);
+    const db = rawDatabase(f.path);
     const id = String(
-      db.prepare('SELECT id FROM execution_operations').pluck().get(),
+      await db.prepare('SELECT id FROM execution_operations').pluck().get(),
     );
-    db.close();
+    await db.close();
     const retry = backend.reconcile(intent, id);
     pending.push(retry);
     // Excluded by the active claim, the reconcile settles without sending.
@@ -132,7 +132,7 @@ await test('MOCK F1: reconciliation cannot resend while initial dispatch holds a
 });
 await test('MOCK F1: crashed dispatch lease survives reopen, blocks until expiry and recovers with exact persisted key', async () => {
   const f = await backendFixture();
-  let reopened: ReturnType<typeof f.open> | undefined;
+  let reopened: Awaited<ReturnType<typeof f.open>> | undefined;
   try {
     const scope = createHash('sha256')
       .update(JSON.stringify([options.endpoint, reference.environmentId]))
@@ -156,7 +156,7 @@ await test('MOCK F1: crashed dispatch lease survives reopen, blocks until expiry
     );
     assert.ok(await f.store.operations.claim(row.id));
     await f.store.close();
-    reopened = f.open();
+    reopened = await f.open();
     const wire = new MockWire();
     const backend = await T3Backend.connect(wire, reopened.operations, options);
     assert.deepEqual(await backend.reconcile(intent, row.id), {
@@ -165,12 +165,11 @@ await test('MOCK F1: crashed dispatch lease survives reopen, blocks until expiry
       reason: 'in-flight',
     });
     assert.equal(outbound(wire).length, 0);
-    const db = new Database(f.path);
-    db.prepare('UPDATE execution_operations SET lease_until=? WHERE id=?').run(
-      Date.now() - 1,
-      row.id,
-    );
-    db.close();
+    const db = rawDatabase(f.path);
+    await db
+      .prepare('UPDATE execution_operations SET lease_until=? WHERE id=?')
+      .run(Date.now() - 1, row.id);
+    await db.close();
     assert.equal((await backend.reconcile(intent, row.id)).kind, 'known');
     assert.equal(outbound(wire).length, 1);
     assert.equal(outbound(wire)[0]?.args.clientRequestId, row.requestId);
@@ -180,15 +179,14 @@ await test('MOCK F1: crashed dispatch lease survives reopen, blocks until expiry
   }
 });
 
-function expire(path: string, id: string) {
-  const db = new Database(path);
+async function expire(path: string, id: string) {
+  const db = rawDatabase(path);
   try {
-    db.prepare('UPDATE execution_operations SET lease_until=? WHERE id=?').run(
-      Date.now() - 1,
-      id,
-    );
+    await db
+      .prepare('UPDATE execution_operations SET lease_until=? WHERE id=?')
+      .run(Date.now() - 1, id);
   } finally {
-    db.close();
+    await db.close();
   }
 }
 function prepared(f: Awaited<ReturnType<typeof backendFixture>>) {
@@ -203,13 +201,13 @@ function prepared(f: Awaited<ReturnType<typeof backendFixture>>) {
 await test('MOCK F1: every journal write fences expired and superseded owners; terminal outcomes cannot downgrade', async () => {
   for (const terminal of ['known', 'rejected'] as const) {
     const f = await backendFixture();
-    const second = f.open();
+    const second = await f.open();
     try {
       const row = await prepared(f);
       const first = await f.store.operations.claim(row.id);
       assert.ok(first);
       assert.equal(first.leaseUntil > Date.now() + 60_000, true);
-      expire(f.path, row.id);
+      await expire(f.path, row.id);
       const staleWrites = async () => {
         assert.equal(await f.store.operations.owned(first), false);
         assert.equal(
@@ -253,6 +251,27 @@ await test('MOCK F1: every journal write fences expired and superseded owners; t
     }
   }
 });
+await test('MOCK F1: claims racing on separate connections dispatch one intent once, and recover an expired one once', async () => {
+  const f = await backendFixture();
+  const others = await Promise.all([1, 2, 3, 4].map(() => f.open()));
+  const journals = [f.store, ...others].map((s) => s.operations);
+  try {
+    const row = await prepared(f);
+    const first = (
+      await Promise.all(journals.map((j) => j.claim(row.id)))
+    ).filter((c) => c !== undefined);
+    assert.equal(first.length, 1);
+    await expire(f.path, row.id);
+    const recovered = (
+      await Promise.all(journals.map((j) => j.claim(row.id, true)))
+    ).filter((c) => c !== undefined);
+    assert.equal(recovered.length, 1);
+    assert.equal(recovered[0]?.generation, (first[0]?.generation ?? 0) + 1);
+  } finally {
+    for (const s of others) await s.close();
+    await f.dispose();
+  }
+});
 await test('MOCK F1: normal dispatch cannot claim a stale prepared snapshot after uncertainty', async () => {
   const f = await backendFixture();
   try {
@@ -269,7 +288,7 @@ await test('MOCK F1: normal dispatch cannot claim a stale prepared snapshot afte
 for (const outcome of ['known', 'rejected'] as const) {
   await test(`MOCK F1: expired dispatch's late success cannot overwrite a newer ${outcome} outcome`, async () => {
     const f = await backendFixture();
-    const second = f.open();
+    const second = await f.open();
     const wire = new MockWire();
     const gate = barrier([f.wire]);
     let pending: Promise<unknown> | undefined;
@@ -278,12 +297,12 @@ for (const outcome of ['known', 'rejected'] as const) {
       pending = f.backend.launch(launch, intent);
       // The dispatch is at T3, holding its lease, before the lease expires.
       await gate.reached;
-      const db = new Database(f.path);
+      const db = rawDatabase(f.path);
       const id = String(
-        db.prepare('SELECT id FROM execution_operations').pluck().get(),
+        await db.prepare('SELECT id FROM execution_operations').pluck().get(),
       );
-      db.close();
-      expire(f.path, id);
+      await db.close();
+      await expire(f.path, id);
       if (outcome === 'rejected')
         wire.handler = (name) =>
           name === 't3_thread_launch'
@@ -343,7 +362,7 @@ for (const outcome of ['known', 'rejected'] as const) {
 }
 await test('MOCK F1: provisional reference takeover is read-only and late failed read cannot downgrade known', async () => {
   const f = await backendFixture();
-  const second = f.open();
+  const second = await f.open();
   const wire = new MockWire();
   const entered = Promise.withResolvers<undefined>();
   const release = Promise.withResolvers<undefined>();
@@ -360,13 +379,13 @@ await test('MOCK F1: provisional reference takeover is read-only and late failed
     const backend = await T3Backend.connect(wire, second.operations, options);
     pending = f.backend.launch(launch, intent);
     await entered.promise;
-    const db = new Database(f.path);
+    const db = rawDatabase(f.path);
     const id = String(
-      db.prepare('SELECT id FROM execution_operations').pluck().get(),
+      await db.prepare('SELECT id FROM execution_operations').pluck().get(),
     );
-    db.close();
+    await db.close();
     assert.notEqual((await second.operations.get(id)).reference, null);
-    expire(f.path, id);
+    await expire(f.path, id);
     assert.equal((await backend.reconcile(intent, id)).kind, 'known');
     assert.equal(outbound(wire).length, 0);
     const saved = await second.operations.get(id);
@@ -414,7 +433,7 @@ await test(
       });
       for (const child of children) await stop(child, 'SIGKILL');
       await f.store.close();
-      const reopened = f.open();
+      const reopened = await f.open();
       try {
         const wire = new MockWire();
         const backend = await T3Backend.connect(
@@ -427,7 +446,7 @@ await test(
           operationId: id,
           reason: 'in-flight',
         });
-        expire(f.path, id);
+        await expire(f.path, id);
         assert.equal((await backend.reconcile(intent, id)).kind, 'known');
         assert.equal(outbound(wire).length, 1);
         assert.equal(

@@ -1,8 +1,8 @@
+import type { Database } from './database.js';
 import { enqueueFact } from './inbox-enqueue.js';
 import { transactional, snapshotPage } from './transactional.js';
 import { randomUUID } from 'node:crypto';
 import { and, asc, desc, eq, gt, isNotNull, lte, max, sql } from 'drizzle-orm';
-import type { BetterSQLite3Database } from 'drizzle-orm/better-sqlite3';
 import type { z } from 'zod';
 import * as s from './schema.js';
 import type { agentRepository } from './agents.js';
@@ -35,38 +35,42 @@ type ChannelId = z.infer<typeof ChannelId>;
 const decode = (value: string): unknown => JSON.parse(value);
 const now = () => new Date().toISOString();
 export function communicationRepository(
-  db: BetterSQLite3Database<typeof s>,
+  d: Database,
   agents: ReturnType<typeof agentRepository>,
 ) {
-  const { atomic, receipt } = transactional(db);
-  function team(p: Principal, teamId: TeamId, write = false) {
+  const { q, atomic, receipt } = transactional(d);
+  async function team(p: Principal, teamId: TeamId, write = false) {
     return write
-      ? agents.teamAccess(p, teamId, 'channels:read', 'channels:write')
-      : agents.teamAccess(p, teamId, 'channels:read');
+      ? await agents.teamAccess(p, teamId, 'channels:read', 'channels:write')
+      : await agents.teamAccess(p, teamId, 'channels:read');
   }
-  function access(
+  async function access(
     p: Principal,
     teamId: TeamId,
     channelId: ChannelId,
     write = false,
     inactive = false,
   ) {
-    team(p, teamId, write);
-    const channel = db
-      .select()
-      .from(s.channels)
-      .where(and(eq(s.channels.teamId, teamId), eq(s.channels.id, channelId)))
-      .get();
-    const participant = db
-      .select()
-      .from(s.channelParticipants)
-      .where(
-        and(
-          eq(s.channelParticipants.channelId, channelId),
-          eq(s.channelParticipants.memberKey, memberKey(member(p))),
-        ),
-      )
-      .get();
+    await team(p, teamId, write);
+    const channel = (
+      await q()
+        .select()
+        .from(s.channels)
+        .where(and(eq(s.channels.teamId, teamId), eq(s.channels.id, channelId)))
+        .limit(1)
+    )[0];
+    const participant = (
+      await q()
+        .select()
+        .from(s.channelParticipants)
+        .where(
+          and(
+            eq(s.channelParticipants.channelId, channelId),
+            eq(s.channelParticipants.memberKey, memberKey(member(p))),
+          ),
+        )
+        .limit(1)
+    )[0];
     if (
       channel === undefined ||
       participant === undefined ||
@@ -80,25 +84,27 @@ export function communicationRepository(
     };
   }
   /** A person of the team, joined to the channel when one is named. */
-  function person(p: Principal, teamId: TeamId, channelId?: ChannelId) {
-    if (channelId !== undefined) access(p, teamId, channelId, true);
-    agents.person(p, teamId);
+  async function person(p: Principal, teamId: TeamId, channelId?: ChannelId) {
+    if (channelId !== undefined) await access(p, teamId, channelId, true);
+    await agents.person(p, teamId);
   }
-  function participantView(
+  async function participantView(
     teamId: TeamId,
     channelId: ChannelId,
     target: Member,
   ) {
-    const row = db
-      .select()
-      .from(s.channelParticipants)
-      .where(
-        and(
-          eq(s.channelParticipants.channelId, channelId),
-          eq(s.channelParticipants.memberKey, memberKey(target)),
-        ),
-      )
-      .get();
+    const row = (
+      await q()
+        .select()
+        .from(s.channelParticipants)
+        .where(
+          and(
+            eq(s.channelParticipants.channelId, channelId),
+            eq(s.channelParticipants.memberKey, memberKey(target)),
+          ),
+        )
+        .limit(1)
+    )[0];
     if (row === undefined) throw new IdentityError(404);
     return Participant.parse({
       channelId,
@@ -107,7 +113,7 @@ export function communicationRepository(
       state: row.state,
     });
   }
-  function validTarget(
+  async function validTarget(
     teamId: TeamId,
     channelId: ChannelId,
     target: Member,
@@ -116,27 +122,34 @@ export function communicationRepository(
     Member.parse(target);
     if (target.kind === 'human') {
       if (
-        db
-          .select()
-          .from(s.memberships)
-          .where(
-            and(
-              eq(s.memberships.teamId, teamId),
-              eq(s.memberships.humanId, target.id),
-            ),
-          )
-          .get() === undefined
+        (
+          await q()
+            .select()
+            .from(s.memberships)
+            .where(
+              and(
+                eq(s.memberships.teamId, teamId),
+                eq(s.memberships.humanId, target.id),
+              ),
+            )
+            .limit(1)
+        )[0] === undefined
       )
         throw new IdentityError(404);
     } else {
-      const agent = db
-        .select()
-        .from(s.agents)
-        .where(and(eq(s.agents.id, target.id), eq(s.agents.teamId, teamId)))
-        .get();
+      const agent = (
+        await q()
+          .select()
+          .from(s.agents)
+          .where(and(eq(s.agents.id, target.id), eq(s.agents.teamId, teamId)))
+          .limit(1)
+      )[0];
       if (agent?.lifecycle !== 'active') throw new IdentityError(404);
     }
-    if (joined && participantView(teamId, channelId, target).state !== 'joined')
+    if (
+      joined &&
+      (await participantView(teamId, channelId, target)).state !== 'joined'
+    )
       throw new IdentityError(404);
   }
   function mutation<T>(
@@ -146,14 +159,14 @@ export function communicationRepository(
     kind: string,
     input: z.infer<typeof Mutation>,
     schema: z.ZodType<T>,
-    effect: () => T,
+    effect: () => Promise<T>,
   ) {
     Mutation.parse({ operationKey: input.operationKey });
     const scope = JSON.stringify([teamId, memberKey(member(p)), target, kind]);
     return receipt(scope, input.operationKey, input, schema, effect);
   }
 
-  function fact(
+  async function fact(
     p: Principal,
     teamId: TeamId,
     channelId: ChannelId,
@@ -179,58 +192,64 @@ export function communicationRepository(
       sourceEventId: null,
       ...extra,
     });
-    db.insert(s.communicationOutbox)
-      .values({ id: value.id, channelId, fact: JSON.stringify(value) })
-      .run();
-    enqueueFact(db, value);
+    await q()
+      .insert(s.communicationOutbox)
+      .values({ id: value.id, channelId, fact: JSON.stringify(value) });
+    await enqueueFact(q(), value);
   }
-  function topic(channelId: ChannelId, id: TopicId) {
-    const row = db
-      .select()
-      .from(s.topics)
-      .where(and(eq(s.topics.id, id), eq(s.topics.channelId, channelId)))
-      .get();
+  async function topic(channelId: ChannelId, id: TopicId) {
+    const row = (
+      await q()
+        .select()
+        .from(s.topics)
+        .where(and(eq(s.topics.id, id), eq(s.topics.channelId, channelId)))
+        .limit(1)
+    )[0];
     if (row === undefined) throw new IdentityError(404);
     return Topic.parse({ ...row, author: decode(row.author) });
   }
-  function message(channelId: ChannelId, id: MessageId) {
-    const row = db
-      .select()
-      .from(s.messages)
-      .where(and(eq(s.messages.id, id), eq(s.messages.channelId, channelId)))
-      .get();
+  async function message(channelId: ChannelId, id: MessageId) {
+    const row = (
+      await q()
+        .select()
+        .from(s.messages)
+        .where(and(eq(s.messages.id, id), eq(s.messages.channelId, channelId)))
+        .limit(1)
+    )[0];
     if (row === undefined) throw new IdentityError(404);
-    const mentions = db
-      .select()
-      .from(s.messageMentions)
-      .where(eq(s.messageMentions.messageId, id))
-      .orderBy(asc(s.messageMentions.memberKey))
-      .all()
-      .map((r) => Member.parse(decode(r.target)));
+    const mentions = (
+      await q()
+        .select()
+        .from(s.messageMentions)
+        .where(eq(s.messageMentions.messageId, id))
+        .orderBy(asc(s.messageMentions.memberKey))
+    ).map((r) => Member.parse(decode(r.target)));
     return Message.parse({ ...row, author: decode(row.author), mentions });
   }
   const page = snapshotPage;
   const highest = (value: number | null | undefined) => value ?? 0;
-  function visibleEvent(
+  async function visibleEvent(
     p: Principal,
     teamId: TeamId,
     channelId: ChannelId,
     eventId: string,
   ) {
-    const row = db
-      .select()
-      .from(s.communicationOutbox)
-      .where(
-        and(
-          eq(s.communicationOutbox.id, eventId),
-          eq(s.communicationOutbox.channelId, channelId),
-        ),
-      )
-      .get();
+    const row = (
+      await q()
+        .select()
+        .from(s.communicationOutbox)
+        .where(
+          and(
+            eq(s.communicationOutbox.id, eventId),
+            eq(s.communicationOutbox.channelId, channelId),
+          ),
+        )
+        .limit(1)
+    )[0];
     if (row === undefined) throw new IdentityError(404);
     if (OutboxFact.parse(decode(row.fact)).kind === 'task.changed') {
       try {
-        agents.teamAccess(p, teamId, 'tasks:read');
+        await agents.teamAccess(p, teamId, 'tasks:read');
       } catch (error) {
         if (error instanceof IdentityError && error.statusCode === 403)
           throw new IdentityError(404);
@@ -240,23 +259,26 @@ export function communicationRepository(
   }
   return {
     /** A newcomer joins the team's #general, as their own act. */
-    welcome(humanId: HumanId, teamId: TeamId) {
-      const general = db
-        .select({
-          id: s.channels.id,
-          teamId: s.channels.teamId,
-          name: s.channels.name,
-          position: s.channels.position,
-        })
-        .from(s.channels)
-        .where(
-          and(eq(s.channels.teamId, teamId), eq(s.channels.name, 'general')),
-        )
-        .get();
+    async welcome(humanId: HumanId, teamId: TeamId) {
+      const general = (
+        await q()
+          .select({
+            id: s.channels.id,
+            teamId: s.channels.teamId,
+            name: s.channels.name,
+            position: s.channels.position,
+          })
+          .from(s.channels)
+          .where(
+            and(eq(s.channels.teamId, teamId), eq(s.channels.name, 'general')),
+          )
+          .limit(1)
+      )[0];
       if (general === undefined) return;
       const channelId = ChannelView.parse(general).id;
       const target = { kind: 'human' as const, id: humanId };
-      db.insert(s.channelParticipants)
+      await q()
+        .insert(s.channelParticipants)
         .values({
           channelId,
           teamId,
@@ -265,9 +287,8 @@ export function communicationRepository(
           agentId: null,
           state: 'joined',
         })
-        .onConflictDoNothing()
-        .run();
-      fact(
+        .onConflictDoNothing();
+      await fact(
         { kind: 'human', humanId },
         teamId,
         channelId,
@@ -276,33 +297,34 @@ export function communicationRepository(
         { participant: target, participantState: 'joined' },
       );
     },
-    validateParticipant(
+    async validateParticipant(
       p: Principal,
       teamId: TeamId,
       channelId: ChannelId,
       target: Member,
     ) {
-      access(p, teamId, channelId);
-      validTarget(teamId, channelId, target, true);
+      await access(p, teamId, channelId);
+      await validTarget(teamId, channelId, target, true);
     },
-    validateCause(
+    async validateCause(
       p: Principal,
       teamId: TeamId,
       channelId: ChannelId,
       messageId: string | null,
       eventId: string | null,
     ) {
-      access(p, teamId, channelId);
-      if (messageId !== null) message(channelId, MessageId.parse(messageId));
-      if (eventId !== null) visibleEvent(p, teamId, channelId, eventId);
+      await access(p, teamId, channelId);
+      if (messageId !== null)
+        await message(channelId, MessageId.parse(messageId));
+      if (eventId !== null) await visibleEvent(p, teamId, channelId, eventId);
     },
     createChannel(
       p: Principal,
       teamId: TeamId,
       input: z.infer<typeof ChannelInput>,
     ) {
-      return atomic(() => {
-        person(p, teamId);
+      return atomic(async () => {
+        await person(p, teamId);
         const data = ChannelInput.parse(input);
         return mutation(
           p,
@@ -311,13 +333,15 @@ export function communicationRepository(
           'channel.create',
           data,
           ChannelView,
-          () => {
+          async () => {
             const position =
               highest(
-                db
-                  .select({ value: max(s.channels.position) })
-                  .from(s.channels)
-                  .get()?.value,
+                (
+                  await q()
+                    .select({ value: max(s.channels.position) })
+                    .from(s.channels)
+                    .limit(1)
+                )[0]?.value,
               ) + 1;
             const channel = ChannelView.parse({
               id: randomUUID(),
@@ -325,9 +349,10 @@ export function communicationRepository(
               name: data.name,
               position,
             });
-            db.insert(s.channels).values(channel).run();
+            await q().insert(s.channels).values(channel);
             const target = member(p);
-            db.insert(s.channelParticipants)
+            await q()
+              .insert(s.channelParticipants)
               .values({
                 channelId: channel.id,
                 teamId,
@@ -335,9 +360,14 @@ export function communicationRepository(
                 humanId: p.kind === 'human' ? p.humanId : null,
                 agentId: null,
                 state: 'joined',
-              })
-              .run();
-            fact(p, teamId, channel.id, data.operationKey, 'channel.created');
+              });
+            await fact(
+              p,
+              teamId,
+              channel.id,
+              data.operationKey,
+              'channel.created',
+            );
             return channel;
           },
         );
@@ -345,55 +375,55 @@ export function communicationRepository(
     },
     /** The people joined to a channel the caller can read. */
     joinedHumans(p: Principal, teamId: TeamId, channelId: ChannelId) {
-      return atomic(() => {
-        access(p, teamId, channelId);
-        return db
-          .select({ id: s.channelParticipants.humanId })
-          .from(s.channelParticipants)
-          .where(
-            and(
-              eq(s.channelParticipants.channelId, channelId),
-              eq(s.channelParticipants.state, 'joined'),
-              isNotNull(s.channelParticipants.humanId),
-            ),
-          )
-          .limit(100)
-          .all()
-          .flatMap((row) => (row.id === null ? [] : [HumanId.parse(row.id)]));
+      return atomic(async () => {
+        await access(p, teamId, channelId);
+        return (
+          await q()
+            .select({ id: s.channelParticipants.humanId })
+            .from(s.channelParticipants)
+            .where(
+              and(
+                eq(s.channelParticipants.channelId, channelId),
+                eq(s.channelParticipants.state, 'joined'),
+                isNotNull(s.channelParticipants.humanId),
+              ),
+            )
+            .limit(100)
+        ).flatMap((row) => (row.id === null ? [] : [HumanId.parse(row.id)]));
       });
     },
     /** Channels the caller left themselves (never removed ones), to rejoin. */
     leftChannels(p: Principal, teamId: TeamId) {
-      return atomic(() => {
-        team(p, teamId);
-        return db
-          .select({
-            id: s.channels.id,
-            teamId: s.channels.teamId,
-            name: s.channels.name,
-            position: s.channels.position,
-          })
-          .from(s.channels)
-          .innerJoin(
-            s.channelParticipants,
-            eq(s.channels.id, s.channelParticipants.channelId),
-          )
-          .where(
-            and(
-              eq(s.channels.teamId, teamId),
-              eq(s.channelParticipants.memberKey, memberKey(member(p))),
-              eq(s.channelParticipants.state, 'left'),
-            ),
-          )
-          .orderBy(asc(s.channels.position))
-          .limit(100)
-          .all()
-          .map((row) => ChannelView.parse(row));
+      return atomic(async () => {
+        await team(p, teamId);
+        return (
+          await q()
+            .select({
+              id: s.channels.id,
+              teamId: s.channels.teamId,
+              name: s.channels.name,
+              position: s.channels.position,
+            })
+            .from(s.channels)
+            .innerJoin(
+              s.channelParticipants,
+              eq(s.channels.id, s.channelParticipants.channelId),
+            )
+            .where(
+              and(
+                eq(s.channels.teamId, teamId),
+                eq(s.channelParticipants.memberKey, memberKey(member(p))),
+                eq(s.channelParticipants.state, 'left'),
+              ),
+            )
+            .orderBy(asc(s.channels.position))
+            .limit(100)
+        ).map((row) => ChannelView.parse(row));
       });
     },
     channels(p: Principal, teamId: TeamId, input: PageInput = {}) {
-      return atomic(() => {
-        team(p, teamId);
+      return atomic(async () => {
+        await team(p, teamId);
         const condition = and(
           eq(s.channels.teamId, teamId),
           eq(s.channelParticipants.memberKey, memberKey(member(p))),
@@ -403,51 +433,53 @@ export function communicationRepository(
           input,
           ['channels', teamId, memberKey(member(p))],
           ChannelView,
-          () =>
+          async () =>
             highest(
-              db
-                .select({ value: max(s.channels.position) })
+              (
+                await q()
+                  .select({ value: max(s.channels.position) })
+                  .from(s.channels)
+                  .innerJoin(
+                    s.channelParticipants,
+                    eq(s.channels.id, s.channelParticipants.channelId),
+                  )
+                  .where(condition)
+                  .limit(1)
+              )[0]?.value,
+            ),
+          async (after, maximum, limit) =>
+            (
+              await q()
+                .select({
+                  id: s.channels.id,
+                  teamId: s.channels.teamId,
+                  name: s.channels.name,
+                  position: s.channels.position,
+                })
                 .from(s.channels)
                 .innerJoin(
                   s.channelParticipants,
                   eq(s.channels.id, s.channelParticipants.channelId),
                 )
-                .where(condition)
-                .get()?.value,
-            ),
-          (after, maximum, limit) =>
-            db
-              .select({
-                id: s.channels.id,
-                teamId: s.channels.teamId,
-                name: s.channels.name,
-                position: s.channels.position,
-              })
-              .from(s.channels)
-              .innerJoin(
-                s.channelParticipants,
-                eq(s.channels.id, s.channelParticipants.channelId),
-              )
-              .where(
-                and(
-                  condition,
-                  gt(s.channels.position, after),
-                  lte(s.channels.position, maximum),
-                ),
-              )
-              .orderBy(asc(s.channels.position))
-              .limit(limit)
-              .all()
-              .map((r) => ChannelView.parse(r)),
+                .where(
+                  and(
+                    condition,
+                    gt(s.channels.position, after),
+                    lte(s.channels.position, maximum),
+                  ),
+                )
+                .orderBy(asc(s.channels.position))
+                .limit(limit)
+            ).map((r) => ChannelView.parse(r)),
         );
       });
     },
     channel(p: Principal, teamId: TeamId, channelId: ChannelId) {
-      return atomic(() => access(p, teamId, channelId).channel);
+      return atomic(async () => (await access(p, teamId, channelId)).channel);
     },
     participant(p: Principal, teamId: TeamId, channelId: ChannelId) {
-      return atomic(() => {
-        access(p, teamId, channelId);
+      return atomic(async () => {
+        await access(p, teamId, channelId);
         return participantView(teamId, channelId, member(p));
       });
     },
@@ -458,27 +490,42 @@ export function communicationRepository(
       input: z.infer<typeof Mutation>,
       action: 'subscribe' | 'leave',
     ) {
-      return atomic(() => {
-        access(p, teamId, channelId, true, true);
+      return atomic(async () => {
+        await access(p, teamId, channelId, true, true);
         const data = Mutation.parse(input);
-        return mutation(p, teamId, channelId, action, data, Participant, () => {
-          const target = member(p);
-          const state = action === 'subscribe' ? 'joined' : 'left';
-          db.update(s.channelParticipants)
-            .set({ state })
-            .where(
-              and(
-                eq(s.channelParticipants.channelId, channelId),
-                eq(s.channelParticipants.memberKey, memberKey(target)),
-              ),
-            )
-            .run();
-          fact(p, teamId, channelId, data.operationKey, 'participant.changed', {
-            participant: target,
-            participantState: state,
-          });
-          return participantView(teamId, channelId, target);
-        });
+        return mutation(
+          p,
+          teamId,
+          channelId,
+          action,
+          data,
+          Participant,
+          async () => {
+            const target = member(p);
+            const state = action === 'subscribe' ? 'joined' : 'left';
+            await q()
+              .update(s.channelParticipants)
+              .set({ state })
+              .where(
+                and(
+                  eq(s.channelParticipants.channelId, channelId),
+                  eq(s.channelParticipants.memberKey, memberKey(target)),
+                ),
+              );
+            await fact(
+              p,
+              teamId,
+              channelId,
+              data.operationKey,
+              'participant.changed',
+              {
+                participant: target,
+                participantState: state,
+              },
+            );
+            return participantView(teamId, channelId, target);
+          },
+        );
       });
     },
     enroll(
@@ -488,43 +535,58 @@ export function communicationRepository(
       input: z.infer<typeof ParticipantInput>,
       action: 'invite' | 'remove',
     ) {
-      return atomic(() => {
-        person(p, teamId, channelId);
+      return atomic(async () => {
+        await person(p, teamId, channelId);
         const data = ParticipantInput.parse(input);
         if (
           action === 'remove' &&
           memberKey(data.member) === memberKey(member(p))
         )
           throw new IdentityError(400);
-        return mutation(p, teamId, channelId, action, data, Participant, () => {
-          if (action === 'invite')
-            validTarget(teamId, channelId, data.member, false);
-          else participantView(teamId, channelId, data.member);
-          const target = data.member;
-          const state = action === 'invite' ? 'joined' : 'removed';
-          db.insert(s.channelParticipants)
-            .values({
-              channelId,
+        return mutation(
+          p,
+          teamId,
+          channelId,
+          action,
+          data,
+          Participant,
+          async () => {
+            if (action === 'invite')
+              await validTarget(teamId, channelId, data.member, false);
+            else await participantView(teamId, channelId, data.member);
+            const target = data.member;
+            const state = action === 'invite' ? 'joined' : 'removed';
+            await q()
+              .insert(s.channelParticipants)
+              .values({
+                channelId,
+                teamId,
+                memberKey: memberKey(target),
+                humanId: target.kind === 'human' ? target.id : null,
+                agentId: target.kind === 'agent' ? target.id : null,
+                state,
+              })
+              .onConflictDoUpdate({
+                target: [
+                  s.channelParticipants.channelId,
+                  s.channelParticipants.memberKey,
+                ],
+                set: { state },
+              });
+            await fact(
+              p,
               teamId,
-              memberKey: memberKey(target),
-              humanId: target.kind === 'human' ? target.id : null,
-              agentId: target.kind === 'agent' ? target.id : null,
-              state,
-            })
-            .onConflictDoUpdate({
-              target: [
-                s.channelParticipants.channelId,
-                s.channelParticipants.memberKey,
-              ],
-              set: { state },
-            })
-            .run();
-          fact(p, teamId, channelId, data.operationKey, 'participant.changed', {
-            participant: target,
-            participantState: state,
-          });
-          return participantView(teamId, channelId, target);
-        });
+              channelId,
+              data.operationKey,
+              'participant.changed',
+              {
+                participant: target,
+                participantState: state,
+              },
+            );
+            return participantView(teamId, channelId, target);
+          },
+        );
       });
     },
     createTopic(
@@ -533,8 +595,8 @@ export function communicationRepository(
       channelId: ChannelId,
       input: z.infer<typeof TopicInput>,
     ) {
-      return atomic(() => {
-        access(p, teamId, channelId, true);
+      return atomic(async () => {
+        await access(p, teamId, channelId, true);
         const data = TopicInput.parse(input);
         return mutation(
           p,
@@ -543,28 +605,35 @@ export function communicationRepository(
           'topic.create',
           data,
           Topic,
-          () => {
+          async () => {
             const id = TopicId.parse(randomUUID());
-            db.insert(s.topics)
+            await q()
+              .insert(s.topics)
               .values({
                 id,
                 channelId,
                 title: data.title,
                 author: JSON.stringify(author(p)),
                 createdAt: now(),
-              })
-              .run();
-            fact(p, teamId, channelId, data.operationKey, 'topic.created', {
-              topicId: id,
-            });
+              });
+            await fact(
+              p,
+              teamId,
+              channelId,
+              data.operationKey,
+              'topic.created',
+              {
+                topicId: id,
+              },
+            );
             return topic(channelId, id);
           },
         );
       });
     },
     topic(p: Principal, teamId: TeamId, channelId: ChannelId, id: TopicId) {
-      return atomic(() => {
-        access(p, teamId, channelId);
+      return atomic(async () => {
+        await access(p, teamId, channelId);
         return topic(channelId, id);
       });
     },
@@ -574,35 +643,39 @@ export function communicationRepository(
       channelId: ChannelId,
       input: PageInput = {},
     ) {
-      return atomic(() => {
-        access(p, teamId, channelId);
+      return atomic(async () => {
+        await access(p, teamId, channelId);
         return page(
           input,
           ['topics', teamId, channelId, memberKey(member(p))],
           Topic,
-          () =>
+          async () =>
             highest(
-              db
-                .select({ value: max(s.topics.position) })
-                .from(s.topics)
-                .where(eq(s.topics.channelId, channelId))
-                .get()?.value,
+              (
+                await q()
+                  .select({ value: max(s.topics.position) })
+                  .from(s.topics)
+                  .where(eq(s.topics.channelId, channelId))
+                  .limit(1)
+              )[0]?.value,
             ),
-          (after, maximum, limit) =>
-            db
-              .select()
-              .from(s.topics)
-              .where(
-                and(
-                  eq(s.topics.channelId, channelId),
-                  gt(s.topics.position, after),
-                  lte(s.topics.position, maximum),
-                ),
-              )
-              .orderBy(asc(s.topics.position))
-              .limit(limit)
-              .all()
-              .map((r) => topic(channelId, TopicId.parse(r.id))),
+          async (after, maximum, limit) =>
+            Promise.all(
+              (
+                await q()
+                  .select()
+                  .from(s.topics)
+                  .where(
+                    and(
+                      eq(s.topics.channelId, channelId),
+                      gt(s.topics.position, after),
+                      lte(s.topics.position, maximum),
+                    ),
+                  )
+                  .orderBy(asc(s.topics.position))
+                  .limit(limit)
+              ).map((r) => topic(channelId, TopicId.parse(r.id))),
+            ),
         );
       });
     },
@@ -616,10 +689,10 @@ export function communicationRepository(
       channelId: ChannelId,
       limit: number,
     ) {
-      return atomic(() => {
-        access(p, teamId, channelId);
+      return atomic(async () => {
+        await access(p, teamId, channelId);
         const active = sql<string>`coalesce(max(${s.messages.createdAt}), ${s.topics.createdAt})`;
-        const rows = db
+        const rows = await q()
           .select({ id: s.topics.id })
           .from(s.topics)
           .leftJoin(
@@ -632,19 +705,20 @@ export function communicationRepository(
           .where(eq(s.topics.channelId, channelId))
           .groupBy(s.topics.id)
           .orderBy(desc(active), desc(s.topics.position))
-          .limit(limit + 1)
-          .all();
+          .limit(limit + 1);
         return {
-          items: rows
-            .slice(0, limit)
-            .map((r) => topic(channelId, TopicId.parse(r.id))),
+          items: await Promise.all(
+            rows
+              .slice(0, limit)
+              .map((r) => topic(channelId, TopicId.parse(r.id))),
+          ),
           more: rows.length > limit,
         };
       });
     },
     post(p: Principal, teamId: TeamId, channelId: ChannelId, input: PostInput) {
-      return atomic(() => {
-        access(p, teamId, channelId, true);
+      return atomic(async () => {
+        await access(p, teamId, channelId, true);
         const data = PostInput.parse(input);
         return mutation(
           p,
@@ -653,16 +727,17 @@ export function communicationRepository(
           'message.post',
           data,
           Message,
-          () => {
-            if (data.topicId !== null) topic(channelId, data.topicId);
+          async () => {
+            if (data.topicId !== null) await topic(channelId, data.topicId);
             for (const target of data.mentions)
-              validTarget(teamId, channelId, target, true);
+              await validTarget(teamId, channelId, target, true);
             if (data.sourceMessageId !== null)
-              message(channelId, data.sourceMessageId);
+              await message(channelId, data.sourceMessageId);
             if (data.sourceEventId !== null)
-              visibleEvent(p, teamId, channelId, data.sourceEventId);
+              await visibleEvent(p, teamId, channelId, data.sourceEventId);
             const id = MessageId.parse(randomUUID());
-            db.insert(s.messages)
+            await q()
+              .insert(s.messages)
               .values({
                 id,
                 channelId,
@@ -672,32 +747,38 @@ export function communicationRepository(
                 createdAt: now(),
                 sourceMessageId: data.sourceMessageId,
                 sourceEventId: data.sourceEventId,
-              })
-              .run();
+              });
             for (const target of data.mentions)
-              db.insert(s.messageMentions)
+              await q()
+                .insert(s.messageMentions)
                 .values({
                   messageId: id,
                   channelId,
                   memberKey: memberKey(target),
                   target: JSON.stringify(target),
-                })
-                .run();
-            fact(p, teamId, channelId, data.operationKey, 'message.posted', {
-              messageId: id,
-              topicId: data.topicId,
-              mentions: data.mentions,
-              sourceMessageId: data.sourceMessageId,
-              sourceEventId: data.sourceEventId,
-            });
+                });
+            await fact(
+              p,
+              teamId,
+              channelId,
+              data.operationKey,
+              'message.posted',
+              {
+                messageId: id,
+                topicId: data.topicId,
+                mentions: data.mentions,
+                sourceMessageId: data.sourceMessageId,
+                sourceEventId: data.sourceEventId,
+              },
+            );
             return message(channelId, id);
           },
         );
       });
     },
     message(p: Principal, teamId: TeamId, channelId: ChannelId, id: MessageId) {
-      return atomic(() => {
-        access(p, teamId, channelId);
+      return atomic(async () => {
+        await access(p, teamId, channelId);
         return message(channelId, id);
       });
     },
@@ -708,9 +789,9 @@ export function communicationRepository(
       input: PageInput = {},
       topicId: TopicId | null = null,
     ) {
-      return atomic(() => {
-        access(p, teamId, channelId);
-        if (topicId !== null) topic(channelId, topicId);
+      return atomic(async () => {
+        await access(p, teamId, channelId);
+        if (topicId !== null) await topic(channelId, topicId);
         const condition = and(
           eq(s.messages.channelId, channelId),
           topicId === null ? undefined : eq(s.messages.topicId, topicId),
@@ -719,29 +800,33 @@ export function communicationRepository(
           input,
           ['messages', teamId, channelId, topicId, memberKey(member(p))],
           Message,
-          () =>
+          async () =>
             highest(
-              db
-                .select({ value: max(s.messages.position) })
-                .from(s.messages)
-                .where(condition)
-                .get()?.value,
+              (
+                await q()
+                  .select({ value: max(s.messages.position) })
+                  .from(s.messages)
+                  .where(condition)
+                  .limit(1)
+              )[0]?.value,
             ),
-          (after, maximum, limit) =>
-            db
-              .select({ id: s.messages.id })
-              .from(s.messages)
-              .where(
-                and(
-                  condition,
-                  gt(s.messages.position, after),
-                  lte(s.messages.position, maximum),
-                ),
-              )
-              .orderBy(asc(s.messages.position))
-              .limit(limit)
-              .all()
-              .map((r) => message(channelId, MessageId.parse(r.id))),
+          async (after, maximum, limit) =>
+            Promise.all(
+              (
+                await q()
+                  .select({ id: s.messages.id })
+                  .from(s.messages)
+                  .where(
+                    and(
+                      condition,
+                      gt(s.messages.position, after),
+                      lte(s.messages.position, maximum),
+                    ),
+                  )
+                  .orderBy(asc(s.messages.position))
+                  .limit(limit)
+              ).map((r) => message(channelId, MessageId.parse(r.id))),
+            ),
         );
       });
     },
@@ -751,12 +836,12 @@ export function communicationRepository(
       channelId: ChannelId,
       input: PageInput = {},
     ) {
-      return atomic(() => {
-        access(p, teamId, channelId);
+      return atomic(async () => {
+        await access(p, teamId, channelId);
         let taskFacts = true;
         if (p.kind === 'agent') {
           try {
-            agents.teamAccess(p, teamId, 'tasks:read');
+            await agents.teamAccess(p, teamId, 'tasks:read');
           } catch (error) {
             if (error instanceof IdentityError && error.statusCode === 403)
               taskFacts = false;
@@ -767,37 +852,39 @@ export function communicationRepository(
           eq(s.communicationOutbox.channelId, channelId),
           taskFacts
             ? undefined
-            : sql`json_extract(${s.communicationOutbox.fact}, '$.kind') != 'task.changed'`,
+            : sql`(${s.communicationOutbox.fact}::jsonb ->> 'kind') != 'task.changed'`,
         );
         return page(
           input,
           ['events', teamId, channelId, memberKey(member(p)), taskFacts],
           Event,
-          () =>
+          async () =>
             highest(
-              db
-                .select({ value: max(s.communicationOutbox.position) })
-                .from(s.communicationOutbox)
-                .where(condition)
-                .get()?.value,
+              (
+                await q()
+                  .select({ value: max(s.communicationOutbox.position) })
+                  .from(s.communicationOutbox)
+                  .where(condition)
+                  .limit(1)
+              )[0]?.value,
             ),
-          (after, maximum, limit) =>
-            db
-              .select()
-              .from(s.communicationOutbox)
-              .where(
-                and(
-                  condition,
-                  gt(s.communicationOutbox.position, after),
-                  lte(s.communicationOutbox.position, maximum),
-                ),
-              )
-              .orderBy(asc(s.communicationOutbox.position))
-              .limit(limit)
-              .all()
-              .map((r) =>
-                Event.parse({ position: r.position, fact: decode(r.fact) }),
-              ),
+          async (after, maximum, limit) =>
+            (
+              await q()
+                .select()
+                .from(s.communicationOutbox)
+                .where(
+                  and(
+                    condition,
+                    gt(s.communicationOutbox.position, after),
+                    lte(s.communicationOutbox.position, maximum),
+                  ),
+                )
+                .orderBy(asc(s.communicationOutbox.position))
+                .limit(limit)
+            ).map((r) =>
+              Event.parse({ position: r.position, fact: decode(r.fact) }),
+            ),
         );
       });
     },

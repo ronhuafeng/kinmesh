@@ -1,3 +1,4 @@
+import type { Database } from './database.js';
 import { enqueueFact } from './inbox-enqueue.js';
 import { randomUUID } from 'node:crypto';
 import {
@@ -13,7 +14,6 @@ import {
   or,
   sql,
 } from 'drizzle-orm';
-import type { BetterSQLite3Database } from 'drizzle-orm/better-sqlite3';
 import { z } from 'zod';
 import * as s from './schema.js';
 import type { agentRepository } from './agents.js';
@@ -49,32 +49,34 @@ import {
 type ChannelId = z.infer<typeof ChannelId>;
 const decode = (value: string): unknown => JSON.parse(value);
 export function taskRepository(
-  db: BetterSQLite3Database<typeof s>,
+  d: Database,
   agents: ReturnType<typeof agentRepository>,
   communication: ReturnType<typeof communicationRepository>,
 ) {
-  const { atomic, receipt } = transactional(db);
-  function access(
+  const { q, atomic, receipt } = transactional(d);
+  async function access(
     p: Principal,
     teamId: TeamId,
     channelId: ChannelId,
     scope: Scope = 'tasks:read',
   ) {
-    communication.channel(p, teamId, channelId);
-    agents.teamAccess(p, teamId, 'tasks:read', scope);
+    await communication.channel(p, teamId, channelId);
+    await agents.teamAccess(p, teamId, 'tasks:read', scope);
   }
-  function row(teamId: TeamId, channelId: ChannelId, id: TaskId) {
-    const value = db
-      .select()
-      .from(s.tasks)
-      .where(
-        and(
-          eq(s.tasks.id, id),
-          eq(s.tasks.teamId, teamId),
-          eq(s.tasks.channelId, channelId),
-        ),
-      )
-      .get();
+  async function row(teamId: TeamId, channelId: ChannelId, id: TaskId) {
+    const value = (
+      await q()
+        .select()
+        .from(s.tasks)
+        .where(
+          and(
+            eq(s.tasks.id, id),
+            eq(s.tasks.teamId, teamId),
+            eq(s.tasks.channelId, channelId),
+          ),
+        )
+        .limit(1)
+    )[0];
     if (value === undefined) throw new IdentityError(404);
     return value;
   }
@@ -96,33 +98,35 @@ export function taskRepository(
       state: decode(value.state),
     });
   }
-  function target(
+  async function target(
     p: Principal,
     teamId: TeamId,
     channelId: ChannelId,
     member: Member | null,
   ) {
     if (member !== null)
-      communication.validateParticipant(p, teamId, channelId, member);
+      await communication.validateParticipant(p, teamId, channelId, member);
   }
-  function insertExecution(
+  async function insertExecution(
     p: Principal,
     taskId: TaskId,
     reference: z.infer<typeof TaskExecution>['reference'],
     time: string,
   ) {
-    const inserted = db
-      .insert(s.taskExecutions)
-      .values({
-        id: randomUUID(),
-        taskId,
-        referenceKey: referenceKey(reference),
-        reference: JSON.stringify(reference),
-        author: JSON.stringify(principalAuthor(p)),
-        createdAt: time,
-      })
-      .returning()
-      .get();
+    const inserted = (
+      await q()
+        .insert(s.taskExecutions)
+        .values({
+          id: randomUUID(),
+          taskId,
+          referenceKey: referenceKey(reference),
+          reference: JSON.stringify(reference),
+          author: JSON.stringify(principalAuthor(p)),
+          createdAt: time,
+        })
+        .returning()
+    )[0];
+    if (inserted === undefined) throw new Error('Execution link not recorded');
     return TaskExecution.parse({
       id: inserted.id,
       position: inserted.position,
@@ -132,7 +136,7 @@ export function taskRepository(
       author: decode(inserted.author),
     });
   }
-  function record(
+  async function record(
     p: Principal,
     task: Task,
     before: Task | null,
@@ -171,9 +175,9 @@ export function taskRepository(
       reviewer: task.state.reviewer,
       executionLinkId: executionLink?.id ?? null,
     });
-    db.insert(s.communicationOutbox)
-      .values({ id, channelId: task.channelId, fact: JSON.stringify(fact) })
-      .run();
+    await q()
+      .insert(s.communicationOutbox)
+      .values({ id, channelId: task.channelId, fact: JSON.stringify(fact) });
     const event = {
       id,
       taskId: task.id,
@@ -186,34 +190,38 @@ export function taskRepository(
       command,
       sourceEventId,
     };
-    const inserted = db
-      .insert(s.taskEvents)
-      .values({
-        id,
-        taskId: task.id,
-        version: task.version,
-        event: JSON.stringify(event),
-      })
-      .returning({ position: s.taskEvents.position })
-      .get();
+    const inserted = (
+      await q()
+        .insert(s.taskEvents)
+        .values({
+          id,
+          taskId: task.id,
+          version: task.version,
+          event: JSON.stringify(event),
+        })
+        .returning({ position: s.taskEvents.position })
+    )[0];
+    if (inserted === undefined) throw new Error('Task event not recorded');
     TaskEvent.parse({ ...event, position: inserted.position });
-    enqueueFact(db, fact);
+    await enqueueFact(q(), fact);
     return TaskResult.parse({ task, eventId: id, executionLink });
   }
   /** Whether a person is joined to the channel now. */
-  function joinedPerson(channelId: ChannelId, humanId: string) {
+  async function joinedPerson(channelId: ChannelId, humanId: string) {
     return (
-      db
-        .select({ id: s.channelParticipants.humanId })
-        .from(s.channelParticipants)
-        .where(
-          and(
-            eq(s.channelParticipants.channelId, channelId),
-            eq(s.channelParticipants.memberKey, `human:${humanId}`),
-            eq(s.channelParticipants.state, 'joined'),
-          ),
-        )
-        .get() !== undefined
+      (
+        await q()
+          .select({ id: s.channelParticipants.humanId })
+          .from(s.channelParticipants)
+          .where(
+            and(
+              eq(s.channelParticipants.channelId, channelId),
+              eq(s.channelParticipants.memberKey, `human:${humanId}`),
+              eq(s.channelParticipants.state, 'joined'),
+            ),
+          )
+          .limit(1)
+      )[0] !== undefined
     );
   }
   /** The person who wrote a fact or a message (stored JSON), if a person did. */
@@ -236,79 +244,91 @@ export function taskRepository(
    * that, the author of the message it came from, then the person who last
    * spoke in the channel, then anyone in it.
    */
-  function acceptorFor(
+  async function acceptorFor(
     p: Principal,
     channelId: ChannelId,
     data: z.output<typeof TaskCreate>,
   ) {
     if (p.kind === 'human') {
       if (data.acceptor === null) return p.humanId;
-      if (!joinedPerson(channelId, data.acceptor)) throw new IdentityError(404);
+      if (!(await joinedPerson(channelId, data.acceptor)))
+        throw new IdentityError(404);
       return data.acceptor;
     }
     if (data.acceptor !== null) throw new IdentityError(403);
     const rootAuthor = personOf(
       data.sourceEventId === null
         ? undefined
-        : db
-            .select({ fact: s.communicationOutbox.fact })
-            .from(s.inboxCauses)
-            .innerJoin(
-              s.communicationOutbox,
-              eq(s.communicationOutbox.id, s.inboxCauses.rootId),
-            )
-            .where(eq(s.inboxCauses.eventId, data.sourceEventId))
-            .get()?.fact,
+        : (
+            await q()
+              .select({ fact: s.communicationOutbox.fact })
+              .from(s.inboxCauses)
+              .innerJoin(
+                s.communicationOutbox,
+                eq(s.communicationOutbox.id, s.inboxCauses.rootId),
+              )
+              .where(eq(s.inboxCauses.eventId, data.sourceEventId))
+              .limit(1)
+          )[0]?.fact,
     );
     const messageAuthor =
       data.sourceMessageId === null
         ? undefined
         : personOf(
-            db
-              .select({ author: s.messages.author })
-              .from(s.messages)
-              .where(eq(s.messages.id, data.sourceMessageId))
-              .get()?.author,
+            (
+              await q()
+                .select({ author: s.messages.author })
+                .from(s.messages)
+                .where(eq(s.messages.id, data.sourceMessageId))
+                .limit(1)
+            )[0]?.author,
           );
     const lastSpoke = personOf(
-      db
-        .select({ author: s.messages.author })
-        .from(s.messages)
-        .innerJoin(
-          s.channelParticipants,
-          and(
-            eq(s.channelParticipants.channelId, s.messages.channelId),
-            eq(
-              s.channelParticipants.memberKey,
-              sql`'human:' || json_extract(${s.messages.author}, '$.humanId')`,
+      (
+        await q()
+          .select({ author: s.messages.author })
+          .from(s.messages)
+          .innerJoin(
+            s.channelParticipants,
+            and(
+              eq(s.channelParticipants.channelId, s.messages.channelId),
+              eq(
+                s.channelParticipants.memberKey,
+                sql`'human:' || (${s.messages.author}::jsonb ->> 'humanId')`,
+              ),
+              eq(s.channelParticipants.state, 'joined'),
             ),
-            eq(s.channelParticipants.state, 'joined'),
-          ),
-        )
+          )
+          .where(
+            and(
+              eq(s.messages.channelId, channelId),
+              sql`(${s.messages.author}::jsonb ->> 'kind') = 'human'`,
+            ),
+          )
+          .orderBy(desc(s.messages.createdAt))
+          .limit(1)
+      )[0]?.author,
+    );
+    const anyone = (
+      await q()
+        .select({ id: s.channelParticipants.humanId })
+        .from(s.channelParticipants)
         .where(
           and(
-            eq(s.messages.channelId, channelId),
-            sql`json_extract(${s.messages.author}, '$.kind') = 'human'`,
+            eq(s.channelParticipants.channelId, channelId),
+            eq(s.channelParticipants.state, 'joined'),
+            isNotNull(s.channelParticipants.humanId),
           ),
         )
-        .orderBy(desc(s.messages.createdAt))
-        .get()?.author,
-    );
-    const anyone = db
-      .select({ id: s.channelParticipants.humanId })
-      .from(s.channelParticipants)
-      .where(
-        and(
-          eq(s.channelParticipants.channelId, channelId),
-          eq(s.channelParticipants.state, 'joined'),
-          isNotNull(s.channelParticipants.humanId),
-        ),
-      )
-      .orderBy(asc(s.channelParticipants.humanId))
-      .get()?.id;
-    const chosen = [rootAuthor, messageAuthor, lastSpoke].find(
-      (id) => id !== undefined && joinedPerson(channelId, id),
-    );
+        .orderBy(asc(s.channelParticipants.humanId))
+        .limit(1)
+    )[0]?.id;
+    let chosen: string | undefined;
+    for (const id of [rootAuthor, messageAuthor, lastSpoke])
+      if (id !== undefined && (await joinedPerson(channelId, id))) {
+        chosen = id;
+        break;
+      }
     const acceptor = chosen ?? anyone;
     // Nobody in the channel can decide on it.
     if (!acceptor) throw new IdentityError(409);
@@ -321,8 +341,8 @@ export function taskRepository(
       channelId: ChannelId,
       input: TaskCreate,
     ) {
-      return atomic(() => {
-        access(p, teamId, channelId, 'tasks:write');
+      return atomic(async () => {
+        await access(p, teamId, channelId, 'tasks:write');
         const data = TaskCreate.parse(input);
         return receipt(
           JSON.stringify([
@@ -334,7 +354,7 @@ export function taskRepository(
           data.operationKey,
           data,
           TaskResult,
-          () => {
+          async () => {
             // An agent may only propose work for itself; a person may assign.
             if (
               p.kind !== 'human' &&
@@ -343,18 +363,18 @@ export function taskRepository(
                 data.reviewer !== null)
             )
               throw new IdentityError(403);
-            target(p, teamId, channelId, data.owner);
-            target(p, teamId, channelId, data.reviewer);
+            await target(p, teamId, channelId, data.owner);
+            await target(p, teamId, channelId, data.reviewer);
             if (data.topicId !== null)
-              communication.topic(p, teamId, channelId, data.topicId);
-            communication.validateCause(
+              await communication.topic(p, teamId, channelId, data.topicId);
+            await communication.validateCause(
               p,
               teamId,
               channelId,
               data.sourceMessageId,
               data.sourceEventId,
             );
-            const acceptorHumanId = acceptorFor(p, channelId, data);
+            const acceptorHumanId = await acceptorFor(p, channelId, data);
             const time = new Date().toISOString();
             const state = TaskState.parse({
               status: data.owner === null ? 'proposed' : 'in-progress',
@@ -362,27 +382,30 @@ export function taskRepository(
               reviewer: data.reviewer,
               note: null,
             });
-            const inserted = db
-              .insert(s.tasks)
-              .values({
-                id: randomUUID(),
-                teamId,
-                channelId,
-                topicId: data.topicId,
-                title: data.title,
-                description: data.description,
-                criteria: JSON.stringify(data.criteria),
-                creator: JSON.stringify(principalAuthor(p)),
-                acceptorHumanId,
-                state: JSON.stringify(state),
-                status: state.status,
-                ownerKey: state.owner === null ? null : memberKey(state.owner),
-                version: 1,
-                createdAt: time,
-                updatedAt: time,
-              })
-              .returning()
-              .get();
+            const inserted = (
+              await q()
+                .insert(s.tasks)
+                .values({
+                  id: randomUUID(),
+                  teamId,
+                  channelId,
+                  topicId: data.topicId,
+                  title: data.title,
+                  description: data.description,
+                  criteria: JSON.stringify(data.criteria),
+                  creator: JSON.stringify(principalAuthor(p)),
+                  acceptorHumanId,
+                  state: JSON.stringify(state),
+                  status: state.status,
+                  ownerKey:
+                    state.owner === null ? null : memberKey(state.owner),
+                  version: 1,
+                  createdAt: time,
+                  updatedAt: time,
+                })
+                .returning()
+            )[0];
+            if (inserted === undefined) throw new Error('Task not recorded');
             return record(
               p,
               view(inserted),
@@ -397,9 +420,9 @@ export function taskRepository(
       });
     },
     get(p: Principal, teamId: TeamId, channelId: ChannelId, id: TaskId) {
-      return atomic(() => {
-        access(p, teamId, channelId);
-        return view(row(teamId, channelId, id));
+      return atomic(async () => {
+        await access(p, teamId, channelId);
+        return view(await row(teamId, channelId, id));
       });
     },
     /**
@@ -407,46 +430,46 @@ export function taskRepository(
      * decision: sign-off, review or rework. Newest change first.
      */
     waitingOn(p: Principal, teamId: TeamId) {
-      return atomic(() => {
+      return atomic(async () => {
         if (p.kind !== 'human') throw new IdentityError(403);
-        agents.teamAccess(p, teamId, 'tasks:read');
+        await agents.teamAccess(p, teamId, 'tasks:read');
         const me = memberKey(principalMember(p));
-        return db
-          .select({ task: s.tasks, channelName: s.channels.name })
-          .from(s.tasks)
-          .innerJoin(s.channels, eq(s.channels.id, s.tasks.channelId))
-          .innerJoin(
-            s.channelParticipants,
-            and(
-              eq(s.channelParticipants.channelId, s.tasks.channelId),
-              eq(s.channelParticipants.memberKey, me),
-              eq(s.channelParticipants.state, 'joined'),
-            ),
-          )
-          .where(
-            and(
-              eq(s.tasks.teamId, teamId),
-              or(
-                and(
-                  eq(s.tasks.status, 'awaiting-human'),
-                  eq(s.tasks.acceptorHumanId, p.humanId),
-                ),
-                and(
-                  eq(s.tasks.status, 'review-requested'),
-                  sql`json_extract(${s.tasks.state}, '$.reviewer.kind') = 'human'`,
-                  sql`json_extract(${s.tasks.state}, '$.reviewer.id') = ${p.humanId}`,
-                ),
-                and(
-                  eq(s.tasks.status, 'rework-requested'),
-                  eq(s.tasks.ownerKey, me),
+        return (
+          await q()
+            .select({ task: s.tasks, channelName: s.channels.name })
+            .from(s.tasks)
+            .innerJoin(s.channels, eq(s.channels.id, s.tasks.channelId))
+            .innerJoin(
+              s.channelParticipants,
+              and(
+                eq(s.channelParticipants.channelId, s.tasks.channelId),
+                eq(s.channelParticipants.memberKey, me),
+                eq(s.channelParticipants.state, 'joined'),
+              ),
+            )
+            .where(
+              and(
+                eq(s.tasks.teamId, teamId),
+                or(
+                  and(
+                    eq(s.tasks.status, 'awaiting-human'),
+                    eq(s.tasks.acceptorHumanId, p.humanId),
+                  ),
+                  and(
+                    eq(s.tasks.status, 'review-requested'),
+                    sql`(${s.tasks.state}::jsonb -> 'reviewer' ->> 'kind') = 'human'`,
+                    sql`(${s.tasks.state}::jsonb -> 'reviewer' ->> 'id') = ${p.humanId}`,
+                  ),
+                  and(
+                    eq(s.tasks.status, 'rework-requested'),
+                    eq(s.tasks.ownerKey, me),
+                  ),
                 ),
               ),
-            ),
-          )
-          .orderBy(sql`${s.tasks.updatedAt} DESC`)
-          .limit(50)
-          .all()
-          .map((r) => ({ task: view(r.task), channelName: r.channelName }));
+            )
+            .orderBy(sql`${s.tasks.updatedAt} DESC`)
+            .limit(50)
+        ).map((r) => ({ task: view(r.task), channelName: r.channelName }));
       });
     },
     list(
@@ -455,33 +478,35 @@ export function taskRepository(
       channelId: ChannelId,
       input: PageInput = {},
     ) {
-      return atomic(() => {
-        access(p, teamId, channelId);
+      return atomic(async () => {
+        await access(p, teamId, channelId);
         return snapshotPage(
           input,
           ['tasks', teamId, channelId, memberKey(principalMember(p))],
           Task,
-          () =>
-            db
-              .select({ value: max(s.tasks.position) })
-              .from(s.tasks)
-              .where(eq(s.tasks.channelId, channelId))
-              .get()?.value ?? 0,
-          (after, maximum, limit) =>
-            db
-              .select()
-              .from(s.tasks)
-              .where(
-                and(
-                  eq(s.tasks.channelId, channelId),
-                  gt(s.tasks.position, after),
-                  lte(s.tasks.position, maximum),
-                ),
-              )
-              .orderBy(asc(s.tasks.position))
-              .limit(limit)
-              .all()
-              .map(view),
+          async () =>
+            (
+              await q()
+                .select({ value: max(s.tasks.position) })
+                .from(s.tasks)
+                .where(eq(s.tasks.channelId, channelId))
+                .limit(1)
+            )[0]?.value ?? 0,
+          async (after, maximum, limit) =>
+            (
+              await q()
+                .select()
+                .from(s.tasks)
+                .where(
+                  and(
+                    eq(s.tasks.channelId, channelId),
+                    gt(s.tasks.position, after),
+                    lte(s.tasks.position, maximum),
+                  ),
+                )
+                .orderBy(asc(s.tasks.position))
+                .limit(limit)
+            ).map(view),
         );
       });
     },
@@ -493,9 +518,9 @@ export function taskRepository(
       id: TaskId,
       reference: z.infer<typeof TaskExecution>['reference'],
     ) {
-      return atomic(() => {
-        access(p, teamId, channelId, 'tasks:write');
-        const current = view(row(teamId, channelId, id));
+      return atomic(async () => {
+        await access(p, teamId, channelId, 'tasks:write');
+        const current = view(await row(teamId, channelId, id));
         if (
           p.kind !== 'agent' ||
           !retainsExecutionResponsibility(current, p.agentId)
@@ -517,15 +542,15 @@ export function taskRepository(
       id: TaskId,
       input: TaskCommand,
     ) {
-      return atomic(() => {
+      return atomic(async () => {
         const data = TaskCommand.parse(input);
-        access(
+        await access(
           p,
           teamId,
           channelId,
           data.type === 'review' ? 'tasks:review' : 'tasks:write',
         );
-        const old = row(teamId, channelId, id);
+        const old = await row(teamId, channelId, id);
         return receipt(
           JSON.stringify([
             teamId,
@@ -536,20 +561,20 @@ export function taskRepository(
           data.operationKey,
           data,
           TaskResult,
-          () => {
+          async () => {
             const current = view(old);
             const time = new Date().toISOString();
             const state = transition(current, p, data, time);
             if (data.type === 'handoff')
-              target(p, teamId, channelId, data.recipient);
+              await target(p, teamId, channelId, data.recipient);
             if (data.type === 'request-review')
-              target(p, teamId, channelId, data.reviewer);
+              await target(p, teamId, channelId, data.reviewer);
             // Assigned people must still be active/joined before taking review or acceptance decisions.
             if (data.type === 'review' || data.type === 'accept') {
-              target(p, teamId, channelId, state.owner);
-              target(p, teamId, channelId, state.reviewer);
+              await target(p, teamId, channelId, state.owner);
+              await target(p, teamId, channelId, state.reviewer);
             }
-            const changed = db
+            const changed = await q()
               .update(s.tasks)
               .set({
                 state: JSON.stringify(state),
@@ -573,27 +598,33 @@ export function taskRepository(
                       )
                     : undefined,
                 ),
-              )
-              .run();
-            if (changed.changes !== 1) throw new IdentityError(409);
+              );
+            if (changed.count !== 1) throw new IdentityError(409);
             let executionLink: z.infer<typeof TaskExecution> | null = null;
             if (data.type === 'link-execution')
-              executionLink = insertExecution(p, id, data.reference, time);
-            const previous = db
-              .select()
-              .from(s.taskEvents)
-              .where(
-                and(
-                  eq(s.taskEvents.taskId, id),
-                  eq(s.taskEvents.version, old.version),
-                ),
-              )
-              .get();
+              executionLink = await insertExecution(
+                p,
+                id,
+                data.reference,
+                time,
+              );
+            const previous = (
+              await q()
+                .select()
+                .from(s.taskEvents)
+                .where(
+                  and(
+                    eq(s.taskEvents.taskId, id),
+                    eq(s.taskEvents.version, old.version),
+                  ),
+                )
+                .limit(1)
+            )[0];
             if (previous === undefined)
               throw new Error('Missing task audit predecessor');
             return record(
               p,
-              view(row(teamId, channelId, id)),
+              view(await row(teamId, channelId, id)),
               current,
               data,
               executionLink,
@@ -611,9 +642,9 @@ export function taskRepository(
       id: TaskId,
       input: PageInput = {},
     ) {
-      return atomic(() => {
-        access(p, teamId, channelId);
-        row(teamId, channelId, id);
+      return atomic(async () => {
+        await access(p, teamId, channelId);
+        await row(teamId, channelId, id);
         return snapshotPage(
           input,
           [
@@ -624,32 +655,34 @@ export function taskRepository(
             memberKey(principalMember(p)),
           ],
           TaskEvent,
-          () =>
-            db
-              .select({ value: max(s.taskEvents.position) })
-              .from(s.taskEvents)
-              .where(eq(s.taskEvents.taskId, id))
-              .get()?.value ?? 0,
-          (after, maximum, limit) =>
-            db
-              .select()
-              .from(s.taskEvents)
-              .where(
-                and(
-                  eq(s.taskEvents.taskId, id),
-                  gt(s.taskEvents.position, after),
-                  lte(s.taskEvents.position, maximum),
-                ),
-              )
-              .orderBy(asc(s.taskEvents.position))
-              .limit(limit)
-              .all()
-              .map((r) =>
-                TaskEvent.parse({
-                  ...decodeEvent(r.event),
-                  position: r.position,
-                }),
-              ),
+          async () =>
+            (
+              await q()
+                .select({ value: max(s.taskEvents.position) })
+                .from(s.taskEvents)
+                .where(eq(s.taskEvents.taskId, id))
+                .limit(1)
+            )[0]?.value ?? 0,
+          async (after, maximum, limit) =>
+            (
+              await q()
+                .select()
+                .from(s.taskEvents)
+                .where(
+                  and(
+                    eq(s.taskEvents.taskId, id),
+                    gt(s.taskEvents.position, after),
+                    lte(s.taskEvents.position, maximum),
+                  ),
+                )
+                .orderBy(asc(s.taskEvents.position))
+                .limit(limit)
+            ).map((r) =>
+              TaskEvent.parse({
+                ...decodeEvent(r.event),
+                position: r.position,
+              }),
+            ),
         );
       });
     },
@@ -660,9 +693,9 @@ export function taskRepository(
       id: TaskId,
       input: PageInput = {},
     ) {
-      return atomic(() => {
-        access(p, teamId, channelId);
-        row(teamId, channelId, id);
+      return atomic(async () => {
+        await access(p, teamId, channelId);
+        await row(teamId, channelId, id);
         return snapshotPage(
           input,
           [
@@ -673,36 +706,38 @@ export function taskRepository(
             memberKey(principalMember(p)),
           ],
           TaskExecution,
-          () =>
-            db
-              .select({ value: max(s.taskExecutions.position) })
-              .from(s.taskExecutions)
-              .where(eq(s.taskExecutions.taskId, id))
-              .get()?.value ?? 0,
-          (after, maximum, limit) =>
-            db
-              .select()
-              .from(s.taskExecutions)
-              .where(
-                and(
-                  eq(s.taskExecutions.taskId, id),
-                  gt(s.taskExecutions.position, after),
-                  lte(s.taskExecutions.position, maximum),
-                ),
-              )
-              .orderBy(asc(s.taskExecutions.position))
-              .limit(limit)
-              .all()
-              .map((r) =>
-                TaskExecution.parse({
-                  id: r.id,
-                  position: r.position,
-                  taskId: r.taskId,
-                  createdAt: r.createdAt,
-                  reference: decode(r.reference),
-                  author: decode(r.author),
-                }),
-              ),
+          async () =>
+            (
+              await q()
+                .select({ value: max(s.taskExecutions.position) })
+                .from(s.taskExecutions)
+                .where(eq(s.taskExecutions.taskId, id))
+                .limit(1)
+            )[0]?.value ?? 0,
+          async (after, maximum, limit) =>
+            (
+              await q()
+                .select()
+                .from(s.taskExecutions)
+                .where(
+                  and(
+                    eq(s.taskExecutions.taskId, id),
+                    gt(s.taskExecutions.position, after),
+                    lte(s.taskExecutions.position, maximum),
+                  ),
+                )
+                .orderBy(asc(s.taskExecutions.position))
+                .limit(limit)
+            ).map((r) =>
+              TaskExecution.parse({
+                id: r.id,
+                position: r.position,
+                taskId: r.taskId,
+                createdAt: r.createdAt,
+                reference: decode(r.reference),
+                author: decode(r.author),
+              }),
+            ),
         );
       });
     },

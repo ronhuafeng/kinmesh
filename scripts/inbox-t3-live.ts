@@ -13,7 +13,7 @@ import { outcome } from '../src/team-mcp/tools.js';
 import { Message } from '../src/domain/communication.js';
 import { FrozenLaunch, Result } from '../src/domain/inbox.js';
 import { Reference } from '../src/domain/execution.js';
-import { openStore } from '../src/persistence/store.js';
+import { openStore, type Store } from '../src/persistence/store.js';
 import { t3Factory } from '../src/inbox/t3.js';
 import { assistantResult } from '../src/inbox/worker.js';
 import { liveTools } from './t3-live-tools.js';
@@ -22,7 +22,7 @@ import { loadCredential } from '../src/adapters/t3/oauth.js';
 
 process.umask(0o077);
 let stage = 'configuration';
-let store: ReturnType<typeof openStore> | undefined;
+let store: Store | undefined;
 let worker: ChildProcess | undefined;
 let client: Awaited<ReturnType<typeof connectAgent>> | undefined;
 let handle: Awaited<ReturnType<ReturnType<typeof t3Factory>>> | undefined;
@@ -57,13 +57,12 @@ try {
   const config = loadWorkerConfig(env.KINMESH_INBOX_CONFIG);
   const binding = config.bindings[0];
   if (
-    config.database !== join(directory, 'team.sqlite') ||
     context.database !== config.database ||
     config.bindings.length !== 1 ||
     binding?.agentId !== context.agentId
   )
     throw new Error('Wrong fixture');
-  store = openStore(config.database);
+  store = await openStore(config.database);
   if ((await store.inbox.status()).some((r) => r.count > 0))
     throw new Error('Fresh inbox required');
   const principal = await store.agents.resolveToken(

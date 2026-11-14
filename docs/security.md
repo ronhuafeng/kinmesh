@@ -42,7 +42,7 @@ Kinmesh is a single-node service for one organization, with a loopback listener.
 
 ## Hub-held worker secrets
 
-For agents connected from the workspace, the hub holds the worker's Kinmesh tokens and the team's T3 OAuth credential as files in `<database directory>/managed/`. The directory is 0700 and must be owned by the hub's user and not a symlink; each file is 0600 and written atomically. They are never put in SQLite, logs, responses or the browser. Back up and protect the directory like the database. Every connect, disconnect and T3 route requires a person's session; agent bearers are refused. Revoking the hub's worker grant disconnects the agent; that grant cannot be rotated from the browser.
+For agents connected from the workspace, the hub holds the worker's Kinmesh tokens and the team's T3 OAuth credential as files in `managed/` in the state directory (`KINMESH_STATE`). The directory is 0700 and must be owned by the hub's user and not a symlink; each file is 0600 and written atomically. They are never put in the database, logs, responses or the browser. Back up and protect the directory like the database. Every connect, disconnect and T3 route requires a person's session; agent bearers are refused. Revoking the hub's worker grant disconnects the agent; that grant cannot be rotated from the browser.
 
 ## T3 credentials
 
@@ -64,7 +64,9 @@ The Team MCP listener binds `127.0.0.1` only. Plain-HTTP clients must use `http:
 
 ## Files and storage
 
-The hub, worker, Team MCP and the T3 sign-in and live-gate scripts run with umask 0077. The default database directory is created 0700 and the database file is set to 0600; existing directories are the operator's responsibility. The database, WAL and backups hold prompts, messages, task content and idempotency receipts: protect them like credentials. Privileged database access is a trusted administration boundary, not a tamper-proof audit store. Never point `KINMESH_DATABASE` at another component's storage.
+The hub, worker, Team MCP and the T3 sign-in and live-gate scripts run with umask 0077. The state directory's `managed/` is created 0700; existing directories are the operator's responsibility. The database and backups hold prompts, messages, task content and idempotency receipts: protect them like credentials. Privileged database access is a trusted administration boundary, not a tamper-proof audit store.
+
+The database URL carries the database password: keep it in `.env` or the operator configuration, both private files, never in arguments or logs. Give Kinmesh a database of its own and a role that owns only it, never a superuser; never point `KINMESH_DATABASE_URL` at another component's database. Compose publishes PostgreSQL on this machine's loopback only. A database on another host must be reached over TLS (`?sslmode=verify-full` in the URL). The live gates' `KINMESH_DATABASE_ADMIN_URL` may create databases: use it only on a server for disposable ones, never on the team's.
 
 ## Dependencies and guards
 
@@ -72,7 +74,7 @@ The hub, worker, Team MCP and the T3 sign-in and live-gate scripts run with umas
 
 ## Limits
 
-- One node, one SQLite database; no multi-node deployment, online backup or disaster-recovery procedure.
+- One hub process; no multi-node deployment or disaster-recovery procedure.
 - Sign-in is Feishu only; MFA and account recovery are Feishu's.
 - No distributed rate limiting: limits are per hub process.
 - No proof-of-possession or theft detection for bearer tokens.

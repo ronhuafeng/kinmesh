@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import Database from 'better-sqlite3';
+import { rawDatabase } from './raw.js';
 import { randomUUID } from 'node:crypto';
 import { HumanId, TeamId } from '../src/domain/contracts.js';
 import { IdentityError, type Principal } from '../src/domain/agents.js';
@@ -571,7 +571,7 @@ await test('snapshot keyset pagination has deterministic no-skip/no-duplicate hi
     assert.ok(first.nextCursor);
     const firstCursor = first.nextCursor;
     const ids = first.items.map((m) => m.id);
-    const secondStore = f.open();
+    const secondStore = await f.open();
     try {
       await secondStore.communication.post(
         f.principal,
@@ -711,12 +711,12 @@ await test('channel/topic/outbox pages are bounded stable snapshots and new memb
 
 await test('outbox/mention/receipt failure rolls back messages and membership/channel/topic mutations in immediate transactions', async () => {
   const f = await communicationFixture();
-  const raw = new Database(f.dbPath);
+  const raw = rawDatabase(f.dbPath);
   try {
     await f.invite();
     const before = (await f.comm.events(f.principal, f.teamId, f.channelId))
       .items.length;
-    raw.exec(
+    await raw.exec(
       "CREATE TRIGGER fail_outbox BEFORE INSERT ON communication_outbox BEGIN SELECT RAISE(ABORT,'test failure'); END",
     );
     const data = postInput({
@@ -730,7 +730,7 @@ await test('outbox/mention/receipt failure rolls back messages and membership/ch
       0,
     );
     assert.equal(
-      raw.prepare('SELECT count(*) FROM message_mentions').pluck().get(),
+      await raw.prepare('SELECT count(*) FROM message_mentions').pluck().get(),
       0,
     );
     await assert.rejects(async () =>
@@ -767,14 +767,14 @@ await test('outbox/mention/receipt failure rolls back messages and membership/ch
       (await f.comm.participant(f.agentPrincipal, f.teamId, f.channelId)).state,
       'joined',
     );
-    raw.exec('DROP TRIGGER fail_outbox');
+    await raw.exec('DROP TRIGGER fail_outbox');
     const posted = await f.comm.post(f.principal, f.teamId, f.channelId, data);
     assert.ok(posted.id);
     assert.equal(
       (await f.comm.events(f.principal, f.teamId, f.channelId)).items.length,
       before + 1,
     );
-    raw.exec(
+    await raw.exec(
       "CREATE TRIGGER fail_receipt BEFORE INSERT ON communication_operations BEGIN SELECT RAISE(ABORT,'test failure'); END",
     );
     await assert.rejects(async () =>
@@ -789,7 +789,7 @@ await test('outbox/mention/receipt failure rolls back messages and membership/ch
       before + 1,
     );
   } finally {
-    raw.close();
+    await raw.close();
     await f.dispose();
   }
 });
@@ -1041,13 +1041,15 @@ await test('scope enforcement, actor spoofing, mixed human/agent authority and s
 
 await test('a channel shows only to those in it; any person in it manages it, as everyone is equal', async () => {
   const f = await communicationFixture();
-  const raw = new Database(f.dbPath);
+  const raw = rawDatabase(f.dbPath);
   try {
     const id = HumanId.parse(randomUUID());
-    raw
+    await raw
       .prepare('INSERT INTO humans (id, username, email) VALUES (?, ?, ?)')
       .run(id, 'participant', 'participant@example.com');
-    raw.prepare('INSERT INTO memberships VALUES (?, ?)').run(id, f.teamId);
+    await raw
+      .prepare('INSERT INTO memberships VALUES (?, ?)')
+      .run(id, f.teamId);
     const p: Principal = { kind: 'human', humanId: id };
     assert.equal((await f.comm.channels(p, f.teamId)).items.length, 0);
     await assert.rejects(
@@ -1100,9 +1102,11 @@ await test('a channel shows only to those in it; any person in it manages it, as
       'joined',
     );
     const foreign = TeamId.parse(randomUUID());
-    raw.prepare('INSERT INTO teams VALUES (?, ?)').run(foreign, 'Foreign');
+    await raw
+      .prepare('INSERT INTO teams VALUES (?, ?)')
+      .run(foreign, 'Foreign');
     await assert.rejects(() => f.comm.channels(p, foreign), rejected(403));
-    raw
+    await raw
       .prepare('INSERT INTO memberships VALUES (?, ?)')
       .run(f.owner.id, foreign);
     const foreignAgent = await f.store.agents.create(
@@ -1135,7 +1139,7 @@ await test('a channel shows only to those in it; any person in it manages it, as
       ),
     );
   } finally {
-    raw.close();
+    await raw.close();
     await f.dispose();
   }
 });
@@ -1163,7 +1167,7 @@ await test('service/DB reopen reconstructs full channel/topic history and mentio
     const expected = await f.comm.history(f.principal, f.teamId, f.channelId);
     const facts = await f.comm.events(f.principal, f.teamId, f.channelId);
     await f.app.close();
-    const store = f.open();
+    const store = await f.open();
     app = await createApp(f.config, store);
     const response = await app.inject({
       url: f.channelPath + '/messages',

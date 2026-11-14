@@ -12,8 +12,8 @@ import { feishuEnv, fixture } from './helpers.js';
 import { signInOver, startFeishuStandIn } from './feishu.js';
 import { deadline, freePort, stop } from './process-helpers.js';
 
-await test('setup command creates private secrets, never prints values and refuses overwrite', () => {
-  const f = fixture();
+await test('setup command creates private secrets, never prints values and refuses overwrite', async () => {
+  const f = await fixture();
   try {
     const script = new URL('../scripts/setup.ts', import.meta.url);
     const output = execFileSync(
@@ -43,7 +43,7 @@ await test('setup command creates private secrets, never prints values and refus
     );
     assert.equal(readFileSync(join(f.directory, '.env'), 'utf8'), env);
   } finally {
-    f.cleanup();
+    await f.cleanup();
   }
 });
 // Unique to the spawned entrypoint: env boot, graceful exit and durable state
@@ -51,7 +51,7 @@ await test('setup command creates private secrets, never prints values and refus
 await test('actual server entrypoint boots from env, persists an authenticated write and serves it after restart', async () => {
   const port = await freePort();
   const origin = `http://127.0.0.1:${String(port)}`;
-  const f = fixture();
+  const f = await fixture();
   const feishu = await startFeishuStandIn();
   const start = () =>
     spawn(process.execPath, ['--import', 'tsx', 'src/server/main.ts'], {
@@ -59,7 +59,8 @@ await test('actual server entrypoint boots from env, persists an authenticated w
       stdio: ['ignore', 'pipe', 'ignore'],
       env: {
         PATH: process.env.PATH ?? '',
-        KINMESH_DATABASE: f.path,
+        KINMESH_DATABASE_URL: f.path,
+        KINMESH_STATE: f.directory,
         KINMESH_SESSION_KEY: f.config.sessionKey.toString('hex'),
         ...feishuEnv,
         KINMESH_FEISHU_URL: feishu.url,
@@ -136,6 +137,6 @@ await test('actual server entrypoint boots from env, persists an authenticated w
   } finally {
     await stop(child, 'SIGKILL');
     await feishu.close();
-    f.cleanup();
+    await f.cleanup();
   }
 });

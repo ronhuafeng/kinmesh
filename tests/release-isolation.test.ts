@@ -10,14 +10,13 @@ import {
   readFileSync,
   rmSync,
   chmodSync,
-  linkSync,
-  symlinkSync,
   existsSync,
 } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { LiveContext } from '../src/team-mcp/live-context.js';
 import { openStore } from '../src/persistence/store.js';
+import { dropDisposable } from '../src/persistence/disposable.js';
 import { loadAgentToken } from '../src/team-mcp/client.js';
 import { type Credential } from '../src/adapters/t3/oauth.js';
 import { Capabilities } from '../src/adapters/t3/contracts.js';
@@ -35,6 +34,12 @@ import {
 import { MockWire, environment, options } from './t3-helpers.js';
 import { freePort, startTeam, stop } from './team-mcp-helpers.js';
 
+/** The test PostgreSQL that live fixtures make their databases on. */
+const admin = (): string => {
+  const url = process.env.KINMESH_TEST_DATABASE_ADMIN_URL;
+  assert.ok(url, 'run through npm, which starts the test PostgreSQL');
+  return url;
+};
 function put(path: string, value: unknown) {
   writeFileSync(path, JSON.stringify(value), { mode: 0o600 });
 }
@@ -48,6 +53,7 @@ function prepare(directory: string, inbox: boolean, endpoint: string) {
         TMPDIR: realpathSync(tmpdir()),
         KINMESH_TEAM_LIVE_DIR: directory,
         KINMESH_TEAM_MCP_ENDPOINT: endpoint,
+        KINMESH_DATABASE_ADMIN_URL: admin(),
         ...(inbox
           ? {
               KINMESH_TEAM_LIVE_SCENARIO: 'inbox',
@@ -112,6 +118,14 @@ function fixture() {
   });
   const path = join(sdk, 'release.json');
   put(path, config);
+  // Every database the fixture made, to drop when it is disposed.
+  const databases = [team.database, inbox.database];
+  const plan = async () => {
+    const stages = await loadReleasePlan(path, admin());
+    const made = stages[0]?.env.KINMESH_T3_LIVE_DATABASE;
+    if (made) databases.push(made);
+    return stages;
+  };
   return {
     sdk,
     teamDir,
@@ -122,10 +136,12 @@ function fixture() {
     path,
     worker,
     workerPath,
-    plan: () => loadReleasePlan(path),
-    dispose: () => {
+    plan,
+    databases,
+    dispose: async () => {
       for (const dir of [sdk, teamDir, inboxDir])
         rmSync(dir, { recursive: true, force: true });
+      for (const url of databases) await dropDisposable(admin(), url);
     },
   };
 }
@@ -198,7 +214,7 @@ await test('aggregate executes all preflights before isolated credential-free st
     }
     await assert.rejects(f.plan, /consumed/);
   } finally {
-    f.dispose();
+    await f.dispose();
   }
 });
 
@@ -209,6 +225,7 @@ await test('aggregate refuses missing opt-in, missing release config and the leg
       {},
       { KINMESH_RELEASE_CONFIG: f.path },
       { KINMESH_RELEASE_LIVE: '1' },
+      { KINMESH_RELEASE_CONFIG: f.path, KINMESH_RELEASE_LIVE: '1' },
       {
         KINMESH_TEAM_LIVE_DIR: f.teamDir,
         KINMESH_TEAM_T3_LIVE: '1',
@@ -216,21 +233,19 @@ await test('aggregate refuses missing opt-in, missing release config and the leg
       },
     ])
       await assert.rejects(() => releasePlanFromEnvironment(env));
-    assert.equal(
-      (
-        await releasePlanFromEnvironment({
-          KINMESH_RELEASE_CONFIG: f.path,
-          KINMESH_RELEASE_LIVE: '1',
-        })
-      ).length,
-      3,
-    );
+    const stages = await releasePlanFromEnvironment({
+      KINMESH_RELEASE_CONFIG: f.path,
+      KINMESH_RELEASE_LIVE: '1',
+      KINMESH_DATABASE_ADMIN_URL: admin(),
+    });
+    f.databases.push(stages[0]?.env.KINMESH_T3_LIVE_DATABASE ?? '');
+    assert.equal(stages.length, 3);
   } finally {
-    f.dispose();
+    await f.dispose();
   }
 });
 
-const invalid: [string, (f: Fixture) => void][] = [
+const invalid: [string, (f: Fixture) => void | Promise<void>][] = [
   [
     'same consumed Team/Inbox directory',
     (f) => {
@@ -268,17 +283,12 @@ const invalid: [string, (f: Fixture) => void][] = [
     },
   ],
   [
-    'symlinked database',
+    'shared database',
     (f) => {
-      rmSync(f.inbox.database);
-      symlinkSync(f.team.database, f.inbox.database);
-    },
-  ],
-  [
-    'hard-linked database',
-    (f) => {
-      rmSync(f.inbox.database);
-      linkSync(f.team.database, f.inbox.database);
+      put(join(f.inboxDir, 'context.json'), {
+        ...f.inbox,
+        database: f.team.database,
+      });
     },
   ],
   [
@@ -324,7 +334,7 @@ const invalid: [string, (f: Fixture) => void][] = [
   [
     'consumed task',
     async (f) => {
-      const s = openStore(f.inbox.database);
+      const s = await openStore(f.inbox.database);
       try {
         const p = await s.agents.resolveToken(
           loadAgentToken(f.inbox.tokenFile),
@@ -348,7 +358,7 @@ const invalid: [string, (f: Fixture) => void][] = [
   [
     'reviewer removed from channel',
     async (f) => {
-      const s = openStore(f.team.database);
+      const s = await openStore(f.team.database);
       try {
         await s.communication.enroll(
           { kind: 'human', humanId: f.team.humanId },
@@ -368,7 +378,7 @@ const invalid: [string, (f: Fixture) => void][] = [
   [
     'nonfresh Inbox',
     async (f) => {
-      const s = openStore(f.inbox.database);
+      const s = await openStore(f.inbox.database);
       try {
         await s.communication.post(
           { kind: 'human', humanId: f.inbox.humanId },
@@ -391,7 +401,7 @@ const invalid: [string, (f: Fixture) => void][] = [
   [
     'insufficient persisted scopes',
     async (f) => {
-      const s = openStore(f.inbox.database);
+      const s = await openStore(f.inbox.database);
       try {
         const grant = await s.agents.issue(
           { kind: 'human', humanId: f.inbox.humanId },
@@ -415,12 +425,12 @@ for (const [name, mutate] of invalid)
     const f = fixture();
     try {
       assert.equal((await f.plan()).length, 3);
-      mutate(f);
+      await mutate(f);
       await assert.rejects(f.plan);
       for (const dir of [f.sdk, f.teamDir, f.inboxDir])
         assert.equal(existsSync(join(dir, '.release-consumed')), false);
     } finally {
-      f.dispose();
+      await f.dispose();
     }
   });
 
@@ -450,7 +460,7 @@ for (const failure of ['sdk', 'team', 'inbox'])
         assert.equal(runs, 0);
         assert.equal(existsSync(join(f.teamDir, '.release-consumed')), false);
       } finally {
-        f.dispose();
+        await f.dispose();
       }
     },
   );
@@ -475,7 +485,7 @@ await test('a native stage failure blocks all later stages and prevents fixture 
     assert.deepEqual(calls, ['sdk']);
     await assert.rejects(f.plan, /consumed/);
   } finally {
-    f.dispose();
+    await f.dispose();
   }
 });
 
@@ -538,7 +548,7 @@ for (const variant of [
           ),
         );
       } finally {
-        f.dispose();
+        await f.dispose();
       }
     },
   );
@@ -563,6 +573,6 @@ await test('independent real local Team MCP read preflight passes both fresh con
     await assert.rejects(probeTeam(last));
   } finally {
     for (const server of servers) await stop(server);
-    f.dispose();
+    await f.dispose();
   }
 });

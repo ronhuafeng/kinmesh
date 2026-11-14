@@ -1,9 +1,9 @@
 import type { Page, APIRequestContext } from '@playwright/test';
 import { z } from 'zod';
 import { randomUUID } from 'node:crypto';
-import Database from 'better-sqlite3';
+import { rawDatabase } from '../raw.js';
 import { readFileSync } from 'node:fs';
-import { dirname, join } from 'node:path';
+import { join } from 'node:path';
 import { Agent, Grant } from '../../src/domain/agents.js';
 import { Task, TaskResult } from '../../src/domain/tasks.js';
 import { pageOf } from '../../src/domain/communication.js';
@@ -562,13 +562,15 @@ test('a mention says what happened to it and leads to the agent’s reply', asyn
     );
     expect(posted.status()).toBe(201);
     const reply = z.object({ id: z.uuid() }).parse(await posted.json());
-    const db = new Database(hub.database);
+    const db = rawDatabase(hub.database);
     try {
-      db.prepare(
-        "UPDATE agent_inbox SET state = 'acked', reason = 'assistant-result-published', result_message_id = ? WHERE message_id = ?",
-      ).run(reply.id, source.id);
+      await db
+        .prepare(
+          "UPDATE agent_inbox SET state = 'acked', reason = 'assistant-result-published', result_message_id = ? WHERE message_id = ?",
+        )
+        .run(reply.id, source.id);
     } finally {
-      db.close();
+      await db.close();
     }
   } finally {
     await agent.dispose();
@@ -613,15 +615,15 @@ test('the Inbox gathers what waits on me across channels and leads to the fix', 
       .getByRole('group', { name: 'Connect T3' }),
   ).toBeVisible();
   // A blocking failure turns it into something to unstick, wherever I am.
-  const sql = new Database(hub.database);
+  const sql = rawDatabase(hub.database);
   try {
-    sql
+    await sql
       .prepare(
         "UPDATE agent_inbox SET state = 'blocked', reason = 'authority-or-contract-blocked'",
       )
       .run();
   } finally {
-    sql.close();
+    await sql.close();
   }
   await page.keyboard.press('Escape');
   await needs.click();
@@ -669,15 +671,15 @@ test('a stuck request says what was lost and is fixed and retried in place', asy
     },
   );
   expect(removed.status()).toBe(200);
-  const sql = new Database(hub.database);
+  const sql = rawDatabase(hub.database);
   try {
-    sql
+    await sql
       .prepare(
         "UPDATE agent_inbox SET state = 'blocked', reason = 'not-in-channel'",
       )
       .run();
   } finally {
-    sql.close();
+    await sql.close();
   }
   await expect(responses).toContainText(
     'Ada was removed from the channel, so this is on hold',
@@ -696,13 +698,15 @@ test('a stuck request says what was lost and is fixed and retried in place', asy
     (await snapshot(context.request, hub.origin)).joinedAgentIds,
   ).toContain(ada.id);
   // A cause fixed elsewhere leads there and offers a plain retry.
-  const db = new Database(hub.database);
+  const db = rawDatabase(hub.database);
   try {
-    db.prepare(
-      "UPDATE agent_inbox SET state = 'blocked', reason = 'credential-invalid'",
-    ).run();
+    await db
+      .prepare(
+        "UPDATE agent_inbox SET state = 'blocked', reason = 'credential-invalid'",
+      )
+      .run();
   } finally {
-    db.close();
+    await db.close();
   }
   await expect(
     responses.getByRole('button', { name: 'Retry', exact: true }),
@@ -797,15 +801,15 @@ test('connect T3 and an agent in two clicks: the hub keeps the credential and wa
     .getByRole('button', { name: 'Connect T3', exact: true })
     .click();
   // Approved with Supervised; the hub records the connection.
-  const sql = new Database(hub.database);
+  const sql = rawDatabase(hub.database);
   try {
-    sql
+    await sql
       .prepare(
         'INSERT INTO t3_connections (team_id, endpoint, environment_id, connected_at) VALUES (?, ?, ?, ?)',
       )
       .run(state.team.id, 'http://127.0.0.1:3773/mcp', 'env-live', Date.now());
   } finally {
-    sql.close();
+    await sql.close();
   }
   t3 = 'operate';
   const choose = setup.getByRole('form', { name: 'Choose what Ada runs on' });
@@ -828,12 +832,7 @@ test('connect T3 and an agent in two clicks: the hub keeps the credential and wa
   const about = page.getByRole('complementary', { name: 'About' });
   await expect(about).toContainText('isolated-ada');
   await expect(about).toContainText('model-x');
-  const tokenFile = join(
-    dirname(hub.database),
-    'managed',
-    'agents',
-    ada.id + '.json',
-  );
+  const tokenFile = join(hub.state, 'managed', 'agents', ada.id + '.json');
   // File mode and saved preferences: tests/connect.test.ts.
   const { token } = z
     .object({ token: z.string() })

@@ -7,8 +7,8 @@ import { fixture } from './helpers.js';
 import { signInAs, standInFeishu } from './feishu.js';
 
 await test('people of the team see each other: by name, in the channel, and who is online', async () => {
-  const f = fixture();
-  const store = f.open();
+  const f = await fixture();
+  const store = await f.open();
   const app = await createApp(
     f.config,
     store,
@@ -58,6 +58,6 @@ await test('people of the team see each other: by name, in the channel, and who 
     assert.deepEqual(await store.online(later), []);
   } finally {
     await app.close();
-    f.cleanup();
+    await f.cleanup();
   }
 });

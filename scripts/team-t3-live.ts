@@ -17,7 +17,7 @@ import { SdkWire } from '../src/adapters/t3/sdk.js';
 import { T3Backend } from '../src/adapters/t3/backend.js';
 import type { ValidatedTools } from '../src/adapters/t3/contracts.js';
 import { liveTools } from './t3-live-tools.js';
-import { openStore } from '../src/persistence/store.js';
+import { openStore, type Store } from '../src/persistence/store.js';
 import type { Reference } from '../src/domain/execution.js';
 
 process.umask(0o077);
@@ -31,7 +31,7 @@ const Config = z.object({
 });
 let client: Awaited<ReturnType<typeof connectAgent>> | undefined;
 let wire: SdkWire | undefined;
-let store: ReturnType<typeof openStore> | undefined;
+let store: Store | undefined;
 let reference: Reference | undefined;
 let tools: ValidatedTools | undefined;
 let backend: T3Backend | undefined;
@@ -54,10 +54,7 @@ try {
   const context = LiveContext.parse(
     JSON.parse(readFileSync(join(directory, 'context.json'), 'utf8')),
   );
-  if (
-    context.database !== join(directory, 'team.sqlite') ||
-    context.tokenFile !== join(directory, 'developer.json')
-  )
+  if (context.tokenFile !== join(directory, 'developer.json'))
     throw new Error('Wrong fixture');
   stage = 'team-read-authentication';
   client = await connectAgent(context.endpoint, context.tokenFile);
@@ -92,7 +89,7 @@ try {
     c.KINMESH_T3_ENDPOINT,
   );
   wire = new SdkWire(credential);
-  store = openStore(context.database);
+  store = await openStore(context.database);
   backend = await T3Backend.connect(wire, store.operations, {
     endpoint: credential.endpoint,
     expectedEnvironmentId: credential.environmentId,

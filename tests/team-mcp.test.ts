@@ -14,7 +14,7 @@ import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { loadAgentToken, TeamEndpoint } from '../src/team-mcp/client.js';
 import { LiveContext } from '../src/team-mcp/live-context.js';
-import Database from 'better-sqlite3';
+import { rawDatabase } from './raw.js';
 import { StreamableHTTPError } from '@modelcontextprotocol/sdk/client/streamableHttp.js';
 import { z } from 'zod';
 import { taskFixture, commandInput, taskInput } from './task-helpers.js';
@@ -368,14 +368,14 @@ await test('Team SDK hides cross-team/channel context, enforces current membersh
   try {
     const { client } = await f.connect();
     const otherTeam = TeamId.parse(randomUUID());
-    const foreign = new Database(f.dbPath);
-    foreign
+    const foreign = rawDatabase(f.dbPath);
+    await foreign
       .prepare('INSERT INTO teams (id,name) VALUES (?,?)')
       .run(otherTeam, 'Other team');
-    foreign
+    await foreign
       .prepare('INSERT INTO memberships (human_id,team_id) VALUES (?,?)')
       .run(f.owner.id, otherTeam);
-    foreign.close();
+    await foreign.close();
     const foreignChannel = await f.comm.createChannel(f.principal, otherTeam, {
       operationKey: key(),
       name: 'Foreign channel',
@@ -482,12 +482,11 @@ await test('Team MCP revocation, disable and expiry reject existing SDK connecti
         denied401,
       );
     const reviewer = await f.connect(f.reviewerGrant.token);
-    const db = new Database(f.dbPath);
-    db.prepare('UPDATE agent_grants SET expires_at=? WHERE id=?').run(
-      '2000-01-01T00:00:00.000Z',
-      f.reviewerGrant.grant.id,
-    );
-    db.close();
+    const db = rawDatabase(f.dbPath);
+    await db
+      .prepare('UPDATE agent_grants SET expires_at=? WHERE id=?')
+      .run('2000-01-01T00:00:00.000Z', f.reviewerGrant.grant.id);
+    await db.close();
     await assert.rejects(() => reviewer.client.ping(), denied401);
     const res = await fetch(f.endpoint, {
       method: 'POST',
@@ -549,8 +548,8 @@ await test('Team MCP transactions roll back on outbox failure and retries recove
   const f = await fixture();
   try {
     const { client } = await f.connect();
-    const db = new Database(f.dbPath);
-    db.exec(
+    const db = rawDatabase(f.dbPath);
+    await db.exec(
       "CREATE TRIGGER test_mcp_failure BEFORE INSERT ON communication_outbox BEGIN SELECT RAISE(ABORT,'test failure'); END",
     );
     const input = { channelId: f.channelId, ...postInput() };
@@ -560,8 +559,8 @@ await test('Team MCP transactions roll back on outbox failure and retries recove
       (await f.comm.history(f.principal, f.teamId, f.channelId)).items.length,
       0,
     );
-    db.exec('DROP TRIGGER test_mcp_failure');
-    db.close();
+    await db.exec('DROP TRIGGER test_mcp_failure');
+    await db.close();
     const sent = await call(client, 'team_messages_send', input, Message);
     assert.ok(sent.ok);
     assert.deepEqual(
@@ -658,7 +657,7 @@ await test('Team SDK topic/task creation, scoped request-review and external ref
       TaskResult,
     );
     assert.ok(requested.ok);
-    const db = new Database(f.dbPath);
+    const db = rawDatabase(f.dbPath);
     const counts = () =>
       [
         'tasks',
@@ -667,10 +666,11 @@ await test('Team SDK topic/task creation, scoped request-review and external ref
         'communication_outbox',
         'communication_operations',
       ].map(
-        (table) =>
+        async (table) =>
           z
             .object({ n: z.number() })
-            .parse(db.prepare('SELECT COUNT(*) AS n FROM ' + table).get()).n,
+            .parse(await db.prepare('SELECT COUNT(*) AS n FROM ' + table).get())
+            .n,
       );
     const before = counts();
     assert.ok(
@@ -721,7 +721,7 @@ await test('Team SDK topic/task creation, scoped request-review and external ref
     );
     assert.ok(refs.ok && refs.data.items.length === 1);
     assert.deepEqual(counts(), before);
-    db.close();
+    await db.close();
   } finally {
     await f.cleanup();
   }
@@ -832,14 +832,14 @@ await test('disposable provider fixture CLI prepares private state and refuses o
       prepared.log.includes(loadAgentToken(context.tokenFile)),
       false,
     );
-    const db = new Database(context.database, { readonly: true });
+    const db = rawDatabase(context.database);
     assert.equal(
       z
         .object({ n: z.number() })
-        .parse(db.prepare('SELECT COUNT(*) AS n FROM tasks').get()).n,
+        .parse(await db.prepare('SELECT COUNT(*) AS n FROM tasks').get()).n,
       1,
     );
-    db.close();
+    await db.close();
     assert.equal((await run()).code, 1);
   } finally {
     rmSync(directory, { recursive: true, force: true });

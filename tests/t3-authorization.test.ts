@@ -316,8 +316,8 @@ await test('AUTH FETCH: untrusted origins, redirects and elapsed deadlines never
   assert.equal(calls, 1);
 });
 
-await test('AUTH FILES: exclusive new publication, private directory/file checks and original grant preservation', () => {
-  const f = fixture();
+await test('AUTH FILES: exclusive new publication, private directory/file checks and original grant preservation', async () => {
+  const f = await fixture();
   const value = Credential.parse({
     endpoint: issuer + '/mcp',
     environmentId: 'fixture-env',
@@ -367,7 +367,7 @@ await test('AUTH FILES: exclusive new publication, private directory/file checks
     });
     assert.ok(readFileSync(foreign, 'utf8') === 'private-marker');
   } finally {
-    f.cleanup();
+    await f.cleanup();
   }
 });
 await test('AUTH CLI: manual non-TTY and invalid mode reject before networking with fixed output only', () => {

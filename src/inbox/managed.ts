@@ -13,12 +13,12 @@ import { AgentId } from '../domain/contracts.js';
 
 /**
  * Secrets the hub manages for its own worker live in one private directory
- * beside the database: never in SQLite, logs or responses.
+ * in its state directory: never in the database, logs or responses.
  */
-export function managedDirectory(database: string) {
+export function managedDirectory(state: string) {
   // Anchor at the real path, so a symlinked ancestor (macOS /var) is not
   // mistaken for a symlinked private directory.
-  const parent = dirname(resolve(database));
+  const parent = resolve(state);
   return join(existsSync(parent) ? realpathSync(parent) : parent, 'managed');
 }
 export const t3AuthFile = (directory: string) =>

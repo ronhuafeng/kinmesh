@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { createHash, randomUUID } from 'node:crypto';
-import Database from 'better-sqlite3';
+import { rawDatabase } from './raw.js';
 import { z } from 'zod';
 import { HumanId, TeamId } from '../src/domain/contracts.js';
 import {
@@ -117,8 +117,8 @@ await test('agent schemas reject invalid bindings, unbounded memory/capabilities
 
 await test('team-scoped unique profile names, cross-team IDs and nonmember mutations are denied; any member manages agents', async () => {
   const f = await agentFixture();
-  const raw = new Database(f.dbPath);
-  raw.pragma('foreign_keys = ON');
+  const raw = rawDatabase(f.dbPath);
+  await raw.pragma('foreign_keys = ON');
   try {
     assert.equal(
       (
@@ -132,7 +132,9 @@ await test('team-scoped unique profile names, cross-team IDs and nonmember mutat
       409,
     );
     const teamId = TeamId.parse(randomUUID());
-    raw.prepare('INSERT INTO teams VALUES (?, ?)').run(teamId, 'Other team');
+    await raw
+      .prepare('INSERT INTO teams VALUES (?, ?)')
+      .run(teamId, 'Other team');
     await assert.rejects(
       () => f.store.agents.create(f.principal, teamId, profileInput),
       (e) => e instanceof IdentityError && e.statusCode === 403,
@@ -146,7 +148,7 @@ await test('team-scoped unique profile names, cross-team IDs and nonmember mutat
       ).statusCode,
       403,
     );
-    raw
+    await raw
       .prepare('INSERT INTO memberships VALUES (?, ?)')
       .run(f.owner.id, teamId);
     const other = await f.store.agents.create(
@@ -162,10 +164,10 @@ await test('team-scoped unique profile names, cross-team IDs and nonmember mutat
     // Anyone of the team manages agents and their credentials, not only the
     // person who set it up.
     const memberId = HumanId.parse(randomUUID());
-    raw
+    await raw
       .prepare('INSERT INTO humans (id, username) VALUES (?, ?)')
       .run(memberId, 'member');
-    raw
+    await raw
       .prepare('INSERT INTO memberships VALUES (?, ?)')
       .run(memberId, f.teamId);
     const member: Principal = { kind: 'human', humanId: memberId };
@@ -198,14 +200,14 @@ await test('team-scoped unique profile names, cross-team IDs and nonmember mutat
       'disabled',
     );
   } finally {
-    raw.close();
+    await raw.close();
     await f.dispose();
   }
 });
 
 await test('opaque agent credentials use independent 256-bit randomness, hash-only persistence and one-time secret responses', async () => {
   const f = await agentFixture();
-  const raw = new Database(f.dbPath);
+  const raw = rawDatabase(f.dbPath);
   try {
     const second = await f.store.agents.issue(
       f.principal,
@@ -218,7 +220,7 @@ await test('opaque agent credentials use independent 256-bit randomness, hash-on
     const stored = z
       .object({ token_hash: z.string() })
       .parse(
-        raw
+        await raw
           .prepare('SELECT token_hash FROM agent_grants WHERE id = ?')
           .get(second.grant.id),
       );
@@ -252,7 +254,7 @@ await test('opaque agent credentials use independent 256-bit randomness, hash-on
       );
     }
   } finally {
-    raw.close();
+    await raw.close();
     await f.dispose();
   }
 });
@@ -764,10 +766,10 @@ await test('credential rotation is atomic, validates scopes/lifetime, and preven
 
 await test('expiration and removed human membership are checked on every request', async () => {
   const f = await agentFixture();
-  const raw = new Database(f.dbPath);
+  const raw = rawDatabase(f.dbPath);
   try {
     const principal = await f.store.agents.resolveToken(f.grant.token);
-    raw
+    await raw
       .prepare('UPDATE agent_grants SET expires_at = ? WHERE id = ?')
       .run('2000-01-01T00:00:00.000Z', f.grant.grant.id);
     assert.equal(
@@ -778,7 +780,7 @@ await test('expiration and removed human membership are checked on every request
       () => f.store.agents.get(principal, f.teamId, f.agent.id),
       (e) => e instanceof IdentityError && e.statusCode === 401,
     );
-    raw.exec('DELETE FROM memberships');
+    await raw.exec('DELETE FROM memberships');
     for (const url of [f.path, f.path + '/executions', f.path + '/grants'])
       assert.equal(
         (await f.app.inject({ url, cookies: f.cookies })).statusCode,
@@ -796,15 +798,15 @@ await test('expiration and removed human membership are checked on every request
       403,
     );
   } finally {
-    raw.close();
+    await raw.close();
     await f.dispose();
   }
 });
 
 await test('database constraints enforce immutable identity/history, final revocation and cross-team grant/correlation ownership', async () => {
   const f = await agentFixture();
-  const raw = new Database(f.dbPath);
-  raw.pragma('foreign_keys = ON');
+  const raw = rawDatabase(f.dbPath);
+  await raw.pragma('foreign_keys = ON');
   try {
     await f.execution();
     for (const sql of [
@@ -818,7 +820,7 @@ await test('database constraints enforce immutable identity/history, final revoc
       'DELETE FROM agent_audit',
       'UPDATE agent_grants SET agent_id = agent_id',
     ])
-      assert.throws(() => raw.exec(sql));
+      await assert.rejects(() => raw.exec(sql));
     await f.store.agents.runtimeEvent(
       f.principal,
       f.teamId,
@@ -831,17 +833,17 @@ await test('database constraints enforce immutable identity/history, final revoc
       'UPDATE agent_runtime_events SET state = state',
       'DELETE FROM agent_runtime_events',
     ])
-      assert.throws(() => raw.exec(sql));
+      await assert.rejects(() => raw.exec(sql));
     const teamId = randomUUID();
-    raw.prepare('INSERT INTO teams VALUES (?, ?)').run(teamId, 'Other');
-    assert.throws(() =>
+    await raw.prepare('INSERT INTO teams VALUES (?, ?)').run(teamId, 'Other');
+    await assert.rejects(() =>
       raw
         .prepare(
           'INSERT INTO agent_grants SELECT ?, agent_id, ?, ?, label, scopes, issued_by, created_at, expires_at, NULL FROM agent_grants LIMIT 1',
         )
         .run(randomUUID(), teamId, 'a'.repeat(64)),
     );
-    assert.throws(() =>
+    await assert.rejects(() =>
       raw
         .prepare(
           'INSERT INTO agent_correlations SELECT ?, agent_id, ?, reference_key, reference, provider_session_id, invocation_id, author, created_at FROM agent_correlations LIMIT 1',
@@ -854,18 +856,20 @@ await test('database constraints enforce immutable identity/history, final revoc
       f.agent.id,
       f.grant.grant.id,
     );
-    assert.throws(() => raw.exec('UPDATE agent_grants SET revoked_at = NULL'));
+    await assert.rejects(() =>
+      raw.exec('UPDATE agent_grants SET revoked_at = NULL'),
+    );
   } finally {
-    raw.close();
+    await raw.close();
     await f.dispose();
   }
 });
 
 await test('audit failure rolls back profile changes, disable/revocation and rotation without partial mutations', async () => {
   const f = await agentFixture();
-  const raw = new Database(f.dbPath);
+  const raw = rawDatabase(f.dbPath);
   try {
-    raw.exec(
+    await raw.exec(
       "CREATE TRIGGER reject_test_audit BEFORE INSERT ON agent_audit BEGIN SELECT RAISE(ABORT, 'test rollback'); END",
     );
     await assert.rejects(() =>
@@ -903,7 +907,7 @@ await test('audit failure rolls back profile changes, disable/revocation and rot
       200,
     );
   } finally {
-    raw.close();
+    await raw.close();
     await f.dispose();
   }
 });
@@ -935,7 +939,7 @@ await test('service restart preserves stable agent, grant, correlations, provena
       'succeeded',
     );
     await f.app.close();
-    const reopened = f.open();
+    const reopened = await f.open();
     restarted = await createApp(f.config, reopened);
     assert.deepEqual(
       await reopened.agents.get(f.principal, f.teamId, f.agent.id),
@@ -984,7 +988,7 @@ await test('service restart preserves stable agent, grant, correlations, provena
       'disabled',
     );
     await restarted.close();
-    const disabledStore = f.open();
+    const disabledStore = await f.open();
     restarted = await createApp(f.config, disabledStore);
     assert.equal(
       (await disabledStore.agents.get(f.principal, f.teamId, f.agent.id))
@@ -1013,11 +1017,11 @@ await test('service restart preserves stable agent, grant, correlations, provena
 
 await test('disabled lifecycle independently blocks unrevoked grants and every profile/execution/admin route', async () => {
   const f = await agentFixture();
-  const raw = new Database(f.dbPath);
+  const raw = rawDatabase(f.dbPath);
   try {
     const execution = await f.execution();
     const stale = await f.store.agents.resolveToken(f.grant.token);
-    raw
+    await raw
       .prepare("UPDATE agents SET lifecycle = 'disabled' WHERE id = ?")
       .run(f.agent.id);
     await assert.rejects(
@@ -1069,7 +1073,7 @@ await test('disabled lifecycle independently blocks unrevoked grants and every p
       401,
     );
   } finally {
-    raw.close();
+    await raw.close();
     await f.dispose();
   }
 });

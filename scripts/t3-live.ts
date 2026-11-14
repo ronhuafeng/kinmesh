@@ -12,7 +12,8 @@ import { nativeReadOnlyDenial } from './t3-native-denial.js';
 import type { ValidatedTools, Wire } from '../src/adapters/t3/contracts.js';
 import { liveTools } from './t3-live-tools.js';
 import { T3Backend } from '../src/adapters/t3/backend.js';
-import { openStore } from '../src/persistence/store.js';
+import { openStore, type Store } from '../src/persistence/store.js';
+import { LiveDatabaseUrl } from '../src/persistence/disposable.js';
 import {
   type Reference,
   type Dispatch,
@@ -28,7 +29,7 @@ const Config = z.object({
   KINMESH_T3_READ_AUTH_FILE: z.string().min(1),
   KINMESH_T3_MODEL: z.string().min(1),
   KINMESH_T3_PROVIDER: z.string().min(1),
-  KINMESH_T3_LIVE_DATABASE: z.string().min(1),
+  KINMESH_T3_LIVE_DATABASE: LiveDatabaseUrl,
   KINMESH_T3_LIVE_REPORT: z.string().min(1),
 });
 function known(value: Dispatch): Reference {
@@ -39,7 +40,7 @@ function check(condition: boolean, name: string) {
   if (!condition) throw new Error('Live gate failed');
   console.info(name + ' PASS');
 }
-let store: ReturnType<typeof openStore> | undefined;
+let store: Store | undefined;
 let wire: SdkWire | undefined;
 let readWire: SdkWire | undefined;
 let tools: ValidatedTools | undefined;
@@ -57,7 +58,7 @@ try {
   );
   if (readonly.tokens.scope !== 'orchestration:read')
     throw new Error('Read-only grant required');
-  store = openStore(config.KINMESH_T3_LIVE_DATABASE);
+  store = await openStore(config.KINMESH_T3_LIVE_DATABASE);
   wire = new SdkWire(credential);
   readWire = new SdkWire(readonly);
   const options = {
@@ -191,7 +192,7 @@ try {
   if (uncertain.kind !== 'uncertain') throw new Error('Expected uncertain');
   await wire.close();
   await store.close();
-  store = openStore(config.KINMESH_T3_LIVE_DATABASE);
+  store = await openStore(config.KINMESH_T3_LIVE_DATABASE);
   const reopened = await T3Backend.connect(wire, store.operations, options);
   const reconciled = known(
     await reopened.reconcile(recoveryIntent, uncertain.operationId),

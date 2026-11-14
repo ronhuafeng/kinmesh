@@ -11,12 +11,12 @@ import {
   standInFeishu,
   startFeishuStandIn,
 } from './feishu.js';
-import Database from 'better-sqlite3';
+import { rawDatabase } from './raw.js';
 import { FeishuFailure, feishuClient } from '../src/server/feishu.js';
 
 async function hub(feishu: Feishu = standInFeishu) {
-  const f = fixture();
-  const store = f.open();
+  const f = await fixture();
+  const store = await f.open();
   const app = await createApp(
     f.config,
     store,
@@ -33,7 +33,7 @@ async function hub(feishu: Feishu = standInFeishu) {
     app,
     async dispose() {
       await app.close();
-      f.cleanup();
+      await f.cleanup();
     },
   };
 }
@@ -56,8 +56,8 @@ const back = (
 ) => app.inject({ url: `/login/callback?${query}`, cookies });
 
 await test('Feishu sign-in asks for the mailbox, and sends the browser back here', async () => {
-  const f = fixture();
-  const store = f.open();
+  const f = await fixture();
+  const store = await f.open();
   const app = await createApp(f.config, store);
   try {
     const response = await app.inject({ url: '/login' });
@@ -79,7 +79,7 @@ await test('Feishu sign-in asks for the mailbox, and sends the browser back here
     assert.ok(!url.href.includes('test-secret'));
   } finally {
     await app.close();
-    f.cleanup();
+    await f.cleanup();
   }
 });
 
@@ -353,18 +353,18 @@ await test('a person is their Feishu identity, whatever happens to their mailbox
 await test('a person from before Feishu is linked to their mailbox and signs in as themself', async () => {
   const h = await hub();
   try {
-    const raw = new Database(h.path);
+    const raw = rawDatabase(h.path);
     const team = await h.store.teamFor(
       (await h.store.signIn(feishuPerson('first@example.com'))).id,
     );
     assert.ok(team);
-    raw
+    await raw
       .prepare('INSERT INTO humans (id, username) VALUES (?, ?)')
       .run('00000000-0000-4000-8000-000000000001', 'old-timer');
-    raw
+    await raw
       .prepare('INSERT INTO memberships VALUES (?, ?)')
       .run('00000000-0000-4000-8000-000000000001', team.team.id);
-    raw.close();
+    await raw.close();
     // Not a mailbox someone else holds; not a person who does not exist.
     await assert.rejects(async () => {
       await h.store.linkMailbox('old-timer', 'first@example.com');

@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import Database from 'better-sqlite3';
+import { rawDatabase } from './raw.js';
 import { z } from 'zod';
 import { T3Backend } from '../src/adapters/t3/backend.js';
 import { ExecutionFailure } from '../src/domain/execution.js';
@@ -17,16 +17,19 @@ import {
 await test('MOCK: intent is durably dispatching before an external effect; repeated known launch makes no new call', async () => {
   const f = await backendFixture();
   try {
-    f.wire.handler = (name) => {
+    f.wire.handler = async (name) => {
       if (name === 't3_thread_launch') {
-        const raw = new Database(f.path);
+        const raw = rawDatabase(f.path);
         try {
           assert.equal(
-            raw.prepare('SELECT phase FROM execution_operations').pluck().get(),
+            await raw
+              .prepare('SELECT phase FROM execution_operations')
+              .pluck()
+              .get(),
             'dispatching',
           );
         } finally {
-          raw.close();
+          await raw.close();
         }
       }
       return Promise.resolve(envelope(f.wire.values[name]));
@@ -43,7 +46,7 @@ await test('MOCK: intent is durably dispatching before an external effect; repea
 });
 await test('MOCK: lost launch reply survives database reopen and reuses the exact native key', async () => {
   const f = await backendFixture();
-  let reopened: ReturnType<typeof f.open> | undefined;
+  let reopened: Awaited<ReturnType<typeof f.open>> | undefined;
   try {
     f.wire.handler = (name) =>
       name === 't3_thread_launch'
@@ -54,7 +57,7 @@ await test('MOCK: lost launch reply survives database reopen and reuses the exac
     const original = f.wire.calls.find((c) => c.name === 't3_thread_launch');
     assert.ok(original);
     await f.store.close();
-    reopened = f.open();
+    reopened = await f.open();
     const wire = new MockWire();
     const backend = await T3Backend.connect(wire, reopened.operations, options);
     const recovered = await backend.reconcile(intent, result.operationId);
@@ -210,14 +213,16 @@ await test('MOCK: send and stop also persist/reuse stable operation keys', async
       f.wire.calls.filter((c) => c.name === 't3_thread_interrupt').length,
       1,
     );
-    const raw = new Database(f.path);
+    const raw = rawDatabase(f.path);
     try {
       const rows = z
         .array(z.object({ phase: z.string() }))
-        .parse(raw.prepare('SELECT phase FROM execution_operations').all());
+        .parse(
+          await raw.prepare('SELECT phase FROM execution_operations').all(),
+        );
       assert.ok(rows.every((r) => r.phase === 'known'));
     } finally {
-      raw.close();
+      await raw.close();
     }
   } finally {
     await f.dispose();

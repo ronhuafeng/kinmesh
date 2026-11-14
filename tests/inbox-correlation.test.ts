@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import Database from 'better-sqlite3';
+import { rawDatabase, type RawDatabase } from './raw.js';
 import { Correlation } from '../src/domain/agents.js';
 import { IdentityError } from '../src/domain/agents.js';
 import { FrozenLaunch } from '../src/domain/inbox.js';
@@ -39,7 +39,7 @@ async function prepared() {
   await f.inbox.remember(claim, reference);
   return { ...f, task, claim };
 }
-const counts = (raw: Database.Database) =>
+const counts = (raw: RawDatabase) =>
   [
     'messages',
     'communication_outbox',
@@ -75,7 +75,7 @@ for (const other of [
     'SQLite: Inbox cannot reuse a correlation for another ' + other.name,
     async () => {
       const f = await prepared();
-      const raw = new Database(f.dbPath);
+      const raw = rawDatabase(f.dbPath);
       try {
         const existing = await f.store.agents.correlate(
           f.principal,
@@ -99,12 +99,15 @@ for (const other of [
           existing,
         );
         assert.notEqual(
-          raw.prepare('SELECT correlation_id FROM inbox_results').pluck().get(),
+          await raw
+            .prepare('SELECT correlation_id FROM inbox_results')
+            .pluck()
+            .get(),
           existing.id,
         );
         assert.equal((await f.inbox.get(f.claim.id)).state, 'acked');
       } finally {
-        raw.close();
+        await raw.close();
         await f.dispose();
       }
     },
@@ -121,7 +124,7 @@ for (const denied of [
       denied,
     async () => {
       const f = await prepared();
-      const raw = new Database(f.dbPath);
+      const raw = rawDatabase(f.dbPath);
       try {
         const existing = await f.store.agents.correlate(
           f.principal,
@@ -151,7 +154,7 @@ for (const denied of [
             },
             'remove',
           );
-        if (denied === 'expired-lease') due(f.dbPath, true);
+        if (denied === 'expired-lease') await due(f.dbPath, true);
         const before = counts(raw);
         await assert.rejects(
           async () => f.inbox.ack(f.claim, f.workerPrincipal, fixtureResult()),
@@ -168,7 +171,7 @@ for (const denied of [
           [existing],
         );
       } finally {
-        raw.close();
+        await raw.close();
         await f.dispose();
       }
     },
@@ -179,7 +182,7 @@ for (const failedTable of ['inbox_results', 'inbox_history'])
     'SQLite: reuse of an existing correlation remains atomic at ' + failedTable,
     async () => {
       const f = await prepared();
-      const raw = new Database(f.dbPath);
+      const raw = rawDatabase(f.dbPath);
       try {
         const existing = await f.store.agents.correlate(
           f.principal,
@@ -192,7 +195,7 @@ for (const failedTable of ['inbox_results', 'inbox_history'])
           },
         );
         const before = counts(raw);
-        raw.exec(
+        await raw.exec(
           'CREATE TRIGGER reject_correlated_ack BEFORE INSERT ON ' +
             failedTable +
             " BEGIN SELECT RAISE(ABORT,'fixture'); END",
@@ -202,7 +205,7 @@ for (const failedTable of ['inbox_results', 'inbox_history'])
         );
         assert.deepEqual(counts(raw), before);
         assert.equal((await f.inbox.get(f.claim.id)).resultMessageId, null);
-        raw.exec('DROP TRIGGER reject_correlated_ack');
+        await raw.exec('DROP TRIGGER reject_correlated_ack');
         await f.inbox.ack(f.claim, f.workerPrincipal, fixtureResult());
         assert.equal((await f.inbox.get(f.claim.id)).state, 'acked');
         assert.deepEqual(
@@ -210,18 +213,21 @@ for (const failedTable of ['inbox_results', 'inbox_history'])
           [existing],
         );
         assert.equal(
-          raw
+          await raw
             .prepare('SELECT count(*) FROM agent_runtime_events')
             .pluck()
             .get(),
           1,
         );
         assert.equal(
-          raw.prepare('SELECT count(*) FROM inbox_results').pluck().get(),
+          await raw.prepare('SELECT count(*) FROM inbox_results').pluck().get(),
           1,
         );
         assert.equal(
-          raw.prepare('SELECT correlation_id FROM inbox_results').pluck().get(),
+          await raw
+            .prepare('SELECT correlation_id FROM inbox_results')
+            .pluck()
+            .get(),
           existing.id,
         );
         await assert.rejects(
@@ -229,7 +235,7 @@ for (const failedTable of ['inbox_results', 'inbox_history'])
           IdentityError,
         );
       } finally {
-        raw.close();
+        await raw.close();
         await f.dispose();
       }
     },
@@ -238,7 +244,7 @@ for (const failedTable of ['inbox_results', 'inbox_history'])
 for (const status of ['completed', 'failed'] as const)
   await test(`MOCK SQLite: a Run correlated through the execution API recovers Inbox ACK after restart (${status})`, async () => {
     const f = await inboxFixture();
-    const raw = new Database(f.dbPath);
+    const raw = rawDatabase(f.dbPath);
     try {
       const task = (
         await f.create({ owner: { kind: 'agent', id: f.agent.id } })
@@ -284,8 +290,8 @@ for (const status of ['completed', 'failed'] as const)
       const terminal = assistantRead('MOCK recovered assistant result', status);
       if (status === 'failed') terminal.items = [];
       f.wire.values.t3_thread_read = terminal;
-      due(f.dbPath);
-      const reopened = f.open();
+      await due(f.dbPath);
+      const reopened = await f.open();
       try {
         const recovered = await reopened.inbox.claim([f.agent.id]);
         assert.ok(recovered);
@@ -341,11 +347,14 @@ for (const status of ['completed', 'failed'] as const)
           [existing],
         );
         assert.equal(
-          raw.prepare('SELECT correlation_id FROM inbox_results').pluck().get(),
+          await raw
+            .prepare('SELECT correlation_id FROM inbox_results')
+            .pluck()
+            .get(),
           existing.id,
         );
         assert.equal(
-          raw.prepare('SELECT count(*) FROM inbox_results').pluck().get(),
+          await raw.prepare('SELECT count(*) FROM inbox_results').pluck().get(),
           1,
         );
         assert.equal(
@@ -382,7 +391,7 @@ for (const status of ['completed', 'failed'] as const)
         await reopened.close();
       }
     } finally {
-      raw.close();
+      await raw.close();
       await f.dispose();
     }
   });

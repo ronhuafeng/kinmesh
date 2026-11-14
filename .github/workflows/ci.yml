@@ -60,7 +60,14 @@ jobs:
         run: docker build -t kinmesh:ci .
       - name: The container is healthy against a fresh database
         run: |
-          docker run -d --name kinmesh \
+          docker network create kinmesh
+          docker run -d --name postgres --network kinmesh \
+            -e POSTGRES_USER=kinmesh -e POSTGRES_PASSWORD=ci -e POSTGRES_DB=kinmesh \
+            postgres:17-alpine
+          # Over TCP: the image's first-run server listens on its socket only.
+          until docker exec postgres pg_isready -h 127.0.0.1 -U kinmesh -d kinmesh; do sleep 1; done
+          docker run -d --name kinmesh --network kinmesh \
+            -e KINMESH_DATABASE_URL=postgres://kinmesh:ci@postgres:5432/kinmesh \
             -e KINMESH_SESSION_KEY="$(openssl rand -hex 32)" \
             -e FEISHU_APP_ID=cli_ci -e FEISHU_APP_SECRET=ci-secret \
             -e KINMESH_EMAIL_DOMAIN=example.com \
@@ -78,4 +85,4 @@ jobs:
           test "$(docker exec kinmesh id -u)" != 0
           docker exec kinmesh sh -c 'test ! -e /app/tests && test ! -e /app/.env && test -z "$(find /app/dist -name "*.map" -o -name "*.ts")"'
       - if: always()
-        run: docker rm -f kinmesh || true
+        run: docker rm -f kinmesh postgres || true

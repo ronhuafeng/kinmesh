@@ -24,8 +24,8 @@ const Line = z.looseObject({
 });
 
 await test('a failure leaves one record to diagnose it, and nothing private', async () => {
-  const f = fixture();
-  const store = f.open();
+  const f = await fixture();
+  const store = await f.open();
   const lines: string[] = [];
   const logStream = new Writable({
     write(chunk: Buffer, _encoding, done) {
@@ -124,7 +124,7 @@ await test('a failure leaves one record to diagnose it, and nothing private', as
   } finally {
     await app.close();
     await store.close();
-    f.cleanup();
+    await f.cleanup();
   }
 });
 
@@ -158,8 +158,9 @@ await test('a hub that cannot start says what failed', () => {
       timeout: 30_000,
       env: {
         PATH: process.env.PATH,
-        // A directory is not a database file.
-        KINMESH_DATABASE: directory,
+        // Nothing listens there: the database cannot be reached.
+        KINMESH_DATABASE_URL: 'postgres://kinmesh:unused@127.0.0.1:1/kinmesh',
+        KINMESH_STATE: directory,
         KINMESH_SESSION_KEY: 'b'.repeat(64),
         ...feishuEnv,
       },

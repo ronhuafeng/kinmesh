@@ -3,16 +3,21 @@ import { resolve, join, dirname, basename } from 'node:path';
 import { tmpdir } from 'node:os';
 import { randomUUID } from 'node:crypto';
 import { z } from 'zod';
-import { openStore } from '../src/persistence/store.js';
+import { openStore, type Store } from '../src/persistence/store.js';
+import { DatabaseUrl } from '../src/persistence/database.js';
+import { disposableDatabase } from '../src/persistence/disposable.js';
 import { ProfileInput } from '../src/domain/agents.js';
 import { LiveContext } from '../src/team-mcp/live-context.js';
 import { TeamEndpoint } from '../src/team-mcp/client.js';
-let store: ReturnType<typeof openStore> | undefined;
+let store: Store | undefined;
+let prepared: { url: string; drop: () => Promise<void> } | undefined;
+let complete = false;
 process.umask(0o077);
 try {
   const c = z
     .object({
       KINMESH_TEAM_LIVE_DIR: z.string().min(1),
+      KINMESH_DATABASE_ADMIN_URL: DatabaseUrl,
       KINMESH_TEAM_MCP_ENDPOINT: TeamEndpoint,
       KINMESH_TEAM_LIVE_SCENARIO: z.enum(['team', 'inbox']).default('team'),
       KINMESH_T3_ENVIRONMENT_ID: z.string().min(1).optional(),
@@ -35,8 +40,9 @@ try {
   )
     throw new Error('Disposable path required');
   mkdirSync(directory, { mode: 0o700 }); // Refuse overwrite, even after a failed partial preparation.
-  const database = join(directory, 'team.sqlite');
-  store = openStore(database);
+  prepared = await disposableDatabase(c.KINMESH_DATABASE_ADMIN_URL, 'live');
+  const database = prepared.url;
+  store = await openStore(database);
   const humanId = (
     await store.signIn({
       feishuId: 'live-owner',
@@ -135,14 +141,17 @@ try {
     mode: 0o600,
     flag: 'wx',
   });
+  complete = true;
   console.info(
     'TEAM_PROVIDER_FIXTURE PASS: private context and expiring agent credential prepared in requested disposable directory.',
   );
 } catch {
   console.error(
-    'TEAM_PROVIDER_FIXTURE FAIL: requires a NEW /tmp/kinmesh-team-live-* directory and valid Team MCP endpoint.',
+    'TEAM_PROVIDER_FIXTURE FAIL: requires a NEW /tmp/kinmesh-team-live-* directory, a PostgreSQL admin URL and a valid Team MCP endpoint.',
   );
   process.exitCode = 1;
 } finally {
   await store?.close();
+  // A partial fixture is never left behind for a gate to find.
+  if (!complete) await prepared?.drop();
 }

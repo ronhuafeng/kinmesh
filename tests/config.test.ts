@@ -61,8 +61,8 @@ await test('configuration rejects absent secrets, invalid ports and non-loopback
 });
 await test('new session key rejects existing encrypted session', async () => {
   const { createApp } = await import('../src/server/app.js');
-  const f = fixture();
-  let store = f.open();
+  const f = await fixture();
+  let store = await f.open();
   let app = await createApp(
     f.config,
     store,
@@ -76,7 +76,7 @@ await test('new session key rejects existing encrypted session', async () => {
   try {
     const cookies = await signInAs(app, 'owner@example.com');
     await app.close();
-    store = f.open();
+    store = await f.open();
     app = await createApp(
       { ...f.config, sessionKey: Buffer.alloc(32, 42) },
       store,
@@ -92,6 +92,6 @@ await test('new session key rejects existing encrypted session', async () => {
     );
   } finally {
     await app.close();
-    f.cleanup();
+    await f.cleanup();
   }
 });

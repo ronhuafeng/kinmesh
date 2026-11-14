@@ -1,9 +1,8 @@
 import { and, eq, sql } from 'drizzle-orm';
-import type { BetterSQLite3Database } from 'drizzle-orm/better-sqlite3';
 import { z } from 'zod';
 import * as s from './schema.js';
 import type { agentRepository } from './agents.js';
-import { transactional } from './transactional.js';
+import type { Database } from './database.js';
 import { IdentityError, type Principal } from '../domain/agents.js';
 import type { GrantInput } from '../domain/agents.js';
 import { AgentId, TeamId } from '../domain/contracts.js';
@@ -18,42 +17,40 @@ const Provider = z.string().trim().min(1).max(256);
  * agents it serves. Rows hold no secrets; tokens live in files.
  */
 export function managedRepository(
-  db: BetterSQLite3Database<typeof s>,
+  d: Database,
   agents: ReturnType<typeof agentRepository>,
 ) {
-  const { atomic } = transactional(db);
+  const { q, atomic } = d;
   /** A person of the team: T3 and the hub-held secrets are everyone's. */
-  function person(p: Principal, teamId: TeamId) {
+  async function person(p: Principal, teamId: TeamId) {
     // Agents are refused before their grant is looked at.
     if (p.kind !== 'human') throw new IdentityError(403);
-    agents.person(p, teamId);
+    await agents.person(p, teamId);
   }
-  function connection(teamId: TeamId) {
-    return (
-      db
-        .select()
-        .from(s.t3Connections)
-        .where(eq(s.t3Connections.teamId, TeamId.parse(teamId)))
-        .get() ?? null
-    );
+  async function connection(teamId: TeamId) {
+    const [row] = await q()
+      .select()
+      .from(s.t3Connections)
+      .where(eq(s.t3Connections.teamId, TeamId.parse(teamId)))
+      .limit(1);
+    return row ?? null;
   }
-  function binding(teamId: TeamId, agentId: AgentId) {
-    return (
-      db
-        .select()
-        .from(s.managedBindings)
-        .where(
-          and(
-            eq(s.managedBindings.agentId, AgentId.parse(agentId)),
-            eq(s.managedBindings.teamId, teamId),
-          ),
-        )
-        .get() ?? null
-    );
+  async function binding(teamId: TeamId, agentId: AgentId) {
+    const [row] = await q()
+      .select()
+      .from(s.managedBindings)
+      .where(
+        and(
+          eq(s.managedBindings.agentId, AgentId.parse(agentId)),
+          eq(s.managedBindings.teamId, teamId),
+        ),
+      )
+      .limit(1);
+    return row ?? null;
   }
   return {
-    connection(p: Principal, teamId: TeamId) {
-      person(p, teamId);
+    async connection(p: Principal, teamId: TeamId) {
+      await person(p, teamId);
       return connection(teamId);
     },
     /**
@@ -63,44 +60,43 @@ export function managedRepository(
     teamConnection(teamId: TeamId) {
       return connection(teamId);
     },
-    saveConnection(
+    async saveConnection(
       p: Principal,
       teamId: TeamId,
       endpoint: string,
       environmentId: string,
     ) {
-      atomic(() => {
-        person(p, teamId);
+      await atomic(async () => {
+        await person(p, teamId);
         const row = {
           endpoint: Endpoint.parse(endpoint),
           environmentId: z.string().min(1).max(256).parse(environmentId),
           connectedAt: Date.now(),
         };
-        db.insert(s.t3Connections)
+        await q()
+          .insert(s.t3Connections)
           .values({ teamId, ...row })
-          .onConflictDoUpdate({ target: s.t3Connections.teamId, set: row })
-          .run();
+          .onConflictDoUpdate({ target: s.t3Connections.teamId, set: row });
       });
     },
-    binding(p: Principal, teamId: TeamId, agentId: AgentId) {
-      person(p, teamId);
+    async binding(p: Principal, teamId: TeamId, agentId: AgentId) {
+      await person(p, teamId);
       return binding(teamId, agentId);
     },
     /** Agents of one team the hub's worker serves. */
     teamBindings(teamId: TeamId) {
-      return db
+      return q()
         .select({
           agentId: s.managedBindings.agentId,
           providerId: s.managedBindings.providerId,
           grantId: s.managedBindings.grantId,
         })
         .from(s.managedBindings)
-        .where(eq(s.managedBindings.teamId, teamId))
-        .all();
+        .where(eq(s.managedBindings.teamId, teamId));
     },
     /** Every agent the hub's worker serves, with its team's T3 endpoint. */
     workerBindings() {
-      return db
+      return q()
         .select({
           agentId: s.managedBindings.agentId,
           providerId: s.managedBindings.providerId,
@@ -110,8 +106,7 @@ export function managedRepository(
         .innerJoin(
           s.t3Connections,
           eq(s.t3Connections.teamId, s.managedBindings.teamId),
-        )
-        .all();
+        );
     },
     /**
      * Point the agent at the connected T3 environment and the chosen provider
@@ -125,13 +120,13 @@ export function managedRepository(
       choice: { providerId: string; modelId: string },
       input: GrantInput,
     ) {
-      return atomic(() => {
-        person(p, teamId);
-        const t3 = connection(teamId);
+      return atomic(async () => {
+        await person(p, teamId);
+        const t3 = await connection(teamId);
         if (t3 === null) throw new IdentityError(409);
         const providerId = Provider.parse(choice.providerId);
-        const profile = agents.get(p, teamId, agentId);
-        agents.update(p, teamId, agentId, {
+        const profile = await agents.get(p, teamId, agentId);
+        await agents.update(p, teamId, agentId, {
           name: profile.name,
           role: profile.role,
           capabilities: profile.capabilities,
@@ -142,74 +137,71 @@ export function managedRepository(
             modelId: Provider.parse(choice.modelId),
           },
         });
-        const old = binding(teamId, agentId);
+        const old = await binding(teamId, agentId);
         const live =
           old !== null &&
-          agents
-            .grants(p, teamId, agentId)
-            .some((g) => g.id === old.grantId && g.revokedAt === null);
+          (await agents.grants(p, teamId, agentId)).some(
+            (g) => g.id === old.grantId && g.revokedAt === null,
+          );
         const issued =
           old !== null && live
-            ? agents.rotate(p, teamId, agentId, old.grantId, input)
-            : agents.issue(p, teamId, agentId, input);
+            ? await agents.rotate(p, teamId, agentId, old.grantId, input)
+            : await agents.issue(p, teamId, agentId, input);
         const row = { grantId: issued.grant.id, providerId };
-        db.insert(s.managedBindings)
+        await q()
+          .insert(s.managedBindings)
           .values({ agentId, teamId, ...row, createdAt: Date.now() })
-          .onConflictDoUpdate({ target: s.managedBindings.agentId, set: row })
-          .run();
+          .onConflictDoUpdate({ target: s.managedBindings.agentId, set: row });
         return issued;
       });
     },
     /** Stop serving the agent and revoke its worker credential. */
     disconnect(p: Principal, teamId: TeamId, agentId: AgentId) {
-      return atomic(() => {
-        person(p, teamId);
-        const old = binding(teamId, agentId);
+      return atomic(async () => {
+        await person(p, teamId);
+        const old = await binding(teamId, agentId);
         if (old === null) return false;
-        agents.revoke(p, teamId, agentId, old.grantId);
-        db.delete(s.managedBindings)
-          .where(eq(s.managedBindings.agentId, agentId))
-          .run();
+        await agents.revoke(p, teamId, agentId, old.grantId);
+        await q()
+          .delete(s.managedBindings)
+          .where(eq(s.managedBindings.agentId, agentId));
         return true;
       });
     },
     /** A revoked worker credential ends the binding it served. */
-    forgetGrant(teamId: TeamId, agentId: AgentId, grantId: string) {
-      return (
-        db
-          .delete(s.managedBindings)
-          .where(
-            and(
-              eq(s.managedBindings.agentId, agentId),
-              eq(s.managedBindings.teamId, teamId),
-              eq(s.managedBindings.grantId, grantId),
-            ),
-          )
-          .run().changes === 1
-      );
+    async forgetGrant(teamId: TeamId, agentId: AgentId, grantId: string) {
+      const done = await q()
+        .delete(s.managedBindings)
+        .where(
+          and(
+            eq(s.managedBindings.agentId, agentId),
+            eq(s.managedBindings.teamId, teamId),
+            eq(s.managedBindings.grantId, grantId),
+          ),
+        );
+      return done.count === 1;
     },
     /** Record that an agent's credential reached Team MCP. Evidence only. */
-    seenByTeamMcp(p: Principal) {
+    async seenByTeamMcp(p: Principal) {
       if (p.kind !== 'agent') return;
       const now = Date.now();
-      db.insert(s.teamMcpPresence)
+      await q()
+        .insert(s.teamMcpPresence)
         .values({ agentId: p.agentId, teamId: p.teamId, lastSeenAt: now })
         .onConflictDoUpdate({
           target: s.teamMcpPresence.agentId,
           set: { lastSeenAt: now },
           setWhere: sql`${s.teamMcpPresence.lastSeenAt} < ${now - PRESENCE_MS}`,
-        })
-        .run();
+        });
     },
     teamMcpPresence(teamId: TeamId) {
-      return db
+      return q()
         .select({
           agentId: s.teamMcpPresence.agentId,
           lastSeenAt: s.teamMcpPresence.lastSeenAt,
         })
         .from(s.teamMcpPresence)
-        .where(eq(s.teamMcpPresence.teamId, teamId))
-        .all();
+        .where(eq(s.teamMcpPresence.teamId, teamId));
     },
   };
 }

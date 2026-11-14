@@ -1,18 +1,42 @@
-# Kinmesh for a team: the hub, with its state in a volume. Secrets and
-# settings come from .env (never committed; `npm run setup` writes one).
-# Put an HTTPS reverse proxy in front (docs/operations.md); the hub is
-# published on this machine's loopback only.
+# Kinmesh for a team: the hub and its PostgreSQL, each with its state in a
+# volume. Secrets and settings come from .env (never committed; `npm run
+# setup` writes one). Put an HTTPS reverse proxy in front
+# (docs/operations.md); the hub is published on this machine's loopback only.
+#
+# For development, start only the database (`docker compose up -d postgres`)
+# and run the hub with `npm start`; it reaches the database on loopback.
 services:
+  postgres:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_USER: kinmesh
+      POSTGRES_PASSWORD: ${KINMESH_POSTGRES_PASSWORD:?set it in .env}
+      POSTGRES_DB: kinmesh
+    ports:
+      - 127.0.0.1:${KINMESH_POSTGRES_PORT:-5433}:5432
+    volumes:
+      - kinmesh-postgres:/var/lib/postgresql/data
+    healthcheck:
+      test: [CMD-SHELL, pg_isready -U kinmesh -d kinmesh]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
   hub:
     build: .
     env_file: .env
     environment:
       KINMESH_HOST: 0.0.0.0
-      KINMESH_DATABASE: /data/kinmesh.sqlite
+      KINMESH_DATABASE_URL: postgres://kinmesh:${KINMESH_POSTGRES_PASSWORD}@postgres:5432/kinmesh
+      KINMESH_STATE: /data
+    depends_on:
+      postgres:
+        condition: service_healthy
     ports:
       - 127.0.0.1:3000:3000
     volumes:
       - kinmesh-data:/data
     restart: unless-stopped
 volumes:
+  kinmesh-postgres:
   kinmesh-data:

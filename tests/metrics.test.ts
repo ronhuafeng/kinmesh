@@ -11,8 +11,8 @@ async function hub(
   rateLimit = 60,
   trustedProxies: string[] = [],
 ) {
-  const f = fixture();
-  const store = f.open();
+  const f = await fixture();
+  const store = await f.open();
   const app = await createApp(
     { ...f.config, rateLimit, metricsToken: TOKEN, trustedProxies },
     store,
@@ -26,7 +26,7 @@ async function hub(
     app,
     async dispose() {
       await app.close();
-      f.cleanup();
+      await f.cleanup();
     },
   };
 }

@@ -1,10 +1,9 @@
-import type { Promised } from './promised.js';
 import { createHash, randomUUID } from 'node:crypto';
 import { and, eq, or, lte, gt, sql } from 'drizzle-orm';
-import type { BetterSQLite3Database } from 'drizzle-orm/better-sqlite3';
 import { z } from 'zod';
 import * as schema from './schema.js';
-import { fingerprint, sqliteNow as now } from './transactional.js';
+import { fingerprint } from './transactional.js';
+import { dbNow as now, type Database } from './database.js';
 import { Reference, Intent, ExecutionFailure } from '../domain/execution.js';
 
 const Row = z.object({
@@ -35,10 +34,16 @@ export const EXECUTION_ATTEMPT_MS = 60_000;
 /** The journal scope of one T3 environment behind one endpoint. */
 export const executionScope = (endpoint: string, environmentId: string) =>
   fingerprint([endpoint, environmentId]);
-export function operationJournal(db: BetterSQLite3Database<typeof schema>) {
+export function operationJournal(d: Database) {
+  const { q, atomic } = d;
   const table = schema.executionOperations;
-  function get(id: string) {
-    return Row.parse(db.select().from(table).where(eq(table.id, id)).get());
+  async function get(id: string) {
+    const [row] = await q()
+      .select()
+      .from(table)
+      .where(eq(table.id, id))
+      .limit(1);
+    return Row.parse(row);
   }
   function fence(row: ClaimedOperation) {
     return and(
@@ -51,7 +56,7 @@ export function operationJournal(db: BetterSQLite3Database<typeof schema>) {
   }
   const released = { claimToken: null, leaseUntil: 0 };
   return {
-    prepare(
+    async prepare(
       scope: string,
       intent: Intent,
       tool: string,
@@ -62,45 +67,43 @@ export function operationJournal(db: BetterSQLite3Database<typeof schema>) {
       const fingerprint = createHash('sha256')
         .update(JSON.stringify({ tool, payload, authority }))
         .digest('hex');
-      return db.transaction(
-        (tx) => {
-          tx.insert(table)
-            .values({
-              id: randomUUID(),
-              scope,
-              ...intent,
-              requestId: randomUUID(),
-              fingerprint,
-              tool,
-              payload: JSON.stringify(payload),
-              phase: 'prepared',
-            })
-            .onConflictDoNothing()
-            .run();
-          const row = Row.parse(
-            tx
-              .select()
-              .from(table)
-              .where(
-                and(
-                  eq(table.scope, scope),
-                  eq(table.actor, intent.actor),
-                  eq(table.operationKey, intent.operationKey),
-                ),
-              )
-              .get(),
-          );
-          if (row.fingerprint !== fingerprint)
-            throw new ExecutionFailure('conflict');
-          return row;
-        },
-        { behavior: 'immediate' },
-      );
+      return atomic(async () => {
+        await q()
+          .insert(table)
+          .values({
+            id: randomUUID(),
+            scope,
+            ...intent,
+            requestId: randomUUID(),
+            fingerprint,
+            tool,
+            payload: JSON.stringify(payload),
+            phase: 'prepared',
+          })
+          .onConflictDoNothing();
+        const [found] = await q()
+          .select()
+          .from(table)
+          .where(
+            and(
+              eq(table.scope, scope),
+              eq(table.actor, intent.actor),
+              eq(table.operationKey, intent.operationKey),
+            ),
+          )
+          .limit(1);
+        const row = Row.parse(found);
+        if (row.fingerprint !== fingerprint)
+          throw new ExecutionFailure('conflict');
+        return row;
+      });
     },
     get,
     // Recovery eligibility belongs in this CAS, not in a preceding (possibly stale) read.
-    claim(id: string, recover = false) {
-      const row = db
+    // One statement: a concurrent claimant waits for this one to commit, then
+    // finds the phase changed and claims nothing.
+    async claim(id: string, recover = false) {
+      const [row] = await q()
         .update(table)
         .set({
           phase: 'dispatching',
@@ -123,57 +126,52 @@ export function operationJournal(db: BetterSQLite3Database<typeof schema>) {
               : eq(table.phase, 'prepared'),
           ),
         )
-        .returning()
-        .all()[0];
+        .returning();
       return row === undefined ? undefined : Claimed.parse(row);
     },
-    owned(row: ClaimedOperation) {
-      return (
-        db.select({ id: table.id }).from(table).where(fence(row)).get() !==
-        undefined
-      );
+    async owned(row: ClaimedOperation) {
+      const found = await q()
+        .select({ id: table.id })
+        .from(table)
+        .where(fence(row))
+        .limit(1);
+      return found.length === 1;
     },
-    uncertain(row: ClaimedOperation) {
-      return (
-        db
-          .update(table)
-          .set({ phase: 'uncertain', ...released })
-          .where(fence(row))
-          .run().changes === 1
-      );
+    async uncertain(row: ClaimedOperation) {
+      const done = await q()
+        .update(table)
+        .set({ phase: 'uncertain', ...released })
+        .where(fence(row));
+      return done.count === 1;
     },
-    remember(row: ClaimedOperation, reference: Reference) {
-      return (
-        db
-          .update(table)
-          .set({ reference: JSON.stringify(Reference.parse(reference)) })
-          .where(fence(row))
-          .run().changes === 1
-      );
+    async remember(row: ClaimedOperation, reference: Reference) {
+      const done = await q()
+        .update(table)
+        .set({ reference: JSON.stringify(Reference.parse(reference)) })
+        .where(fence(row));
+      return done.count === 1;
     },
-    known(row: ClaimedOperation, reference: Reference) {
-      return (
-        db
-          .update(table)
-          .set({
-            phase: 'known',
-            reference: JSON.stringify(Reference.parse(reference)),
-            ...released,
-          })
-          .where(fence(row))
-          .run().changes === 1
-      );
+    async known(row: ClaimedOperation, reference: Reference) {
+      const done = await q()
+        .update(table)
+        .set({
+          phase: 'known',
+          reference: JSON.stringify(Reference.parse(reference)),
+          ...released,
+        })
+        .where(fence(row));
+      return done.count === 1;
     },
-    rejected(row: ClaimedOperation, kind: 'authentication' | 'permission') {
-      return (
-        db
-          .update(table)
-          .set({ phase: 'rejected', rejection: kind, ...released })
-          .where(fence(row))
-          .run().changes === 1
-      );
+    async rejected(
+      row: ClaimedOperation,
+      kind: 'authentication' | 'permission',
+    ) {
+      const done = await q()
+        .update(table)
+        .set({ phase: 'rejected', rejection: kind, ...released })
+        .where(fence(row));
+      return done.count === 1;
     },
   };
 }
-/** The journal as the store gives it: asynchronous. */
-export type OperationJournal = Promised<ReturnType<typeof operationJournal>>;
+export type OperationJournal = ReturnType<typeof operationJournal>;

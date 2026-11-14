@@ -8,9 +8,6 @@ import {
   chmodSync,
   symlinkSync,
   rmSync,
-  existsSync,
-  renameSync,
-  statSync,
 } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -26,6 +23,9 @@ import { postInput } from './communication-helpers.js';
 import { Message } from '../src/domain/communication.js';
 import { WORKER_SHUTDOWN_MS } from '../src/inbox/lifecycle.js';
 import { deadline, freePort } from './process-helpers.js';
+import { testDatabase } from './database.js';
+import { rawDatabase } from './raw.js';
+import postgres from 'postgres';
 import { feishuEnv } from './helpers.js';
 import { signInOver, startFeishuStandIn } from './feishu.js';
 
@@ -103,13 +103,35 @@ function alive(pid: number) {
     return false;
   }
 }
-async function fixture(database?: string) {
+/** Drops a database, its connections with it, and makes an empty one by its name. */
+async function replaceDatabase(name: string) {
+  const admin = postgres(process.env.KINMESH_TEST_DATABASE_ADMIN_URL ?? '', {
+    max: 1,
+    onnotice: () => undefined,
+  });
+  try {
+    await admin.unsafe(`DROP DATABASE ${name} WITH (FORCE)`);
+    await admin.unsafe(`CREATE DATABASE ${name}`);
+  } finally {
+    await admin.end({ timeout: 5 });
+  }
+}
+/** Another database on the same server: never the hub's. */
+const otherDatabase = (url: string) => {
+  const other = new URL(url);
+  other.pathname = '/kinmesh_test_other';
+  return other.href;
+};
+async function fixture(database?: string, shared?: string) {
   const directory = mkdtempSync(join(tmpdir(), 'kinmesh-hub-supervision-'));
-  const dbPath = database ?? join(directory, 'team.sqlite');
+  const own = database === undefined ? await testDatabase() : undefined;
+  const dbPath = database ?? own?.url ?? '';
+  // Where the hub keeps its worker's private files: a caller's, or its own.
+  const state = shared ?? directory;
   const configPath = join(directory, 'inbox.json');
   writeFileSync(
     configPath,
-    JSON.stringify({ database: dbPath, pollMs: 100, bindings: [] }),
+    JSON.stringify({ database: dbPath, state, pollMs: 100, bindings: [] }),
     { mode: 0o600 },
   );
   // Run the repository's exact npm start script with a disposable .env, never the user's .env.
@@ -138,7 +160,8 @@ async function fixture(database?: string) {
   writeFileSync(
     join(directory, '.env'),
     [
-      'KINMESH_DATABASE=' + dbPath,
+      'KINMESH_DATABASE_URL=' + dbPath,
+      'KINMESH_STATE=' + state,
       'KINMESH_SESSION_KEY=' + sessionKey,
       ...Object.entries(app).map(([key, value]) => `${key}=${value}`),
       'KINMESH_PORT=' + String(port),
@@ -163,7 +186,8 @@ async function fixture(database?: string) {
     if (optIn) env.KINMESH_INBOX_CONFIG = override ?? configPath;
     if (fromProcessEnv)
       Object.assign(env, {
-        KINMESH_DATABASE: dbPath,
+        KINMESH_DATABASE_URL: dbPath,
+        KINMESH_STATE: state,
         KINMESH_SESSION_KEY: sessionKey,
         ...app,
         KINMESH_PORT: String(port),
@@ -256,6 +280,7 @@ async function fixture(database?: string) {
         await deadline(p.closed, 5000);
       }
       await feishu.close();
+      await own?.drop();
       rmSync(directory, { recursive: true, force: true });
     },
   };
@@ -325,8 +350,8 @@ await test(
       { providerId: 'isolated-dev', modelId: 'model-a' },
       WORKER_GRANT,
     );
-    writeAgentToken(managedDirectory(seed.dbPath), seed.agent.id, token);
-    const f = await fixture(seed.dbPath);
+    writeAgentToken(managedDirectory(seed.directory), seed.agent.id, token);
+    const f = await fixture(seed.dbPath, seed.directory);
     try {
       const p = f.start(false);
       await p.ready();
@@ -376,7 +401,7 @@ await test(
       );
       assert.equal(response.status, 201);
       const message = Message.parse(await response.json());
-      const row = seed.rows()[0];
+      const row = (await seed.rows())[0];
       assert.ok(row);
       assert.equal(row.messageId, message.id);
       assert.equal(row.agentId, seed.agent.id);
@@ -400,7 +425,7 @@ await test(
       );
       assert.equal(await f.health(), 200);
       assert.deepEqual(
-        seed.rows()[0],
+        (await seed.rows())[0],
         row,
         'restart retains the exact pending Inbox delivery',
       );
@@ -413,7 +438,7 @@ await test(
       const restarted = f.start();
       await restarted.ready();
       assert.deepEqual(
-        seed.rows()[0],
+        (await seed.rows())[0],
         row,
         'normal parent restart retains pending delivery',
       );
@@ -488,7 +513,7 @@ await test(
             path,
             variant === 'wrong-db'
               ? JSON.stringify({
-                  database: join(f.directory, 'other.sqlite'),
+                  database: otherDatabase(f.dbPath),
                   bindings: [],
                 })
               : variant === 'malformed'
@@ -513,12 +538,6 @@ await test(
         assert.equal(await f.health(), 0);
         assert.deepEqual(p.workers(), []);
       }
-      assert.equal(
-        existsSync(f.dbPath),
-        false,
-        'configuration rejected before database creation',
-      );
-      assert.equal(existsSync(join(f.directory, 'other.sqlite')), false);
     } finally {
       await f.dispose();
     }
@@ -536,19 +555,22 @@ await test(
       writeFileSync(
         f.configPath,
         JSON.stringify({
-          database: join(f.directory, 'other.sqlite'),
+          database: otherDatabase(f.dbPath),
           bindings: [],
         }),
       );
       const id = p.workers()[0];
       assert.ok(id);
-      process.kill(id, 'SIGKILL');
+      try {
+        process.kill(id, 'SIGKILL');
+      } catch {
+        // Already gone with its connections; the replacement is what matters.
+      }
       assert.equal(await deadline(p.closed, 15000), 1);
       assert.equal(
         p.output().match(/supervised Inbox worker running\./g)?.length,
         1,
       );
-      assert.equal(existsSync(join(f.directory, 'other.sqlite')), false);
     } finally {
       await f.dispose();
     }
@@ -566,7 +588,7 @@ await test(
       seed.channelId,
       postInput({ mentions: [{ kind: 'agent', id: seed.agent.id }] }),
     );
-    const original = seed.rows()[0];
+    const original = (await seed.rows())[0];
     assert.ok(original);
     const f = await fixture(seed.dbPath);
     writeFileSync(f.configPath, JSON.stringify(seed.workerConfig));
@@ -594,7 +616,7 @@ await test(
             (live) => !live,
           );
         assert.deepEqual(
-          seed.rows()[0],
+          (await seed.rows())[0],
           original,
           'not even a claim is allowed before bind',
         );
@@ -660,28 +682,43 @@ await test(
 );
 
 await test(
-  'database inode is pinned across worker restarts, not just the configured pathname',
+  'the database is pinned across worker restarts by identity, not just by name',
   { timeout: 25000 },
   async () => {
     const f = await fixture();
     try {
       const p = f.start();
       await p.ready();
-      renameSync(f.dbPath, f.dbPath + '.retired');
-      writeFileSync(f.dbPath, '', { mode: 0o600 });
+      // The same name, now a different, empty database.
+      const name = new URL(f.dbPath).pathname.slice(1);
+      await replaceDatabase(name);
       const id = p.workers()[0];
       assert.ok(id);
-      process.kill(id, 'SIGKILL');
+      try {
+        process.kill(id, 'SIGKILL');
+      } catch {
+        // Already gone with its connections; the replacement is what matters.
+      }
       assert.equal(await deadline(p.closed, 15000), 1);
       assert.equal(
         p.output().match(/supervised Inbox worker running\./g)?.length,
         1,
       );
-      assert.equal(
-        statSync(f.dbPath).size,
-        0,
-        'replacement database was never opened or migrated',
-      );
+      const replacement = rawDatabase(f.dbPath);
+      try {
+        assert.equal(
+          await replacement
+            .prepare(
+              "SELECT count(*)::int AS n FROM information_schema.tables WHERE table_schema = 'public'",
+            )
+            .pluck()
+            .get(),
+          0,
+          'replacement database was never migrated',
+        );
+      } finally {
+        await replacement.close();
+      }
     } finally {
       await f.dispose();
     }

@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
-import Database from 'better-sqlite3';
+import { rawDatabase } from './raw.js';
 import { deliver, runWorker } from '../src/inbox/worker.js';
 import { INBOX_LIVENESS_MS } from '../src/domain/inbox.js';
 import { WorkspaceSnapshot } from '../src/workspace/contracts.js';
@@ -26,13 +26,13 @@ await test('worker liveness is projected per agent, ignores unknown IDs, goes st
     assert.equal(live[0]?.agentId, f.agent.id);
     assert.equal(live[0].connected, true);
     // Liveness older than the threshold reads as "not connected", never as gone.
-    const raw = new Database(f.dbPath);
+    const raw = rawDatabase(f.dbPath);
     try {
-      raw
+      await raw
         .prepare('UPDATE inbox_bindings SET last_seen_at = ?')
         .run(Date.now() - INBOX_LIVENESS_MS - 1000);
     } finally {
-      raw.close();
+      await raw.close();
     }
     assert.equal((await snapshot()).wake[0]?.connected, false);
     await f.inbox.release([f.agent.id]);

@@ -12,7 +12,7 @@ const config = z
     TASK_TEST_TASK: TaskId,
   })
   .parse(process.env);
-const store = openStore(config.TASK_TEST_DATABASE);
+const store = await openStore(config.TASK_TEST_DATABASE);
 async function claim() {
   let outcome: 'won' | 'conflict' | 'failed' = 'failed';
   try {

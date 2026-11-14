@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { z } from 'zod';
-import Database from 'better-sqlite3';
+import { rawDatabase } from './raw.js';
 import { deliver } from '../src/inbox/worker.js';
 import { FrozenLaunch } from '../src/domain/inbox.js';
 import { IdentityError } from '../src/domain/agents.js';
@@ -227,9 +227,9 @@ await test('a request that never reached T3 is retried under a reconnected T3; o
         error instanceof IdentityError && error.statusCode === 403,
     );
     // The database refuses it too, whatever code tries.
-    const raw = new Database(f.dbPath);
+    const raw = rawDatabase(f.dbPath);
     try {
-      assert.throws(
+      await assert.rejects(
         () =>
           raw
             .prepare('UPDATE agent_inbox SET launch = ? WHERE id = ?')
@@ -237,7 +237,7 @@ await test('a request that never reached T3 is retried under a reconnected T3; o
         /immutable inbox contract/,
       );
     } finally {
-      raw.close();
+      await raw.close();
     }
   } finally {
     await f.dispose();

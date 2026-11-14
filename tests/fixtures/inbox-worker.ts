@@ -1,5 +1,5 @@
 // Fixture transport only. The ordinary worker loop, repositories and T3Backend are production code.
-import Database from 'better-sqlite3';
+import { rawDatabase } from '../raw.js';
 import { loadWorkerConfig } from '../../src/inbox/config.js';
 import { runWorker } from '../../src/inbox/worker.js';
 import { openStore } from '../../src/persistence/store.js';
@@ -8,10 +8,9 @@ import { MockWire, envelope, options, reference } from '../t3-helpers.js';
 import { assistantRead } from '../inbox-helpers.js';
 import { loadAgentToken } from '../../src/team-mcp/client.js';
 const config = loadWorkerConfig(process.argv[2] ?? '');
-const store = openStore(config.database);
-const counter = new Database(config.database);
-counter.pragma('busy_timeout = 5000');
-counter.exec(
+const store = await openStore(config.database);
+const counter = rawDatabase(config.database);
+await counter.exec(
   'CREATE TABLE IF NOT EXISTS fixture_native_launches (request_id TEXT PRIMARY KEY, transmissions INTEGER NOT NULL)',
 );
 const stopping = new AbortController();
@@ -31,7 +30,7 @@ try {
         if (name === 't3_thread_launch') {
           const id = args.clientRequestId;
           if (typeof id !== 'string') throw new Error('Missing native key');
-          counter
+          await counter
             .prepare(
               'INSERT INTO fixture_native_launches VALUES (?,1) ON CONFLICT(request_id) DO UPDATE SET transmissions=transmissions+1',
             )
@@ -45,15 +44,15 @@ try {
         if (
           name === 't3_thread_read' &&
           process.argv[3] === 'publication-hold' &&
-          counter
+          (await counter
             .prepare('SELECT id FROM agent_inbox WHERE reference IS NOT NULL')
-            .get() !== undefined
+            .get()) !== undefined
         )
           await new Promise<never>(() => {
             /* Parent records the Run through the execution API, then SIGKILLs this worker before ACK. */
           });
         if (name === 't3_thread_read' && process.argv[3] === 'prelinked-hold') {
-          const id: unknown = counter
+          const id: unknown = await counter
             .prepare(
               'SELECT id FROM agent_inbox WHERE reference IS NOT NULL AND task_id IS NOT NULL',
             )
@@ -112,6 +111,6 @@ try {
     stopping.signal,
   );
 } finally {
-  counter.close();
+  await counter.close();
   await store.close();
 }
