@@ -20,6 +20,15 @@ const Environment = z.object({
   KINMESH_SESSION_KEY: z.string().regex(/^[a-f0-9]{64}$/),
   KINMESH_ORIGIN: z.url().default('http://127.0.0.1:3000'),
   KINMESH_PORT: z.coerce.number().int().min(1).max(65535).default(3000),
+  /**
+   * The address the hub listens on: loopback, unless a container publishes
+   * its port (to the host's loopback, behind the proxy).
+   */
+  KINMESH_HOST: z
+    .string()
+    .trim()
+    .refine((value) => isIP(value) !== 0)
+    .default('127.0.0.1'),
   /** Requests per minute per client: a guard against floods, at human pace. */
   KINMESH_RATE_LIMIT: z.coerce.number().int().min(1).max(100_000).default(60),
   /** The Feishu app people sign in through. */
@@ -75,6 +84,7 @@ export function loadConfig(env: NodeJS.ProcessEnv) {
     origin: origin.origin,
     secureCookie: origin.protocol === 'https:',
     port: value.KINMESH_PORT,
+    host: value.KINMESH_HOST,
     rateLimit: value.KINMESH_RATE_LIMIT,
     trustedProxies: value.KINMESH_TRUSTED_PROXIES,
     metricsToken: value.KINMESH_METRICS_TOKEN ?? null,

@@ -27,7 +27,7 @@ Kinmesh is a single-node service for one organization, with a loopback listener.
 - JSON bodies are capped at 16 KiB. Errors are fixed messages that never echo input or internal exceptions.
 - Every response carries `nosniff`, `Referrer-Policy: no-referrer` and a restrictive CSP (`default-src 'self'`, no objects, no framing). Credential-bearing and workspace responses are `Cache-Control: no-store`.
 - Only `/` and the built `/assets/` tree are served; there is no repository or SPA fallback.
-- `KINMESH_ORIGIN` must be HTTPS or exactly `http://127.0.0.1:<port>`. For remote access, put a same-origin HTTPS reverse proxy in front of the loopback listener; never expose the listener directly. The proxy must not log bodies, authorization or cookie headers.
+- `KINMESH_ORIGIN` must be HTTPS or exactly `http://127.0.0.1:<port>`. For remote access, put a same-origin HTTPS reverse proxy in front of the loopback listener; never expose the listener directly. A container listens on `0.0.0.0` (`KINMESH_HOST`) only inside its own network and is published to the host's loopback. The proxy must not log bodies, authorization or cookie headers.
 
 ## Agent credentials
 

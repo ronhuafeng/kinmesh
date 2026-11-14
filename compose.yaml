@@ -1,0 +1,18 @@
+# Kinmesh for a team: the hub, with its state in a volume. Secrets and
+# settings come from .env (never committed; `npm run setup` writes one).
+# Put an HTTPS reverse proxy in front (docs/operations.md); the hub is
+# published on this machine's loopback only.
+services:
+  hub:
+    build: .
+    env_file: .env
+    environment:
+      KINMESH_HOST: 0.0.0.0
+      KINMESH_DATABASE: /data/kinmesh.sqlite
+    ports:
+      - 127.0.0.1:3000:3000
+    volumes:
+      - kinmesh-data:/data
+    restart: unless-stopped
+volumes:
+  kinmesh-data:

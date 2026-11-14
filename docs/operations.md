@@ -8,19 +8,31 @@ Running Kinmesh, its Inbox worker and Team MCP; the live gates against real T3; 
 
 The hub writes JSON lines to standard output: one record per failure, with its request ID, route, error name, code, constraint and stack (what is never recorded: [security](security.md)). A process that cannot start or run, the Inbox worker and Team MCP included, prints one `…_failed` line with the same fields to standard error before it exits with 1.
 
-| Variable                             | Meaning                                                                                              |
-| ------------------------------------ | ---------------------------------------------------------------------------------------------------- |
-| `KINMESH_SESSION_KEY`                | Required; 64 lowercase hex characters; `npm run setup` writes it to `.env`                           |
-| `FEISHU_APP_ID`, `FEISHU_APP_SECRET` | Required; the Feishu app people sign in through; its redirect URL is `KINMESH_ORIGIN/login/callback` |
-| `KINMESH_EMAIL_DOMAIN`               | Required; only mailboxes in this domain may sign in                                                  |
-| `KINMESH_DATABASE`                   | SQLite file (default `.store/kinmesh.sqlite`)                                                        |
-| `KINMESH_ORIGIN`, `KINMESH_PORT`     | Public origin (an HTTPS origin, or exactly `http://127.0.0.1:<port>`) and listener port              |
-| `KINMESH_INBOX_CONFIG`               | Optional operator worker configuration (below)                                                       |
-| `KINMESH_RATE_LIMIT`                 | Requests per minute per client (default 60); see [security](security.md)                             |
-| `KINMESH_TRUSTED_PROXIES`            | The reverse proxies, comma-separated addresses or CIDR ranges; required with an HTTPS origin         |
-| `KINMESH_METRICS_TOKEN`              | Optional; lets a scraper elsewhere read `/metrics` (at least 32 characters)                          |
+| Variable                             | Meaning                                                                                                       |
+| ------------------------------------ | ------------------------------------------------------------------------------------------------------------- |
+| `KINMESH_SESSION_KEY`                | Required; 64 lowercase hex characters; `npm run setup` writes it to `.env`                                    |
+| `FEISHU_APP_ID`, `FEISHU_APP_SECRET` | Required; the Feishu app people sign in through; its redirect URL is `KINMESH_ORIGIN/login/callback`          |
+| `KINMESH_EMAIL_DOMAIN`               | Required; only mailboxes in this domain may sign in                                                           |
+| `KINMESH_DATABASE`                   | SQLite file (default `.store/kinmesh.sqlite`)                                                                 |
+| `KINMESH_ORIGIN`, `KINMESH_PORT`     | Public origin (an HTTPS origin, or exactly `http://127.0.0.1:<port>`) and listener port                       |
+| `KINMESH_HOST`                       | Listener address (default `127.0.0.1`); `0.0.0.0` only inside a container whose port is published to loopback |
+| `KINMESH_INBOX_CONFIG`               | Optional operator worker configuration (below)                                                                |
+| `KINMESH_RATE_LIMIT`                 | Requests per minute per client (default 60); see [security](security.md)                                      |
+| `KINMESH_TRUSTED_PROXIES`            | The reverse proxies, comma-separated addresses or CIDR ranges; required with an HTTPS origin                  |
+| `KINMESH_METRICS_TOKEN`              | Optional; lets a scraper elsewhere read `/metrics` (at least 32 characters)                                   |
 
 `npm start` reads `.env` if present; managed deployments may inject the same variables instead. Missing or malformed values fail startup.
+
+### In a container
+
+The image holds the compiled server, its migrations and the built workspace; it runs as the unprivileged `node` user, keeps its database in the `/data` volume and reports healthy only when ready (`/health`). Everything else comes from the environment. With `compose.yaml` and a `.env` beside it (never committed; `npm run setup` writes one, then add the Feishu app and domain):
+
+```sh
+docker compose up -d --build
+docker compose ps      # healthy once the database and worker are ready
+```
+
+The hub is published on this machine's loopback only (`127.0.0.1:3000`), for the reverse proxy below; its proxy then reaches it from the host, so `KINMESH_TRUSTED_PROXIES` names the Docker network's gateway (for the default bridge, `172.16.0.0/12`). Back up the `kinmesh-data` volume like the database. CI builds the image on every pull request; publishing it is a separate, deliberate step.
 
 ### Behind a reverse proxy
 

@@ -47,6 +47,10 @@ await test('configuration rejects absent secrets, invalid ports and non-loopback
       bad,
     );
   assert.deepEqual(loadConfig(env).trustedProxies, []);
+  // The listener is loopback unless a container publishes it.
+  assert.equal(loadConfig(env).host, '127.0.0.1');
+  assert.equal(loadConfig({ ...env, KINMESH_HOST: '0.0.0.0' }).host, '0.0.0.0');
+  assert.throws(() => loadConfig({ ...env, KINMESH_HOST: 'localhost' }));
   assert.equal(loadConfig(env).secureCookie, false);
   assert.equal(loadConfig(env).rateLimit, 60);
   assert.equal(
