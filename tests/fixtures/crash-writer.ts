@@ -1,9 +1,13 @@
 import Database from 'better-sqlite3';
 import { openStore } from '../../src/persistence/store.js';
+import { feishuPerson } from '../feishu.js';
 const path = process.argv[2];
 if (path === undefined) throw new Error('Missing fixture path');
 const store = openStore(path);
-store.renameTeam(store.signIn('owner@example.com').id, 'Committed team');
+store.renameTeam(
+  store.signIn(feishuPerson('owner@example.com')).id,
+  'Committed team',
+);
 store.close();
 const db = new Database(path);
 db.exec("BEGIN IMMEDIATE; UPDATE teams SET name = 'Uncommitted team';");

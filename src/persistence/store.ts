@@ -86,25 +86,47 @@ export function openStore(path: string) {
       if (sqlite.open) sqlite.close();
     },
     /**
-     * The person a verified organization mailbox belongs to. Their first
-     * sign-in makes them a member; the very first one also makes the team
-     * and its #general.
+     * The person a Feishu identity is. Their first sign-in makes them a
+     * member; the very first one also makes the team and its #general. The
+     * mailbox is kept up to date, and finds a person linked to it before
+     * they ever signed in with Feishu.
      */
-    signIn(email: string) {
+    signIn({ feishuId, email }: { feishuId: string; email: string }) {
       return db.transaction(
         (tx) => {
-          const known = tx
-            .select({ id: tables.humans.id, username: tables.humans.username })
-            .from(tables.humans)
-            .where(eq(tables.humans.email, email))
-            .get();
-          if (known !== undefined) return Human.parse(known);
+          const person = {
+            id: tables.humans.id,
+            username: tables.humans.username,
+          };
+          const known =
+            tx
+              .select(person)
+              .from(tables.humans)
+              .where(eq(tables.humans.feishuId, feishuId))
+              .get() ??
+            tx
+              .select(person)
+              .from(tables.humans)
+              .where(
+                and(
+                  eq(tables.humans.email, email),
+                  isNull(tables.humans.feishuId),
+                ),
+              )
+              .get();
+          if (known !== undefined) {
+            tx.update(tables.humans)
+              .set({ feishuId, email })
+              .where(eq(tables.humans.id, known.id))
+              .run();
+            return Human.parse(known);
+          }
           const human = Human.parse({
             id: randomUUID(),
             username: freeUsername(email),
           });
           tx.insert(tables.humans)
-            .values({ ...human, email })
+            .values({ ...human, feishuId, email })
             .run();
           const existing = tx.select().from(tables.teams).get();
           if (existing !== undefined) {
@@ -136,14 +158,32 @@ export function openStore(path: string) {
         { behavior: 'immediate' },
       );
     },
-    /** Ties a person who predates Feishu sign-in to their mailbox. */
+    /**
+     * Ties a person who predates Feishu sign-in to their mailbox, so their
+     * first Feishu sign-in is them. Only someone who has never signed in
+     * with Feishu, and only a mailbox nobody else holds.
+     */
     linkMailbox(username: string, email: string) {
-      const changed = db
-        .update(tables.humans)
-        .set({ email })
-        .where(eq(tables.humans.username, username))
-        .run().changes;
-      if (changed !== 1) throw new IdentityError(404);
+      db.transaction((tx) => {
+        const taken = tx
+          .select({ username: tables.humans.username })
+          .from(tables.humans)
+          .where(eq(tables.humans.email, email))
+          .get();
+        if (taken !== undefined && taken.username !== username)
+          throw new IdentityError(409);
+        const changed = tx
+          .update(tables.humans)
+          .set({ email })
+          .where(
+            and(
+              eq(tables.humans.username, username),
+              isNull(tables.humans.feishuId),
+            ),
+          )
+          .run().changes;
+        if (changed !== 1) throw new IdentityError(404);
+      });
     },
     /**
      * Sign-ins under way. The state travels to Feishu and back; the database

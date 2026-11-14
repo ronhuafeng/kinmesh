@@ -5,9 +5,25 @@ import type { FastifyInstance } from 'fastify';
 import type { Feishu } from '../src/server/feishu.js';
 
 /**
- * Feishu for tests: the person chooses a mailbox at "Feishu", the code is that
- * mailbox, and the profile vouches for it. Codes starting with "fail" make
- * Feishu refuse the exchange.
+ * Who a stand-in code names: `mailbox`, or `union|mailbox` for a person whose
+ * mailbox is not the one they started with.
+ */
+function who(code: string) {
+  const [union, mailbox] = code.includes('|')
+    ? code.split('|')
+    : [`u-${code.trim().toLowerCase()}`, code];
+  return { union: union ?? '', mailbox: mailbox ?? '' };
+}
+/** The identity the stand-ins give a mailbox, for writing to the store directly. */
+export const feishuPerson = (mailbox: string) => ({
+  feishuId: who(mailbox).union,
+  email: mailbox.trim().toLowerCase(),
+});
+
+/**
+ * Feishu for tests: the person chooses who to be at "Feishu" (see `who`),
+ * the code says so, and the profile vouches for it. Codes starting with
+ * "fail" make Feishu refuse the exchange.
  */
 export const standInFeishu: Feishu = {
   authorizeUrl(state, redirectUri) {
@@ -21,8 +37,10 @@ export const standInFeishu: Feishu = {
     return Promise.resolve(`token:${code}`);
   },
   profile(token) {
+    const { union, mailbox } = who(token.slice('token:'.length));
     return Promise.resolve({
-      enterprise: token.slice('token:'.length),
+      union,
+      enterprise: mailbox,
       email: null,
       tenant: 'stand-in',
     });
@@ -108,7 +126,9 @@ export async function startFeishuStandIn() {
         JSON.stringify({
           code: 0,
           data: {
-            enterprise_email: Buffer.from(token, 'base64url').toString(),
+            union_id: who(Buffer.from(token, 'base64url').toString()).union,
+            enterprise_email: who(Buffer.from(token, 'base64url').toString())
+              .mailbox,
             tenant_key: 'stand-in',
           },
         }),

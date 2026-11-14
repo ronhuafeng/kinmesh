@@ -543,7 +543,7 @@ await test('assigned reviewer/owner and designated current human owner control d
     for (const role of ['member', 'owner'] as const) {
       const humanId = HumanId.parse(randomUUID());
       raw
-        .prepare('INSERT INTO humans VALUES (?,?,?)')
+        .prepare('INSERT INTO humans (id, username, email) VALUES (?, ?, ?)')
         .run(humanId, 'other-' + role, `other-${role}@example.com`);
       raw
         .prepare('INSERT INTO memberships VALUES (?,?,?)')

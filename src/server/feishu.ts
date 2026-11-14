@@ -7,8 +7,12 @@ const ACCOUNTS = 'https://accounts.feishu.cn';
 const OPEN = 'https://open.feishu.cn';
 
 export interface FeishuProfile {
-  email: unknown;
+  /** The person, the same across the developer's apps. */
+  union: unknown;
+  /** The Feishu enterprise mailbox, set only where Feishu runs the mail. */
   enterprise: unknown;
+  /** The account's mailbox, where an organization's own mail system lives. */
+  email: unknown;
   tenant: unknown;
 }
 /** What Kinmesh asks of Feishu to sign a person in. */
@@ -41,6 +45,7 @@ const Profile = z.looseObject({
   data: z
     // Feishu leaves out what an account does not have.
     .looseObject({
+      union_id: z.unknown().optional(),
       email: z.unknown().optional(),
       enterprise_email: z.unknown().optional(),
       tenant_key: z.unknown().optional(),
@@ -118,8 +123,9 @@ export function feishuClient(config: Config['feishu']): Feishu {
       )
         throw new FeishuFailure('profile', response.status);
       return {
-        email: body.data.data.email,
+        union: body.data.data.union_id,
         enterprise: body.data.data.enterprise_email,
+        email: body.data.data.email,
         tenant: body.data.data.tenant_key,
       };
     },
@@ -139,16 +145,29 @@ export function canonicalMailbox(value: unknown): string | null {
   return email;
 }
 /**
- * The organization mailbox a profile vouches for: the enterprise address
- * first, then the account's own, and only within the organization's domain.
+ * Who a profile vouches for: a Feishu person of a tenant, admitted by a
+ * mailbox in the organization's domain — the enterprise mailbox, else the
+ * account's. The mailbox only admits; the union_id says who. Null for
+ * anyone else.
  */
-export function organizationMailbox(
+export function organizationMember(
   profile: FeishuProfile,
   domain: string,
-): string | null {
-  for (const value of [profile.enterprise, profile.email]) {
+): { feishuId: string; email: string } | null {
+  const { union, tenant } = profile;
+  const inDomain = (value: unknown) => {
     const email = canonicalMailbox(value);
-    if (email?.slice(email.lastIndexOf('@') + 1) === domain) return email;
-  }
-  return null;
+    return email?.slice(email.lastIndexOf('@') + 1) === domain ? email : null;
+  };
+  const email = inDomain(profile.enterprise) ?? inDomain(profile.email);
+  if (
+    typeof union !== 'string' ||
+    union.trim() === '' ||
+    union.length > 256 ||
+    typeof tenant !== 'string' ||
+    tenant.trim() === '' ||
+    email === null
+  )
+    return null;
+  return { feishuId: union, email };
 }

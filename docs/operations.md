@@ -20,7 +20,7 @@ The hub writes JSON lines to standard output: one record per failure, with its r
 
 `npm start` reads `.env` if present; managed deployments may inject the same variables instead. Missing or malformed values fail startup.
 
-A person who used Kinmesh before Feishu sign-in keeps their identity by being linked to their mailbox before their first Feishu sign-in: `npm run link-human -- <username> <mailbox>`. Unlinked, they would sign in as someone new.
+A person who used Kinmesh before Feishu sign-in keeps their identity by being linked to their mailbox before their first Feishu sign-in: `npm run link-human -- <username> <mailbox>`. Unlinked, they would sign in as someone new. Linking refuses a mailbox another person holds and a person who has already signed in with Feishu.
 
 `GET /health` returns 200 when the database is ready and, while the hub supervises a worker, that worker's loop is running; otherwise 503. It never reports T3, OAuth, Team MCP or provider health.
 

@@ -157,8 +157,8 @@ await test('team-scoped unique profile names, cross-team IDs and nonmember/nonow
     );
     const memberId = HumanId.parse(randomUUID());
     raw
-      .prepare('INSERT INTO humans VALUES (?, ?, ?)')
-      .run(memberId, 'member', 'unused-test-hash');
+      .prepare('INSERT INTO humans (id, username) VALUES (?, ?)')
+      .run(memberId, 'member');
     raw
       .prepare('INSERT INTO memberships VALUES (?, ?, ?)')
       .run(memberId, f.teamId, 'member');

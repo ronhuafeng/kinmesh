@@ -16,8 +16,16 @@ export const humans = sqliteTable(
   {
     id: text('id').primaryKey(),
     username: text('username').notNull().unique(),
-    /** The organization mailbox Feishu verified; null only before linking. */
-    email: text('email').unique(),
+    /**
+     * Who the person is: their Feishu union_id, which outlives a renamed or
+     * reassigned mailbox. Null until their first Feishu sign-in.
+     */
+    feishuId: text('feishu_id').unique(),
+    /**
+     * Their enterprise mailbox as Feishu last reported it. Not unique: a
+     * mailbox can pass to someone new.
+     */
+    email: text('email'),
   },
   (t) => [
     check('username_length', sql`length(${t.username}) BETWEEN 3 AND 64`),

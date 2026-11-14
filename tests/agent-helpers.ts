@@ -11,7 +11,7 @@ import {
   type GrantInput,
 } from '../src/domain/agents.js';
 import { fixture } from './helpers.js';
-import { signInAs, standInFeishu } from './feishu.js';
+import { feishuPerson, signInAs, standInFeishu } from './feishu.js';
 export const profileInput = ProfileInput.parse({
   name: 'Developer',
   role: 'developer',
@@ -54,7 +54,7 @@ export async function agentFixture(overrides: Partial<Config> = {}) {
     },
   );
   const cookies = await signInAs(app, 'owner@example.com');
-  const owner = store.signIn('owner@example.com');
+  const owner = store.signIn(feishuPerson('owner@example.com'));
   const team = store.teamFor(owner.id);
   assert.ok(team);
   const principal: Principal = { kind: 'human', humanId: owner.id };

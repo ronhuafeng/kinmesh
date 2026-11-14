@@ -4,7 +4,7 @@ import type { Store } from '../persistence/store.js';
 import type { Config } from './config.js';
 import { LOGIN_STATE_MS } from '../domain/contracts.js';
 import { describeFailure } from '../diagnostics.js';
-import { organizationMailbox, type Feishu } from './feishu.js';
+import { organizationMember, type Feishu } from './feishu.js';
 
 const STATE_COOKIE = 'kinmesh-login';
 const Callback = z.object({
@@ -13,8 +13,8 @@ const Callback = z.object({
 });
 
 /**
- * Sign-in through Feishu. A person is whoever Feishu vouches for with a
- * mailbox in the organization's domain; there is no other way in.
+ * Sign-in through Feishu. A person is their Feishu identity, admitted by an
+ * enterprise mailbox in the organization's domain; there is no other way in.
  */
 export function registerLogin(
   app: FastifyInstance,
@@ -55,15 +55,12 @@ export function registerLogin(
       return turnBack('expired');
     // No code: the person turned back at Feishu, and knows it.
     if (query.data.code === undefined) return reply.redirect('/');
-    let email: string | null;
+    let member: ReturnType<typeof organizationMember>;
     try {
       const profile = await feishu.profile(
         await feishu.exchange(query.data.code, redirectUri),
       );
-      email =
-        typeof profile.tenant === 'string' && profile.tenant.trim() !== ''
-          ? organizationMailbox(profile, config.feishu.emailDomain)
-          : null;
+      member = organizationMember(profile, config.feishu.emailDomain);
     } catch (error) {
       request.log.warn(
         { route: '/login/callback', ...describeFailure(error) },
@@ -71,8 +68,8 @@ export function registerLogin(
       );
       return turnBack('unavailable');
     }
-    if (email === null) return turnBack('denied');
-    const human = store.signIn(email);
+    if (member === null) return turnBack('denied');
+    const human = store.signIn(member);
     request.session.regenerate();
     request.session.set('session', store.sessions.open(human.id, Date.now()));
     return reply.redirect('/');
