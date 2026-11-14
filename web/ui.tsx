@@ -4,7 +4,9 @@ import {
   useEffect,
   useLayoutEffect,
   useRef,
+  useSyncExternalStore,
 } from 'react';
+import { BackIcon } from './icons.js';
 import type { ReactNode } from 'react';
 import type { Task } from '../src/domain/tasks.js';
 
@@ -83,16 +85,37 @@ export function plural(count: number, noun: string) {
  * back, unless a popover or dialog takes it. Only the innermost (last)
  * page answers Esc, so a page shown within another closes alone.
  */
+const PHONE = '(max-width: 720px)';
+/** True on a phone-sized screen, where places stack instead of sitting side by side. */
+export function usePhone() {
+  return useSyncExternalStore(
+    (changed) => {
+      const query = window.matchMedia(PHONE);
+      query.addEventListener('change', changed);
+      return () => {
+        query.removeEventListener('change', changed);
+      };
+    },
+    () => window.matchMedia(PHONE).matches,
+    () => false,
+  );
+}
+/**
+ * A page in the main area. On a phone it opens under a bar with a way back
+ * and what it is (`bar`); a page reached from the bottom tabs has none.
+ */
 export function Page({
   label,
   onClose,
   children,
   className,
+  bar = label,
 }: {
   label: string;
   onClose: () => void;
   children: ReactNode;
   className?: string;
+  bar?: ReactNode | false;
 }) {
   const page = useRef<HTMLElement>(null);
   useEffect(() => {
@@ -128,6 +151,21 @@ export function Page({
       aria-label={label}
       tabIndex={-1}
     >
+      {bar !== false && (
+        <div className="page-bar">
+          <button
+            type="button"
+            className="quiet icon-button"
+            aria-label="Back"
+            onClick={() => {
+              close.current();
+            }}
+          >
+            <BackIcon />
+          </button>
+          <span className="page-bar-title">{bar}</span>
+        </div>
+      )}
       {children}
     </section>
   );

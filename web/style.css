@@ -1402,50 +1402,6 @@ body > #root > .notice {
 }
 /* Phone: one column, views move to a bottom bar. */
 @media (max-width: 720px) {
-  .workspace-shell {
-    display: block;
-    padding-bottom: 4.5rem;
-  }
-  .sidebar {
-    position: static;
-    height: auto;
-    gap: 0.6rem;
-    padding: 0.75rem 1rem;
-    border-right: 0;
-    border-bottom: 1px solid var(--hairline);
-  }
-  .sidebar nav {
-    display: flex;
-    gap: 0.3rem;
-    overflow-x: auto;
-  }
-  .sidebar nav .nav-heading {
-    display: none;
-  }
-  .sidebar nav button {
-    flex: none;
-  }
-  .workspace-main {
-    padding: 0 1rem 1.5rem;
-  }
-  .view-switch {
-    position: fixed;
-    left: 0;
-    right: 0;
-    bottom: 0;
-    z-index: 15;
-    display: grid;
-    grid-template-columns: repeat(4, 1fr);
-    padding: 0.4rem 0.6rem calc(0.4rem + env(safe-area-inset-bottom));
-    border-radius: 0;
-    border: 0;
-    border-top: 1px solid var(--hairline);
-    background: var(--surface);
-  }
-  .view-switch [role='tab'] {
-    justify-content: center;
-    padding: 0.55rem;
-  }
   .column-switcher {
     display: flex;
     gap: 0.35rem;
@@ -1480,9 +1436,6 @@ body > #root > .notice {
   .column-switcher .count {
     font-size: 0.72rem;
     color: var(--ink-subtle);
-  }
-  .composer {
-    bottom: 5rem;
   }
 }
 
@@ -1624,9 +1577,6 @@ button.quiet.subtle-danger {
     left: 1rem;
     right: 1rem;
     bottom: 5rem;
-  }
-  button.palette-trigger {
-    align-self: flex-start;
   }
 }
 
@@ -1949,18 +1899,6 @@ a.button-link {
   backdrop-filter: blur(8px);
   border-bottom: 1px solid var(--hairline);
 }
-@media (max-width: 720px) {
-  /* A phone keeps its height for the conversation: the header scrolls
-     away, and its views are the fixed bottom bar. A backdrop filter would
-     make the header the bar's containing block, so it is dropped here. */
-  .workspace-header {
-    position: static;
-    flex-direction: column;
-    align-items: stretch;
-    gap: 0.6rem;
-    backdrop-filter: none;
-  }
-}
 .message-text {
   max-width: 68ch;
   font-size: 0.95rem;
@@ -2098,16 +2036,6 @@ button.reply-to {
   justify-content: space-between;
   background: var(--surface);
 }
-@media (max-width: 720px) {
-  /* The phone's sidebar is one row: search, then the menu. */
-  .sidebar-top {
-    grid-template-columns: minmax(0, 1fr) auto auto;
-    align-items: center;
-  }
-  .sidebar button.palette-trigger {
-    width: auto;
-  }
-}
 /* Icons: drawn in the text colour, aligned with the label beside them. */
 .icon {
   flex: none;
@@ -2161,9 +2089,6 @@ button.icon-button.confirm:disabled {
   min-width: 0;
   text-align: left;
 }
-.sidebar button.sidebar-menu {
-  display: none;
-}
 /* Leaving is the channel's one control here: a quiet, red text button
    on the same line and in the same type as Start a topic. */
 .leave-channel .action-form fieldset {
@@ -2183,22 +2108,6 @@ button.icon-button.confirm:disabled {
 .leave-channel button[type='submit']:hover:not(:disabled) {
   background: none;
   text-decoration: underline;
-}
-@media (max-width: 720px) {
-  .sidebar button.sidebar-menu {
-    display: inline-grid;
-  }
-  .sidebar button.palette-trigger > .with-icon {
-    font-size: 0;
-    gap: 0;
-  }
-  .sidebar button.palette-trigger kbd {
-    display: none;
-  }
-  /* The menu opens the people, you among them. */
-  .sidebar:not([data-menu]) .people {
-    display: none;
-  }
 }
 /* ------------------------------------------------------------------
  * Alignment and balance (measured, not eyeballed)
@@ -2283,23 +2192,6 @@ span.person {
   background: none;
   color: var(--primary);
   font-size: 0.8rem;
-}
-@media (max-width: 720px) {
-  /* Phone: the channel "+" ends the row of channel chips. */
-  .sidebar nav .nav-heading {
-    display: contents;
-  }
-  .sidebar nav .nav-heading h2 {
-    display: none;
-  }
-  .sidebar nav .nav-heading .add-button {
-    order: 99;
-    flex: none;
-  }
-  .inline-field.channel-new {
-    order: 98;
-    flex: none;
-  }
 }
 /* An empty board is one sentence; an empty column is just its heading. */
 .board-empty {
@@ -3466,4 +3358,172 @@ button.new-agent-go {
   outline: 2px solid var(--focus);
   outline-offset: 2px;
   border-radius: var(--radius-sm);
+}
+/* ------------------------------------------------------------------
+ * Phone: the places stack. Home is the sidebar (the channels and the
+ * team); a channel or a page has the screen under a bar that leads back;
+ * Home, the Inbox and You are tabs at the bottom.
+ * ------------------------------------------------------------------ */
+.page-bar {
+  display: none;
+}
+@media (max-width: 720px) {
+  .workspace-shell {
+    display: block;
+  }
+  .workspace-shell:not([data-screen='home']) > .sidebar,
+  .workspace-shell[data-screen='home'] > .workspace-main {
+    display: none;
+  }
+  .sidebar {
+    position: static;
+    height: auto;
+    min-height: 100dvh;
+    gap: 0.75rem;
+    padding: 1rem 1rem 5.5rem;
+    border-right: 0;
+  }
+  /* A channel is a full-width row to tap. */
+  .sidebar nav > button {
+    min-height: 3rem;
+    font-size: 1rem;
+  }
+  /* A phone has no shortcut keys to hint at. */
+  .sidebar button.palette-trigger kbd {
+    display: none;
+  }
+  /* Home's team is the gallery, so the channel's people list is not shown. */
+  .sidebar .people {
+    display: none;
+  }
+  .home-team {
+    padding-top: 0.75rem;
+    border-top: 1px solid var(--hairline);
+  }
+  .workspace-main {
+    padding: 0 1rem 1.5rem;
+  }
+  /* A channel's bar: back, where you are, then its views. */
+  .workspace-header {
+    flex-wrap: nowrap;
+    gap: 0.4rem;
+    padding: 0.6rem 0;
+  }
+  .header-title {
+    flex: 1;
+    min-width: 0;
+    margin: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-size: 1.05rem;
+  }
+  .view-switch [role='tab'] {
+    padding: 0.3rem 0.65rem;
+    font-size: 0.82rem;
+  }
+  /* A page brings its own bar; a bottom tab's page needs none. */
+  .workspace-shell[data-screen='page'] .workspace-header,
+  .workspace-shell[data-screen='tab'] .workspace-header {
+    display: none;
+  }
+  .page-bar {
+    position: sticky;
+    top: 0;
+    z-index: 4;
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    margin: 0 0 0.5rem;
+    padding: 0.6rem 0;
+    border-bottom: 1px solid var(--hairline);
+    background: var(--paper);
+  }
+  .page-bar-title {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-weight: 650;
+  }
+  /* Home, Inbox and You, at the bottom of Home and of their pages. */
+  .phone-tabs {
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 15;
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    padding: 0.3rem 0.6rem calc(0.3rem + env(safe-area-inset-bottom));
+    border-top: 1px solid var(--hairline);
+    background: var(--surface);
+  }
+  .workspace-shell[data-screen='channel'] .phone-tabs,
+  .workspace-shell[data-screen='page'] .phone-tabs {
+    display: none;
+  }
+  .workspace-shell[data-screen='tab'] .workspace-main {
+    padding-top: 1rem;
+    padding-bottom: 5rem;
+  }
+  /* A phone's rows give the field the width; the label needs little. */
+  .you-row {
+    grid-template-columns: 5.5rem minmax(0, 1fr);
+  }
+  .phone-tabs button {
+    position: relative;
+    display: grid;
+    justify-items: center;
+    gap: 0.2rem;
+    padding: 0.35rem;
+    border: 0;
+    background: none;
+    color: var(--ink-muted);
+    font-size: 0.72rem;
+    font-weight: 600;
+  }
+  .phone-tabs button:hover:not(:disabled) {
+    background: none;
+    color: var(--ink);
+  }
+  .phone-tabs button[aria-current='page'] {
+    color: var(--primary);
+  }
+  .phone-tabs .icon {
+    width: 1.25rem;
+    height: 1.25rem;
+  }
+  .phone-tabs .avatar {
+    --size: 1.25rem;
+  }
+  .phone-tabs .count {
+    position: absolute;
+    top: 0.15rem;
+    left: calc(50% + 0.4rem);
+    padding: 0 0.35rem;
+    border-radius: 999px;
+    background: var(--decision);
+    color: #fff;
+    font-size: 0.68rem;
+    line-height: 1rem;
+  }
+  /* You: signing out is the last row. */
+  .you-sign-out {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    justify-self: start;
+    margin-top: 0.5rem;
+    padding: 0.75rem 0;
+    border: 0;
+    background: none;
+    color: var(--danger);
+    font-weight: 600;
+  }
+  .you-sign-out:hover:not(:disabled) {
+    background: none;
+    text-decoration: underline;
+  }
 }

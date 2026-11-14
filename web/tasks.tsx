@@ -770,7 +770,12 @@ export function NewTaskPage({
   const restored = keptDraft();
   const typed = restored?.draft.id === draft.id ? restored.fields : {};
   return (
-    <Page label="New task" onClose={onClose} className="task-page">
+    <Page
+      label="New task"
+      onClose={onClose}
+      className="task-page"
+      bar={data.channel ? '# ' + data.channel.name : 'New task'}
+    >
       <div
         className="page-body"
         onInput={(e) => {
@@ -1019,7 +1024,13 @@ export function TaskPage({
     : undefined;
   const acceptor = { kind: 'human', id: task.acceptorHumanId } satisfies Member;
   return (
-    <Page label={task.title} onClose={onClose} className="task-page">
+    <Page
+      label={task.title}
+      onClose={onClose}
+      className="task-page"
+      // The title is the page's own first line; the bar says where it is.
+      bar={data.channel ? '# ' + data.channel.name : ''}
+    >
       <div className="page-body" data-status={task.state.status}>
         <TaskLayout
           status={task.state.status}

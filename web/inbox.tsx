@@ -109,7 +109,7 @@ export function InboxPage({
     })),
   ].sort((a, b) => (b.at ?? '').localeCompare(a.at ?? ''));
   return (
-    <Page label="Inbox" onClose={onClose} className="inbox">
+    <Page label="Inbox" onClose={onClose} className="inbox" bar={false}>
       {items.length === 0 ? (
         <div className="inbox-empty">
           <span className="inbox-empty-mark" aria-hidden="true">
