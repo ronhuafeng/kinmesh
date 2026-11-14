@@ -180,7 +180,8 @@ export async function deliver(
       providerId: preferences.providerId,
       modelId: preferences.modelId,
     };
-    // The agent's conversation in this channel continues in its thread,
+    // The agent's conversation in this topic (or in the channel outside
+    // topics) continues in its thread,
     // unless the thread runs another model or lives under another T3
     // authority: then this delivery starts a new one.
     const previous = await store.inbox.conversation(claim);
@@ -199,7 +200,10 @@ export async function deliver(
           grantId: principal.kind === 'agent' ? principal.grantId : '',
           input: {
             target: { kind: 'scratch' },
-            title: `Kinmesh: ${profile.name} in #${context.channelName}`,
+            title: (
+              `Kinmesh: ${profile.name} in #${context.channelName}` +
+              (context.topic === null ? '' : ` / ${context.topic}`)
+            ).slice(0, 200),
             mode: 'approval-required',
             model,
             message: wakePrompt(
