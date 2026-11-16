@@ -65,6 +65,10 @@ export const DeliveryReason = z.enum([
   'native-launch-pending',
   /** The team's T3 sign-in ended; the delivery goes on once T3 is reconnected. */
   'sign-in-expired',
+  /** A person asked to stop it; its run in T3 is being interrupted. */
+  'stop-requested',
+  /** A person stopped it before anything reached T3. */
+  'stopped',
 ]);
 export type DeliveryReason = z.infer<typeof DeliveryReason>;
 /**
@@ -74,6 +78,11 @@ export type DeliveryReason = z.infer<typeof DeliveryReason>;
 export const inboxIntent = (agentId: string, deliveryId: string): Intent => ({
   actor: 'inbox-agent:' + agentId,
   operationKey: 'inbox:' + deliveryId,
+});
+/** The native operation that interrupts a delivery's run when a person stops it. */
+export const stopIntent = (agentId: string, deliveryId: string): Intent => ({
+  actor: 'inbox-agent:' + agentId,
+  operationKey: 'inbox-stop:' + deliveryId,
 });
 /** What an agent's grant must hold for a delivery to run and publish. */
 export const deliveryScopes = (hasTask: boolean): Scope[] =>
@@ -110,6 +119,7 @@ export const Delivery = z.object({
   reference: z.string().nullable(),
   resultMessageId: MessageId.nullable(),
   reason: z.string().max(80),
+  stopRequestedAt: z.number().int().nonnegative().nullable(),
 });
 export type Delivery = z.infer<typeof Delivery>;
 export const Claim = Delivery.extend({

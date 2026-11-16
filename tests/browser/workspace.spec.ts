@@ -811,6 +811,67 @@ test('a stuck request says what was lost and is fixed and retried in place', asy
   ).toBeVisible();
 });
 
+test('a request waiting for an approval in T3 is stopped from its line, and one not yet sent ends at once', async ({
+  page,
+  context,
+  hub,
+}) => {
+  await signIn(page, hub);
+  await register(page, 'Ada', 'developer');
+  await page.getByRole('tab', { name: 'Chat', exact: true }).click();
+  const composer = page.getByRole('form', { name: 'Message your team' });
+  const say = async (text: string) => {
+    await composer.getByLabel('Message', { exact: true }).fill(text);
+    await composer.getByRole('button', { name: 'Send message' }).click();
+  };
+  const responses = (text: string) =>
+    page
+      .getByRole('list', { name: 'Channel messages' })
+      .getByRole('listitem')
+      .filter({ hasText: text })
+      .first()
+      .getByRole('list', { name: 'Agent responses' });
+  // Nothing has reached T3: stopping ends it at once.
+  await say('@Ada please check the release notes');
+  const unsent = responses('please check the release notes');
+  await expect(unsent).toContainText('Ada isn’t connected');
+  await unsent.getByRole('button', { name: 'Stop', exact: true }).click();
+  await expect(unsent).toContainText('Stopped before Ada started');
+  await expect(unsent.getByRole('button', { name: 'Stop' })).toHaveCount(0);
+  // The next one's run waits for an approval in T3, as the worker records
+  // it. MOCK only: no T3 is reached.
+  await say('@Ada and the changelog?');
+  const waiting = responses('and the changelog?');
+  await expect(waiting).toContainText('Ada isn’t connected');
+  const sql = rawDatabase(hub.database);
+  try {
+    await sql
+      .prepare(
+        "UPDATE agent_inbox SET state = 'waiting', reason = 'human-or-approval-wait', reference = ? WHERE state = 'ready'",
+      )
+      .run(
+        JSON.stringify({
+          backend: 't3',
+          environmentId: 'env-mock',
+          threadId: 'thread-mock',
+          runId: 'run-mock',
+        }),
+      );
+  } finally {
+    await sql.close();
+  }
+  await expect(waiting).toContainText('Ada is waiting for an approval in T3');
+  await waiting.getByRole('button', { name: 'Stop', exact: true }).click();
+  // The worker interrupts the run; the line says so until it has ended.
+  await expect(waiting).toContainText('Ada is stopping');
+  await expect(waiting.getByRole('button', { name: 'Stop' })).toHaveCount(0);
+  expect(
+    (await snapshot(context.request, hub.origin)).deliveries.find(
+      (d) => d.state === 'waiting',
+    ),
+  ).toMatchObject({ reason: 'stop-requested', stopRequested: true });
+});
+
 test('a week before T3’s sign-in ends anyone reconnects it from the Inbox; once it ends, requests wait and say why', async ({
   page,
   context,
@@ -927,7 +988,11 @@ test('a week before T3’s sign-in ends anyone reconnects it from the Inbox; onc
   } finally {
     await db.close();
   }
-  await expect(responses).toHaveText('Ada will go on once T3 is reconnected');
+  await expect(
+    responses.getByText('Ada will go on once T3 is reconnected', {
+      exact: true,
+    }),
+  ).toBeVisible();
   await page.unrouteAll({ behavior: 'ignoreErrors' });
 });
 

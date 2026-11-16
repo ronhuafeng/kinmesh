@@ -34,6 +34,8 @@ export const DeliveryView = z.strictObject({
   queuedAt: z.iso.datetime().nullable(),
   updatedAt: z.iso.datetime().nullable(),
   resultMessageId: z.uuid().nullable(),
+  /** A person asked to stop it. */
+  stopRequested: z.boolean(),
 });
 /** Names what one read shows: equal revisions, equal screens. */
 export const Revision = z.string().regex(/^[a-f0-9]{64}$/);

@@ -545,6 +545,8 @@ export const agentInbox = pgTable(
     reference: text('reference'),
     resultMessageId: text('result_message_id').references(() => messages.id),
     reason: text('reason').notNull().default('enqueued'),
+    /** When a person asked to stop it; kept once set. */
+    stopRequestedAt: millis('stop_requested_at'),
   },
   (t) => [
     foreignKey({

@@ -175,6 +175,7 @@ export function registerWorkspace(
       queuedAt: number | null;
       updatedAt: number | null;
       resultMessageId: string | null;
+      stopRequested: boolean;
     }) => ({
       id: d.id,
       agentId: d.agentId,
@@ -185,6 +186,7 @@ export function registerWorkspace(
       queuedAt: iso(d.queuedAt),
       updatedAt: iso(d.updatedAt),
       resultMessageId: d.resultMessageId,
+      stopRequested: d.stopRequested,
     });
     const deliveries = channel
       ? (

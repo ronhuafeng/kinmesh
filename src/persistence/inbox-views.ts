@@ -39,7 +39,9 @@ export function inboxViews(
     await communication.channel(p, teamId, channelId);
   }
   /** First and last recorded transition, for "queued 2 h ago" copy. */
-  async function withTimes<R extends { id: string; state: string }>(rows: R[]) {
+  async function withTimes<
+    R extends { id: string; state: string; stopRequestedAt: number | null },
+  >(rows: R[]) {
     if (rows.length === 0) return [];
     const times = new Map(
       (
@@ -59,8 +61,9 @@ export function inboxViews(
           .groupBy(s.inboxHistory.deliveryId)
       ).map((r) => [r.id, r]),
     );
-    return rows.map((r) => ({
+    return rows.map(({ stopRequestedAt, ...r }) => ({
       ...r,
+      stopRequested: stopRequestedAt !== null,
       state: InboxState.parse(r.state),
       queuedAt: times.get(r.id)?.first ?? null,
       updatedAt: times.get(r.id)?.last ?? null,
@@ -94,6 +97,7 @@ export function inboxViews(
             state: t.state,
             reason: t.reason,
             resultMessageId: t.resultMessageId,
+            stopRequestedAt: t.stopRequestedAt,
           })
           .from(t)
           .where(
@@ -132,6 +136,7 @@ export function inboxViews(
             state: t.state,
             reason: t.reason,
             resultMessageId: t.resultMessageId,
+            stopRequestedAt: t.stopRequestedAt,
           })
           .from(t)
           .innerJoin(s.channels, eq(s.channels.id, t.channelId))

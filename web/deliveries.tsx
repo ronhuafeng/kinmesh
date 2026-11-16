@@ -56,6 +56,8 @@ export function deliveryText(
   const since = d.queuedAt ? ` · ${ago(d.queuedAt)}` : '';
   // Reasons come from one vocabulary, so a misspelt one fails to compile.
   const because = (reason: DeliveryReason) => d.reason === reason;
+  if (stoppable(d) && d.stopRequested)
+    return { text: `${name} is stopping`, tone: 'waiting' };
   switch (d.state) {
     case 'ready':
       if (!connected)
@@ -91,10 +93,55 @@ export function deliveryText(
     case 'blocked':
       return { text: blockedText(d.reason, name), tone: 'problem' };
     case 'expired':
+      if (because('stopped'))
+        return { text: `Stopped before ${name} started`, tone: 'queued' };
       return because('undispatched-expiry')
         ? { text: `${name} never picked this up`, tone: 'problem' }
         : { text: `${name}’s request expired`, tone: 'problem' };
   }
+}
+/** A delivery not yet answered, which a person may stop. */
+export const stoppable = (d: DeliveryView) =>
+  d.state === 'ready' || d.state === 'waiting' || d.state === 'uncertain';
+/**
+ * Stops the agent working on this: what hasn't reached T3 ends at once, a
+ * run in T3 is interrupted and its stopped reply posted.
+ */
+export function Stop({
+  delivery,
+  teamId,
+  onDone,
+}: {
+  delivery: DeliveryView;
+  teamId: string;
+  onDone: () => void;
+}) {
+  const action = useAction();
+  const done = (ok: boolean) => {
+    if (ok) onDone();
+  };
+  return (
+    <>
+      <button
+        type="button"
+        className="link-button"
+        disabled={action.disabled || action.busy}
+        onClick={() => {
+          void (
+            action.uncertain
+              ? action.retry()
+              : action.send(
+                  `/api/teams/${teamId}/deliveries/${delivery.id}/stop`,
+                  {},
+                )
+          ).then(done);
+        }}
+      >
+        {action.uncertain ? 'Retry the same action' : 'Stop'}
+      </button>
+      {action.error && <Notice>{action.error}</Notice>}
+    </>
+  );
 }
 export function DeliveryLine({
   delivery,
@@ -138,6 +185,9 @@ export function DeliveryLine({
         </button>
       ) : (
         <span>{text}</span>
+      )}
+      {stoppable(delivery) && !delivery.stopRequested && (
+        <Stop delivery={delivery} teamId={data.team.id} onDone={onDone} />
       )}
       {delivery.state === 'blocked' && (
         <Recovery

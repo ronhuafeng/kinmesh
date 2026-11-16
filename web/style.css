@@ -1641,6 +1641,13 @@ button.quiet.subtle-danger {
 .delivery .link-button {
   padding: 0;
   font-size: inherit;
+  line-height: inherit;
+}
+/* A refused stop says why under its line. */
+.delivery > .notice,
+.request > .notice {
+  flex-basis: 100%;
+  grid-column: 2 / -1;
 }
 .delivery-recovery {
   flex-basis: 100%;
@@ -3514,13 +3521,15 @@ button.new-agent-go {
   .view-switch [role='tab'],
   .topic-pills button,
   .composer button.icon-button,
-  .composer .mention-trigger {
+  .composer .mention-trigger,
+  .delivery .link-button {
     position: relative;
   }
   .view-switch [role='tab']::after,
   .topic-pills button::after,
   .composer button.icon-button::after,
-  .composer .mention-trigger::after {
+  .composer .mention-trigger::after,
+  .delivery .link-button::after {
     content: '';
     position: absolute;
     left: 50%;

@@ -62,6 +62,21 @@ export function registerCommunication(app: FastifyInstance, store: Store) {
       );
     },
   );
+  // Ending a delivery, by the same people as resuming one (stopByPerson).
+  app.post(
+    '/api/teams/:teamId/deliveries/:deliveryId/stop',
+    async (request) => {
+      const { teamId, deliveryId } = TeamPath.extend({
+        deliveryId: z.uuid(),
+      }).parse(request.params);
+      return store.inbox.stopByPerson(
+        principal(request),
+        teamId,
+        deliveryId,
+        Mutation.parse(request.body).operationKey,
+      );
+    },
+  );
   app.get(channel, async (request) => {
     const { teamId, channelId } = ChannelPath.parse(request.params);
     return store.communication.channel(principal(request), teamId, channelId);
