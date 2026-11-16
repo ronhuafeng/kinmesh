@@ -22,6 +22,7 @@ import {
   NativeTerminalNotice,
   clip,
   inboxIntent,
+  stopIntent,
   type BlockedReason,
   type Claim,
   type DeliveryReason,
@@ -131,6 +132,28 @@ export async function assistantResult(
     after = observation.nextPosition;
   }
   return { kind: 'waiting', reason: 'history-page-bound' };
+}
+/**
+ * Interrupts the delivery's run in T3 under its own journaled operation, so
+ * T3 is asked once however often this is retried. The thread's queue goes
+ * on: later messages to the agent are not held back. A thread deleted in T3
+ * took the run with it.
+ */
+async function interrupt(
+  backend: ExecutionBackend,
+  reference: Reference,
+  claim: Claim,
+  signal: AbortSignal,
+) {
+  const intent = stopIntent(claim.agentId, claim.id);
+  try {
+    const stopped = await backend.stop(reference, intent, signal);
+    if (stopped.kind === 'uncertain')
+      await backend.reconcile(intent, stopped.operationId, signal);
+  } catch (error) {
+    if (!(error instanceof ExecutionFailure) || error.kind !== 'gone')
+      throw error;
+  }
 }
 /** T3 answers from another environment than the one the agent was connected to. */
 class EnvironmentChanged extends Error {
@@ -321,7 +344,9 @@ export async function deliver(
     // Crash before remember() re-enters the SAME frozen intent; T3Backend returns its durable journal outcome.
     if (row.reference === null) {
       const intent = inboxIntent(claim.agentId, claim.id);
-      if (row.operationId === null) await store.inbox.launching(claim);
+      // A person stopped it before it reached T3: it ends here.
+      if (row.operationId === null && !(await store.inbox.launching(claim)))
+        return;
       // A message to a busy thread steers its running turn instead of
       // waiting behind it.
       let dispatch: Dispatch;
@@ -383,6 +408,10 @@ export async function deliver(
     const reference = Reference.parse(JSON.parse(row.reference ?? ''));
     if (reference.environmentId !== preferences.environmentId)
       throw new ExecutionFailure('incompatible');
+    // A person asked to stop it: its run is interrupted, and reading on
+    // posts how it ended, once T3 says it has.
+    if (row.stopRequestedAt !== null)
+      await interrupt(handle.backend, reference, claim, signal);
     const result = await assistantResult(
       handle.backend,
       reference,

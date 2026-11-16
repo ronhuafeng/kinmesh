@@ -60,6 +60,7 @@ export async function rows(path: string) {
       'reference',
       'result_message_id "resultMessageId"',
       'reason',
+      'stop_requested_at "stopRequestedAt"',
     ];
     return z
       .array(Delivery)

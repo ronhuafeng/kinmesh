@@ -18,6 +18,7 @@ const delivery = (
   queuedAt: new Date().toISOString(),
   updatedAt: new Date().toISOString(),
   resultMessageId: null,
+  stopRequested: false,
 });
 
 await test('every delivery state reads as a plain sentence about the agent', () => {
@@ -74,6 +75,7 @@ await test('every delivery state reads as a plain sentence about the agent', () 
       /environment Ada was connected to: connect Ada again/,
     ],
     ['expired', 'undispatched-expiry', true, /never picked this up/],
+    ['expired', 'stopped', true, /^Stopped before Ada started$/],
     ['expired', 'something-new', true, /request expired/],
   ];
   for (const [state, reason, connected, expected] of cases) {
@@ -82,6 +84,30 @@ await test('every delivery state reads as a plain sentence about the agent', () 
     // No machine vocabulary leaks into the sentence.
     assert.doesNotMatch(text, /acked|enqueued|uncertain|delivery|inbox/i);
   }
+});
+
+await test('a delivery a person asked to stop is stopping until it ends', () => {
+  for (const state of ['ready', 'waiting', 'uncertain'] as const)
+    assert.equal(
+      deliveryText(
+        { ...delivery(state, 'stop-requested'), stopRequested: true },
+        'Ada',
+        true,
+      ).text,
+      'Ada is stopping',
+    );
+  // Once ended, it says how.
+  assert.match(
+    deliveryText(
+      {
+        ...delivery('acked', 'native-terminal-notice-published'),
+        stopRequested: true,
+      },
+      'Ada',
+      true,
+    ).text,
+    /^Ada replied/,
+  );
 });
 
 await test('a reply says how long it took', () => {

@@ -619,12 +619,33 @@ export function inboxRepository(
      * learns it here, before T3 is called.
      */
     async launching(c: Claim) {
-      await atomic(async () => {
+      return atomic(async () => {
+        // A person stopped it before it reached T3: nothing is sent.
+        const stopped = await q()
+          .update(t)
+          .set({
+            state: 'expired',
+            reason: 'stopped',
+            claimToken: null,
+            leaseUntil: 0,
+          })
+          .where(
+            and(
+              fence(c),
+              sql`${t.stopRequestedAt} IS NOT NULL`,
+              sql`NOT ${mayBeInT3}`,
+            ),
+          );
+        if (stopped.count === 1) {
+          await history(await get(c.id), 'stopped');
+          return false;
+        }
         await update(c, {
           state: 'uncertain',
           reason: 'native-launch-pending',
         });
         await history(await get(c.id), 'native-launch-pending');
+        return true;
       });
     },
     async remember(c: Claim, reference: Reference | { operationId: string }) {
@@ -926,6 +947,87 @@ export function inboxRepository(
       return atomic(async () => {
         await q().execute(sql`select pg_advisory_xact_lock(${CLAIM_LOCK})`);
         await expireUndispatched();
+      });
+    },
+    /**
+     * A person ends a delivery, by the same rule as resuming one: any person
+     * of the team who can read its channel. One that nothing of reached T3
+     * ends at once; one whose run may be in T3 is marked, and the worker
+     * interrupts the run and posts how it ended. One already finished stays
+     * as it is. A blocked one that may be in T3 can't be reached from here
+     * (409). Retrying the same operation key replays.
+     */
+    stopByPerson(
+      p: Principal,
+      teamId: string,
+      id: string,
+      operationKey: string,
+    ) {
+      return atomic(async () => {
+        if (p.kind !== 'human') throw new IdentityError(403);
+        await agents.person(p, TeamId.parse(teamId));
+        const found = (
+          await q()
+            .select()
+            .from(t)
+            .where(eq(t.id, z.uuid().parse(id)))
+            .limit(1)
+        )[0];
+        if (found?.teamId !== teamId) throw new IdentityError(404);
+        await communication.channel(
+          p,
+          TeamId.parse(teamId),
+          ChannelId.parse(found.channelId),
+        );
+        return receipt(
+          'inbox-stop:' + teamId,
+          operationKey,
+          { id },
+          z.strictObject({ id: z.uuid() }),
+          async () => {
+            const ended = await q()
+              .update(t)
+              .set({
+                state: 'expired',
+                reason: 'stopped',
+                stopRequestedAt: sql`coalesce(${t.stopRequestedAt}, ${dbNow})`,
+                claimToken: null,
+                leaseUntil: 0,
+              })
+              .where(
+                and(
+                  eq(t.id, id),
+                  inArray(t.state, [
+                    'ready',
+                    'waiting',
+                    'uncertain',
+                    'blocked',
+                  ]),
+                  lte(t.leaseUntil, dbNow),
+                  sql`NOT ${mayBeInT3}`,
+                ),
+              );
+            const row = await get(id);
+            if (ended.count === 1) await history(row, 'stopped');
+            else if (row.state === 'blocked') throw new IdentityError(409);
+            else if (
+              row.state !== 'acked' &&
+              row.state !== 'expired' &&
+              row.stopRequestedAt === null
+            ) {
+              await q()
+                .update(t)
+                .set({
+                  stopRequestedAt: dbNow,
+                  reason: 'stop-requested',
+                  nextAttempt: dbNow,
+                })
+                .where(and(eq(t.id, id), sql`${t.stopRequestedAt} IS NULL`));
+              await history(await get(id), 'stop-requested');
+            }
+            return { id };
+          },
+        );
       });
     },
     /** Liveness only, never authority: unknown or foreign agent IDs are ignored. */
