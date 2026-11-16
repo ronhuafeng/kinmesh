@@ -6,7 +6,12 @@ import { and, asc, desc, eq, gt, isNotNull, lte, max, sql } from 'drizzle-orm';
 import type { z } from 'zod';
 import * as s from './schema.js';
 import type { agentRepository } from './agents.js';
-import { HumanId, type ChannelId, type TeamId } from '../domain/contracts.js';
+import {
+  AgentId,
+  HumanId,
+  type ChannelId,
+  type TeamId,
+} from '../domain/contracts.js';
 import { IdentityError, type Principal } from '../domain/agents.js';
 import {
   principalAuthor as author,
@@ -390,6 +395,27 @@ export function communicationRepository(
             )
             .limit(100)
         ).flatMap((row) => (row.id === null ? [] : [HumanId.parse(row.id)]));
+      });
+    },
+    /** The active agents of the team joined to a channel the caller can read. */
+    joinedAgents(p: Principal, teamId: TeamId, channelId: ChannelId) {
+      return atomic(async () => {
+        await access(p, teamId, channelId);
+        return (
+          await q()
+            .select({ id: s.agents.id })
+            .from(s.channelParticipants)
+            .innerJoin(s.agents, eq(s.agents.id, s.channelParticipants.agentId))
+            .where(
+              and(
+                eq(s.channelParticipants.channelId, channelId),
+                eq(s.channelParticipants.state, 'joined'),
+                eq(s.agents.teamId, teamId),
+                eq(s.agents.lifecycle, 'active'),
+              ),
+            )
+            .orderBy(asc(s.agents.id))
+        ).map((row) => AgentId.parse(row.id));
       });
     },
     /** Channels the caller left themselves (never removed ones), to rejoin. */

@@ -119,22 +119,15 @@ export function registerWorkspace(
       : null;
     const profiles = await store.agents.workspaceProfiles(principal, teamId);
     const agents = profiles.agents;
-    const joinedAgentIds: AgentId[] = [];
-    for (const agent of channel ? agents : []) {
-      if (agent.lifecycle !== 'active' || !channel) continue;
-      try {
-        await store.communication.validateParticipant(
-          principal,
-          teamId,
-          channel.id,
-          { kind: 'agent', id: agent.id },
-        );
-        joinedAgentIds.push(agent.id);
-      } catch (error) {
-        if (!(error instanceof IdentityError && error.statusCode === 404))
-          throw error;
-      }
-    }
+    // In the order the profiles are listed, as before: one read for all.
+    const joined = new Set(
+      channel
+        ? await store.communication.joinedAgents(principal, teamId, channel.id)
+        : [],
+    );
+    const joinedAgentIds = agents
+      .filter((agent) => joined.has(agent.id))
+      .map((agent) => agent.id);
     const now = Date.now();
     const known = new Set(agents.map((agent) => agent.id));
     const wake = (await store.inboxViews.liveness(principal, teamId))
