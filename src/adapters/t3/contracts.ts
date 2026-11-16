@@ -44,13 +44,17 @@ export const Descriptor = z.object({
   environmentId: z.string().min(1),
   serverVersion: ServerVersion,
 });
+/** T3's runtime modes, narrowest first. */
+export const RUNTIME_MODES = [
+  'approval-required',
+  'auto-accept-edits',
+  'auto',
+  'full-access',
+] as const;
+export type RuntimeMode = (typeof RUNTIME_MODES)[number];
 export const Capabilities = z.object({
-  runtimeMode: z.enum([
-    'approval-required',
-    'auto-accept-edits',
-    'auto',
-    'full-access',
-  ]),
+  /** The grant's ceiling: the broadest mode it may launch a thread in. */
+  runtimeMode: z.enum(RUNTIME_MODES),
   providers: z.array(
     z.object({
       providerInstanceId: z.string(),
@@ -75,6 +79,27 @@ export function runnable(
     provider.canRunChildTask &&
     provider.constraints.length === 0 &&
     (provider.runtimeModes == null || provider.runtimeModes.includes(mode))
+  );
+}
+/**
+ * The mode a Kinmesh launch on this provider runs in. Agents run in T3's
+ * Auto, where T3 lets through what it judges safe and asks a person for the
+ * rest; when the grant's ceiling or the provider doesn't allow Auto, the
+ * broadest mode below it that both allow. Never above Auto or the ceiling;
+ * null when the provider runs none of them.
+ */
+export function launchMode(
+  provider: z.infer<typeof Capabilities>['providers'][number],
+  ceiling: RuntimeMode,
+): RuntimeMode | null {
+  const broadest = Math.min(
+    RUNTIME_MODES.indexOf('auto'),
+    RUNTIME_MODES.indexOf(ceiling),
+  );
+  return (
+    RUNTIME_MODES.slice(0, broadest + 1)
+      .reverse()
+      .find((mode) => runnable(provider, mode)) ?? null
   );
 }
 export const Launched = z.object({

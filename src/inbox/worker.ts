@@ -198,21 +198,24 @@ export async function deliver(
       providerId: preferences.providerId,
       modelId: preferences.modelId,
     };
+    const execution = handle.identity;
+    const backend = handle.backend;
+    // Auto, or the broadest mode below it the grant and provider allow.
+    const mode = backend.mode(model.providerId);
     // The agent's conversation in this topic (or in the channel outside
     // topics) continues in its thread,
-    // unless the thread runs another model, lives under another T3
-    // authority, or is a scratch thread while the channel has a project in
-    // the space: then this delivery starts a new one.
+    // unless the thread runs another model or runtime mode, lives under
+    // another T3 authority, or is a scratch thread while the channel has a
+    // project in the space: then this delivery starts a new one.
     const previous = await store.inbox.conversation(claim);
     const conversation =
       previous !== null &&
       JSON.stringify(previous.execution) === JSON.stringify(handle.identity) &&
       JSON.stringify(previous.model) === JSON.stringify(model) &&
+      previous.mode === mode &&
       previous.target.kind === (space === null ? 'scratch' : 'project')
         ? previous.conversation
         : undefined;
-    const execution = handle.identity;
-    const backend = handle.backend;
     // A new thread starts in the channel's project: its folder in the space,
     // named once, which the provisioner makes a T3 project if it isn't one.
     const newTarget = async (): Promise<Launch['target']> => {
@@ -256,7 +259,7 @@ export async function deliver(
               (context.topic === null ? '' : ` / ${context.topic}`),
             200,
           ),
-          mode: 'approval-required',
+          mode,
           model,
           message: wakePrompt(
             context,

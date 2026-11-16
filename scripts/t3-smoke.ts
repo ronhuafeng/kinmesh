@@ -18,9 +18,10 @@ try {
   const result = await readSmoke(wire, credential);
   await wire.close();
   wire = undefined;
+  const modes = result.modes.map((m) => `${m.providerId} ${m.mode}`).join(', ');
   console.info(
     result.operate
-      ? 'T3_SDK_SMOKE PASS: reads verified; Supervised operate scope present, mutations NOT exercised.'
+      ? `T3_SDK_SMOKE PASS: reads verified; operate scope present, ceiling ${result.ceiling}, runs launch in: ${modes || 'none'}; mutations NOT exercised.`
       : 'T3_SDK_SMOKE PASS: reads verified; read-only grant, no operate scope.',
   );
 } catch {
