@@ -3,7 +3,8 @@ import assert from 'node:assert/strict';
 import { rawDatabase } from './raw.js';
 import { randomUUID } from 'node:crypto';
 import { HumanId, TeamId } from '../src/domain/contracts.js';
-import { IdentityError, type Principal } from '../src/domain/agents.js';
+import type { Principal } from '../src/domain/agents.js';
+import { DomainError, type Refusal } from '../src/domain/errors.js';
 import {
   ChannelView,
   CommunicationFact,
@@ -22,8 +23,8 @@ import {
 } from './communication-helpers.js';
 import { profileInput } from './agent-helpers.js';
 import { signInAs } from './feishu.js';
-const rejected = (status: number) => (e: unknown) =>
-  e instanceof IdentityError && e.statusCode === status;
+const rejected = (kind: Refusal) => (e: unknown) =>
+  e instanceof DomainError && e.kind === kind;
 
 await test('channel/topic HTTP flow: owner enrolls persistent agent, exchanges attributed messages and continues topic in channel timeline', async () => {
   const f = await communicationFixture();
@@ -196,7 +197,7 @@ await test('every channel/history/detail/topic/mention/event endpoint hides inac
       );
     await assert.rejects(
       () => f.comm.history(f.agentPrincipal, f.teamId, f.channelId),
-      rejected(404),
+      rejected('not-found'),
     );
     await f.invite();
     assert.equal(
@@ -242,7 +243,7 @@ await test('membership leave/subscribe is self-only; removal prevents resubscrip
           },
           'remove',
         ),
-      rejected(400),
+      rejected('invalid'),
     );
     const leave = { operationKey: key() };
     await f.comm.membership(
@@ -254,7 +255,7 @@ await test('membership leave/subscribe is self-only; removal prevents resubscrip
     );
     await assert.rejects(
       () => f.comm.history(f.agentPrincipal, f.teamId, f.channelId),
-      rejected(404),
+      rejected('not-found'),
     );
     assert.equal(
       (
@@ -292,7 +293,7 @@ await test('membership leave/subscribe is self-only; removal prevents resubscrip
           subscribe,
           'subscribe',
         ),
-      rejected(404),
+      rejected('not-found'),
     );
     assert.equal(
       (await f.comm.channels(f.agentPrincipal, f.teamId)).items.length,
@@ -351,7 +352,7 @@ await test('mentions require real active joined human/agent members of this chan
             f.channelId,
             postInput({ mentions: [target] }),
           ),
-        rejected(404),
+        rejected('not-found'),
       );
     await f.invite();
     await f.store.agents.lifecycle(
@@ -368,7 +369,7 @@ await test('mentions require real active joined human/agent members of this chan
           f.channelId,
           postInput({ mentions: [{ kind: 'agent', id: f.agent.id }] }),
         ),
-      rejected(404),
+      rejected('not-found'),
     );
     const second = await f.comm.createChannel(f.principal, f.teamId, {
       operationKey: key(),
@@ -395,7 +396,7 @@ await test('mentions require real active joined human/agent members of this chan
       await assert.rejects(
         async () =>
           f.comm.post(f.principal, f.teamId, f.channelId, postInput(partial)),
-        rejected(404),
+        rejected('not-found'),
       );
     assert.equal(
       (await f.comm.history(f.principal, f.teamId, f.channelId)).items.length,
@@ -422,7 +423,7 @@ await test('message idempotency is actor/action/target scoped; same key replay p
           ...data,
           body: 'Changed',
         }),
-      rejected(409),
+      rejected('conflict'),
     );
     const agent = await f.comm.post(
       f.agentPrincipal,
@@ -467,7 +468,7 @@ await test('channel/topic/invite/leave/subscribe operations replay exactly and r
           ...input,
           name: 'Changed',
         }),
-      rejected(409),
+      rejected('conflict'),
     );
     const topicInput = { operationKey: key(), title: 'Topic' };
     const topic = await f.comm.createTopic(
@@ -486,7 +487,7 @@ await test('channel/topic/invite/leave/subscribe operations replay exactly and r
           ...topicInput,
           title: 'Changed',
         }),
-      rejected(409),
+      rejected('conflict'),
     );
     const invitation = {
       operationKey: key(),
@@ -517,7 +518,7 @@ await test('channel/topic/invite/leave/subscribe operations replay exactly and r
           { ...invitation, member: { kind: 'human', id: f.owner.id } },
           'invite',
         ),
-      rejected(409),
+      rejected('conflict'),
     );
     for (const action of ['leave', 'subscribe'] as const) {
       const operation = { operationKey: key() };
@@ -631,21 +632,21 @@ await test('history opens at the newest page and pages back without skips or dup
           { cursor: firstCursor },
           topic.id,
         ),
-      rejected(400),
+      rejected('invalid'),
     );
     await assert.rejects(
       () =>
         f.comm.history(f.agentPrincipal, f.teamId, f.channelId, {
           cursor: firstCursor,
         }),
-      rejected(400),
+      rejected('invalid'),
     );
     await assert.rejects(
       () =>
         f.comm.events(f.principal, f.teamId, f.channelId, {
           cursor: firstCursor,
         }),
-      rejected(400),
+      rejected('invalid'),
     );
   } finally {
     await f.dispose();
@@ -718,7 +719,7 @@ await test('channel/topic/outbox pages are bounded stable snapshots and new memb
         f.comm.events(f.principal, f.teamId, f.channelId, {
           cursor: eventsCursor,
         }),
-      rejected(404),
+      rejected('not-found'),
     );
     assert.equal(
       (await f.store.teamFor(f.owner.id))?.channels.some(
@@ -885,12 +886,12 @@ await test('revoked/disabled agent tokens and stale principals fail every channe
       );
     await assert.rejects(
       () => f.comm.history(f.agentPrincipal, f.teamId, f.channelId),
-      rejected(401),
+      rejected('unauthenticated'),
     );
     await assert.rejects(
       async () =>
         f.comm.post(f.agentPrincipal, f.teamId, f.channelId, postInput()),
-      rejected(401),
+      rejected('unauthenticated'),
     );
     const fresh = await f.store.agents.issue(
       f.principal,
@@ -1072,7 +1073,7 @@ await test('a channel shows only to those in it; any person in it manages it, as
     assert.equal((await f.comm.channels(p, f.teamId)).items.length, 0);
     await assert.rejects(
       () => f.comm.channel(p, f.teamId, f.channelId),
-      rejected(404),
+      rejected('not-found'),
     );
     await f.comm.enroll(
       f.principal,
@@ -1123,7 +1124,10 @@ await test('a channel shows only to those in it; any person in it manages it, as
     await raw
       .prepare('INSERT INTO teams VALUES (?, ?)')
       .run(foreign, 'Foreign');
-    await assert.rejects(() => f.comm.channels(p, foreign), rejected(403));
+    await assert.rejects(
+      () => f.comm.channels(p, foreign),
+      rejected('forbidden'),
+    );
     await raw
       .prepare('INSERT INTO memberships VALUES (?, ?)')
       .run(f.owner.id, foreign);
@@ -1142,7 +1146,7 @@ await test('a channel shows only to those in it; any person in it manages it, as
             mentions: [{ kind: 'agent', id: foreignAgent.id }],
           }),
         ),
-      rejected(404),
+      rejected('not-found'),
     );
     await assert.rejects(async () =>
       f.comm.enroll(

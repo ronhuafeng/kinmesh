@@ -95,15 +95,6 @@ export const RuntimeState = z.enum([
   'stopped',
 ]);
 export const RuntimeEventInput = z.strictObject({ state: RuntimeState });
-export class IdentityError extends Error {
-  /** `cause` keeps what the store saw, such as the constraint, for the log. */
-  constructor(
-    readonly statusCode: 400 | 401 | 403 | 404 | 409,
-    options?: ErrorOptions,
-  ) {
-    super('Identity request rejected', options);
-  }
-}
 
 export const Author = z.discriminatedUnion('kind', [
   z.strictObject({ kind: z.literal('human'), humanId: HumanId }),

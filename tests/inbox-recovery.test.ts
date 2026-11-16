@@ -8,7 +8,8 @@ import { deliver } from '../src/inbox/worker.js';
 import { t3Factory } from '../src/inbox/t3.js';
 import { saveCredential } from '../src/adapters/t3/oauth.js';
 import { FrozenLaunch } from '../src/domain/inbox.js';
-import { IdentityError, type Scope } from '../src/domain/agents.js';
+import type { Scope } from '../src/domain/agents.js';
+import { DomainError } from '../src/domain/errors.js';
 import { launch, options, reference } from './t3-helpers.js';
 import { inboxFixture } from './inbox-helpers.js';
 import { key, postInput } from './communication-helpers.js';
@@ -299,7 +300,7 @@ await test('a request that never reached T3 is retried under a reconnected T3; o
     await assert.rejects(
       () => f.inbox.freeze(claim, f.workerPrincipal, frozen('another')),
       (error: unknown) =>
-        error instanceof IdentityError && error.statusCode === 403,
+        error instanceof DomainError && error.kind === 'forbidden',
     );
     // The database refuses it too, whatever code tries.
     const raw = rawDatabase(f.dbPath);

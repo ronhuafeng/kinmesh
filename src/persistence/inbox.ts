@@ -20,7 +20,8 @@ import type { taskRepository } from './tasks.js';
 import { referenceKey, transactional } from './transactional.js';
 import { dbNow, type Database } from './database.js';
 import { executionScope } from './operations.js';
-import { IdentityError, type Principal } from '../domain/agents.js';
+import type { Principal } from '../domain/agents.js';
+import { DomainError } from '../domain/errors.js';
 import { AgentId, ChannelId, TeamId } from '../domain/contracts.js';
 import { MessageId, OutboxFact, memberKey } from '../domain/communication.js';
 import {
@@ -89,7 +90,7 @@ export function inboxRepository(
   }
   async function owned(c: Claim) {
     if (!(await q().select({ id: t.id }).from(t).where(fence(c)).limit(1))[0])
-      throw new IdentityError(409);
+      throw new DomainError('conflict');
   }
   /** The delivery's latest recorded transition. */
   async function recorded(id: string) {
@@ -155,7 +156,7 @@ export function inboxRepository(
   /** Blocked → retry with the frozen intent; never a new native operation key. */
   async function reopen(id: string, reason: DeliveryReason) {
     const row = await get(id);
-    if (row.state !== 'blocked') throw new IdentityError(409);
+    if (row.state !== 'blocked') throw new DomainError('conflict');
     const changed = await q()
       .update(t)
       .set({
@@ -166,7 +167,7 @@ export function inboxRepository(
       .where(
         and(eq(t.id, id), eq(t.state, 'blocked'), lte(t.leaseUntil, dbNow)),
       );
-    if (changed.count !== 1) throw new IdentityError(409);
+    if (changed.count !== 1) throw new DomainError('conflict');
     await history(await get(id), reason);
   }
   /**
@@ -238,7 +239,7 @@ export function inboxRepository(
   async function authorized(c: Claim, p: Principal) {
     await owned(c);
     if (p.kind !== 'agent' || p.agentId !== c.agentId || p.teamId !== c.teamId)
-      throw new IdentityError(403);
+      throw new DomainError('forbidden');
     const profile = await agents.authorize(
       p,
       c.teamId,
@@ -250,7 +251,7 @@ export function inboxRepository(
     let task = null;
     if (c.taskId !== null) {
       task = await tasks.get(p, c.teamId, c.channelId, c.taskId);
-      if (!(await actsOn(c, task))) throw new IdentityError(403);
+      if (!(await actsOn(c, task))) throw new DomainError('forbidden');
     }
     return { profile, channel, task, principal: p };
   }
@@ -288,7 +289,7 @@ export function inboxRepository(
     },
   ) {
     if ((await q().update(t).set(data).where(fence(c))).count !== 1)
-      throw new IdentityError(409);
+      throw new DomainError('conflict');
   }
   return {
     get,
@@ -377,7 +378,7 @@ export function inboxRepository(
         )[0];
         const fact = OutboxFact.parse(decode(raw?.fact ?? ''));
         if (fact.teamId !== c.teamId || fact.channelId !== c.channelId)
-          throw new IdentityError(404);
+          throw new DomainError('not-found');
         const message =
           c.messageId === null
             ? null
@@ -433,7 +434,7 @@ export function inboxRepository(
         await authorized(c, p);
         const value = FrozenLaunch.parse(launch);
         if (p.kind !== 'agent' || value.grantId !== p.grantId)
-          throw new IdentityError(403);
+          throw new DomainError('forbidden');
         const row = await get(c.id);
         if (row.launch !== null) {
           const frozen = FrozenLaunch.parse(decode(row.launch));
@@ -476,7 +477,7 @@ export function inboxRepository(
             journaled !== undefined
           ) {
             if (authority) return frozen;
-            throw new IdentityError(403);
+            throw new DomainError('forbidden');
           }
           await update(c, {
             launch: JSON.stringify(value),
@@ -504,7 +505,7 @@ export function inboxRepository(
         const value = FrozenLaunch.parse(launch);
         const row = await get(c.id);
         if (row.launch === null || row.reference !== null)
-          throw new IdentityError(409);
+          throw new DomainError('conflict');
         const frozen = FrozenLaunch.parse(decode(row.launch));
         if (
           p.kind !== 'agent' ||
@@ -513,7 +514,7 @@ export function inboxRepository(
           value.conversation !== undefined ||
           JSON.stringify(frozen.execution) !== JSON.stringify(value.execution)
         )
-          throw new IdentityError(403);
+          throw new DomainError('forbidden');
         await update(c, {
           launch: JSON.stringify(value),
           reason: 'launch-refrozen',
@@ -608,7 +609,7 @@ export function inboxRepository(
             .where(eq(s.channelSpaces.channelId, c.channelId))
             .limit(1)
         )[0];
-        if (!row) throw new IdentityError(409);
+        if (!row) throw new DomainError('conflict');
         return row.directory;
       });
     },
@@ -660,7 +661,7 @@ export function inboxRepository(
         if ('operationId' in reference) {
           const id = z.string().min(1).max(256).parse(reference.operationId);
           if (row.operationId !== null && row.operationId !== id)
-            throw new IdentityError(409);
+            throw new DomainError('conflict');
           await update(c, { operationId: id });
         } else {
           const ref = Reference.parse(reference);
@@ -668,7 +669,7 @@ export function inboxRepository(
             ref.runId === undefined ||
             (row.reference !== null && row.reference !== JSON.stringify(ref))
           )
-            throw new IdentityError(409);
+            throw new DomainError('conflict');
           await update(c, {
             reference: JSON.stringify(ref),
             ...(row.reference === null ? { steered } : {}),
@@ -688,7 +689,7 @@ export function inboxRepository(
         const row = await get(c.id);
         const ref = Reference.parse(reference);
         if (!row.steered || row.reference === null || ref.runId === undefined)
-          throw new IdentityError(409);
+          throw new DomainError('conflict');
         await update(c, {
           reference: JSON.stringify(ref),
           steered: false,
@@ -733,10 +734,10 @@ export function inboxRepository(
           row.reference !== JSON.stringify(result.reference) ||
           row.launch === null
         )
-          throw new IdentityError(409);
+          throw new DomainError('conflict');
         const frozen = FrozenLaunch.parse(decode(row.launch));
         if (p.kind !== 'agent' || frozen.grantId !== p.grantId)
-          throw new IdentityError(403);
+          throw new DomainError('forbidden');
         const publicationReason: DeliveryReason =
           'kind' in result
             ? 'native-terminal-notice-published'
@@ -940,7 +941,7 @@ export function inboxRepository(
       operationKey: string,
     ) {
       return atomic(async () => {
-        if (p.kind !== 'human') throw new IdentityError(403);
+        if (p.kind !== 'human') throw new DomainError('forbidden');
         await agents.person(p, TeamId.parse(teamId));
         const row = (
           await q()
@@ -949,7 +950,7 @@ export function inboxRepository(
             .where(eq(t.id, z.uuid().parse(id)))
             .limit(1)
         )[0];
-        if (row?.teamId !== teamId) throw new IdentityError(404);
+        if (row?.teamId !== teamId) throw new DomainError('not-found');
         await communication.channel(
           p,
           TeamId.parse(teamId),
@@ -983,7 +984,7 @@ export function inboxRepository(
      * ends at once; one whose run may be in T3 is marked, and the worker
      * interrupts the run and posts how it ended. One already finished stays
      * as it is. A blocked one that may be in T3 can't be reached from here
-     * (409). Retrying the same operation key replays.
+     * (a conflict). Retrying the same operation key replays.
      */
     stopByPerson(
       p: Principal,
@@ -992,7 +993,7 @@ export function inboxRepository(
       operationKey: string,
     ) {
       return atomic(async () => {
-        if (p.kind !== 'human') throw new IdentityError(403);
+        if (p.kind !== 'human') throw new DomainError('forbidden');
         await agents.person(p, TeamId.parse(teamId));
         const found = (
           await q()
@@ -1001,7 +1002,7 @@ export function inboxRepository(
             .where(eq(t.id, z.uuid().parse(id)))
             .limit(1)
         )[0];
-        if (found?.teamId !== teamId) throw new IdentityError(404);
+        if (found?.teamId !== teamId) throw new DomainError('not-found');
         await communication.channel(
           p,
           TeamId.parse(teamId),
@@ -1037,7 +1038,7 @@ export function inboxRepository(
               );
             const row = await get(id);
             if (ended.count === 1) await history(row, 'stopped');
-            else if (row.state === 'blocked') throw new IdentityError(409);
+            else if (row.state === 'blocked') throw new DomainError('conflict');
             else if (
               row.state !== 'acked' &&
               row.state !== 'expired' &&

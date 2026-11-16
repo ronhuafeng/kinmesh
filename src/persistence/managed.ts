@@ -3,7 +3,8 @@ import { z } from 'zod';
 import * as s from './schema.js';
 import type { agentRepository } from './agents.js';
 import type { Database } from './database.js';
-import { IdentityError, type Principal } from '../domain/agents.js';
+import type { Principal } from '../domain/agents.js';
+import { DomainError } from '../domain/errors.js';
 import type { GrantInput } from '../domain/agents.js';
 import { AgentId, TeamId } from '../domain/contracts.js';
 import { Endpoint } from '../adapters/t3/oauth.js';
@@ -24,7 +25,7 @@ export function managedRepository(
   /** A person of the team: T3 and the hub-held secrets are everyone's. */
   async function person(p: Principal, teamId: TeamId) {
     // Agents are refused before their grant is looked at.
-    if (p.kind !== 'human') throw new IdentityError(403);
+    if (p.kind !== 'human') throw new DomainError('forbidden');
     await agents.person(p, teamId);
   }
   async function connection(teamId: TeamId) {
@@ -205,7 +206,7 @@ export function managedRepository(
       return atomic(async () => {
         await person(p, teamId);
         const t3 = await connection(teamId);
-        if (t3 === null) throw new IdentityError(409);
+        if (t3 === null) throw new DomainError('conflict');
         const providerId = Provider.parse(choice.providerId);
         const profile = await agents.get(p, teamId, agentId);
         await agents.update(p, teamId, agentId, {

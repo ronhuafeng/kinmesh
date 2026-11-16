@@ -13,7 +13,7 @@ import {
   retryDelay,
 } from '../src/domain/inbox.js';
 import { MessageId } from '../src/domain/communication.js';
-import { IdentityError } from '../src/domain/agents.js';
+import { DomainError } from '../src/domain/errors.js';
 import { deliver, assistantResult } from '../src/inbox/worker.js';
 import { loadWorkerConfig, WorkerConfig } from '../src/inbox/config.js';
 import { t3Factory } from '../src/inbox/t3.js';
@@ -96,7 +96,7 @@ await test('inbox enqueue and outbox/receipt are atomic; exact replay is once an
           ...input,
           body: 'Different',
         }),
-      IdentityError,
+      DomainError,
     );
     const counts = () =>
       Promise.all(
@@ -302,7 +302,7 @@ for (const status of ['completed', 'failed'] as const)
         await assert.rejects(
           async () =>
             reopened.inbox.ack(recovered, f.workerPrincipal, fixtureResult()),
-          IdentityError,
+          DomainError,
         );
         const following = await reopened.inbox.claim([f.agent.id]);
         assert.ok(following);
@@ -589,7 +589,7 @@ for (const { failedTable, prelinked } of [
         );
         await assert.rejects(
           async () => f.inbox.ack(c, f.workerPrincipal, fixtureResult()),
-          IdentityError,
+          DomainError,
         );
         assert.equal(
           await raw.prepare('SELECT count(*) FROM inbox_results').pluck().get(),
@@ -665,14 +665,14 @@ for (const denied of [
               Claim.parse({ ...c, teamId: randomUUID() }),
               f.workerPrincipal,
             ),
-          IdentityError,
+          DomainError,
         );
         return;
       }
       if (denied === 'wrong-agent') {
         await assert.rejects(
           () => f.inbox.context(c, f.reviewPrincipal),
-          IdentityError,
+          DomainError,
         );
         return;
       }
@@ -866,13 +866,13 @@ await test('leases fence every stale write and ACK; global capacity and per-agen
     await due(f.dbPath, true);
     await assert.rejects(async () => {
       await f.inbox.remember(c, reference);
-    }, IdentityError);
+    }, DomainError);
     await assert.rejects(async () => {
       await f.inbox.defer(c, 'ready', 'stale');
-    }, IdentityError);
+    }, DomainError);
     await assert.rejects(
       async () => f.inbox.ack(c, f.workerPrincipal, fixtureResult()),
-      IdentityError,
+      DomainError,
     );
     const next = await other.inbox.claim([f.agent.id]);
     assert.ok(next);
@@ -893,7 +893,7 @@ await test('leases fence every stale write and ACK; global capacity and per-agen
             input: launch,
           }),
         ),
-      IdentityError,
+      DomainError,
     );
     await other.inbox.ack(next, f.workerPrincipal, fixtureResult());
     assert.ok(await f.inbox.claim([f.agent.id]));
@@ -965,7 +965,7 @@ for (const recovery of ['release', 'expired-lease'] as const)
           .run(newer.id);
         await assert.rejects(
           () => other.inbox.ack(newer, f.workerPrincipal, newerResult),
-          IdentityError,
+          DomainError,
         );
       }
       // Both runs are already in T3, so either may be observed first;
@@ -1578,7 +1578,7 @@ await test('lease lost inside publication rolls back downstream message/outbox/l
     );
     await assert.rejects(
       async () => f.inbox.ack(c, f.workerPrincipal, fixtureResult()),
-      IdentityError,
+      DomainError,
     );
     assert.deepEqual(await counts(), before);
     assert.equal((await f.inbox.get(c.id)).leaseUntil, c.leaseUntil);

@@ -5,7 +5,8 @@ import { taskRepository } from './tasks.js';
 import { communicationRepository } from './communication.js';
 import { asc } from 'drizzle-orm';
 import { agentRepository } from './agents.js';
-import { IdentityError, type Principal } from '../domain/agents.js';
+import type { Principal } from '../domain/agents.js';
+import { DomainError } from '../domain/errors.js';
 import { operationJournal } from './operations.js';
 import { eq, and, gt, isNull, lte } from 'drizzle-orm';
 import { createHash, randomBytes, randomUUID } from 'node:crypto';
@@ -162,7 +163,7 @@ export async function openStore(url: string) {
               .limit(1)
           )[0];
           if (taken !== undefined && taken.username !== username)
-            throw new IdentityError(409);
+            throw new DomainError('conflict');
           const changed = (
             await q()
               .update(tables.humans)
@@ -174,7 +175,7 @@ export async function openStore(url: string) {
                 ),
               )
           ).count;
-          if (changed !== 1) throw new IdentityError(404);
+          if (changed !== 1) throw new DomainError('not-found');
         });
       },
       /**
@@ -275,7 +276,7 @@ export async function openStore(url: string) {
       /** Names the team a person belongs to: the organization, as Feishu calls it. */
       async renameTeam(id: HumanId, name: string) {
         const membership = await this.teamFor(id);
-        if (membership === undefined) throw new IdentityError(403);
+        if (membership === undefined) throw new DomainError('forbidden');
         await q()
           .update(tables.teams)
           .set({ name: TeamName.parse(name) })

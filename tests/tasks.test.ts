@@ -4,7 +4,7 @@ import { randomUUID } from 'node:crypto';
 import { rawDatabase } from './raw.js';
 import type { z } from 'zod';
 import { HumanId } from '../src/domain/contracts.js';
-import { IdentityError } from '../src/domain/agents.js';
+import { DomainError, type Refusal } from '../src/domain/errors.js';
 import { pageOf, TaskFact } from '../src/domain/communication.js';
 import {
   Task,
@@ -20,8 +20,8 @@ import { key, postInput } from './communication-helpers.js';
 import { taskFixture, taskInput, commandInput } from './task-helpers.js';
 import { forkWorker, race, stop } from './process-helpers.js';
 import { signInAs } from './feishu.js';
-const rejected = (status: number) => (e: unknown) =>
-  e instanceof IdentityError && e.statusCode === status;
+const rejected = (kind: Refusal) => (e: unknown) =>
+  e instanceof DomainError && e.kind === kind;
 
 await test('task domain algebra rejects invalid commands/transitions and never lets an agent final-accept', async () => {
   const f = await taskFixture();
@@ -35,7 +35,7 @@ await test('task domain algebra rejects invalid commands/transitions and never l
           commandInput(task, { type: 'progress', note: 'No owner' }),
           new Date().toISOString(),
         ),
-      rejected(403),
+      rejected('forbidden'),
     );
     assert.throws(
       () =>
@@ -45,7 +45,7 @@ await test('task domain algebra rejects invalid commands/transitions and never l
           commandInput(task, { type: 'accept', note: 'Premature' }),
           new Date().toISOString(),
         ),
-      rejected(409),
+      rejected('conflict'),
     );
     assert.equal(
       TaskCommand.safeParse({ type: 'claim', operationKey: key() }).success,
@@ -73,7 +73,7 @@ await test('task domain algebra rejects invalid commands/transitions and never l
           }),
           new Date().toISOString(),
         ),
-      rejected(403),
+      rejected('forbidden'),
     );
     assert.throws(
       () =>
@@ -87,7 +87,7 @@ await test('task domain algebra rejects invalid commands/transitions and never l
           }),
           new Date().toISOString(),
         ),
-      rejected(409),
+      rejected('conflict'),
     );
     const invalid = Task.safeParse({
       ...task,
@@ -212,7 +212,7 @@ await test('real task HTTP responsibility journey: human creation, developer cla
           type: 'progress',
           note: 'After acceptance',
         }),
-      rejected(409),
+      rejected('conflict'),
     );
   } finally {
     await f.dispose();
@@ -260,7 +260,7 @@ await test('reviewer rework, owner resubmission, human rework/cancel and explici
     assert.equal(task.state.reviewer, null);
     await assert.rejects(
       () => f.act(f.developer, task, { type: 'progress', note: 'Old owner' }),
-      rejected(403),
+      rejected('forbidden'),
     );
     task = (
       await f.act(f.principal, task, {
@@ -271,7 +271,7 @@ await test('reviewer rework, owner resubmission, human rework/cancel and explici
     assert.equal(task.state.status, 'cancelled');
     await assert.rejects(
       () => f.act(f.reviewPrincipal, task, { type: 'claim' }),
-      rejected(409),
+      rejected('conflict'),
     );
     const unclaimed = (await f.create()).task;
     assert.equal(
@@ -356,7 +356,7 @@ await test('task operation receipts survive replay, are actor/action/target scop
           ...input,
           title: 'Changed',
         }),
-      rejected(409),
+      rejected('conflict'),
     );
     const command = commandInput(created.task, { type: 'claim' });
     const claimed = await f.tasks.command(
@@ -382,7 +382,7 @@ await test('task operation receipts survive replay, are actor/action/target scop
           ...command,
           expectedVersion: 2,
         }),
-      rejected(409),
+      rejected('conflict'),
     );
     const progress = commandInput(claimed.task, {
       type: 'progress',
@@ -403,7 +403,7 @@ await test('task operation receipts survive replay, are actor/action/target scop
           ...progress,
           note: 'Changed',
         }),
-      rejected(409),
+      rejected('conflict'),
     );
     assert.deepEqual(
       await f.tasks.command(
@@ -434,7 +434,7 @@ await test('task operation receipts survive replay, are actor/action/target scop
           created.task.id,
           command,
         ),
-      rejected(409),
+      rejected('conflict'),
     );
     await assert.rejects(
       async () =>
@@ -444,7 +444,7 @@ await test('task operation receipts survive replay, are actor/action/target scop
           operationKey: key(),
           note: 'Stale',
         }),
-      rejected(409),
+      rejected('conflict'),
     );
     assert.equal(
       (await f.tasks.get(f.principal, f.teamId, f.channelId, created.task.id))
@@ -518,7 +518,7 @@ await test('external execution links are multiple immutable references and never
               : { backend: 't3', environmentId: 'unused', threadId: 'unused' },
           note: 'Duplicate',
         }),
-      rejected(409),
+      rejected('conflict'),
     );
     assert.equal(
       TaskCommand.safeParse({ ...command, status: 'completed', accept: true })
@@ -559,7 +559,7 @@ await test("the assigned reviewer/owner and the task's acceptor control decision
           decision: 'approve',
           note: 'Self approve',
         }),
-      rejected(403),
+      rejected('forbidden'),
     );
     await assert.rejects(
       () =>
@@ -568,7 +568,7 @@ await test("the assigned reviewer/owner and the task's acceptor control decision
           decision: 'approve',
           note: 'Unassigned owner reviewer',
         }),
-      rejected(403),
+      rejected('forbidden'),
     );
     task = (
       await f.act(f.reviewPrincipal, task, {
@@ -666,7 +666,7 @@ await test('all task reads/writes enforce team/channel access; missing task IDs 
     );
     await assert.rejects(
       () => f.tasks.list(f.developer, f.teamId, f.channelId),
-      rejected(404),
+      rejected('not-found'),
     );
     await assert.rejects(
       async () =>
@@ -677,13 +677,16 @@ await test('all task reads/writes enforce team/channel access; missing task IDs 
           task.id,
           commandInput(task, { type: 'claim' }),
         ),
-      rejected(404),
+      rejected('not-found'),
     );
     const topic = await f.comm.createTopic(f.principal, f.teamId, other.id, {
       operationKey: key(),
       title: 'Different channel',
     });
-    await assert.rejects(() => f.create({ topicId: topic.id }), rejected(404));
+    await assert.rejects(
+      () => f.create({ topicId: topic.id }),
+      rejected('not-found'),
+    );
   } finally {
     await f.dispose();
   }
@@ -766,7 +769,7 @@ await test('revocation and disable block every task route and stale principals, 
     await assert.rejects(
       () =>
         f.tasks.command(f.developer, f.teamId, f.channelId, task.id, command),
-      rejected(401),
+      rejected('unauthenticated'),
     );
     await f.store.agents.lifecycle(
       f.principal,
@@ -809,7 +812,7 @@ await test('task scope separation and filtered shared outbox prevent channel-onl
           f.channelId,
           postInput({ sourceEventId: hiddenFact.fact.id }),
         ),
-      rejected(404),
+      rejected('not-found'),
     );
 
     assert.equal(
@@ -836,7 +839,7 @@ await test('task scope separation and filtered shared outbox prevent channel-onl
           f.channelId,
           task.id,
         ),
-      rejected(403),
+      rejected('forbidden'),
     );
     task = (await f.act(f.developer, task, { type: 'claim' })).task;
     task = (
@@ -863,7 +866,7 @@ await test('task scope separation and filtered shared outbox prevent channel-onl
           decision: 'approve',
           note: 'No review scope',
         }),
-      rejected(403),
+      rejected('forbidden'),
     );
   } finally {
     await f.dispose();
@@ -1095,14 +1098,14 @@ await test('task/history/execution snapshot pages are bounded and stable under i
         f.tasks.history(f.reviewPrincipal, f.teamId, f.channelId, task.id, {
           cursor: hc,
         }),
-      rejected(400),
+      rejected('invalid'),
     );
     await assert.rejects(
       () =>
         f.tasks.executions(f.developer, f.teamId, f.channelId, task.id, {
           cursor: hc,
         }),
-      rejected(400),
+      rejected('invalid'),
     );
     assert.equal(
       (
@@ -1222,7 +1225,7 @@ await test('designated human can recover disabled-owner responsibility with an a
     await assert.rejects(
       () =>
         f.act(f.developer, task, { type: 'progress', note: 'Old credential' }),
-      rejected(401),
+      rejected('unauthenticated'),
     );
     const response = await f.app.inject({
       method: 'POST',
@@ -1261,7 +1264,7 @@ await test('designated human can recover disabled-owner responsibility with an a
           type: 'accept',
           note: 'Review must restart',
         }),
-      rejected(409),
+      rejected('conflict'),
     );
   } finally {
     await f.dispose();

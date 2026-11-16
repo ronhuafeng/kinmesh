@@ -1,15 +1,15 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { WorkspaceSnapshot } from '../src/workspace/contracts.js';
-import { IdentityError } from '../src/domain/agents.js';
+import { DomainError, type Refusal } from '../src/domain/errors.js';
 import { inboxFixture } from './inbox-helpers.js';
 import { postInput } from './communication-helpers.js';
 import { taskInput } from './task-helpers.js';
 import { feishuPerson, signInAs } from './feishu.js';
 
 type Fixture = Awaited<ReturnType<typeof inboxFixture>>;
-const rejected = (status: number) => (e: unknown) =>
-  e instanceof IdentityError && e.statusCode === status;
+const rejected = (kind: Refusal) => (e: unknown) =>
+  e instanceof DomainError && e.kind === kind;
 /** Grace, another person of the organization, signed in and in #general. */
 async function grace(f: Fixture) {
   const cookies = await signInAs(f.app, 'grace@example.com');
@@ -64,7 +64,7 @@ await test('a task is decided by the person who asked for it, or by whom they na
           f.channelId,
           taskInput({ acceptor: '00000000-0000-4000-8000-000000000009' }),
         ),
-      rejected(404),
+      rejected('not-found'),
     );
     await assert.rejects(
       async () =>
@@ -74,7 +74,7 @@ await test('a task is decided by the person who asked for it, or by whom they na
           f.channelId,
           taskInput({ acceptor: g.human.id }),
         ),
-      rejected(403),
+      rejected('forbidden'),
     );
     // Only the acceptor decides: the person who set up the team cannot.
     let task = (await f.act(f.developer, hers, { type: 'claim' })).task;
@@ -94,7 +94,7 @@ await test('a task is decided by the person who asked for it, or by whom they na
     ).task;
     await assert.rejects(
       () => f.act(f.principal, task, { type: 'accept', note: 'Not mine' }),
-      rejected(403),
+      rejected('forbidden'),
     );
     assert.equal(
       (await f.act(g.principal, task, { type: 'accept', note: 'Mine' })).task

@@ -2,7 +2,7 @@ import { createHash } from 'node:crypto';
 import { and, eq } from 'drizzle-orm';
 import { z } from 'zod';
 import * as s from './schema.js';
-import { IdentityError } from '../domain/agents.js';
+import { DomainError } from '../domain/errors.js';
 import { PageInput, REACH, pageOf } from '../domain/communication.js';
 import type { Reference } from '../domain/execution.js';
 import type { Database } from './database.js';
@@ -43,7 +43,7 @@ export function transactional(d: Database) {
       )
       .limit(1);
     if (old !== undefined) {
-      if (old.fingerprint !== digest) throw new IdentityError(409);
+      if (old.fingerprint !== digest) throw new DomainError('conflict');
       return schema.parse(decode(old.result));
     }
     const result = schema.parse(await effect());
@@ -103,7 +103,7 @@ export async function latestPage<T extends { position: number }>(
       if (cursor.context !== binding) throw new Error('Wrong cursor');
       return cursor.before;
     } catch {
-      throw new IdentityError(400);
+      throw new DomainError('invalid');
     }
   };
   let floor = 0;
@@ -150,7 +150,7 @@ export async function snapshotPage<T extends { position: number }>(
       after = cursor.after;
       maximum = cursor.max;
     } catch {
-      throw new IdentityError(400);
+      throw new DomainError('invalid');
     }
   }
   const rows = await select(after, maximum, parsed.limit + 1);

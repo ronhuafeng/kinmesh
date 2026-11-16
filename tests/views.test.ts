@@ -1,7 +1,8 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
-import { IdentityError, type Principal } from '../src/domain/agents.js';
+import type { Principal } from '../src/domain/agents.js';
+import { DomainError } from '../src/domain/errors.js';
 import { TeamId } from '../src/domain/contracts.js';
 import { inboxFixture } from './inbox-helpers.js';
 import { key } from './communication-helpers.js';
@@ -89,11 +90,11 @@ await test('what the workspace reads about a team checks who asks, not the route
         ['someone outside the team', outsider],
         ['an agent of another team', foreignAgent],
       ] as const)
-        await assert.rejects(read(p), IdentityError, `${name}: ${who}`);
+        await assert.rejects(read(p), DomainError, `${name}: ${who}`);
 
     // The workspace's own views are for people, even of this team.
     for (const [name, read] of reads.slice(0, 7))
-      await assert.rejects(read(f.workerPrincipal), IdentityError, name);
+      await assert.rejects(read(f.workerPrincipal), DomainError, name);
 
     // A channel's deliveries and replies need that channel.
     const left = await f.store.signIn(feishuPerson('left@example.com'));
@@ -108,7 +109,7 @@ await test('what the workspace reads about a team checks who asks, not the route
     for (const [name, read] of reads.filter(
       ([n]) => n === 'deliveries' || n === 'replies',
     ))
-      await assert.rejects(read(leaver), IdentityError, name);
+      await assert.rejects(read(leaver), DomainError, name);
   } finally {
     await raw.close();
     await f.dispose();

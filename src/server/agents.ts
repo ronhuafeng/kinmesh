@@ -4,11 +4,11 @@ import { AgentId, TeamId } from '../domain/contracts.js';
 import {
   CorrelationInput,
   GrantInput,
-  IdentityError,
   ProfileInput,
   RuntimeEventInput,
   type Principal,
 } from '../domain/agents.js';
+import { DomainError } from '../domain/errors.js';
 import type { Store } from '../persistence/store.js';
 import { fingerprint } from '../persistence/transactional.js';
 import { AVATAR_LIMIT } from '../persistence/agents.js';
@@ -67,7 +67,7 @@ export function registerAgents(
   );
   app.put(base + '/:agentId/avatar', { bodyLimit: AVATAR_LIMIT }, (request) => {
     const { teamId, agentId } = AgentPath.parse(request.params);
-    if (!Buffer.isBuffer(request.body)) throw new IdentityError(400);
+    if (!Buffer.isBuffer(request.body)) throw new DomainError('invalid');
     return store.agents.setAvatar(
       principal(request),
       teamId,
@@ -87,7 +87,7 @@ export function registerAgents(
       teamId,
       agentId,
     );
-    if (image === null) throw new IdentityError(404);
+    if (image === null) throw new DomainError('not-found');
     return reply
       .header('content-type', image.mime)
       .header('cache-control', 'private, max-age=86400')
@@ -167,7 +167,7 @@ export function registerAgents(
         (await store.managed.binding(principal(request), teamId, agentId))
           ?.grantId === grantId
       )
-        throw new IdentityError(409);
+        throw new DomainError('conflict');
       return reply
         .header('Cache-Control', 'no-store')
         .code(201)

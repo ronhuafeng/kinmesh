@@ -8,11 +8,11 @@ import {
   Agent,
   Author,
   Correlation,
-  IdentityError,
   ProfileInput,
   RuntimeEvent,
   type Principal,
 } from '../src/domain/agents.js';
+import { DomainError } from '../src/domain/errors.js';
 import { createApp } from '../src/server/app.js';
 import { resolvePrincipal } from '../src/server/principals.js';
 import {
@@ -137,7 +137,7 @@ await test('team-scoped unique profile names, cross-team IDs and nonmember mutat
       .run(teamId, 'Other team');
     await assert.rejects(
       () => f.store.agents.create(f.principal, teamId, profileInput),
-      (e) => e instanceof IdentityError && e.statusCode === 403,
+      (e) => e instanceof DomainError && e.kind === 'forbidden',
     );
     assert.equal(
       (
@@ -159,7 +159,7 @@ await test('team-scoped unique profile names, cross-team IDs and nonmember mutat
     assert.notEqual(other.id, f.agent.id);
     await assert.rejects(
       () => f.store.agents.get(f.principal, teamId, f.agent.id),
-      (e) => e instanceof IdentityError && e.statusCode === 404,
+      (e) => e instanceof DomainError && e.kind === 'not-found',
     );
     // Anyone of the team manages agents and their credentials, not only the
     // person who set it up.
@@ -298,7 +298,7 @@ await test('agent scopes are checked from persisted grants and never confer huma
           f.agent.id,
           'tasks:write',
         ),
-      (e) => e instanceof IdentityError && e.statusCode === 403,
+      (e) => e instanceof DomainError && e.kind === 'forbidden',
     );
     const another = await f.store.agents.create(f.principal, f.teamId, {
       ...profileInput,
@@ -517,7 +517,7 @@ await test('execution correlations preserve multiple runs, agent provenance and 
           another.id,
           correlationInput,
         ),
-      (e) => e instanceof IdentityError && e.statusCode === 409,
+      (e) => e instanceof DomainError && e.kind === 'conflict',
     );
   } finally {
     await f.dispose();
@@ -557,7 +557,7 @@ await test('revoke blocks every agent profile/execution route and stale principa
     ])
       await assert.rejects(
         action,
-        (e) => e instanceof IdentityError && e.statusCode === 401,
+        (e) => e instanceof DomainError && e.kind === 'unauthenticated',
       );
     assert.equal(
       (await f.app.inject({ url: f.path, headers: f.headers })).statusCode,
@@ -640,12 +640,12 @@ await test('disable revokes all grants atomically and reactivation cannot resurr
     }
     await assert.rejects(
       () => f.store.agents.issue(f.principal, f.teamId, f.agent.id, grantInput),
-      (e) => e instanceof IdentityError && e.statusCode === 409,
+      (e) => e instanceof DomainError && e.kind === 'conflict',
     );
     await f.store.agents.lifecycle(f.principal, f.teamId, f.agent.id, 'active');
     await assert.rejects(
       () => f.store.agents.get(stale, f.teamId, f.agent.id),
-      (e) => e instanceof IdentityError && e.statusCode === 401,
+      (e) => e instanceof DomainError && e.kind === 'unauthenticated',
     );
     const fresh = await f.store.agents.issue(
       f.principal,
@@ -759,7 +759,7 @@ await test('expiration and removed human membership are checked on every request
     );
     await assert.rejects(
       () => f.store.agents.get(principal, f.teamId, f.agent.id),
-      (e) => e instanceof IdentityError && e.statusCode === 401,
+      (e) => e instanceof DomainError && e.kind === 'unauthenticated',
     );
     await raw.exec('DELETE FROM memberships');
     for (const url of [f.path, f.path + '/grants'])
@@ -1002,7 +1002,7 @@ await test('disabled lifecycle independently blocks unrevoked grants and every p
       .run(f.agent.id);
     await assert.rejects(
       () => f.store.agents.get(stale, f.teamId, f.agent.id),
-      (e) => e instanceof IdentityError && e.statusCode === 401,
+      (e) => e instanceof DomainError && e.kind === 'unauthenticated',
     );
     const paths = [f.base, f.path, f.path + '/grants'];
     for (const url of paths)

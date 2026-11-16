@@ -6,7 +6,7 @@ import { drizzle, type PostgresJsDatabase } from 'drizzle-orm/postgres-js';
 import { migrate } from 'drizzle-orm/postgres-js/migrator';
 import { z } from 'zod';
 import * as schema from './schema.js';
-import { IdentityError } from '../domain/agents.js';
+import { DomainError } from '../domain/errors.js';
 
 /** A PostgreSQL connection URL. */
 export const DatabaseUrl = z
@@ -86,7 +86,7 @@ export async function openDatabase(url: string) {
   /**
    * Runs `action` atomically. Nested, it is a savepoint of the enclosing
    * transaction; at the top, a serializable transaction, retried while
-   * concurrent ones make it stale. Broken rules are 409s.
+   * concurrent ones make it stale. Broken rules are conflicts.
    */
   async function atomic<T>(action: () => Promise<T>): Promise<T> {
     const outer = current.getStore();
@@ -106,8 +106,8 @@ export async function openDatabase(url: string) {
       }
     } catch (error) {
       // An inner transaction's refusal is passed on as it is.
-      if (!(error instanceof IdentityError) && codeOf(error)?.startsWith('23'))
-        throw new IdentityError(409, { cause: error });
+      if (!(error instanceof DomainError) && codeOf(error)?.startsWith('23'))
+        throw new DomainError('conflict', { cause: error });
       throw error;
     }
   }

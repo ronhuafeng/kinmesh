@@ -1,7 +1,7 @@
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { TeamId, ChannelId } from '../domain/contracts.js';
-import { IdentityError } from '../domain/agents.js';
+import { DomainError } from '../domain/errors.js';
 import { PageInput } from '../domain/communication.js';
 import { TaskId, TaskCreate, TaskCommand } from '../domain/tasks.js';
 import type { Store } from '../persistence/store.js';
@@ -50,7 +50,7 @@ export function registerTasks(app: FastifyInstance, store: Store) {
     app.post(base + '/:taskId/' + type, async (request) => {
       const { teamId, channelId, taskId } = TaskPath.parse(request.params);
       const body = z.record(z.string(), z.unknown()).parse(request.body);
-      if ('type' in body) throw new IdentityError(400);
+      if ('type' in body) throw new DomainError('invalid');
       return store.tasks.command(
         principal(request),
         teamId,

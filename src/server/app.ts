@@ -18,7 +18,7 @@ import {
 } from './provision.js';
 import { managedDirectory } from '../inbox/managed.js';
 import { principal, resolvePrincipal } from './principals.js';
-import { IdentityError } from '../domain/agents.js';
+import { DomainError, type Refusal } from '../domain/errors.js';
 import { z } from 'zod';
 import Fastify, { LogController, type FastifyRequest } from 'fastify';
 import secureSession from '@fastify/secure-session';
@@ -39,6 +39,14 @@ declare module '@fastify/secure-session' {
     session: string;
   }
 }
+/** The HTTP status of each refusal; every route answers with these. */
+const STATUS: Record<Refusal, 400 | 401 | 403 | 404 | 409> = {
+  invalid: 400,
+  unauthenticated: 401,
+  forbidden: 403,
+  'not-found': 404,
+  conflict: 409,
+};
 export async function createApp(
   config: Config,
   store: Store,
@@ -111,10 +119,16 @@ export async function createApp(
   app.setErrorHandler((error, request, reply) => {
     if (error instanceof z.ZodError)
       return void reply.code(400).send({ error: 'Invalid input' });
+    // Fastify's own refusals (a body too large, a rate limit) carry theirs.
     const known = z
       .object({ statusCode: z.number().int().min(400).max(499) })
       .safeParse(error);
-    const status = known.success ? known.data.statusCode : 500;
+    const status =
+      error instanceof DomainError
+        ? STATUS[error.kind]
+        : known.success
+          ? known.data.statusCode
+          : 500;
     // A failure is recorded; a refusal only when a constraint caused it.
     const where = {
       route: request.routeOptions.url,
@@ -190,7 +204,7 @@ export async function createApp(
   // Sign out everywhere: every session of yours ends, this one included.
   app.post('/api/me/sessions/end', async (request, reply) => {
     const principal = request.principal;
-    if (principal?.kind !== 'human') throw new IdentityError(403);
+    if (principal?.kind !== 'human') throw new DomainError('forbidden');
     await store.sessions.revokeAll(principal.humanId, Date.now());
     request.session.delete();
     return reply.code(204).send();
@@ -296,7 +310,7 @@ export async function createApp(
   // The person behind the request; the pre-handler resolved their session.
   const human = (request: FastifyRequest) => {
     const p = principal(request);
-    if (p.kind !== 'human') throw new IdentityError(403);
+    if (p.kind !== 'human') throw new DomainError('forbidden');
     return p.humanId;
   };
   await app.register((protectedApi, _options, done) => {

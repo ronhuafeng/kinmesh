@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { z } from 'zod';
 import { openStore } from '../../src/persistence/store.js';
 import { TeamId, ChannelId, TaskId } from '../../src/domain/contracts.js';
-import { IdentityError } from '../../src/domain/agents.js';
+import { DomainError } from '../../src/domain/errors.js';
 const config = z
   .object({
     TASK_TEST_DATABASE: z.string(),
@@ -26,7 +26,7 @@ async function claim() {
     );
     outcome = 'won';
   } catch (error) {
-    if (error instanceof IdentityError && error.statusCode === 409)
+    if (error instanceof DomainError && error.kind === 'conflict')
       outcome = 'conflict';
   }
   await store.close();

@@ -10,7 +10,7 @@ import {
   type ExecutionBackend,
   type Observation,
 } from '../domain/execution.js';
-import { IdentityError } from '../domain/agents.js';
+import { DomainError } from '../domain/errors.js';
 import type { AgentId } from '../domain/contracts.js';
 import {
   FrozenLaunch,
@@ -234,7 +234,7 @@ export async function deliver(
   let stage: 'authority' | 'connect' | 'execution' | 'publication' =
     'authority';
   try {
-    if (binding.agentId !== claim.agentId) throw new IdentityError(403);
+    if (binding.agentId !== claim.agentId) throw new DomainError('forbidden');
     const principal = await store.agents.resolveToken(
       loadAgentToken(binding.tokenFile),
     );
@@ -349,8 +349,8 @@ export async function deliver(
             ? null
             : FrozenLaunch.parse(JSON.parse(row.launch));
         if (
-          error instanceof IdentityError &&
-          error.statusCode === 403 &&
+          error instanceof DomainError &&
+          error.kind === 'forbidden' &&
           pinned !== null &&
           (pinned.grantId !==
             (principal.kind === 'agent' ? principal.grantId : '') ||
@@ -527,7 +527,7 @@ export async function deliver(
     const blocked =
       error instanceof EnvironmentChanged ||
       error instanceof AuthorityChanged ||
-      (error instanceof IdentityError && error.statusCode !== 409) ||
+      (error instanceof DomainError && error.kind !== 'conflict') ||
       // Data that doesn't fit a contract doesn't fit on the next attempt.
       error instanceof z.ZodError ||
       // Nor does a publication the database's rules refuse.

@@ -1,5 +1,6 @@
 import type { FastifyRequest } from 'fastify';
-import { IdentityError, type Principal } from '../domain/agents.js';
+import type { Principal } from '../domain/agents.js';
+import { DomainError } from '../domain/errors.js';
 import type { Store } from '../persistence/store.js';
 
 declare module 'fastify' {
@@ -9,7 +10,7 @@ declare module 'fastify' {
 }
 /** The caller the protected API resolved for this request. */
 export function principal(request: FastifyRequest) {
-  if (request.principal === null) throw new IdentityError(401);
+  if (request.principal === null) throw new DomainError('unauthenticated');
   return request.principal;
 }
 
@@ -22,13 +23,13 @@ export async function resolvePrincipal(
 ): Promise<Principal> {
   if (authorization !== undefined) {
     // Reject mixed authority rather than silently choosing the more privileged principal.
-    if (sessionToken !== undefined) throw new IdentityError(400);
+    if (sessionToken !== undefined) throw new DomainError('invalid');
     const bearer = /^Bearer (kma_[A-Za-z0-9_-]{43})$/.exec(authorization)?.[1];
-    if (bearer === undefined) throw new IdentityError(401);
+    if (bearer === undefined) throw new DomainError('unauthenticated');
     return store.agents.resolveToken(bearer);
   }
   // A session lives on the server: revoked, idle or too old, it ends here.
   const humanId = await store.sessions.resolve(sessionToken, Date.now());
-  if (humanId === undefined) throw new IdentityError(401);
+  if (humanId === undefined) throw new DomainError('unauthenticated');
   return { kind: 'human', humanId };
 }
