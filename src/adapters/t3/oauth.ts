@@ -21,6 +21,7 @@ import {
 } from '@modelcontextprotocol/sdk/shared/auth.js';
 import type { OAuthClientProvider } from '@modelcontextprotocol/sdk/client/auth.js';
 import { ExecutionFailure } from '../../domain/execution.js';
+import { RUNTIME_MODES } from './contracts.js';
 
 export const Endpoint = z
   .string()
@@ -52,6 +53,11 @@ export const Credential = z.object({
    * when T3 didn't say. T3 issues no refresh token, so a person signs in again.
    */
   expiresAt: z.iso.datetime().optional(),
+  /**
+   * The grant's ceiling, which the person chose on T3's approval page, as T3
+   * reported it at sign-in; absent when it wasn't read.
+   */
+  ceiling: z.enum(RUNTIME_MODES).optional(),
 });
 export type Credential = z.infer<typeof Credential>;
 /** From this long before a sign-in ends, the workspace asks to reconnect T3. */

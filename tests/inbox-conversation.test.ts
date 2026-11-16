@@ -191,11 +191,11 @@ function frozenMode(row: { launch: string | null }) {
 }
 
 /**
- * Proves runs launch in Auto when the grant allows it and never above the
- * grant or Auto, and that a raised ceiling reaches existing conversations:
- * a thread's mode can't change in T3, so the next message starts a new one.
+ * Proves runs launch in the mode the person chose for the grant, never above
+ * it, and that a changed ceiling reaches existing conversations: a thread's
+ * mode can't change in T3, so the next message starts a new one.
  */
-await test('runs launch in Auto when the grant allows it, else the broadest mode it allows', async () => {
+await test('runs launch in the grant’s ceiling, Full access included', async () => {
   const f = await inboxFixture();
   try {
     // A Supervised grant: the run waits for approvals in T3.
@@ -212,46 +212,44 @@ await test('runs launch in Auto when the grant allows it, else the broadest mode
       'approval-required',
     );
 
-    // A Full access grant: Auto, never Full access. The Supervised thread
-    // can't run in Auto, so this message starts a new one.
+    // A Full access grant: the run launches in Full access, where nothing
+    // waits for an approval. The Supervised thread can't run in it, so this
+    // message starts a new one.
     ceiling(f, 'full-access');
     await mention(f);
     f.wire.values.t3_thread_read = thread([
-      { runId: RUN, status: 'completed', text: 'Auto', position: 2 },
+      { runId: RUN, status: 'completed', text: 'Full access', position: 2 },
     ]);
     const second = await attempt(f);
     assert.equal(second.state, 'acked', second.reason);
-    assert.equal(frozenMode(second), 'auto');
+    assert.equal(frozenMode(second), 'full-access');
     assert.equal(calls(f, 't3_thread_launch').length, 2);
-    assert.equal(calls(f, 't3_thread_launch')[1]?.runtimeMode, 'auto');
+    assert.equal(calls(f, 't3_thread_launch')[1]?.runtimeMode, 'full-access');
     assert.equal(calls(f, 't3_thread_send').length, 0);
 
-    // The same mode again: the conversation continues in its Auto thread.
+    // The same mode again: the conversation continues in its thread.
     await mention(f);
     sendReturns(f, 'third-run', 'started');
     f.wire.values.t3_thread_read = thread([
       { runId: 'third-run', status: 'completed', text: 'Third', position: 6 },
-      { runId: RUN, status: 'completed', text: 'Auto', position: 2 },
+      { runId: RUN, status: 'completed', text: 'Full access', position: 2 },
     ]);
     const third = await attempt(f);
     assert.equal(third.state, 'acked', third.reason);
-    assert.equal(frozenMode(third), 'auto');
+    assert.equal(frozenMode(third), 'full-access');
     assert.equal(calls(f, 't3_thread_launch').length, 2);
     assert.equal(calls(f, 't3_thread_send').length, 1);
 
-    // A lower ceiling: the broadest mode it allows, in a new thread.
-    ceiling(f, 'auto-accept-edits');
+    // A lower ceiling: the mode it allows, in a new thread.
+    ceiling(f, 'auto');
     await mention(f);
     f.wire.values.t3_thread_read = thread([
-      { runId: RUN, status: 'completed', text: 'Edits', position: 2 },
+      { runId: RUN, status: 'completed', text: 'Auto', position: 2 },
     ]);
     const fourth = await attempt(f);
     assert.equal(fourth.state, 'acked', fourth.reason);
-    assert.equal(frozenMode(fourth), 'auto-accept-edits');
-    assert.equal(
-      calls(f, 't3_thread_launch')[2]?.runtimeMode,
-      'auto-accept-edits',
-    );
+    assert.equal(frozenMode(fourth), 'auto');
+    assert.equal(calls(f, 't3_thread_launch')[2]?.runtimeMode, 'auto');
   } finally {
     await f.dispose();
   }

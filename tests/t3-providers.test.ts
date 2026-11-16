@@ -39,10 +39,10 @@ await test('only providers T3 can run a wake on are offered', () => {
 });
 
 /**
- * Agents run in T3's Auto when the grant allows it, else in the broadest
- * mode below it that the grant and provider allow; never above either.
+ * Agents run in the mode the person chose for the grant, or the broadest
+ * mode below it that the provider runs; never above the ceiling.
  */
-await test('a launch runs in Auto when the ceiling allows it, and never above the ceiling or Auto', () => {
+await test('a launch runs in the grant’s ceiling when the provider runs it, and never above it', () => {
   const every = provider({
     runtimeModes: [
       'approval-required',
@@ -51,14 +51,13 @@ await test('a launch runs in Auto when the ceiling allows it, and never above th
       'full-access',
     ],
   });
+  // Full access: nothing waits for an approval.
+  assert.equal(launchMode(every, 'full-access'), 'full-access');
   assert.equal(launchMode(every, 'auto'), 'auto');
-  // A broader ceiling still launches in Auto, not Full access.
-  assert.equal(launchMode(every, 'full-access'), 'auto');
-  // A lower ceiling: the broadest mode it allows.
   assert.equal(launchMode(every, 'auto-accept-edits'), 'auto-accept-edits');
   assert.equal(launchMode(every, 'approval-required'), 'approval-required');
-  // T3 naming no modes for a provider: the ceiling, up to Auto.
-  assert.equal(launchMode(provider(), 'auto'), 'auto');
+  // T3 naming no modes for a provider: the ceiling.
+  assert.equal(launchMode(provider(), 'full-access'), 'full-access');
   assert.equal(
     launchMode(provider(), 'approval-required'),
     'approval-required',
@@ -67,11 +66,11 @@ await test('a launch runs in Auto when the ceiling allows it, and never above th
   const pi = provider({
     runtimeModes: ['approval-required', 'auto-accept-edits', 'full-access'],
   });
+  assert.equal(launchMode(pi, 'full-access'), 'full-access');
   assert.equal(launchMode(pi, 'auto'), 'auto-accept-edits');
-  assert.equal(launchMode(pi, 'full-access'), 'auto-accept-edits');
-  // Nothing at or below the ceiling and Auto: the provider is not offered.
+  // Nothing at or below the ceiling: the provider is not offered.
   assert.equal(
-    launchMode(provider({ runtimeModes: ['full-access'] }), 'full-access'),
+    launchMode(provider({ runtimeModes: ['full-access'] }), 'auto'),
     null,
   );
   assert.equal(

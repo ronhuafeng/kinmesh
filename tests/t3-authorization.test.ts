@@ -443,9 +443,9 @@ await test('AUTH SMOKE FIXTURE: read/capabilities only, scope distinction, pinni
   };
   // The ceiling is the person's choice in T3, reported, never exercised.
   assert.equal((await readSmoke(wire, credential)).ceiling, 'full-access');
-  // Runs launch in Auto under it, never in Full access.
+  // Runs launch in it when the provider runs it.
   assert.deepEqual((await readSmoke(wire, credential)).modes, [
-    { providerId: 'codex', mode: 'auto' },
+    { providerId: 'codex', mode: 'full-access' },
   ]);
 });
 

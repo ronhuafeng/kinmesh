@@ -950,6 +950,7 @@ test('a T3 on another computer: the person pastes the address its approval opene
                 environmentId: 'env-team',
                 connectedAt: new Date().toISOString(),
                 access: 'operate',
+                ceiling: 'approval-required',
                 expired: false,
               }
             : null,
@@ -1031,6 +1032,8 @@ test('connect T3 and an agent in two clicks: the hub keeps the credential and wa
                 environmentId: 'env-live',
                 connectedAt: new Date().toISOString(),
                 access: t3,
+                // Approved with Full access once T3 lets Ada run.
+                ceiling: t3 === 'operate' ? 'full-access' : null,
                 expired: false,
               }
             : null,
@@ -1079,7 +1082,7 @@ test('connect T3 and an agent in two clicks: the hub keeps the credential and wa
     connectT3.getByRole('link', { name: 'Approve in T3 ↗' }),
   ).toHaveAttribute('href', 'http://127.0.0.1:3773/authorize?state=x');
   await expect(connectT3).toContainText('pairing code');
-  await expect(connectT3).toContainText('Supervised');
+  await expect(connectT3).toContainText('Supervised, Auto or Full access');
   // On this Mac the approval comes straight back: nothing to paste.
   await expect(connectT3.getByLabel('Address after approving')).toHaveCount(0);
   // Approved read-only by mistake: said plainly, before anyone waits.
@@ -1089,11 +1092,11 @@ test('connect T3 and an agent in two clicks: the hub keeps the credential and wa
   const permission = setup.getByRole('group', {
     name: 'Give T3 permission to run',
   });
-  await expect(permission).toContainText('choose Supervised');
+  await expect(permission).toContainText('choose how it may run');
   await permission
     .getByRole('button', { name: 'Connect T3', exact: true })
     .click();
-  // Approved with Supervised; the hub records the connection.
+  // Approved with Full access; the hub records the connection.
   const sql = rawDatabase(hub.database);
   try {
     await sql
@@ -1125,6 +1128,8 @@ test('connect T3 and an agent in two clicks: the hub keeps the credential and wa
   const about = page.getByRole('complementary', { name: 'About' });
   await expect(about).toContainText('isolated-ada');
   await expect(about).toContainText('model-x');
+  // How Ada runs is what the person chose in T3.
+  await expect(about).toContainText('127.0.0.1:3773 · full access');
   const tokenFile = join(hub.state, 'managed', 'agents', ada.id + '.json');
   // File mode and saved preferences: tests/connect.test.ts.
   const { token } = z

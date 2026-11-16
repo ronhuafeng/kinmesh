@@ -11,7 +11,7 @@ import {
   registerConnect,
   type Hub,
 } from './connect.js';
-import { provisionedT3 } from './provision.js';
+import { endProvisionedT3, provisionedT3 } from './provision.js';
 import { managedDirectory, t3AuthFile } from '../inbox/managed.js';
 import { principal, resolvePrincipal } from './principals.js';
 import { IdentityError } from '../domain/agents.js';
@@ -227,7 +227,13 @@ export async function createApp(
     run();
     provisioning = setInterval(run, 60_000);
     provisioning.unref();
-  }
+  } else
+    try {
+      // A person signs in now; the deployment's session is not renewed.
+      endProvisionedT3(hub.directory);
+    } catch (error) {
+      app.log.error(describeFailure(error), 't3_provision_end_failed');
+    }
   // The hub's own worker credentials never run out while it serves their
   // agents: renewed now, before anything is served, then every hour.
   const renew = () =>

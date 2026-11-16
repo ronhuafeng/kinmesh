@@ -40,6 +40,10 @@ const T3Status = z.object({
       environmentId: z.string(),
       connectedAt: z.string(),
       access: z.enum(['operate', 'read']).nullable(),
+      /** The mode the person chose in T3; null when unknown. */
+      ceiling: z
+        .enum(['approval-required', 'auto-accept-edits', 'auto', 'full-access'])
+        .nullable(),
       /** T3 no longer honours the sign-in. */
       expired: z.boolean(),
     })
@@ -57,11 +61,23 @@ const Providers = z.object({
 });
 type Step = 'done' | 'todo' | 'manual';
 type T3Connection = NonNullable<T3Status['connection']>;
-/** Where the team's T3 is, and what it lets agents do there. */
+/** T3's names for the modes a person chooses on its approval page. */
+const MODE_NAMES = {
+  'approval-required': 'supervised',
+  'auto-accept-edits': 'accepts edits',
+  auto: 'auto',
+  'full-access': 'full access',
+} as const;
+/** Where the team's T3 is, and how agents run there, when that is known. */
 function t3Where(connection: T3Connection) {
   return {
     host: new URL(connection.endpoint).host,
-    access: connection.access === 'read' ? 'read only' : 'supervised',
+    access:
+      connection.access === 'read'
+        ? 'read only'
+        : connection.ceiling === null
+          ? null
+          : MODE_NAMES[connection.ceiling],
   };
 }
 /** The worker Kinmesh runs for this agent, if it runs one. */
@@ -250,7 +266,8 @@ function Approve({
       </span>
       <ul className="approve-hints">
         <li>
-          Choose <strong>Supervised</strong>, so {agentName} can run.
+          Choose how {agentName} may run: <strong>Supervised</strong>,{' '}
+          <strong>Auto</strong> or <strong>Full access</strong>.
         </li>
         <li>
           Asked for a pairing code? Create one on {new URL(url).host} under
@@ -342,7 +359,7 @@ function ConnectT3({
     <NextStep title={readOnly ? 'Give T3 permission to run' : 'Connect T3'}>
       <p className="muted">
         {readOnly
-          ? `T3 only allowed reading, so ${agentName} can’t run there. Connect again and choose Supervised.`
+          ? `T3 only allowed reading, so ${agentName} can’t run there. Connect again and choose how it may run.`
           : ended
             ? `T3’s sign-in ended, so ${agentName} is waiting. Connect again to go on.`
             : local && !other
@@ -952,7 +969,8 @@ export function AgentSetup({
   const where = connection && t3Where(connection);
   const t3Line = where && (
     <span className="muted">
-      T3 {where.host} ({where.access})
+      T3 {where.host}
+      {where.access && ` (${where.access})`}
     </span>
   );
   return (
@@ -1168,7 +1186,11 @@ export function AgentAbout({
         <dt>Model</dt>
         <dd>{agent.preferences.modelId ?? 'not chosen'}</dd>
         <dt>T3</dt>
-        <dd>{where ? `${where.host} · ${where.access}` : 'not connected'}</dd>
+        <dd>
+          {where
+            ? [where.host, where.access].filter(Boolean).join(' · ')
+            : 'not connected'}
+        </dd>
         <dt>Worker</dt>
         <dd>
           {managed ? 'run by Kinmesh' : awake ? 'run by you' : 'not running'}

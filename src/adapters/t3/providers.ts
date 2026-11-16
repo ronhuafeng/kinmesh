@@ -31,3 +31,21 @@ export async function t3Providers(credential: Credential, signal: AbortSignal) {
   }
 }
 export type T3Providers = typeof t3Providers;
+/**
+ * The grant's ceiling: the mode the person chose on T3's approval page, and
+ * the broadest any run launches in. It is fixed for the grant.
+ */
+export async function t3Ceiling(credential: Credential, signal: AbortSignal) {
+  const wire = new SdkWire(credential, { signal });
+  try {
+    const tools = new ValidatedTools(wire, await wire.list(), [
+      'orchestrator_capabilities',
+    ]);
+    return Capabilities.parse(
+      await tools.call('orchestrator_capabilities', {}, signal),
+    ).runtimeMode;
+  } finally {
+    await wire.close();
+  }
+}
+export type T3Ceiling = typeof t3Ceiling;

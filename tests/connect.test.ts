@@ -54,6 +54,8 @@ async function connectFixture(overrides: Partial<Omit<Hub, 'directory'>> = {}) {
     },
     providers: () =>
       Promise.resolve([{ id: 'isolated-dev', models: ['model-a'] }]),
+    // The person chose Full access on T3's approval page.
+    ceiling: () => Promise.resolve('full-access' as const),
     discover: () => Promise.resolve('http://127.0.0.1:3773/mcp'),
     ensureWorker: () => {
       workers.push(Date.now());
@@ -173,13 +175,19 @@ await test('a person connects T3 from the browser; the credential is saved priva
       connection: { endpoint, environmentId: 'env-live' },
       signIn: null,
     });
-    // Supervised access is reported, so a read-only approval can be caught.
-    assert.equal(
+    // Operate access is reported, so a read-only approval can be caught,
+    // and so is the mode the person chose, which runs launch in.
+    assert.deepEqual(
       z
-        .object({ connection: z.object({ access: z.string().nullable() }) })
-        .parse((await f.call('GET', f.team + '/t3')).json<unknown>()).connection
-        .access,
-      'operate',
+        .object({
+          connection: z.object({
+            access: z.string().nullable(),
+            ceiling: z.string().nullable(),
+          }),
+        })
+        .parse((await f.call('GET', f.team + '/t3')).json<unknown>())
+        .connection,
+      { access: 'operate', ceiling: 'full-access' },
     );
     assert.deepEqual(
       (await f.call('GET', f.team + '/t3/local')).json<unknown>(),

@@ -19,7 +19,12 @@ import {
   signInEnded,
   type Credential,
 } from '../adapters/t3/oauth.js';
-import { t3Providers, type T3Providers } from '../adapters/t3/providers.js';
+import {
+  t3Ceiling,
+  t3Providers,
+  type T3Ceiling,
+  type T3Providers,
+} from '../adapters/t3/providers.js';
 import { Descriptor } from '../adapters/t3/contracts.js';
 import {
   privateDirectory,
@@ -40,6 +45,8 @@ export interface Hub {
   ensureWorker: () => Promise<void>;
   authorize: typeof authorize;
   providers: T3Providers;
+  /** The grant's ceiling, read once at sign-in. */
+  ceiling: T3Ceiling;
   /** The local T3 MCP endpoint, when T3 runs on this machine. */
   discover: () => Promise<string | null>;
   /**
@@ -75,6 +82,7 @@ export const defaultHub = (
   ensureWorker: () => Promise.resolve(),
   authorize,
   providers: t3Providers,
+  ceiling: t3Ceiling,
   discover: discoverLocal,
   pasteCallback: team,
   provisioned,
@@ -145,6 +153,9 @@ export function registerConnect(
             ? ('operate' as const)
             : ('read' as const)
           : null,
+        // The mode the person chose on T3's approval page: runs launch in it,
+        // or the broadest below it their provider runs. Null when unknown.
+        ceiling: credential?.ceiling ?? null,
         // T3 no longer honours the sign-in: agents wait until it is renewed.
         expired: credential !== null && signInEnded(credential),
       },
@@ -246,7 +257,16 @@ export function registerConnect(
     const done = hub
       .authorize(endpoint, interaction, signal)
       .then(async (credential) => {
-        saveCredential(credentialFile, credential, { replace });
+        // What the person chose on T3's approval page, so the workspace says
+        // how agents run; a sign-in stands without it.
+        const ceiling = await hub
+          .ceiling(credential, AbortSignal.timeout(3000))
+          .catch(() => undefined);
+        saveCredential(
+          credentialFile,
+          ceiling === undefined ? credential : { ...credential, ceiling },
+          { replace },
+        );
         await store.managed.saveConnection(
           p,
           teamId,

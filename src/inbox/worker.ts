@@ -200,7 +200,7 @@ export async function deliver(
     };
     const execution = handle.identity;
     const backend = handle.backend;
-    // Auto, or the broadest mode below it the grant and provider allow.
+    // The grant's ceiling, or the broadest mode below it the provider runs.
     const mode = backend.mode(model.providerId);
     // The agent's conversation in this topic (or in the channel outside
     // topics) continues in its thread,

@@ -44,7 +44,7 @@ export function manualTerminal() {
       signal.throwIfAborted();
       await new Promise<void>((done, reject) => {
         terminal.write(
-          '\nOpen this one-time URL only in your trusted browser. Approve in T3; choose Supervised, NEVER Full access.\n' +
+          '\nOpen this one-time URL only in your trusted browser. Approve in T3; choose Supervised, or Full access only for a T3 that runs isolated: agents then run without approval.\n' +
             'After approval, immediately copy the complete failed-localhost redirect URL back to the hidden prompt. Codes expire after 60 seconds.\n' +
             url.href +
             '\n\n',

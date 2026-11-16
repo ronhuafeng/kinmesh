@@ -82,22 +82,17 @@ export function runnable(
   );
 }
 /**
- * The mode a Kinmesh launch on this provider runs in. Agents run in T3's
- * Auto, where T3 lets through what it judges safe and asks a person for the
- * rest; when the grant's ceiling or the provider doesn't allow Auto, the
- * broadest mode below it that both allow. Never above Auto or the ceiling;
- * null when the provider runs none of them.
+ * The mode a Kinmesh launch on this provider runs in: the grant's ceiling,
+ * which the person chose on T3's approval page, or the broadest mode below it
+ * that the provider runs. Never above the ceiling; null when the provider
+ * runs none of them.
  */
 export function launchMode(
   provider: z.infer<typeof Capabilities>['providers'][number],
   ceiling: RuntimeMode,
 ): RuntimeMode | null {
-  const broadest = Math.min(
-    RUNTIME_MODES.indexOf('auto'),
-    RUNTIME_MODES.indexOf(ceiling),
-  );
   return (
-    RUNTIME_MODES.slice(0, broadest + 1)
+    RUNTIME_MODES.slice(0, RUNTIME_MODES.indexOf(ceiling) + 1)
       .reverse()
       .find((mode) => runnable(provider, mode)) ?? null
   );
