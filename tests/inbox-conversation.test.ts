@@ -184,6 +184,111 @@ await test('a run waiting for approval holds no message back: the next steers it
   }
 });
 
+/** The first message's run waits for an approval; the second steers it. */
+async function steeredIntoWaitingRun(f: Fixture) {
+  await mention(f);
+  f.wire.values.t3_thread_read = thread([
+    { runId: RUN, status: 'waiting', position: 0 },
+  ]);
+  const first = await attempt(f);
+  assert.equal(first.state, 'waiting', first.reason);
+  // Claimed at once, while the first still waits.
+  await mention(f);
+  sendReturns(f, RUN, 'steered');
+  const next = await f.inbox.claim([f.agent.id]);
+  assert.ok(next);
+  assert.notEqual(next.id, first.id);
+  await deliver(f.store, next, f.binding, f.factory, signal());
+  const second = await f.inbox.get(next.id);
+  assert.equal(second.reference, first.reference);
+  assert.equal(second.steered, true);
+  return { first, second };
+}
+
+/**
+ * Proves T3 losing a steered message with its interrupted run doesn't lose
+ * the person's message: it is sent again as a turn of its own, once, and
+ * answered by that turn's reply.
+ */
+await test('a message steered into a run that is then interrupted is sent again as its own turn and answered', async () => {
+  const f = await inboxFixture();
+  try {
+    const { first, second } = await steeredIntoWaitingRun(f);
+    const [steer] = calls(f, 't3_thread_send');
+    assert.ok(steer);
+
+    // Someone interrupts the run in T3; T3 takes the message sent again as
+    // a queued turn of its own.
+    sendReturns(f, 'again-run', 'queued');
+    f.wire.values.t3_thread_read = thread([
+      { runId: 'again-run', status: 'running', position: 4 },
+      { runId: RUN, status: 'interrupted', position: 0 },
+    ]);
+    const a = await attempt(f);
+    const b = await attempt(f);
+    assert.equal(a.id, first.id);
+    assert.equal(b.id, second.id);
+    // The message that started the run is answered by how it ended.
+    assert.equal(a.state, 'acked', a.reason);
+    assert.equal(a.reason, 'native-terminal-notice-published');
+    // The steered one follows the run its message now has.
+    assert.equal(b.state, 'waiting', b.reason);
+    assert.equal(b.steered, false);
+    assert.match(String(b.reference), /"runId":"again-run"/);
+    const sends = calls(f, 't3_thread_send');
+    assert.equal(sends.length, 2);
+    const [, again] = sends;
+    assert.ok(again);
+    assert.equal(again.mode, 'queue');
+    assert.equal(again.message, steer.message);
+
+    f.wire.values.t3_thread_read = thread([
+      { runId: 'again-run', status: 'completed', text: 'For B', position: 6 },
+      { runId: RUN, status: 'interrupted', position: 0 },
+    ]);
+    const answered = await attempt(f);
+    assert.equal(answered.id, second.id);
+    assert.equal(answered.state, 'acked', answered.reason);
+    assert.notEqual(answered.resultMessageId, a.resultMessageId);
+    const reply = await f.comm.message(
+      f.principal,
+      f.teamId,
+      f.channelId,
+      MessageId.parse(answered.resultMessageId),
+    );
+    assert.equal(reply.body, 'For B');
+    // Sent again once, however often the run was read.
+    assert.equal(calls(f, 't3_thread_send').length, 2);
+  } finally {
+    await f.dispose();
+  }
+});
+
+await test('a steered message a person stopped is not sent again', async () => {
+  const f = await inboxFixture();
+  try {
+    const { second } = await steeredIntoWaitingRun(f);
+    const stopped = await f.app.inject({
+      method: 'POST',
+      url: `/api/teams/${f.teamId}/deliveries/${second.id}/stop`,
+      cookies: f.cookies,
+      payload: { operationKey: key() },
+    });
+    assert.equal(stopped.statusCode, 200);
+    f.wire.values.t3_thread_read = thread([
+      { runId: RUN, status: 'interrupted', position: 0 },
+    ]);
+    await attempt(f);
+    const b = await attempt(f);
+    assert.equal(b.id, second.id);
+    assert.equal(b.state, 'acked', b.reason);
+    assert.equal(calls(f, 't3_thread_send').length, 1);
+    assert.equal(calls(f, 't3_thread_interrupt').length, 1);
+  } finally {
+    await f.dispose();
+  }
+});
+
 /** The grant's ceiling, as T3 reports it to the next connection. */
 function ceiling(f: Fixture, runtimeMode: string) {
   f.wire.values.orchestrator_capabilities = {

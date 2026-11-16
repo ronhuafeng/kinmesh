@@ -648,7 +648,12 @@ export function inboxRepository(
         return true;
       });
     },
-    async remember(c: Claim, reference: Reference | { operationId: string }) {
+    /** `steered`: T3 said the message steered a run already under way. */
+    async remember(
+      c: Claim,
+      reference: Reference | { operationId: string },
+      steered = false,
+    ) {
       await atomic(async () => {
         await owned(c);
         const row = await get(c.id);
@@ -664,9 +669,32 @@ export function inboxRepository(
             (row.reference !== null && row.reference !== JSON.stringify(ref))
           )
             throw new IdentityError(409);
-          await update(c, { reference: JSON.stringify(ref) });
+          await update(c, {
+            reference: JSON.stringify(ref),
+            ...(row.reference === null ? { steered } : {}),
+          });
         }
         await history(await get(c.id), 'execution-correlated');
+      });
+    },
+    /**
+     * The run its message steered stopped without answering it, so the
+     * message was sent again as a turn of its own: the delivery follows that
+     * run now. Only once, and only for a steered message.
+     */
+    async resent(c: Claim, reference: Reference) {
+      await atomic(async () => {
+        await owned(c);
+        const row = await get(c.id);
+        const ref = Reference.parse(reference);
+        if (!row.steered || row.reference === null || ref.runId === undefined)
+          throw new IdentityError(409);
+        await update(c, {
+          reference: JSON.stringify(ref),
+          steered: false,
+          reason: 'message-resent',
+        });
+        await history(await get(c.id), 'message-resent');
       });
     },
     async defer(

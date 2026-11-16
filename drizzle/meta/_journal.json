@@ -43,6 +43,13 @@
       "when": 1794865247761,
       "tag": "0005_stop_delivery",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1794866078364,
+      "tag": "0006_steered_resend",
+      "breakpoints": true
     }
   ]
 }

@@ -31,7 +31,15 @@ export const Launch = z.strictObject({
 });
 export type Launch = z.infer<typeof Launch>;
 export const Dispatch = z.discriminatedUnion('kind', [
-  z.strictObject({ kind: z.literal('known'), reference: Reference }),
+  z.strictObject({
+    kind: z.literal('known'),
+    reference: Reference,
+    /**
+     * How T3 took a sent message, when this call sent it: a replayed or
+     * reconciled operation doesn't say.
+     */
+    delivery: z.enum(['started', 'queued', 'steered', 'restarted']).optional(),
+  }),
   z.strictObject({
     kind: z.literal('uncertain'),
     operationId: z.string(),

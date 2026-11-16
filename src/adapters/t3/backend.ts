@@ -262,6 +262,7 @@ export class T3Backend implements ExecutionBackend {
         signal,
       );
       let ref: Reference;
+      let delivery: z.infer<typeof Sent>['delivery'] | undefined;
       if (row.tool === 't3_thread_launch') {
         const launched = reply(Launched, raw);
         if (typeof args.message === 'string' && launched.runId === null)
@@ -285,6 +286,7 @@ export class T3Backend implements ExecutionBackend {
           row.tool === 't3_thread_send'
             ? reply(Sent, raw)
             : reply(Interrupted, raw);
+        if ('delivery' in result) delivery = result.delivery;
         if (result.threadId !== args.threadId)
           throw new ExecutionFailure('incompatible');
         ref = {
@@ -300,7 +302,11 @@ export class T3Backend implements ExecutionBackend {
       const observation = await this.read(ref, undefined, signal);
       this.verifyObservation(row, observation);
       if (!(await this.journal.known(row, ref))) return this.fenced(row.id);
-      return { kind: 'known', reference: ref };
+      return {
+        kind: 'known',
+        reference: ref,
+        ...(delivery === undefined ? {} : { delivery }),
+      };
     } catch (error) {
       if (
         !effectReturned &&

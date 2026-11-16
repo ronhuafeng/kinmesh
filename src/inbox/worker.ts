@@ -23,6 +23,7 @@ import {
   clip,
   inboxIntent,
   stopIntent,
+  resendIntent,
   type BlockedReason,
   type Claim,
   type DeliveryReason,
@@ -153,6 +154,36 @@ async function interrupt(
   } catch (error) {
     if (!(error instanceof ExecutionFailure) || error.kind !== 'gone')
       throw error;
+  }
+}
+/**
+ * Sends the delivery's message again as a new turn in its thread, under its
+ * own journaled operation, so it is sent once however often this is retried.
+ * `queue` makes it a turn of its own: it never steers another run. A thread
+ * deleted in T3 has nowhere to send it.
+ */
+async function resend(
+  backend: ExecutionBackend,
+  reference: Reference,
+  message: string,
+  claim: Claim,
+  signal: AbortSignal,
+): Promise<Reference | 'uncertain' | 'gone'> {
+  const intent = resendIntent(claim.agentId, claim.id);
+  const thread = {
+    backend: 't3' as const,
+    environmentId: reference.environmentId,
+    threadId: reference.threadId,
+  };
+  try {
+    let sent = await backend.send(thread, message, intent, signal, 'queue');
+    if (sent.kind === 'uncertain')
+      sent = await backend.reconcile(intent, sent.operationId, signal);
+    return sent.kind === 'known' ? sent.reference : 'uncertain';
+  } catch (error) {
+    if (error instanceof ExecutionFailure && error.kind === 'gone')
+      return 'gone';
+    throw error;
   }
 }
 /** T3 answers from another environment than the one the agent was connected to. */
@@ -402,39 +433,81 @@ export async function deliver(
         !dispatch.reference.runId
       )
         throw new ExecutionFailure('incompatible');
-      await store.inbox.remember(claim, dispatch.reference);
+      await store.inbox.remember(
+        claim,
+        dispatch.reference,
+        dispatch.delivery === 'steered',
+      );
       row = await store.inbox.get(claim.id);
     }
-    const reference = Reference.parse(JSON.parse(row.reference ?? ''));
+    let reference = Reference.parse(JSON.parse(row.reference ?? ''));
     if (reference.environmentId !== preferences.environmentId)
       throw new ExecutionFailure('incompatible');
     // A person asked to stop it: its run is interrupted, and reading on
     // posts how it ended, once T3 says it has.
     if (row.stopRequestedAt !== null)
       await interrupt(handle.backend, reference, claim, signal);
-    const result = await assistantResult(
-      handle.backend,
-      reference,
-      frozen.input.model,
-      signal,
-      frozen.conversation?.afterPosition ?? undefined,
-    ).catch((error: unknown) => {
-      // Its thread was deleted in T3, and the run with it.
-      if (
-        error instanceof ExecutionFailure &&
-        error.kind === 'gone' &&
-        reference.runId !== undefined
-      )
-        return {
-          kind: 'terminal-notice' as const,
-          notice: NativeTerminalNotice.parse({
-            kind: 'native-terminal-no-assistant',
-            reference,
-            state: 'stopped',
-          }),
-        };
-      throw error;
-    });
+    const observe = (reference: Reference) =>
+      assistantResult(
+        backend,
+        reference,
+        frozen.input.model,
+        signal,
+        frozen.conversation?.afterPosition ?? undefined,
+      ).catch((error: unknown) => {
+        // Its thread was deleted in T3, and the run with it.
+        if (
+          error instanceof ExecutionFailure &&
+          error.kind === 'gone' &&
+          reference.runId !== undefined
+        )
+          return {
+            kind: 'terminal-notice' as const,
+            gone: true,
+            notice: NativeTerminalNotice.parse({
+              kind: 'native-terminal-no-assistant',
+              reference,
+              state: 'stopped',
+            }),
+          };
+        throw error;
+      });
+    let result = await observe(reference);
+    // Its message steered a run that then stopped: T3 lost the message with
+    // the run, so it is sent again as a turn of its own, unless a person
+    // asked to stop it.
+    if (
+      row.steered &&
+      row.stopRequestedAt === null &&
+      !('gone' in result) &&
+      (result.kind === 'result'
+        ? result.result.state === 'stopped'
+        : result.kind === 'terminal-notice' &&
+          result.notice.state === 'stopped')
+    ) {
+      const again = await resend(
+        backend,
+        reference,
+        frozen.input.message ?? '',
+        claim,
+        signal,
+      );
+      if (again === 'uncertain') {
+        await store.inbox.defer(claim, 'uncertain', 'native-launch-uncertain');
+        return;
+      }
+      if (again !== 'gone') {
+        if (
+          again.environmentId !== preferences.environmentId ||
+          again.threadId !== reference.threadId ||
+          !again.runId
+        )
+          throw new ExecutionFailure('incompatible');
+        await store.inbox.resent(claim, again);
+        reference = again;
+        result = await observe(reference);
+      }
+    }
     if ('reason' in result) {
       await store.inbox.defer(claim, result.kind, result.reason);
       return;

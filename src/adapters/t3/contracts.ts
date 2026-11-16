@@ -104,10 +104,13 @@ export const Launched = z.object({
   status: Status.nullable(),
   modelSelection: z.object({ instanceId: z.string(), model: z.string() }),
 });
+/** How T3 took a message: a new turn, behind the running one, or into it. */
+export const Delivered = z.enum(['started', 'queued', 'steered', 'restarted']);
 export const Sent = z.object({
   threadId: z.string().min(1),
   runId: z.string().min(1),
   status: Status,
+  delivery: Delivered,
 });
 export const Read = z.object({
   thread: z.object({
