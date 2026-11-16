@@ -172,7 +172,10 @@ it is the authority. Use the custom property for its role, never a raw colour.
   **Check in T3**; **Open in T3** appears only when T3 supplied the link.
 - **Agent setup**: one next step at a time. First **Connect T3**, once per team: a T3
   on this machine is found on its own, otherwise paste its MCP URL; approve
-  Supervised in T3. A read-only approval shows as the next step, never as success.
+  Supervised in T3. When the workspace is reached over HTTPS, T3's approval ends on a
+  page that does not load; its address goes into **Address after approving** and
+  **Finish** completes the connection. The pairing-code hint names the T3 being
+  connected. A read-only approval shows as the next step, never as success.
   Then choose what the agent runs on from one list of every provider's models. After
   that a single line says the agent is ready (or its worker is starting), with
   **Change model**, **Reconnect** and **Disconnect**, and offers to add the agent to

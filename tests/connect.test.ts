@@ -35,7 +35,7 @@ const credential = Credential.parse({
 const mode = (path: string) => statSync(path).mode & 0o777;
 
 /** The team's app with a T3 that approves when told to; no network. */
-async function connectFixture() {
+async function connectFixture(overrides: Partial<Omit<Hub, 'directory'>> = {}) {
   const f = await agentFixture();
   let approve: (ok: boolean) => void = () => undefined;
   const workers: number[] = [];
@@ -58,6 +58,7 @@ async function connectFixture() {
       workers.push(Date.now());
       return Promise.resolve();
     },
+    ...overrides,
   };
   const app = await createApp(f.config, f.store, undefined, undefined, hub, {
     feishu: standInFeishu,
@@ -446,6 +447,93 @@ await test('the hub’s worker serves a connected agent without a restart and le
     await running;
   } finally {
     stopping.abort();
+    await f.dispose();
+  }
+});
+
+/** T3 elsewhere: its approval returns to the person's own loopback. */
+const ISSUER = 'https://t3.test';
+const STATE = 'a'.repeat(64);
+const callbackUrl = (query: string) =>
+  'http://127.0.0.1:49871/callback?' + query;
+const valid = callbackUrl(
+  `state=${STATE}&code=fixture-code&iss=${encodeURIComponent(ISSUER)}`,
+);
+/** A team-mode hub whose T3 completes only on the callback it is given. */
+const teamMode = (): Partial<Omit<Hub, 'directory'>> => ({
+  pasteCallback: true,
+  authorize: async (_endpoint, interaction, signal) => {
+    const { code } = await interaction.prepare(STATE, ISSUER, signal);
+    await interaction.redirect(new URL(ISSUER + '/authorize?state=x'), signal);
+    if ((await code) !== 'fixture-code') throw new Error('Wrong code');
+    return credential;
+  },
+});
+
+await test('in team mode a person finishes the T3 sign-in by pasting the address the approval opened', async () => {
+  const f = await connectFixture(teamMode());
+  try {
+    const status = async () =>
+      z
+        .object({ signIn: z.string().nullable(), pasteCallback: z.boolean() })
+        .loose()
+        .parse((await f.call('GET', f.team + '/t3')).json<unknown>());
+    assert.equal((await status()).pasteCallback, true);
+    const started = await f.call('POST', f.team + '/t3/connect', {
+      endpoint,
+      replace: false,
+    });
+    assert.equal(started.statusCode, 200);
+    assert.equal((await status()).signIn, 'waiting');
+    const paste = (url: string) =>
+      f.call('POST', f.team + '/t3/callback', { url });
+    // Only this sign-in's exact address is taken.
+    for (const wrong of [
+      callbackUrl(
+        `state=${'b'.repeat(64)}&code=fixture-code&iss=${encodeURIComponent(ISSUER)}`,
+      ),
+      callbackUrl(
+        `state=${STATE}&code=fixture-code&iss=${encodeURIComponent('https://other.test')}`,
+      ),
+      valid.replace('127.0.0.1:49871', 'localhost:49871'),
+      valid + '&extra=1',
+      'not a url',
+    ])
+      assert.equal((await paste(wrong)).statusCode, 400, wrong);
+    assert.equal((await status()).signIn, 'waiting');
+    assert.equal((await paste(valid)).statusCode, 204);
+    await settle(f);
+    assert.equal(
+      z
+        .object({ connection: z.object({ endpoint: z.string() }) })
+        .parse((await f.call('GET', f.team + '/t3')).json<unknown>()).connection
+        .endpoint,
+      endpoint,
+    );
+    // Used once: the same address does nothing now.
+    assert.equal((await paste(valid)).statusCode, 409);
+  } finally {
+    await f.dispose();
+  }
+});
+
+await test('in team mode T3 is reached over HTTPS: no T3 on the hub’s loopback is offered or taken', async () => {
+  const f = await connectFixture(teamMode());
+  try {
+    assert.deepEqual(
+      (await f.call('GET', f.team + '/t3/local')).json<unknown>(),
+      { endpoint: null },
+    );
+    assert.equal(
+      (
+        await f.call('POST', f.team + '/t3/connect', {
+          endpoint: 'http://127.0.0.1:3773/mcp',
+          replace: false,
+        })
+      ).statusCode,
+      400,
+    );
+  } finally {
     await f.dispose();
   }
 });
