@@ -28,7 +28,7 @@ export async function readSmoke(wire: Wire, credential: Credential) {
     credential.tokens.scope?.split(/\s+/).includes('orchestration:operate') ??
     false;
   // The grant's ceiling is the person's choice in T3; Kinmesh launches each
-  // run in Auto or the broadest mode below it the ceiling and provider allow.
+  // run in it, or the broadest mode below it that the provider runs.
   const ceiling = capabilities.runtimeMode;
   const modes = capabilities.providers.flatMap((p) => {
     const mode = launchMode(p, ceiling);

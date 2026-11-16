@@ -53,7 +53,7 @@ try {
         signal.throwIfAborted();
         await open(url.href, { wait: false });
         console.info(
-          'Approve in your local browser. Choose Read only or Supervised, NEVER Full access.',
+          'Approve in your local browser. Choose Supervised, or Full access only for a T3 that runs isolated: agents then run without approval.',
         );
       },
     };
