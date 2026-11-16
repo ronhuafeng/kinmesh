@@ -1,6 +1,10 @@
 import { fork, type ChildProcess } from 'node:child_process';
 import { setTimeout as delay } from 'node:timers/promises';
-import { loadWorkerConfig, WorkerConfig } from '../inbox/config.js';
+import {
+  loadWorkerConfig,
+  WorkerConfig,
+  type SpaceProvisioner,
+} from '../inbox/config.js';
 import {
   sameDatabase,
   type DatabaseIdentity,
@@ -37,6 +41,8 @@ export class InboxSupervisor {
     private readonly state: string,
     private readonly identify: () => Promise<DatabaseIdentity>,
     private readonly fatal: () => void,
+    /** The hub's space provisioner, unless the worker's file names one. */
+    private readonly space: SpaceProvisioner | null = null,
   ) {
     this.configuration(); // Opt-in errors fail before a listener or child exists.
   }
@@ -60,7 +66,7 @@ export class InboxSupervisor {
         : loadWorkerConfig(this.path);
     if (config.database !== this.database)
       throw new Error('Worker must use the hub database');
-    return { ...config, state: this.state };
+    return { ...config, state: this.state, space: config.space ?? this.space };
   }
 
   private async launch() {

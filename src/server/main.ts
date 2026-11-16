@@ -41,6 +41,7 @@ try {
       config.state,
       identify,
       fatal,
+      config.space,
     );
   if (path !== undefined) supervisor = supervise(path);
   store = await openStore(config.database);

@@ -56,6 +56,12 @@ The hub's worker grant ends 90 days after the hub last renewed it, and the hub r
 - **Check in T3** reads only, through the team's T3 connection; nothing in the request chooses the endpoint, credential, environment or thread. Every native failure is one generic error, and a T3 link is shown only after validating it against the team's T3 origin and the exact thread.
 - The workspace probe for a local T3 contacts only `127.0.0.1:3773`.
 
+## The space
+
+- The provisioner's token (`KINMESH_SPACE_TOKEN_FILE`) is a bearer credential: the deployment keeps it secret, readable only by the hub, and the provisioner compares it in constant time. It allows only making a folder in the space a T3 project, never reading, writing or removing files or projects.
+- The worker reads it for each request and sends it only to `KINMESH_SPACE_ENDPOINT`, refusing redirects. Plain HTTP is for a private network the deployment controls, such as a cluster network whose policy admits only the hub to the provisioner.
+- The provisioner takes a folder name, never a path: lowercase letters, digits and `-`, inside the space.
+
 ## Team MCP
 
 The Team MCP listener binds `127.0.0.1` only. Plain-HTTP clients must use `http://127.0.0.1:<port>/mcp`; remote clients use a same-host HTTPS reverse proxy with `KINMESH_TEAM_MCP_ORIGIN`. Host must match the configured origin or the exact loopback host; an `Origin`, when present, must match exactly. Limits: 16 KiB bodies, 600 requests/minute per connected IP (proxied clients share one bucket), 10-second request and connection timeouts, 16 requests in progress by default (1–64; overload is 503) and 128 connections. Results are not cacheable. Bearer authentication only; no cookies, no sessions, no OAuth.

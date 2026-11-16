@@ -621,6 +621,29 @@ export const inboxResults = pgTable(
   },
   (t) => [check('inbox_result_json', json(t.result))],
 );
+/**
+ * Each channel's folder in the space, where its T3 project is: named once,
+ * from the channel, and kept, so renaming a channel never moves its files.
+ */
+export const channelSpaces = pgTable(
+  'channel_spaces',
+  {
+    channelId: text('channel_id').primaryKey(),
+    teamId: text('team_id').notNull(),
+    directory: text('directory').notNull(),
+  },
+  (t) => [
+    foreignKey({
+      columns: [t.channelId, t.teamId],
+      foreignColumns: [channels.id, channels.teamId],
+    }).onDelete('cascade'),
+    uniqueIndex('channel_space_directory').on(t.directory),
+    check(
+      'channel_space_directory_name',
+      sql`${t.directory} ~ '^[a-z0-9][a-z0-9-]{0,79}$'`,
+    ),
+  ],
+);
 /** Worker liveness per configured binding: "a worker would claim this agent's wakes now". */
 export const inboxBindings = pgTable(
   'inbox_bindings',

@@ -440,7 +440,9 @@ export function inboxRepository(
             JSON.stringify(value.input.model);
           const conversation =
             JSON.stringify(frozen.conversation) ===
-            JSON.stringify(value.conversation);
+              JSON.stringify(value.conversation) &&
+            JSON.stringify(frozen.input.target) ===
+              JSON.stringify(value.input.target);
           if (authority && model && conversation) return frozen;
           // A different grant or T3 authority may never replay an operation
           // that could exist natively, and a run that may exist keeps the
@@ -569,11 +571,38 @@ export function inboxRepository(
         return {
           execution: frozen.execution,
           model: frozen.input.model,
+          target: frozen.input.target,
           conversation: {
             threadId: thread,
             afterPosition: positions.length ? Math.max(...positions) : null,
           },
         };
+      });
+    },
+    /**
+     * The delivery's channel's folder in the space: `named` the first time,
+     * the same folder ever after.
+     */
+    async space(c: Claim, named: string) {
+      return atomic(async () => {
+        await owned(c);
+        await q()
+          .insert(s.channelSpaces)
+          .values({
+            channelId: c.channelId,
+            teamId: c.teamId,
+            directory: named,
+          })
+          .onConflictDoNothing();
+        const row = (
+          await q()
+            .select({ directory: s.channelSpaces.directory })
+            .from(s.channelSpaces)
+            .where(eq(s.channelSpaces.channelId, c.channelId))
+            .limit(1)
+        )[0];
+        if (!row) throw new IdentityError(409);
+        return row.directory;
       });
     },
     /**

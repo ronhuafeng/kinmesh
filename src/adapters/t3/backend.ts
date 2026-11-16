@@ -22,6 +22,7 @@ import {
 import {
   ValidatedTools,
   EXECUTION_TOOLS,
+  OPTIONAL_TOOLS,
   Descriptor,
   Capabilities,
   Launched,
@@ -29,6 +30,7 @@ import {
   Read,
   Waited,
   Interrupted,
+  Projects,
   runnable,
   selectRun,
   reply,
@@ -82,6 +84,7 @@ export class T3Backend implements ExecutionBackend {
         wire,
         await wire.list(),
         EXECUTION_TOOLS,
+        OPTIONAL_TOOLS,
       );
       const descriptor = Descriptor.parse(
         await tools.call('t3_environment_read', {}),
@@ -367,6 +370,28 @@ export class T3Backend implements ExecutionBackend {
     }
     // Explicit reconciliation replays only the persisted command/key on a version that advertises idempotency.
     return this.execute(claim, signal);
+  }
+  async project(workspaceRoot: string, signal?: AbortSignal) {
+    const root = z.string().min(1).max(4096).parse(workspaceRoot);
+    let cursor: number | undefined;
+    // T3 pages its projects; a page bound keeps a long list from looping.
+    for (let page = 0; page < 20; page++) {
+      const result = Projects.parse(
+        await this.tools.call(
+          't3_project_list',
+          { limit: 100, ...(cursor === undefined ? {} : { cursor }) },
+          signal,
+        ),
+      );
+      const found = result.projects.find(
+        (p) => p.workspaceRoot === root && !p.deletedAt,
+      );
+      if (found) return found.id;
+      if (result.nextCursor == null || result.nextCursor === cursor)
+        return null;
+      cursor = result.nextCursor;
+    }
+    return null;
   }
   async read(
     reference: Reference,
