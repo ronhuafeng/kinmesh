@@ -37,7 +37,7 @@ docker compose up -d --build
 docker compose ps      # healthy once the database and worker are ready
 ```
 
-The hub is published on this machine's loopback only (`127.0.0.1:3000`), for the reverse proxy below; its proxy then reaches it from the host, so `KINMESH_TRUSTED_PROXIES` names the Docker network's gateway (for the default bridge, `172.16.0.0/12`). Back up the `kinmesh-data` volume with the database (below). CI builds the image on every pull request. Each commit on `main` is published for linux/amd64 and linux/arm64 as `ghcr.io/ronhuafeng/kinmesh:<commit>`, beside the agents' runtime `ghcr.io/ronhuafeng/kinmesh-t3:<commit>` (`deploy/t3`: unmodified T3 Code and the pi agent at pinned versions, running `t3 serve` as a non-root user); deployments pin that commit.
+The hub is published on this machine's loopback only (`127.0.0.1:3000`), for the reverse proxy below; its proxy then reaches it from the host, so `KINMESH_TRUSTED_PROXIES` names the Docker network's gateway (for the default bridge, `172.16.0.0/12`). Back up the `kinmesh-data` volume with the database (below). CI builds the image on every pull request. Each commit on `main` is published for linux/amd64 and linux/arm64 as `ghcr.io/ronhuafeng/kinmesh:<commit>`, beside the agents' runtime `ghcr.io/ronhuafeng/kinmesh-t3:<commit>` (`deploy/t3`: unmodified T3 Code and the pi agent at pinned versions, running `t3 serve` as a non-root user); deployments pin that commit ([deploying a commit](#deploying-a-commit)).
 
 ### Behind a reverse proxy
 
@@ -318,10 +318,23 @@ Before any model runs, the aggregate rejects linked or non-private files, aliase
 | `CI` → `chromium`             | Same                                  | `npm run test:browser`: real desktop and mobile Chromium against disposable databases                                                    |
 | `Live collaboration`          | Manual dispatch on `main`             | `test:collaboration-live` for Codex and Grok, each on a fresh GitHub-hosted VM                                                           |
 | `Authenticated T3 acceptance` | Manual dispatch on `main`             | `release:check` on the owner's `kinmesh-t3-acceptance` self-hosted runner                                                                |
+| `Publish image`               | Pushes on `main`                      | Both images for both architectures, then the [infra pull request](#deploying-a-commit)                                                   |
 
 Tests run against PostgreSQL in a Docker container that each run starts once: its migrated template is copied into a new database for every test, dropped afterwards. `main` requires `foundation` and `chromium`. Routine CI has no model credentials and never starts a provider run; native DTO cases use labelled fixtures. Browser tests use real Chromium with generated secrets, no Inbox or T3 credentials, and no traces or video. A green CI run is not live evidence.
 
 Both manual workflows check, before checkout, that the dispatcher and any rerun actor is the repository owner on `main` (and, for `Live collaboration`, a GitHub-hosted runner); the scripts check again. Neither runs on pull requests.
+
+Dependabot (`.github/dependabot.yml`) proposes updates weekly: npm minor and patch releases together in one pull request and each major alone, GitHub Actions, and the base images of `Dockerfile` and `deploy/t3/Dockerfile`. Its pull requests pass the same checks as any other.
+
+### Deploying a commit
+
+Once `Publish image` has tagged `ghcr.io/ronhuafeng/kinmesh:<commit>`, its `deploy` job opens a pull request on `weavertech-group/infra` from the branch `deploy/kinmesh-hub` that sets that image's `newTag` in `apps/kinmesh/kustomization.yaml` to the commit, and nothing else; while it is open, each later commit on `main` replaces it with its own. Only the newest commit on `main` is proposed, so a run that finishes late changes nothing. Merging it deploys.
+
+The job is skipped until the `infra` environment of this repository holds the secret `INFRA_PR_TOKEN`: a fine-grained personal access token with resource owner `weavertech-group`, repository access to `infra` only, the repository permissions **Contents: Read and write** and **Pull requests: Read and write** (Metadata: Read comes with them) and nothing else, approved by the organization if it requires that, with an expiry. Limit the environment's deployment branches to `main`, then:
+
+```sh
+gh secret set INFRA_PR_TOKEN --env infra --repo ronhuafeng/kinmesh
+```
 
 ### Live collaboration
 
