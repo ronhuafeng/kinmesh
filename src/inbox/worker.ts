@@ -25,10 +25,13 @@ import {
   type BlockedReason,
   type Claim,
   type DeliveryReason,
+  spaceDirectory,
 } from '../domain/inbox.js';
+import type { Launch } from '../domain/execution.js';
 import { WorkerBinding, type WorkerConfig } from './config.js';
 import { agentTokenFile, managedDirectory, t3AuthFile } from './managed.js';
 import type { BackendFactory } from './t3.js';
+import { spaceProvisioner, type Provisioner } from './space.js';
 
 /**
  * Native read only. No tool/user text or synthetic status can become an
@@ -161,6 +164,8 @@ export async function deliver(
   binding: WorkerBinding,
   factory: BackendFactory,
   stopping: AbortSignal,
+  /** Makes a channel's folder in the space a T3 project; null: scratch threads. */
+  space: Provisioner | null = null,
 ) {
   const signal = AbortSignal.any([
     stopping,
@@ -195,24 +200,57 @@ export async function deliver(
     };
     // The agent's conversation in this topic (or in the channel outside
     // topics) continues in its thread,
-    // unless the thread runs another model or lives under another T3
-    // authority: then this delivery starts a new one.
+    // unless the thread runs another model, lives under another T3
+    // authority, or is a scratch thread while the channel has a project in
+    // the space: then this delivery starts a new one.
     const previous = await store.inbox.conversation(claim);
     const conversation =
       previous !== null &&
       JSON.stringify(previous.execution) === JSON.stringify(handle.identity) &&
-      JSON.stringify(previous.model) === JSON.stringify(model)
+      JSON.stringify(previous.model) === JSON.stringify(model) &&
+      previous.target.kind === (space === null ? 'scratch' : 'project')
         ? previous.conversation
         : undefined;
     const execution = handle.identity;
+    const backend = handle.backend;
+    // A new thread starts in the channel's project: its folder in the space,
+    // named once, which the provisioner makes a T3 project if it isn't one.
+    const newTarget = async (): Promise<Launch['target']> => {
+      if (space === null) return { kind: 'scratch' };
+      const directory = await store.inbox.space(
+        claim,
+        spaceDirectory(context.channelName, claim.channelId),
+      );
+      const root = await space(directory, context.channelName, signal);
+      const projectId = await backend.project(root, signal);
+      if (projectId === null) throw new ExecutionFailure('incompatible');
+      return { kind: 'project', projectId };
+    };
+    // A message to the conversation's thread goes where the thread is; a new
+    // thread keeps the project it was frozen into, so a retry needs nothing
+    // from the provisioner.
+    const target = async (): Promise<Launch['target']> => {
+      if (conversation !== undefined && previous !== null)
+        return previous.target;
+      const row = await store.inbox.get(claim.id);
+      const pinned =
+        row.launch === null ? null : FrozenLaunch.parse(JSON.parse(row.launch));
+      if (
+        pinned?.conversation === undefined &&
+        pinned?.input.target.kind === (space === null ? 'scratch' : 'project')
+      )
+        return pinned.input.target;
+      return newTarget();
+    };
     const launch = (
       conversation: z.infer<typeof FrozenLaunch>['conversation'],
+      target: Launch['target'],
     ) =>
       FrozenLaunch.parse({
         execution,
         grantId: principal.kind === 'agent' ? principal.grantId : '',
         input: {
-          target: { kind: 'scratch' },
+          target,
           title: clip(
             `Kinmesh: ${profile.name} in #${context.channelName}` +
               (context.topic === null ? '' : ` / ${context.topic}`),
@@ -229,7 +267,7 @@ export async function deliver(
         ...(conversation === undefined ? {} : { conversation }),
       });
     let frozen = await store.inbox
-      .freeze(claim, principal, launch(conversation))
+      .freeze(claim, principal, launch(conversation, await target()))
       .catch(async (error: unknown) => {
         // A run T3 may already have stays pinned to the credential and T3
         // authority it started under; after a reconnect it cannot publish.
@@ -294,7 +332,11 @@ export async function deliver(
           !(error instanceof ExecutionFailure && error.kind === 'gone')
         )
           throw error;
-        frozen = await store.inbox.restart(claim, principal, launch(undefined));
+        frozen = await store.inbox.restart(
+          claim,
+          principal,
+          launch(undefined, await newTarget()),
+        );
         dispatch = await handle.backend.launch(frozen.input, intent, signal);
       }
       if (dispatch.kind === 'uncertain') {
@@ -440,6 +482,7 @@ export async function runWorker(
   let initialized = false;
   const running = new Set<Promise<void>>();
   const directory = managedDirectory(config.state);
+  const space = config.space === null ? null : spaceProvisioner(config.space);
   let bindings = new Map<AgentId, WorkerBinding>();
   let lastBeat = 0;
   try {
@@ -465,11 +508,16 @@ export async function runWorker(
         if (!claim) break;
         const binding = bindings.get(claim.agentId);
         if (!binding) throw new Error('Unknown binding');
-        const work = deliver(store, claim, binding, factory, stopping).finally(
-          () => {
-            running.delete(work);
-          },
-        );
+        const work = deliver(
+          store,
+          claim,
+          binding,
+          factory,
+          stopping,
+          space,
+        ).finally(() => {
+          running.delete(work);
+        });
         running.add(work);
       }
       if (!initialized) {

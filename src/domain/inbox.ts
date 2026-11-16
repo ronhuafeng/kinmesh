@@ -162,6 +162,21 @@ export const Conversation = z.strictObject({
   afterPosition: z.number().int().nonnegative().nullable(),
 });
 export type Conversation = z.infer<typeof Conversation>;
+/**
+ * A channel's folder in the space: its name as a slug, and the start of its
+ * ID, so two channels never share one. Named once; renaming never moves it.
+ */
+export function spaceDirectory(channelName: string, channelId: string) {
+  const slug =
+    channelName
+      .normalize('NFKD')
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, '-')
+      .replace(/^-+/, '')
+      .slice(0, 40)
+      .replace(/-+$/, '') || 'channel';
+  return `${slug}-${channelId.replaceAll('-', '').slice(0, 8)}`;
+}
 export const FrozenLaunch = z.strictObject({
   execution: ExecutionBinding,
   grantId: z.uuid(),

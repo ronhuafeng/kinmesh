@@ -113,6 +113,10 @@ export interface ExecutionBackend {
     signal?: AbortSignal,
     mode?: 'queue' | 'auto',
   ): Promise<Dispatch>;
+  /**
+   * The project whose folder is `workspaceRoot`, if T3 has one; null if not.
+   */
+  project(workspaceRoot: string, signal?: AbortSignal): Promise<string | null>;
   read(
     reference: Reference,
     afterPosition?: number,

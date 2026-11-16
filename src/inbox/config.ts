@@ -9,6 +9,11 @@ import { z } from 'zod';
 import { DatabaseUrl } from '../persistence/database.js';
 import { AgentId } from '../domain/contracts.js';
 import { Endpoint } from '../adapters/t3/oauth.js';
+export const SpaceProvisioner = z.strictObject({
+  endpoint: z.url({ protocol: /^https?$/ }).max(4096),
+  tokenFile: z.string().min(1).max(4096),
+});
+export type SpaceProvisioner = z.infer<typeof SpaceProvisioner>;
 /** An agent the operator's configuration file binds; the operator asserts Team MCP. */
 export const Binding = z.strictObject({
   agentId: AgentId,
@@ -27,6 +32,11 @@ export const WorkerConfig = z.strictObject({
   /** Where the hub keeps the worker's private files. */
   state: z.string().min(1).max(4096).default('.store'),
   pollMs: z.number().int().min(100).max(30000).default(1000),
+  /**
+   * The provisioner that makes a channel's folder in the space a T3 project,
+   * and the file holding its token. Null: conversations are scratch threads.
+   */
+  space: SpaceProvisioner.nullable().default(null),
   bindings: z
     .array(Binding)
     .max(32)

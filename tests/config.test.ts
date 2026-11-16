@@ -30,6 +30,21 @@ await test('configuration rejects absent secrets, invalid ports and non-loopback
     'example.com',
   );
   assert.equal(loadConfig(env).feishu.standIn, null);
+  // The space's provisioner and its token come together, or not at all.
+  assert.equal(loadConfig(env).space, null);
+  const space = {
+    KINMESH_SPACE_ENDPOINT: 'http://t3-space:3774',
+    KINMESH_SPACE_TOKEN_FILE: '/run/t3-space/token',
+  };
+  assert.deepEqual(loadConfig({ ...env, ...space }).space, {
+    endpoint: space.KINMESH_SPACE_ENDPOINT,
+    tokenFile: space.KINMESH_SPACE_TOKEN_FILE,
+  });
+  for (const [name, value] of Object.entries(space))
+    assert.throws(() => loadConfig({ ...env, [name]: value }));
+  assert.throws(() =>
+    loadConfig({ ...env, ...space, KINMESH_SPACE_ENDPOINT: 'ftp://t3-space' }),
+  );
   assert.throws(() => loadConfig({ ...env, KINMESH_PORT: '0' }));
   assert.throws(() =>
     loadConfig({ ...env, KINMESH_ORIGIN: 'http://remote.test' }),

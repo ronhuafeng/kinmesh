@@ -142,6 +142,16 @@ export function selectRun(read: z.infer<typeof Read>, runId?: string) {
     modelId: run?.model ?? read.thread.model,
   };
 }
+export const Projects = z.object({
+  projects: z.array(
+    z.object({
+      id: z.string().min(1),
+      workspaceRoot: z.string(),
+      deletedAt: z.string().nullable().optional(),
+    }),
+  ),
+  nextCursor: z.number().int().nonnegative().nullable().optional(),
+});
 export const Waited = z.object({
   threadId: z.string(),
   runId: z.string().nullable(),
@@ -198,6 +208,8 @@ export const EXECUTION_TOOLS = [
   't3_thread_wait',
   't3_thread_interrupt',
 ] as const;
+/** Tools the backend uses only when T3 offers them; a call without one is incompatible. */
+export const OPTIONAL_TOOLS = ['t3_project_list'] as const;
 export class ValidatedTools {
   private readonly validators = new Map<
     string,
@@ -207,10 +219,14 @@ export class ValidatedTools {
     readonly wire: Wire,
     discovered: unknown,
     names: readonly string[] = EXECUTION_TOOLS,
+    optional: readonly string[] = [],
   ) {
     const tools = ToolList.parse(discovered).tools;
     const ajv = new Ajv({ strict: false, allErrors: false });
-    for (const name of names) {
+    for (const name of [
+      ...names,
+      ...optional.filter((o) => tools.some((t) => t.name === o)),
+    ]) {
       const tool = tools.find((t) => t.name === name);
       if (tool?.outputSchema === undefined)
         throw new ExecutionFailure('incompatible');
@@ -239,7 +255,8 @@ export class ValidatedTools {
     timeoutMs = 30000,
   ): Promise<unknown> {
     const validator = this.validators.get(name);
-    if (!validator?.input(args)) throw new ExecutionFailure('invalid-input');
+    if (!validator) throw new ExecutionFailure('incompatible');
+    if (!validator.input(args)) throw new ExecutionFailure('invalid-input');
     let raw: unknown;
     try {
       raw = await this.wire.call(name, args, signal, timeoutMs);

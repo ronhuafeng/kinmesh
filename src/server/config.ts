@@ -57,6 +57,13 @@ const Environment = z.object({
    */
   KINMESH_T3_ENDPOINT: Endpoint.optional(),
   KINMESH_T3_CREDENTIAL_FILE: z.string().min(1).optional(),
+  /**
+   * The provisioner beside T3 that makes a channel's folder in the space a
+   * T3 project, and the file holding its token. Both or neither; without
+   * them agents' conversations are scratch threads.
+   */
+  KINMESH_SPACE_ENDPOINT: z.url({ protocol: /^https?$/ }).optional(),
+  KINMESH_SPACE_TOKEN_FILE: z.string().min(1).optional(),
   /** Lets a scraper elsewhere read /metrics; this machine needs none. */
   KINMESH_METRICS_TOKEN: z.string().min(32).optional(),
   /** A stand-in for Feishu's hosts, for tests only. */
@@ -100,6 +107,13 @@ export function loadConfig(env: NodeJS.ProcessEnv) {
     throw new Error(
       'Set KINMESH_T3_ENDPOINT and KINMESH_T3_CREDENTIAL_FILE together.',
     );
+  if (
+    (value.KINMESH_SPACE_ENDPOINT === undefined) !==
+    (value.KINMESH_SPACE_TOKEN_FILE === undefined)
+  )
+    throw new Error(
+      'Set KINMESH_SPACE_ENDPOINT and KINMESH_SPACE_TOKEN_FILE together.',
+    );
   return {
     database: value.KINMESH_DATABASE_URL,
     state: value.KINMESH_STATE,
@@ -117,6 +131,14 @@ export function loadConfig(env: NodeJS.ProcessEnv) {
         ? {
             endpoint: value.KINMESH_T3_ENDPOINT,
             credentialFile: value.KINMESH_T3_CREDENTIAL_FILE,
+          }
+        : null,
+    /** Where channels' T3 projects are made, if the deployment has a space. */
+    space:
+      value.KINMESH_SPACE_ENDPOINT && value.KINMESH_SPACE_TOKEN_FILE
+        ? {
+            endpoint: value.KINMESH_SPACE_ENDPOINT,
+            tokenFile: value.KINMESH_SPACE_TOKEN_FILE,
           }
         : null,
     feishu: {

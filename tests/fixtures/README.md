@@ -10,4 +10,6 @@ Upstream references reviewed **before implementation**, pinned to `v0.1.5`:
 - https://github.com/pingdotgg/t3code/blob/v0.1.5/packages/contracts/src/orchestratorMcp.ts
 - Public thread launch/management service source at the same tag was reviewed for command receipt replay semantics; none is imported or copied into Kinmesh.
 
+`t3-0.1.9-project-list.json` is the `t3_project_list` tool as T3 v0.1.9 advertises it, captured from the deployment's T3 on 2026-11-16 with a short-lived read-only session.
+
 Tests named MOCK deliberately mutate these fixtures to exercise failure/timeout/waiting/interrupt-ack branches. Those synthetic variations are not additional captured live outcomes. Native denial fixtures preserve only the machine-readable error code, never native failure prose. No tokens, provider messages, pairing URLs/codes or real user/workspace data should be added. Record compatibility and paid live acceptance separately in PR evidence.

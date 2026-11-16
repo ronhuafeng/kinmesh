@@ -8,20 +8,21 @@ Running Kinmesh, its Inbox worker and Team MCP; the live gates against real T3; 
 
 The hub writes JSON lines to standard output: one record per failure, with its request ID, route, error name, code, constraint and stack (what is never recorded: [security](security.md)). A process that cannot start or run, the Inbox worker and Team MCP included, prints one `…_failed` line with the same fields to standard error before it exits with 1.
 
-| Variable                                            | Meaning                                                                                                                           |
-| --------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------- |
-| `KINMESH_SESSION_KEY`                               | Required; 64 lowercase hex characters; `npm run setup` writes it to `.env`                                                        |
-| `FEISHU_APP_ID`, `FEISHU_APP_SECRET`                | Required; the Feishu app people sign in through; its redirect URL is `KINMESH_ORIGIN/login/callback`                              |
-| `KINMESH_EMAIL_DOMAIN`                              | Required; only mailboxes in this domain may sign in                                                                               |
-| `KINMESH_DATABASE_URL`                              | Required; the PostgreSQL database, as a `postgres://` URL; `npm run setup` writes one for compose's database                      |
-| `KINMESH_STATE`                                     | The hub's own files, such as the [managed directory](security.md#hub-held-worker-secrets) (default `.store`)                      |
-| `KINMESH_ORIGIN`, `KINMESH_PORT`                    | Public origin (an HTTPS origin, or exactly `http://127.0.0.1:<port>`) and listener port                                           |
-| `KINMESH_HOST`                                      | Listener address (default `127.0.0.1`); `0.0.0.0` only inside a container network behind the reverse proxy                        |
-| `KINMESH_INBOX_CONFIG`                              | Optional operator worker configuration (below)                                                                                    |
-| `KINMESH_RATE_LIMIT`                                | Requests per minute per session or address (default 60); see [security](security.md)                                              |
-| `KINMESH_TRUSTED_PROXIES`                           | The reverse proxies, comma-separated addresses or CIDR ranges; required with an HTTPS origin                                      |
-| `KINMESH_T3_ENDPOINT`, `KINMESH_T3_CREDENTIAL_FILE` | Optional, together; a T3 the deployment connects, and the file holding the session it issued for the hub ([T3](t3.md#t3-sign-in)) |
-| `KINMESH_METRICS_TOKEN`                             | Optional; lets a scraper elsewhere read `/metrics` (at least 32 characters)                                                       |
+| Variable                                             | Meaning                                                                                                                           |
+| ---------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------- |
+| `KINMESH_SESSION_KEY`                                | Required; 64 lowercase hex characters; `npm run setup` writes it to `.env`                                                        |
+| `FEISHU_APP_ID`, `FEISHU_APP_SECRET`                 | Required; the Feishu app people sign in through; its redirect URL is `KINMESH_ORIGIN/login/callback`                              |
+| `KINMESH_EMAIL_DOMAIN`                               | Required; only mailboxes in this domain may sign in                                                                               |
+| `KINMESH_DATABASE_URL`                               | Required; the PostgreSQL database, as a `postgres://` URL; `npm run setup` writes one for compose's database                      |
+| `KINMESH_STATE`                                      | The hub's own files, such as the [managed directory](security.md#hub-held-worker-secrets) (default `.store`)                      |
+| `KINMESH_ORIGIN`, `KINMESH_PORT`                     | Public origin (an HTTPS origin, or exactly `http://127.0.0.1:<port>`) and listener port                                           |
+| `KINMESH_HOST`                                       | Listener address (default `127.0.0.1`); `0.0.0.0` only inside a container network behind the reverse proxy                        |
+| `KINMESH_INBOX_CONFIG`                               | Optional operator worker configuration (below)                                                                                    |
+| `KINMESH_RATE_LIMIT`                                 | Requests per minute per session or address (default 60); see [security](security.md)                                              |
+| `KINMESH_TRUSTED_PROXIES`                            | The reverse proxies, comma-separated addresses or CIDR ranges; required with an HTTPS origin                                      |
+| `KINMESH_T3_ENDPOINT`, `KINMESH_T3_CREDENTIAL_FILE`  | Optional, together; a T3 the deployment connects, and the file holding the session it issued for the hub ([T3](t3.md#t3-sign-in)) |
+| `KINMESH_SPACE_ENDPOINT`, `KINMESH_SPACE_TOKEN_FILE` | Optional, together; the [space](#the-space)'s provisioner, and the file holding its token                                         |
+| `KINMESH_METRICS_TOKEN`                              | Optional; lets a scraper elsewhere read `/metrics` (at least 32 characters)                                                       |
 
 `npm start` reads `.env` if present; managed deployments may inject the same variables instead. Missing or malformed values fail startup.
 
@@ -127,7 +128,7 @@ The worker merges managed bindings with the file's on every loop; the file wins 
 
 The file is strict: `pollMs` 100–30000, at most 32 unique bindings (none is an idle worker); agents connected from the workspace add to them without limit, and one worker serves them all. It and each token file must be regular, private (0600, owned by the service user, non-executable for the config) and small; symlinks are refused. For each binding:
 
-1. Enroll the agent in its channels and set its preferences to the T3 environment ID, the isolated provider instance and an advertised model. The worker keeps one scratch thread per agent and topic (and per agent and channel outside topics) in that environment.
+1. Enroll the agent in its channels and set its preferences to the T3 environment ID, the isolated provider instance and an advertised model. The worker keeps one thread per agent and topic (and per agent and channel outside topics) in that environment: in the channel's project when the configuration names a space provisioner (`"space": {"endpoint": …, "tokenFile": …}`; the hub's `KINMESH_SPACE_*` otherwise), else a scratch thread.
 2. Issue a credential with the worker scopes (the agent page's **Run the worker yourself** issues one) and save `{"token":"…"}` as `tokenFile`.
 3. Obtain an operate-scoped T3 grant with [`npm run t3:auth`](t3.md#t3-sign-in) as `t3AuthFile`.
 4. Configure the isolated provider for Team MCP through its own settings ([provider configuration](t3.md#provider-configuration)); `externalTeamMcpConfigured: true` records that you did.
@@ -188,6 +189,22 @@ KINMESH_INBOX_CONFIG=/private/kinmesh/inbox.json npm run inbox:worker -- resume 
 Resume keeps the frozen intent, authority and native key. Never mint a new delivery or key to hide an ambiguous one.
 
 Delivery, source and result identities are kept forever for idempotency; per-delivery diagnostic history is capped at 128 snapshots. There is no purge or disk quota: at storage thresholds stop intake, take a [backup](#backup-and-restore) and archive the installation.
+
+## The space
+
+The space is a directory on the T3 machine where every channel is a T3 project, so agents in a channel share its files ([collaboration](collaboration.md#delivery-states)). Kinmesh never touches it: it asks a **provisioner** beside T3 for a channel's folder, and T3 for the project in it. The provisioner is the deployment's, and does what Kinmesh cannot over MCP ([T3](t3.md#supported-t3)):
+
+```http
+POST {KINMESH_SPACE_ENDPOINT}/projects
+Authorization: Bearer <token>
+Content-Type: application/json
+
+{"directory": "design-3f2a91c0", "title": "design"}
+```
+
+It answers `200 {"workspaceRoot": "/space/design-3f2a91c0"}` once that folder exists, is a git repository with a first commit, and is a T3 project (`t3 project add --title <title> <folder>`); for a folder that already is one, it answers the same without changing anything. `401` or `403` means the token is wrong. `directory` is lowercase letters, digits and `-`, at most 80 characters; the provisioner refuses anything else and never leaves the space.
+
+Every machine that mounts the space uses the same path, since T3 keeps projects by their folder. Back up the space with T3's own state: it holds the channels' work, and T3's projects point into it. Renaming or moving a folder breaks its project; Kinmesh keeps each channel's folder name in `channel_spaces`.
 
 ## Live and native gates
 
