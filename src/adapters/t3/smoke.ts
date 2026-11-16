@@ -2,6 +2,7 @@ import {
   Capabilities,
   Descriptor,
   ValidatedTools,
+  launchMode,
   type Wire,
 } from './contracts.js';
 import type { Credential } from './oauth.js';
@@ -27,6 +28,11 @@ export async function readSmoke(wire: Wire, credential: Credential) {
     credential.tokens.scope?.split(/\s+/).includes('orchestration:operate') ??
     false;
   // The grant's ceiling is the person's choice in T3; Kinmesh launches each
-  // run in the mode it asks for, never above it.
-  return { operate, ceiling: capabilities.runtimeMode };
+  // run in Auto or the broadest mode below it the ceiling and provider allow.
+  const ceiling = capabilities.runtimeMode;
+  const modes = capabilities.providers.flatMap((p) => {
+    const mode = launchMode(p, ceiling);
+    return mode === null ? [] : [{ providerId: p.providerInstanceId, mode }];
+  });
+  return { operate, ceiling, modes };
 }

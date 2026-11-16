@@ -32,17 +32,13 @@ import {
   Interrupted,
   Projects,
   runnable,
+  launchMode,
+  RUNTIME_MODES,
   selectRun,
   reply,
   type Wire,
 } from './contracts.js';
 
-const ranking = [
-  'approval-required',
-  'auto-accept-edits',
-  'auto',
-  'full-access',
-];
 /** What a journaled refusal is when it is replayed. */
 const rejection = (kind: string | null) =>
   kind === 'authentication' || kind === 'gone' ? kind : 'permission';
@@ -119,6 +115,19 @@ export class T3Backend implements ExecutionBackend {
     if (!this.options.scopes.includes('orchestration:operate'))
       throw new ExecutionFailure('permission');
   }
+  /**
+   * The mode a launch on this provider runs in (`launchMode`). A provider
+   * that runs none gets the narrowest, which the launch then refuses.
+   */
+  mode(providerId: string): Launch['mode'] {
+    const provider = this.caps.providers.find(
+      (p) => p.providerInstanceId === providerId,
+    );
+    return (
+      (provider && launchMode(provider, this.caps.runtimeMode)) ??
+      'approval-required'
+    );
+  }
   /** Validate native launch prerequisites without preparing or dispatching an operation. */
   validateLaunch(input: Launch): void {
     this.launchArguments(input);
@@ -131,7 +140,10 @@ export class T3Backend implements ExecutionBackend {
     );
     if (!provider?.models.some((m) => m.id === request.model.modelId))
       throw new ExecutionFailure('incompatible');
-    if (ranking.indexOf(request.mode) > ranking.indexOf(this.caps.runtimeMode))
+    if (
+      RUNTIME_MODES.indexOf(request.mode) >
+      RUNTIME_MODES.indexOf(this.caps.runtimeMode)
+    )
       throw new ExecutionFailure('permission');
     if (!runnable(provider, request.mode))
       throw new ExecutionFailure('incompatible');

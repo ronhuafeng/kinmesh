@@ -571,6 +571,7 @@ export function inboxRepository(
         return {
           execution: frozen.execution,
           model: frozen.input.model,
+          mode: frozen.input.mode,
           target: frozen.input.target,
           conversation: {
             threadId: thread,

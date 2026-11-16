@@ -114,6 +114,11 @@ export interface ExecutionBackend {
     mode?: 'queue' | 'auto',
   ): Promise<Dispatch>;
   /**
+   * The runtime mode a launch on this provider runs in: Auto, or the broadest
+   * below it that the grant and the provider allow.
+   */
+  mode(providerId: string): Launch['mode'];
+  /**
    * The project whose folder is `workspaceRoot`, if T3 has one; null if not.
    */
   project(workspaceRoot: string, signal?: AbortSignal): Promise<string | null>;
