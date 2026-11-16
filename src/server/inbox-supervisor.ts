@@ -15,6 +15,28 @@ import {
 
 const STARTUP_MS = 10_000;
 const RESTART_DELAYS = [250, 500, 1000] as const;
+const RESTART_WINDOW_MS = 10 * 60_000;
+
+/**
+ * At most three replacements in any ten minutes, after 250, 500 and 1000 ms:
+ * a hub that runs for months survives a rare crash, and one that keeps
+ * crashing still stops.
+ */
+export class RestartBudget {
+  private readonly times: number[] = [];
+  constructor(private readonly now: () => number = Date.now) {}
+
+  /** The wait before the next replacement; undefined once none is left. */
+  next() {
+    const now = this.now();
+    // Replacements older than the window no longer count.
+    while ((this.times[0] ?? now) <= now - RESTART_WINDOW_MS)
+      this.times.shift();
+    const wait = RESTART_DELAYS[this.times.length];
+    if (wait !== undefined) this.times.push(now);
+    return wait;
+  }
+}
 interface Child {
   process: ChildProcess;
   closed: Promise<void>;
@@ -201,7 +223,7 @@ export class InboxSupervisor {
 
   private async watch(initial: Child) {
     let child = initial;
-    let restarts = 0;
+    const budget = new RestartBudget();
     while (!this.isStopping()) {
       await child.closed;
       if (this.isStopping()) return;
@@ -209,8 +231,9 @@ export class InboxSupervisor {
         'Kinmesh Inbox worker unavailable; bounded restart pending.',
       );
       let recovered = false;
-      while (restarts < RESTART_DELAYS.length && !this.isStopping()) {
-        const wait = RESTART_DELAYS[restarts++];
+      while (!this.isStopping()) {
+        const wait = budget.next();
+        if (wait === undefined) break;
         try {
           await delay(wait, undefined, { signal: this.stopping.signal });
           child = await this.launch();

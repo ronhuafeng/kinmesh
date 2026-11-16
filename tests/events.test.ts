@@ -184,3 +184,46 @@ await test(
     }
   },
 );
+
+await test(
+  'a stream answers before it has read what the view shows',
+  { timeout: 30_000 },
+  async () => {
+    const f = await communicationFixture();
+    const views = f.store.inboxViews;
+    const liveness = views.liveness.bind(views);
+    try {
+      await f.app.listen({ host: '127.0.0.1', port: 0 });
+      const address = f.app.server.address();
+      assert.ok(address && typeof address === 'object');
+      const origin = 'http://127.0.0.1:' + String(address.port);
+      const cookie = Object.entries(f.cookies)
+        .map(([name, value]) => `${name}=${encodeURIComponent(value)}`)
+        .join('; ');
+      // The workspace read stops part-way until the test lets it go on.
+      const reading = Promise.withResolvers<undefined>();
+      const released = Promise.withResolvers<undefined>();
+      views.liveness = async (...args) => {
+        reading.resolve(undefined);
+        await released.promise;
+        return liveness(...args);
+      };
+      // Answered, 200 and event-stream, while the read of the workspace is
+      // under way and cannot have finished.
+      const place = await stream(origin, cookie);
+      await reading.promise;
+      views.liveness = liveness;
+      released.resolve(undefined);
+      // Once read, the first event names the workspace as it is.
+      const { revision } = WorkspaceSnapshot.parse(
+        (
+          await f.app.inject({ url: '/api/workspace', cookies: f.cookies })
+        ).json<unknown>(),
+      );
+      assert.deepEqual(await place.next(), { workspace: revision });
+    } finally {
+      views.liveness = liveness;
+      await f.dispose();
+    }
+  },
+);

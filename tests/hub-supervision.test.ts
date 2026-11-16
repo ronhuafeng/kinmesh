@@ -22,6 +22,7 @@ import { managedDirectory, writeAgentToken } from '../src/inbox/managed.js';
 import { postInput } from './communication-helpers.js';
 import { Message } from '../src/domain/communication.js';
 import { WORKER_SHUTDOWN_MS } from '../src/inbox/lifecycle.js';
+import { RestartBudget } from '../src/server/inbox-supervisor.js';
 import { deadline, freePort } from './process-helpers.js';
 import { testDatabase } from './database.js';
 import { rawDatabase } from './raw.js';
@@ -285,6 +286,27 @@ async function fixture(database?: string, shared?: string) {
     },
   };
 }
+
+await test('the restart budget is three replacements in any ten minutes', () => {
+  let now = 0;
+  const budget = new RestartBudget(() => now);
+  // Three crashes in a row are replaced, each after a longer wait.
+  assert.equal(budget.next(), 250);
+  now += 60_000;
+  assert.equal(budget.next(), 500);
+  now += 60_000;
+  assert.equal(budget.next(), 1000);
+  // A fourth within ten minutes of the first is one too many.
+  now += 60_000;
+  assert.equal(budget.next(), undefined);
+  // Ten minutes after the first, it no longer counts: one more is allowed.
+  now = 10 * 60_000;
+  assert.equal(budget.next(), 1000);
+  assert.equal(budget.next(), undefined);
+  // Months later, a rare crash is replaced as quickly as the first ever was.
+  now += 90 * 86_400_000;
+  assert.equal(budget.next(), 250);
+});
 
 await test(
   'normal npm start without opt-in retains HTTP health/auth and creates no worker',

@@ -38,10 +38,7 @@ export function registerEvents(
   store: Store,
   changes: Changes,
   reads: {
-    snapshot: (
-      principal: Person,
-      query: WorkspaceQuery,
-    ) => Promise<Revisioned & { team: { id: TeamId } }>;
+    snapshot: (principal: Person, query: WorkspaceQuery) => Promise<Revisioned>;
     t3Status: (principal: Principal, teamId: TeamId) => Promise<Revisioned>;
     runs: (
       principal: Person,
@@ -66,6 +63,12 @@ export function registerEvents(
     const { page, ...place } = WatchQuery.parse(request.query);
     const resources = watched({ ...place, page });
     const session = request.session.get('session');
+    const membership = await store.teamFor(principal.humanId);
+    if (!membership) throw new IdentityError(403);
+    const teamId = membership.team.id;
+    const mine = [...open.values()].filter((h) => h === principal.humanId);
+    if (open.size >= TOTAL || mine.length >= PER_HUMAN)
+      return reply.code(429).send({ error: 'Too many requests' });
     const readable = async (read: () => Promise<Revisioned>) => {
       try {
         return (await read()).revision;
@@ -76,11 +79,12 @@ export function registerEvents(
     };
     /** The current revision of every watched resource. */
     const look = async () => {
-      const workspace = await reads.snapshot(principal, place);
-      const teamId = workspace.team.id;
       const now: Partial<Record<Resource, string>> = {};
       for (const resource of resources) {
-        if (resource === 'workspace') now.workspace = workspace.revision;
+        if (resource === 'workspace')
+          now.workspace = await readable(() =>
+            reads.snapshot(principal, place),
+          );
         if (resource === 't3')
           now.t3 = await readable(() => reads.t3Status(principal, teamId));
         // Both pages are about one agent: `page.id`.
@@ -95,11 +99,9 @@ export function registerEvents(
       }
       return now;
     };
-    let held = await look();
-    const mine = [...open.values()].filter((h) => h === principal.humanId);
-    if (open.size >= TOTAL || mine.length >= PER_HUMAN)
-      return reply.code(429).send({ error: 'Too many requests' });
 
+    // The stream answers at once; what it watches is read after, so a slow
+    // read never holds the connection unanswered.
     reply.hijack();
     const response = reply.raw;
     response.writeHead(200, {
@@ -116,9 +118,10 @@ export function registerEvents(
       response.write(
         `event: revisions\ndata: ${JSON.stringify(Revisions.parse(revisions))}\n\n`,
       );
-    // The first event names everything watched, so a view that read before
-    // the stream opened learns at once what it is behind on.
-    send(held);
+    // Nothing is held yet, so the first check names everything watched, and
+    // a view that read before the stream opened learns at once what it is
+    // behind on.
+    let held: Partial<Record<Resource, string>> = {};
 
     let pending = false;
     const check = async () => {
@@ -162,6 +165,8 @@ export function registerEvents(
     }
     open.set(end, principal.humanId);
     request.raw.on('close', end);
+    // Subscribed before the first read, so a change during it is not missed.
+    schedule();
   });
   return { openStreams: () => open.size };
 }
