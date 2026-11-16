@@ -9,16 +9,12 @@ import {
   type ExecutionBackend,
   type WaitResult,
   type StopResult,
-} from '../../domain/execution.js';
-import type {
-  Operation,
-  ClaimedOperation,
-  OperationJournal,
-} from '../../persistence/operations.js';
-import {
+  type Operation,
+  type ClaimedOperation,
+  type OperationJournal,
   EXECUTION_ATTEMPT_MS,
   executionScope,
-} from '../../persistence/operations.js';
+} from '../../domain/execution.js';
 import {
   ValidatedTools,
   EXECUTION_TOOLS,

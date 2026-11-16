@@ -26,11 +26,16 @@ export function inspectSource(path: string, source: string): string[] {
     ) {
       if (privatePackage.test(node.moduleSpecifier.text))
         errors.push(`${path}: private T3 import`);
+      // The domain and the adapters that implement its ports stand apart
+      // from storage and the hub.
+      const layer = /^src\/(domain|adapters)\//.exec(path)?.[1];
       if (
-        path.startsWith('src/domain/') &&
+        layer !== undefined &&
         /(?:persistence|server)/.test(node.moduleSpecifier.text)
       )
-        errors.push(`${path}: domain depends on infrastructure`);
+        errors.push(
+          `${path}: ${layer === 'domain' ? 'domain' : 'adapter'} depends on infrastructure`,
+        );
     }
     if (ts.isCallExpression(node) || ts.isNewExpression(node)) {
       const expression = node.expression.getText(ast);

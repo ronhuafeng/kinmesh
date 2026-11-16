@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import { z } from 'zod';
 export const Reference = z.strictObject({
   backend: z.literal('t3'),
@@ -151,4 +152,60 @@ export interface ExecutionBackend {
     operationId: string,
     signal?: AbortSignal,
   ): Promise<Dispatch>;
+}
+/** One native operation as the journal keeps it. */
+export const Operation = z.object({
+  id: z.string(),
+  scope: z.string(),
+  actor: z.string(),
+  operationKey: z.string(),
+  requestId: z.string(),
+  fingerprint: z.string(),
+  tool: z.string(),
+  payload: z.string(),
+  phase: z.enum(['prepared', 'dispatching', 'uncertain', 'known', 'rejected']),
+  reference: z.string().nullable(),
+  rejection: z.string().nullable(),
+  generation: z.number().int().nonnegative(),
+  claimToken: z.string().nullable(),
+  leaseUntil: z.number().int().nonnegative(),
+});
+export type Operation = z.infer<typeof Operation>;
+/** An operation under one owner's claim, which fences every later write. */
+export const ClaimedOperation = Operation.extend({
+  claimToken: z.uuid(),
+  leaseUntil: z.number().int().positive(),
+});
+export type ClaimedOperation = z.infer<typeof ClaimedOperation>;
+// SDK mutations default to 30s; an entire attempt is capped at 60s. No lease renewal.
+export const EXECUTION_LEASE_MS = 120_000;
+export const EXECUTION_ATTEMPT_MS = 60_000;
+/** The journal scope of one T3 environment behind one endpoint. */
+export const executionScope = (endpoint: string, environmentId: string) =>
+  createHash('sha256')
+    .update(JSON.stringify([endpoint, environmentId]))
+    .digest('hex');
+/**
+ * The durable record of the native operations an adapter dispatches. Intent
+ * is kept before dispatch; after a claim, each write lands only while that
+ * claim still owns the operation, and says whether it did.
+ */
+export interface OperationJournal {
+  prepare(
+    scope: string,
+    intent: Intent,
+    tool: string,
+    payload: Record<string, unknown>,
+    authority: string,
+  ): Promise<Operation>;
+  get(id: string): Promise<Operation>;
+  claim(id: string, recover?: boolean): Promise<ClaimedOperation | undefined>;
+  owned(row: ClaimedOperation): Promise<boolean>;
+  uncertain(row: ClaimedOperation): Promise<boolean>;
+  remember(row: ClaimedOperation, reference: Reference): Promise<boolean>;
+  known(row: ClaimedOperation, reference: Reference): Promise<boolean>;
+  rejected(
+    row: ClaimedOperation,
+    kind: 'authentication' | 'permission' | 'gone',
+  ): Promise<boolean>;
 }

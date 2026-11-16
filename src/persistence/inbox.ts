@@ -19,7 +19,6 @@ import type { communicationRepository } from './communication.js';
 import type { taskRepository } from './tasks.js';
 import { referenceKey, transactional } from './transactional.js';
 import { dbNow, type Database } from './database.js';
-import { executionScope } from './operations.js';
 import type { Principal } from '../domain/agents.js';
 import { DomainError } from '../domain/errors.js';
 import { AgentId, ChannelId, TeamId } from '../domain/contracts.js';
@@ -42,7 +41,7 @@ import {
   type BlockedReason,
   type DeliveryReason,
 } from '../domain/inbox.js';
-import { Reference } from '../domain/execution.js';
+import { Reference, executionScope } from '../domain/execution.js';
 import {
   actingMember,
   retainsExecutionResponsibility,

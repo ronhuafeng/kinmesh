@@ -1,40 +1,18 @@
 import { createHash, randomUUID } from 'node:crypto';
 import { and, eq, or, lte, gt, sql } from 'drizzle-orm';
-import { z } from 'zod';
 import * as schema from './schema.js';
-import { fingerprint } from './transactional.js';
 import { dbNow as now, type Database } from './database.js';
-import { Reference, Intent, ExecutionFailure } from '../domain/execution.js';
+import {
+  Reference,
+  Intent,
+  ExecutionFailure,
+  Operation,
+  ClaimedOperation,
+  EXECUTION_LEASE_MS,
+  type OperationJournal,
+} from '../domain/execution.js';
 
-const Row = z.object({
-  id: z.string(),
-  scope: z.string(),
-  actor: z.string(),
-  operationKey: z.string(),
-  requestId: z.string(),
-  fingerprint: z.string(),
-  tool: z.string(),
-  payload: z.string(),
-  phase: z.enum(['prepared', 'dispatching', 'uncertain', 'known', 'rejected']),
-  reference: z.string().nullable(),
-  rejection: z.string().nullable(),
-  generation: z.number().int().nonnegative(),
-  claimToken: z.string().nullable(),
-  leaseUntil: z.number().int().nonnegative(),
-});
-export type Operation = z.infer<typeof Row>;
-const Claimed = Row.extend({
-  claimToken: z.uuid(),
-  leaseUntil: z.number().int().positive(),
-});
-export type ClaimedOperation = z.infer<typeof Claimed>;
-// SDK mutations default to 30s; an entire attempt is capped at 60s. No lease renewal.
-export const EXECUTION_LEASE_MS = 120_000;
-export const EXECUTION_ATTEMPT_MS = 60_000;
-/** The journal scope of one T3 environment behind one endpoint. */
-export const executionScope = (endpoint: string, environmentId: string) =>
-  fingerprint([endpoint, environmentId]);
-export function operationJournal(d: Database) {
+export function operationJournal(d: Database): OperationJournal {
   const { q, atomic } = d;
   const table = schema.executionOperations;
   async function get(id: string) {
@@ -43,7 +21,7 @@ export function operationJournal(d: Database) {
       .from(table)
       .where(eq(table.id, id))
       .limit(1);
-    return Row.parse(row);
+    return Operation.parse(row);
   }
   function fence(row: ClaimedOperation) {
     return and(
@@ -92,7 +70,7 @@ export function operationJournal(d: Database) {
             ),
           )
           .limit(1);
-        const row = Row.parse(found);
+        const row = Operation.parse(found);
         if (row.fingerprint === fingerprint) return row;
         // A send to a thread T3 no longer has did nothing, so the key may
         // carry another operation instead, such as a new thread.
@@ -111,7 +89,7 @@ export function operationJournal(d: Database) {
           })
           .where(eq(table.id, row.id))
           .returning();
-        return Row.parse(replaced);
+        return Operation.parse(replaced);
       });
     },
     get,
@@ -143,7 +121,7 @@ export function operationJournal(d: Database) {
           ),
         )
         .returning();
-      return row === undefined ? undefined : Claimed.parse(row);
+      return row === undefined ? undefined : ClaimedOperation.parse(row);
     },
     async owned(row: ClaimedOperation) {
       const found = await q()
@@ -190,4 +168,3 @@ export function operationJournal(d: Database) {
     },
   };
 }
-export type OperationJournal = ReturnType<typeof operationJournal>;
