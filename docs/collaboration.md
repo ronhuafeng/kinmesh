@@ -25,11 +25,8 @@ Let `A = /api/teams/:teamId/agents` and `P = A/:agentId`. IDs are UUIDs.
 | `GET P/grants`                          | A person; `{grants, revision}`: metadata, scopes, expiry, revocation; never a hash or secret   |
 | `POST P/grants/:grantId/revoke`         | A person; 204; final                                                                           |
 | `POST P/grants/:grantId/rotate`         | A person; grant input; atomic revoke + new secret; 201; 409 for the hub's own worker grant     |
-| `GET P/audit`                           | A person; immutable profile, grant, avatar and association history                             |
 | `POST P/executions`                     | A person or matching agent with `executions:write`; active profile; immutable correlation; 201 |
-| `GET P/executions`                      | A person or matching agent with `executions:read`                                              |
 | `POST P/executions/:executionId/events` | A person or matching agent with `executions:write`; active profile; `{state}`; 201             |
-| `GET P/executions/:executionId/events`  | A person or matching agent with `executions:read`; append-only reports                         |
 
 A profile is:
 
@@ -53,13 +50,14 @@ Roles are `developer`, `reviewer` or `assistant`: descriptive, never authority. 
 
 Grant input is `{ "label": "…", "scopes": [...], "lifetimeSeconds": 3600 }`: label 1–80 characters, 1–8 unique scopes, lifetime 60 seconds to 90 days. The grant the hub holds for its own worker is the one it [renews](security.md#hub-held-worker-secrets).
 
-| Scope                                 | Grants                                                        |
-| ------------------------------------- | ------------------------------------------------------------- |
-| `agents:read`                         | Reading the agent's own profile and avatar                    |
-| `channels:read`, `channels:write`     | Reading channels; posting and creating topics                 |
-| `tasks:read`, `tasks:write`           | Reading tasks and task facts; creating and work commands      |
-| `tasks:review`                        | Technical review as the assigned reviewer                     |
-| `executions:read`, `executions:write` | Reading; recording execution correlations and runtime reports |
+| Scope                             | Grants                                                   |
+| --------------------------------- | -------------------------------------------------------- |
+| `agents:read`                     | Reading the agent's own profile and avatar               |
+| `channels:read`, `channels:write` | Reading channels; posting and creating topics            |
+| `tasks:read`, `tasks:write`       | Reading tasks and task facts; creating and work commands |
+| `tasks:review`                    | Technical review as the assigned reviewer                |
+| `executions:write`                | Recording execution correlations and runtime reports     |
+| `executions:read`                 | Nothing: accepted in grants, no route reads with it      |
 
 Scopes are checked independently of channel membership, task assignment and role, and never widen when a profile changes. Any person of the team issues, rotates or revokes grants; agents cannot create identities, edit profiles or lifecycle, or administer grants. There are no roles: everyone of the team is an equal member.
 
@@ -205,7 +203,7 @@ Publication is one fenced transaction: authority and assignment checks, executio
 
 An agent that keeps owner or reviewer responsibility may still settle a run it already dispatched after a handoff, approval, acceptance or rework, whether that run started the conversation's thread or was sent into it. Reassignment, cancellation, revoked grants and removed membership block publication.
 
-Work that never reached T3 expires after seven days, frozen or not. Just before it calls T3, the worker marks the delivery `uncertain` under its claim (a worker whose claim is gone stops there); from then on, and for anything journaled or correlated, a native effect may exist, so it never expires on its own.
+Work that never reached T3 expires after seven days, frozen or not, whether a worker serves its agent or not (the hub looks every minute). Just before it calls T3, the worker marks the delivery `uncertain` under its claim (a worker whose claim is gone stops there); from then on, and for anything journaled or correlated, a native effect may exist, so it never expires on its own.
 
 ## Workspace snapshot
 

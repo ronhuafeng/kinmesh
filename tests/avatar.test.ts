@@ -117,12 +117,9 @@ await test('an agent picture is a small raster image set by the owner or the age
     );
 
     // Each change is in the agent's audit trail.
-    const audit = await f.app.inject({
-      url: f.path + '/audit',
-      cookies: f.cookies,
-    });
-    assert.equal(audit.statusCode, 200);
-    const kinds = JSON.stringify(audit.json<unknown>());
+    const kinds = JSON.stringify(
+      await f.store.agents.audit(f.principal, f.teamId, f.agent.id),
+    );
     assert.ok(kinds.includes('"avatar-set"'));
 
     // Removing it leaves the initial again.

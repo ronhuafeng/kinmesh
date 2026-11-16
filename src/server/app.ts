@@ -265,6 +265,15 @@ export async function createApp(
   await renew();
   const renewing = setInterval(() => void renew(), 3_600_000);
   renewing.unref();
+  // Work that never reached T3 expires on time, also for an agent no worker
+  // serves: no claim ever looks at its work.
+  const expire = () =>
+    store.inbox.expire().catch((error: unknown) => {
+      app.log.error(describeFailure(error), 'inbox_expiry_failed');
+    });
+  await expire();
+  const expiring = setInterval(() => void expire(), 60_000);
+  expiring.unref();
   registerCommunication(app, store);
   registerTasks(app, store);
   const { snapshot, runs } = registerWorkspace(
@@ -304,6 +313,7 @@ export async function createApp(
   app.addHook('onClose', async () => {
     clearInterval(provisioning);
     clearInterval(renewing);
+    clearInterval(expiring);
     changes.close();
     await store.close();
   });
