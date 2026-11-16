@@ -35,7 +35,13 @@ export const Dispatch = z.discriminatedUnion('kind', [
   z.strictObject({
     kind: z.literal('uncertain'),
     operationId: z.string(),
-    reason: z.enum(['unavailable', 'cancelled', 'incompatible', 'in-flight']),
+    reason: z.enum([
+      'unavailable',
+      'cancelled',
+      'incompatible',
+      'unreadable',
+      'in-flight',
+    ]),
   }),
 ]);
 export type Dispatch = z.infer<typeof Dispatch>;
@@ -76,6 +82,8 @@ export type FailureKind =
   | 'permission'
   | 'unavailable'
   | 'incompatible'
+  /** T3 answered with data outside the contract Kinmesh reads it by. */
+  | 'unreadable'
   | 'invalid-input'
   | 'cancelled'
   | 'conflict'

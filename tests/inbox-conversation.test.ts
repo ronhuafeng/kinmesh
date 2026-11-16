@@ -368,3 +368,51 @@ await test('a reply whose T3 item id is long, as pi’s are, is published', asyn
     await f.dispose();
   }
 });
+
+await test('a reply T3 returns outside Kinmesh’s contract blocks with its cause, not retried', async () => {
+  const f = await inboxFixture();
+  try {
+    await mention(f);
+    const read = assistantRead('Too long to name');
+    const [item] = read.items;
+    assert.ok(item);
+    f.wire.values.t3_thread_read = {
+      ...read,
+      items: [{ ...item, itemId: 'x'.repeat(4096) }],
+    };
+    const delivery = await attempt(f);
+    assert.equal(delivery.state, 'blocked', delivery.reason);
+    assert.equal(delivery.reason, 'native-unreadable');
+    // Nothing picks it up again on its own, and the run was launched once.
+    await due(f.dbPath);
+    assert.equal(await f.inbox.claim([f.agent.id]), undefined);
+    assert.equal(calls(f, 't3_thread_launch').length, 1);
+  } finally {
+    await f.dispose();
+  }
+});
+
+await test('a launch whose answer can’t be read blocks; its retry reconciles under the same request key', async () => {
+  const f = await inboxFixture();
+  try {
+    await mention(f);
+    f.wire.values.t3_thread_launch = { threadId: 42 };
+    const delivery = await attempt(f);
+    assert.equal(delivery.state, 'blocked', delivery.reason);
+    assert.equal(delivery.reason, 'native-unreadable');
+    await due(f.dbPath);
+    assert.equal(await f.inbox.claim([f.agent.id]), undefined);
+
+    // Once T3's answer reads again, the retry finds the same launch.
+    f.wire.values.t3_thread_launch = launched;
+    f.wire.values.t3_thread_read = assistantRead('Read at last');
+    await f.inbox.resume(delivery.id);
+    const resumed = await attempt(f);
+    assert.equal(resumed.state, 'acked', resumed.reason);
+    const keys = calls(f, 't3_thread_launch').map((c) => c.clientRequestId);
+    assert.equal(keys.length, 2);
+    assert.equal(new Set(keys).size, 1);
+  } finally {
+    await f.dispose();
+  }
+});

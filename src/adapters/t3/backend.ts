@@ -31,6 +31,7 @@ import {
   Interrupted,
   runnable,
   selectRun,
+  reply,
   type Wire,
 } from './contracts.js';
 
@@ -43,6 +44,17 @@ const ranking = [
 /** What a journaled refusal is when it is replayed. */
 const rejection = (kind: string | null) =>
   kind === 'authentication' || kind === 'gone' ? kind : 'permission';
+/**
+ * Why a dispatch whose effect in T3 is unknown stays unknown. A reply that
+ * doesn't fit the contract will not fit on the next attempt either.
+ */
+const unknownBecause = (error: unknown) =>
+  error instanceof ExecutionFailure &&
+  (error.kind === 'cancelled' ||
+    error.kind === 'incompatible' ||
+    error.kind === 'unreadable')
+    ? error.kind
+    : 'unavailable';
 export interface BackendOptions {
   endpoint: string;
   expectedEnvironmentId: string;
@@ -236,7 +248,7 @@ export class T3Backend implements ExecutionBackend {
       );
       let ref: Reference;
       if (row.tool === 't3_thread_launch') {
-        const launched = Launched.parse(raw);
+        const launched = reply(Launched, raw);
         if (typeof args.message === 'string' && launched.runId === null)
           throw new ExecutionFailure('incompatible');
         const model = z
@@ -256,8 +268,8 @@ export class T3Backend implements ExecutionBackend {
       } else {
         const result =
           row.tool === 't3_thread_send'
-            ? Sent.parse(raw)
-            : Interrupted.parse(raw);
+            ? reply(Sent, raw)
+            : reply(Interrupted, raw);
         if (result.threadId !== args.threadId)
           throw new ExecutionFailure('incompatible');
         ref = {
@@ -290,12 +302,7 @@ export class T3Backend implements ExecutionBackend {
       return {
         kind: 'uncertain',
         operationId: row.id,
-        reason:
-          error instanceof ExecutionFailure && error.kind === 'cancelled'
-            ? 'cancelled'
-            : error instanceof ExecutionFailure && error.kind === 'incompatible'
-              ? 'incompatible'
-              : 'unavailable',
+        reason: unknownBecause(error),
       };
     }
   }
@@ -349,12 +356,12 @@ export class T3Backend implements ExecutionBackend {
         if (!(await this.journal.known(claim, reference)))
           return this.fenced(row.id);
         return { kind: 'known', reference };
-      } catch {
+      } catch (error) {
         if (!(await this.journal.uncertain(claim))) return this.fenced(row.id);
         return {
           kind: 'uncertain',
           operationId: row.id,
-          reason: 'unavailable',
+          reason: unknownBecause(error),
         };
       }
     }
@@ -373,7 +380,8 @@ export class T3Backend implements ExecutionBackend {
         : {
             afterPosition: z.number().int().nonnegative().parse(afterPosition),
           };
-    const result = Read.parse(
+    const result = reply(
+      Read,
       await this.tools.call(
         't3_thread_read',
         {
@@ -434,7 +442,8 @@ export class T3Backend implements ExecutionBackend {
   ): Promise<WaitResult> {
     const ref = this.ref(reference);
     z.number().int().min(1).max(20000).parse(timeoutMs);
-    const result = Waited.parse(
+    const result = reply(
+      Waited,
       await this.tools.call(
         't3_thread_wait',
         {
