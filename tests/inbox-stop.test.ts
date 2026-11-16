@@ -301,9 +301,10 @@ await test('a delivery whose run’s T3 access is gone ends at once without aski
 });
 
 /**
- * Proves a run waiting for an approval links to its thread where T3 shows
- * it, as T3 linked it (T3's web app, as T3 0.1.9 does), for a person who can
- * read the channel; never a link elsewhere, and never for an agent.
+ * Proves a run waiting for an approval links to its thread on the team's T3
+ * origin, where T3's web UI shows it, for a person who can read the channel,
+ * whatever link T3's read gives (T3 0.1.9's points at its hosted app); never
+ * for an agent.
  */
 await test('a run waiting for an approval links to its thread in T3', async () => {
   const f = await inboxFixture();
@@ -329,25 +330,18 @@ await test('a run waiting for an approval links to its thread in T3', async () =
     const directory = managedDirectory(f.directory);
     privateDirectory(directory);
     saveCredential(t3AuthFile(directory), mock.credential);
-    mock.link.value = `https://app.t3.codes/threads/${reference.environmentId}/${encodeURIComponent(reference.threadId)}`;
     const linked = await link();
     assert.equal(linked.statusCode, 200, linked.body);
     assert.equal(linked.headers['cache-control'], 'no-store');
-    assert.deepEqual(linked.json(), { url: mock.link.value });
+    assert.deepEqual(linked.json(), {
+      url: `${mock.origin}/${reference.environmentId}/${encodeURIComponent(reference.threadId)}`,
+    });
     assert.ok(
       mock.calls.every((call) =>
         ['t3_environment_read', 't3_thread_read'].includes(call.name),
       ),
     );
 
-    // A link anywhere else, or to another thread, is not shown.
-    for (const elsewhere of [
-      `https://evil.example/threads/${reference.environmentId}/${encodeURIComponent(reference.threadId)}`,
-      `https://app.t3.codes/threads/${reference.environmentId}/other-thread`,
-    ]) {
-      mock.link.value = elsewhere;
-      assert.deepEqual((await link()).json(), { url: null });
-    }
     // T3 that can't be read is one generic answer.
     mock.mode.value = 'bad-read';
     assert.equal((await link()).statusCode, 503);

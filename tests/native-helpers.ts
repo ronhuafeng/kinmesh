@@ -9,8 +9,6 @@ export async function mockNativeServer() {
   const calls: { name: string; args: unknown }[] = [];
   const requests: { path: string; authorization: string | undefined }[] = [];
   const hooks: { beforeThreadRead?: () => Promise<void> } = {};
-  /** The link T3 gives the thread; on its own origin unless set. */
-  const link: { value: string | null } = { value: null };
   const mode = {
     value: 'normal' as
       | 'normal'
@@ -96,9 +94,9 @@ export async function mockNativeServer() {
             .object({ thread: z.record(z.string(), z.unknown()) })
             .loose()
             .parse(raw);
-          data.thread.link =
-            link.value ??
-            `${origin}/${capturedEnvironment.environmentId}/${String(data.thread.threadId)}`;
+          // As T3 0.1.9 links every thread, on its hosted app, which
+          // doesn't reach a self-hosted T3.
+          data.thread.link = `https://app.t3.codes/threads/${capturedEnvironment.environmentId}/${encodeURIComponent(String(data.thread.threadId))}`;
           result = {
             structuredContent: mode.value === 'bad-read' ? {} : data,
             content: [],
@@ -141,7 +139,6 @@ export async function mockNativeServer() {
     calls,
     requests,
     hooks,
-    link,
     async close() {
       server.closeAllConnections();
       await new Promise<void>((resolve, reject) =>

@@ -839,12 +839,12 @@ test('a request waiting for an approval in T3 is stopped from its line, and one 
   await expect(unsent).toContainText('Stopped before Ada started');
   await expect(unsent.getByRole('button', { name: 'Stop' })).toHaveCount(0);
   // The next one's run waits for an approval in T3, as the worker records
-  // it, in the team's T3. MOCK only: no T3 is reached; the link is the one
-  // T3 0.1.9 gives a thread, on its web app.
+  // it, in the team's T3. MOCK only: no T3 is reached; the link is the
+  // thread on the team's T3 origin.
   await say('@Ada and the changelog?');
   const waiting = responses('and the changelog?');
   await expect(waiting).toContainText('Ada isn’t connected');
-  const thread = 'https://app.t3.codes/threads/env-mock/thread-mock';
+  const thread = 'http://127.0.0.1:3773/env-mock/thread-mock';
   await page.route('**/api/teams/*/deliveries/*/link', (route) =>
     route.fulfill({ json: { url: thread } }),
   );

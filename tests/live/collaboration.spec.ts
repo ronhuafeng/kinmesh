@@ -26,6 +26,7 @@ import {
   identityLinks,
 } from './proof.js';
 import { readActivity } from './activity.js';
+import { threadLink } from '../../src/workspace/links.js';
 import { requireLiveDispatch } from './safety.js';
 import { until, ready } from './processes.js';
 import { SdkWire } from '../../src/adapters/t3/sdk.js';
@@ -456,10 +457,10 @@ test('complete real two-agent workflow, Human rework/acceptance, recovery and au
         assert.equal(typeof call.input.operationKey, 'string');
     }
     const page = native.page;
-    assert.ok(activity.thread.link);
-    const target = new URL(activity.thread.link);
-    assert.equal(target.origin, native.origin);
-    if (page.url() !== target.href) await page.goto(target.href);
+    // Where T3's web UI opens the run's thread, as Kinmesh links it.
+    const target = threadLink(native.origin, ref);
+    assert.ok(target);
+    if (page.url() !== target) await page.goto(target);
     // These are public T3 0.1.5 UI attributes. Each card closes over its own runtime request ID.
     const cards = page.locator('[data-v2-item-type="approval_request"]');
     await until(
