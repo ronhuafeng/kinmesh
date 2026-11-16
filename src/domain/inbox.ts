@@ -229,7 +229,8 @@ export const Result = z.strictObject({
     threadId: z.string().min(1).max(256),
     runId: z.string().min(1).max(256),
   }),
-  itemId: z.string().min(1).max(256),
+  // T3's item ids name their provider's own; pi's run to some 500 characters.
+  itemId: z.string().min(1).max(2048),
   text: z
     .string()
     .trim()
