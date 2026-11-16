@@ -86,6 +86,25 @@ async function connectFixture(overrides: Partial<Omit<Hub, 'directory'>> = {}) {
       ...(payload ? { payload } : {}),
     });
   const directory = managedDirectory(f.config.state);
+  /**
+   * The hub's change stream, as the agent page watches it, which names T3's
+   * status: opened on first use, kept until the app closes.
+   */
+  let stream: AsyncIterator<unknown> | undefined;
+  /** Resolves when the hub next says what the page shows may have changed. */
+  const changed = async () => {
+    stream ??= (
+      await app.inject({
+        url: `/api/events?page=agent:${f.agent.id}`,
+        cookies: f.cookies,
+        payloadAsStream: true,
+      })
+    )
+      .stream()
+      [Symbol.asyncIterator]();
+    if ((await stream.next()).done === true)
+      throw new Error('The hub ended its change stream');
+  };
   return {
     ...f,
     app,
@@ -94,6 +113,7 @@ async function connectFixture(overrides: Partial<Omit<Hub, 'directory'>> = {}) {
     agentPath,
     directory,
     workers,
+    changed,
     approve: (ok = true) => {
       approve(ok);
     },
@@ -109,14 +129,18 @@ const Status = z.object({
     .nullable(),
   signIn: z.enum(['waiting', 'failed']).nullable(),
 });
-/** Waits until the T3 sign-in has ended, approved or not. */
+/**
+ * Waits until the T3 sign-in has ended, approved or not: T3's status is read
+ * again only when the hub says it may have changed, so the wait is bounded by
+ * the sign-in's own steps, never by the hub's request limit.
+ */
 async function settle(f: Awaited<ReturnType<typeof connectFixture>>) {
   for (;;) {
     const status = Status.parse(
       (await f.call('GET', f.team + '/t3')).json<unknown>(),
     );
     if (status.signIn !== 'waiting') return;
-    await delay(5);
+    await f.changed();
   }
 }
 
