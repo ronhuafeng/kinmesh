@@ -1,4 +1,4 @@
-import { useEffect, useId, useRef, useState } from 'react';
+import { useEffect, useId, useLayoutEffect, useRef, useState } from 'react';
 import { z } from 'zod';
 import type { Agent } from '../src/domain/agents.js';
 import type { Message } from '../src/domain/communication.js';
@@ -405,40 +405,143 @@ export function showMessage(id: string) {
     delete target.dataset.flash;
   }, 1600);
 }
-/** Remembers which messages were already shown so new arrivals can be marked. */
-function useArrivals(channelId: string, messages: ChatMessage[], me: string) {
-  const seen = useRef<{ channel: string; ids: Set<string> } | null>(null);
+const mine = (m: ChatMessage | undefined, me: string) =>
+  m?.author.kind === 'human' && m.author.humanId === me;
+/**
+ * Marks what arrived while the conversation was open: messages newer than
+ * any shown before in this place (a channel, or one of its topics). Older
+ * ones loaded by scrolling back did not arrive.
+ */
+function useArrivals(place: string, messages: ChatMessage[], me: string) {
+  const seen = useRef<{ place: string; newest: number } | null>(null);
   const [divider, setDivider] = useState<string | null>(null);
   const [fresh, setFresh] = useState<Set<string>>(new Set());
   useEffect(() => {
     const previous = seen.current;
-    const ids = new Set(messages.map((m) => m.id));
-    if (previous?.channel !== channelId) {
-      seen.current = { channel: channelId, ids };
+    const newest = messages.at(-1)?.position ?? 0;
+    if (previous?.place !== place) {
+      seen.current = { place, newest };
       setDivider(null);
       setFresh(new Set());
       return;
     }
-    const arrived = messages.filter((m) => !previous.ids.has(m.id));
-    for (const id of ids) previous.ids.add(id);
+    const arrived = messages.filter((m) => m.position > previous.newest);
+    previous.newest = Math.max(previous.newest, newest);
     if (arrived.length === 0) return;
     setFresh(new Set(arrived.map((m) => m.id)));
-    const fromOthers = arrived.find(
-      (m) => m.author.kind !== 'human' || m.author.humanId !== me,
-    );
+    const fromOthers = arrived.find((m) => !mine(m, me));
     if (fromOthers) setDivider((old) => old ?? fromOthers.id);
-  }, [channelId, messages, me]);
+  }, [place, messages, me]);
   return { divider, fresh };
+}
+const atBottom = () =>
+  window.innerHeight + window.scrollY >=
+  document.documentElement.scrollHeight - 48;
+const toBottom = () => {
+  window.scrollTo({ top: document.documentElement.scrollHeight });
+};
+/**
+ * A conversation reads from the bottom: it opens there, follows what arrives
+ * while you are there, and holds still while you read further back, also as
+ * older messages are added above. `sent()` goes to the bottom, so what you
+ * just sent comes into view however far back you were.
+ */
+function useReadingPosition(place: string, messages: ChatMessage[]) {
+  const held = useRef<{
+    place: string;
+    first: string | undefined;
+    last: string | undefined;
+    /** Where the first message sat in the viewport. */
+    top: number;
+    bottom: boolean;
+  } | null>(null);
+  const firstTop = (id: string | undefined) =>
+    id === undefined
+      ? 0
+      : (document.getElementById('message-' + id)?.getBoundingClientRect()
+          .top ?? 0);
+  useLayoutEffect(() => {
+    const previous = held.current;
+    const first = messages[0]?.id;
+    const last = messages.at(-1)?.id;
+    if (previous?.place !== place) toBottom();
+    else {
+      // Older messages above: the one that was first stays where it was.
+      if (first !== previous.first && previous.first !== undefined) {
+        const anchor = document.getElementById('message-' + previous.first);
+        if (anchor)
+          window.scrollBy({
+            top: anchor.getBoundingClientRect().top - previous.top,
+          });
+      }
+      // At the bottom, it stays there whatever grew (a message, a reply's
+      // line).
+      if (previous.bottom) toBottom();
+    }
+    held.current = {
+      place,
+      first,
+      last,
+      top: firstTop(first),
+      bottom: atBottom(),
+    };
+  }, [place, messages]);
+  // Reading moves the position; so does the window changing size.
+  useEffect(() => {
+    const note = () => {
+      if (!held.current) return;
+      held.current.top = firstTop(held.current.first);
+      held.current.bottom = atBottom();
+    };
+    window.addEventListener('scroll', note, { passive: true });
+    window.addEventListener('resize', note);
+    return () => {
+      window.removeEventListener('scroll', note);
+      window.removeEventListener('resize', note);
+    };
+  }, []);
+  return {
+    sent: () => {
+      toBottom();
+      if (held.current) held.current.bottom = true;
+    },
+  };
+}
+/**
+ * Asks for older messages once the top of the conversation comes near:
+ * scrolling up reads further back, until there is nothing older.
+ */
+function useEarlier(older: string | null, onEarlier: (cursor: string) => void) {
+  const top = useRef<HTMLDivElement>(null);
+  const ask = useRef(onEarlier);
+  useEffect(() => {
+    ask.current = onEarlier;
+  }, [onEarlier]);
+  useEffect(() => {
+    const edge = top.current;
+    if (!edge || older === null) return;
+    const watch = new IntersectionObserver(
+      (entries) => {
+        if (entries.some((entry) => entry.isIntersecting)) ask.current(older);
+      },
+      { rootMargin: '600px 0px 0px 0px' },
+    );
+    watch.observe(edge);
+    return () => {
+      watch.disconnect();
+    };
+  }, [older]);
+  return top;
 }
 export function Chat({
   data,
   channelPath,
   topic,
+  shownTopic,
   onTopic,
   onDone,
   next,
-  firstPage,
-  pagedBack,
+  onEarlier,
   onMakeTask,
   openAgent,
   onLeave,
@@ -446,22 +549,23 @@ export function Chat({
   data: WorkspaceSnapshot;
   channelPath: string;
   topic: string;
+  /** The topic the messages on screen were read for ('' for all). */
+  shownTopic: string;
   onTopic: (topic: string) => void;
   onDone: () => void;
   next: (key: string, cursor: string | null) => void;
-  firstPage: () => void;
-  pagedBack: boolean;
+  /** Reach further back, through the page this cursor names. */
+  onEarlier: (cursor: string) => void;
   onMakeTask: (message: ChatMessage) => void;
   openAgent: (id: string) => void;
   onLeave: () => void;
 }) {
   const channel = data.channel;
   const messages = data.messages.items;
-  const { divider, fresh } = useArrivals(
-    channel?.id ?? '',
-    messages,
-    data.human.id,
-  );
+  const shown = (channel?.id ?? '') + ':' + shownTopic;
+  const { divider, fresh } = useArrivals(shown, messages, data.human.id);
+  const reading = useReadingPosition(shown, messages);
+  const earlier = useEarlier(data.messages.nextCursor, onEarlier);
   if (!channel) return null;
   // Mention deliveries under each asking message, and the way back from a reply.
   const asked = new Map<string, DeliveryView[]>();
@@ -538,11 +642,8 @@ export function Chat({
           />
         </div>
       </div>
-      {pagedBack && (
-        <button className="quiet page-control" onClick={firstPage}>
-          First messages page
-        </button>
-      )}
+      {/* Coming near it reads older messages. */}
+      <div ref={earlier} aria-hidden="true" />
       <ol className="messages" aria-label="Channel messages">
         {messages.map((m, index) => {
           const previous = messages[index - 1];
@@ -664,16 +765,6 @@ export function Chat({
           No messages yet. Type @ to bring an agent in.
         </p>
       )}
-      {data.messages.nextCursor && (
-        <button
-          className="quiet page-control"
-          onClick={() => {
-            next('messagesCursor', data.messages.nextCursor);
-          }}
-        >
-          Next messages page
-        </button>
-      )}
       <Composer
         key={channel.id}
         channelName={channel.name}
@@ -681,7 +772,10 @@ export function Chat({
         topicId={topic}
         agents={joinedAgents(data)}
         connected={(id) => workerConnected(data.wake, id)}
-        onDone={onDone}
+        onDone={() => {
+          reading.sent();
+          onDone();
+        }}
       />
     </div>
   );

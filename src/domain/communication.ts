@@ -144,6 +144,8 @@ export const PageInput = z.strictObject({
   cursor: z.string().min(1).max(2048).optional(),
 });
 export type PageInput = z.input<typeof PageInput>;
+/** Most messages or tasks a newest page widened back by a cursor holds. */
+export const REACH = 200;
 export const pageOf = <T extends z.ZodType>(item: T) =>
   z.strictObject({
     items: z.array(item).max(100),

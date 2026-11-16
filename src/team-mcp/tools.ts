@@ -170,7 +170,7 @@ export function teamServer(store: Store, authorization: string) {
   );
   register(
     'team_messages_read',
-    'Read channel history, optionally restricted to a topic.',
+    'Read channel history, optionally restricted to a topic: the newest messages first, each page oldest to newest; nextCursor reads older ones.',
     pagedChannel.extend({ topicId: TopicId.optional() }),
     pageOf(Message),
     true,
@@ -195,7 +195,7 @@ export function teamServer(store: Store, authorization: string) {
   );
   register(
     'team_tasks_list',
-    'List tasks in a joined channel.',
+    'List tasks in a joined channel: the newest first, each page oldest to newest; nextCursor reads older ones.',
     pagedChannel,
     pageOf(Task),
     true,

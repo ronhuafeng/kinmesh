@@ -1038,6 +1038,7 @@ await test('task/history/execution snapshot pages are bounded and stable under i
   try {
     const originals = [];
     for (let i = 0; i < 5; i++) originals.push((await f.create()).task);
+    // The board reads the newest tasks first; older pages follow.
     const first = await f.tasks.list(f.developer, f.teamId, f.channelId, {
       limit: 2,
     });
@@ -1053,8 +1054,9 @@ await test('task/history/execution snapshot pages are bounded and stable under i
       cursor,
       limit: 100,
     });
+    assert.equal(rest.nextCursor, null);
     assert.deepEqual(
-      [...first.items, ...rest.items].map((t) => t.id),
+      [...rest.items, ...first.items].map((t) => t.id),
       originals.map((t) => t.id),
     );
     let task = (

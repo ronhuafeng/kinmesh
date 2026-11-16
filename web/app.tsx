@@ -253,12 +253,16 @@ export function App() {
       clearTimeout(timer);
     };
   }, [status, revision]);
+  // The task open on the board is part of the place: the snapshot carries
+  // it even when it is older than the board's newest tasks.
+  const openTaskId = focus?.kind === 'task' ? focus.id : '';
   const place = useMemo(() => {
     const query = new URLSearchParams(cursors);
     if (selection.channel) query.set('channelId', selection.channel);
     if (selection.topic) query.set('topicId', selection.topic);
+    if (openTaskId) query.set('taskId', openTaskId);
     return query.toString();
-  }, [cursors, selection.channel, selection.topic]);
+  }, [cursors, selection.channel, selection.topic, openTaskId]);
   const paged = Object.keys(cursors).length > 0;
   useEffect(() => {
     const controller = new AbortController();
@@ -287,6 +291,7 @@ export function App() {
           // A task that isn't here closes to the board.
           setFocus((old) =>
             old?.kind === 'task' &&
+            next.openTask?.id !== old.id &&
             !next.tasks.items.some((task) => task.id === old.id)
               ? null
               : old,
@@ -438,7 +443,10 @@ export function App() {
     };
   }, [status, refresh]);
   const next = (key: string, cursor: string | null) => {
-    if (cursor) setCursors((old) => ({ ...old, [key]: cursor }));
+    if (cursor)
+      setCursors((old) =>
+        old[key] === cursor ? old : { ...old, [key]: cursor },
+      );
   };
   const selectChannel = (channel: string) => {
     setSelection({ channel, topic: '' });
@@ -504,7 +512,8 @@ export function App() {
   };
   const focusedTask =
     focus?.kind === 'task' && channelPath
-      ? data.tasks.items.find((t) => t.id === focus.id)
+      ? (data.tasks.items.find((t) => t.id === focus.id) ??
+        (data.openTask?.id === focus.id ? data.openTask : undefined))
       : undefined;
   const workerAgent =
     focus?.kind === 'worker'
@@ -1061,16 +1070,20 @@ export function App() {
                           data={data}
                           channelPath={channelPath}
                           topic={selection.topic}
+                          shownTopic={
+                            new URLSearchParams(loadedPlace ?? '').get(
+                              'topicId',
+                            ) ?? ''
+                          }
                           onTopic={(topic) => {
                             setSelection((old) => ({ ...old, topic }));
                             setCursors({});
                           }}
                           onDone={refresh}
                           next={next}
-                          firstPage={() => {
-                            setCursors({});
+                          onEarlier={(cursor) => {
+                            next('messagesCursor', cursor);
                           }}
-                          pagedBack={Boolean(cursors.messagesCursor)}
                           onMakeTask={(message) => {
                             setDraft(draftFromMessage(message, data));
                             setFocus(null);
@@ -1092,9 +1105,6 @@ export function App() {
                       {channelPath ? (
                         <Board
                           data={data}
-                          next={() => {
-                            next('tasksCursor', data.tasks.nextCursor);
-                          }}
                           openTask={openTask}
                           onNewTask={startNewTask}
                           openId={focus?.kind === 'task' ? focus.id : null}
