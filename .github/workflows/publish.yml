@@ -11,6 +11,12 @@ jobs:
   build:
     strategy:
       matrix:
+        image:
+          - name: kinmesh
+            context: .
+          - name: kinmesh-t3
+            context: deploy/t3
+        arch: [amd64, arm64]
         include:
           - arch: amd64
             runner: ubuntu-24.04
@@ -25,19 +31,22 @@ jobs:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           persist-credentials: false
-      - name: Build and push linux/${{ matrix.arch }}
+      - name: Build and push ${{ matrix.image.name }} for linux/${{ matrix.arch }}
         env:
           TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          IMAGE: ghcr.io/${{ github.repository }}:${{ github.sha }}-${{ matrix.arch }}
+          IMAGE: ghcr.io/${{ github.repository_owner }}/${{ matrix.image.name }}:${{ github.sha }}-${{ matrix.arch }}
         run: |
           echo "$TOKEN" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
           docker build \
             --label org.opencontainers.image.source=https://github.com/${{ github.repository }} \
             --label org.opencontainers.image.revision=${{ github.sha }} \
-            -t "$IMAGE" .
+            -t "$IMAGE" "${{ matrix.image.context }}"
           docker push "$IMAGE"
   manifest:
     needs: build
+    strategy:
+      matrix:
+        name: [kinmesh, kinmesh-t3]
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     permissions:
@@ -47,7 +56,7 @@ jobs:
       - name: One tag for both architectures
         env:
           TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          IMAGE: ghcr.io/${{ github.repository }}:${{ github.sha }}
+          IMAGE: ghcr.io/${{ github.repository_owner }}/${{ matrix.name }}:${{ github.sha }}
         run: |
           echo "$TOKEN" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
           docker buildx imagetools create -t "$IMAGE" "$IMAGE-amd64" "$IMAGE-arm64"
