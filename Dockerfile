@@ -2,7 +2,7 @@
 # Configuration comes from the environment; the database is PostgreSQL at
 # KINMESH_DATABASE_URL, and the hub's own files live in /data.
 
-FROM node:24-bookworm-slim AS toolchain
+FROM node:26-bookworm-slim AS toolchain
 WORKDIR /src
 COPY package.json package-lock.json ./
 
@@ -14,7 +14,7 @@ RUN npm run build
 FROM toolchain AS dependencies
 RUN npm ci --omit=dev && npm cache clean --force
 
-FROM node:24-bookworm-slim AS runtime
+FROM node:26-bookworm-slim AS runtime
 ENV NODE_ENV=production
 WORKDIR /app
 COPY package.json package-lock.json ./
