@@ -48,6 +48,17 @@ const codeOf = (error: unknown): string | undefined => {
 };
 
 /**
+ * Whether a rule of the database refused the write: a check, a trigger or a
+ * missing reference refuses the same write again. A duplicate key is left
+ * out, since it may be a race lost to a concurrent transaction, which the
+ * next attempt reads.
+ */
+export function refused(error: unknown) {
+  const code = codeOf(error);
+  return code !== undefined && code.startsWith('23') && code !== '23505';
+}
+
+/**
  * One store's connection to PostgreSQL. Every write runs in a serializable
  * transaction, retried when a concurrent one makes it stale, so the
  * compare-and-set rules hold as they did under a single writer. Within a
@@ -94,7 +105,8 @@ export async function openDatabase(url: string) {
         }
       }
     } catch (error) {
-      if (codeOf(error)?.startsWith('23'))
+      // An inner transaction's refusal is passed on as it is.
+      if (!(error instanceof IdentityError) && codeOf(error)?.startsWith('23'))
         throw new IdentityError(409, { cause: error });
       throw error;
     }

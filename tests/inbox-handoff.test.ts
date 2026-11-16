@@ -5,8 +5,16 @@ import { join } from 'node:path';
 import { deliver } from '../src/inbox/worker.js';
 import { FrozenLaunch } from '../src/domain/inbox.js';
 import { inboxFixture, assistantRead, due } from './inbox-helpers.js';
-import { envelope, options, reference, launch } from './t3-helpers.js';
+import {
+  envelope,
+  options,
+  reference,
+  launch,
+  launched,
+} from './t3-helpers.js';
 import { profileInput } from './agent-helpers.js';
+import { postInput } from './communication-helpers.js';
+import { MessageId } from '../src/domain/communication.js';
 
 const signal = () => new AbortController().signal;
 
@@ -323,6 +331,96 @@ await test('MOCK native: a known journal receipt recovers across handoff before 
       f.wire.calls.filter((c) => c.name === 't3_thread_launch').length,
       1,
     );
+  } finally {
+    await f.dispose();
+  }
+});
+
+/**
+ * Proves a delivery sent into the conversation's existing thread counts as
+ * the agent's own dispatch, exactly as the launch that started the thread
+ * does: its answer still posts after the agent asks for review.
+ */
+await test('MOCK native: a task wake sent into a conversation the agent already answered in settles after its own review request', async () => {
+  const f = await inboxFixture();
+  try {
+    // The agent's first answer in the channel starts its thread.
+    await f.comm.post(
+      f.principal,
+      f.teamId,
+      f.channelId,
+      postInput({ mentions: [{ kind: 'agent', id: f.agent.id }] }),
+    );
+    const first = await f.inbox.claim([f.agent.id]);
+    assert.ok(first);
+    await deliver(f.store, first, f.binding, f.factory, signal());
+    assert.equal((await f.inbox.get(first.id)).state, 'acked');
+
+    // The task's wake is sent into that thread and starts its next run.
+    const task = (await f.create({ owner: { kind: 'agent', id: f.agent.id } }))
+      .task;
+    const run = 'fixture-task-run';
+    const thread = (status: string, text?: string) => {
+      const base = assistantRead(text);
+      const [recent] = base.recentRuns;
+      const [item] = base.items;
+      assert.ok(recent && item);
+      return {
+        ...base,
+        thread: {
+          ...base.thread,
+          status,
+          activeRunId: status === 'running' ? run : null,
+          latestRunId: run,
+        },
+        recentRuns: [{ ...recent, runId: run, status }],
+        items: text === undefined ? [] : [{ ...item, runId: run, position: 6 }],
+      };
+    };
+    f.wire.values.t3_thread_send = {
+      threadId: launched.threadId,
+      messageId: 'fixture-sent-message',
+      runId: run,
+      status: 'running',
+      delivery: 'started',
+    };
+    f.wire.values.t3_thread_read = thread('running');
+    const wake = await f.inbox.claim([f.agent.id]);
+    assert.ok(wake);
+    assert.equal(wake.taskId, task.id);
+    await deliver(f.store, wake, f.binding, f.factory, signal());
+    assert.equal((await f.inbox.get(wake.id)).state, 'waiting');
+
+    // The agent finishes: it asks for review, then writes its reply.
+    await f.act(f.developer, task, {
+      type: 'request-review',
+      reviewer: { kind: 'agent', id: f.reviewer.id },
+      note: 'Done; please review.',
+    });
+    f.wire.values.t3_thread_read = thread('completed', 'The work is done.');
+    await due(f.dbPath);
+    const retry = await f.inbox.claim([f.agent.id]);
+    assert.ok(retry);
+    assert.equal(retry.id, wake.id);
+    await deliver(f.store, retry, f.binding, f.factory, signal());
+    const settled = await f.inbox.get(wake.id);
+    assert.equal(settled.state, 'acked', settled.reason);
+    assert.equal(
+      (
+        await f.comm.message(
+          f.principal,
+          f.teamId,
+          f.channelId,
+          MessageId.parse(settled.resultMessageId),
+        )
+      ).body,
+      'The work is done.',
+    );
+    // One thread, one message into it: the retry only read.
+    const called = (name: string) =>
+      f.wire.calls.filter((c) => c.name === name).length;
+    assert.equal(called('t3_thread_launch'), 1);
+    assert.equal(called('t3_thread_send'), 1);
   } finally {
     await f.dispose();
   }

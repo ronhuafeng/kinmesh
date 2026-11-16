@@ -9,8 +9,10 @@ import {
   Claim,
   FrozenLaunch,
   INBOX_CAPACITY,
+  clip,
   retryDelay,
 } from '../src/domain/inbox.js';
+import { MessageId } from '../src/domain/communication.js';
 import { IdentityError } from '../src/domain/agents.js';
 import { deliver, assistantResult } from '../src/inbox/worker.js';
 import { loadWorkerConfig, WorkerConfig } from '../src/inbox/config.js';
@@ -1576,6 +1578,68 @@ await test('lease lost inside publication rolls back downstream message/outbox/l
     assert.deepEqual(await counts(), before);
     assert.equal((await f.inbox.get(c.id)).leaseUntil, c.leaseUntil);
     assert.equal((await f.inbox.get(c.id)).state, 'ready');
+  } finally {
+    await raw.close();
+    await f.dispose();
+  }
+});
+/**
+ * Proves shortening never leaves half a character: a reply whose 6000th
+ * unit is the first half of an emoji is stored and posted, not retried.
+ */
+await test('a long reply whose cut falls inside an emoji is published, shortened to whole characters', async () => {
+  const f = await inboxFixture();
+  try {
+    assert.equal(clip('ab😀', 3), 'ab');
+    assert.equal(clip('ab😀', 4), 'ab😀');
+    assert.equal(clip('a\ud83d', 5).isWellFormed(), true);
+    await mention(f);
+    f.wire.values.t3_thread_read = assistantRead(
+      'x'.repeat(5999) + '😀' + 'y'.repeat(50),
+    );
+    const c = await claim(f);
+    await deliver(f.store, c, f.binding, f.factory, signal());
+    const row = await f.inbox.get(c.id);
+    assert.equal(row.state, 'acked', row.reason);
+    const reply = await f.comm.message(
+      f.principal,
+      f.teamId,
+      f.channelId,
+      MessageId.parse(row.resultMessageId),
+    );
+    assert.equal(reply.body, 'x'.repeat(5999));
+  } finally {
+    await f.dispose();
+  }
+});
+/**
+ * Proves a publication the database's rules refuse is not retried as an
+ * outage: the delivery stops with a cause, keeps its run, and a person's
+ * retry publishes that run once the rule no longer refuses it.
+ */
+await test('a publication a database rule refuses blocks the delivery instead of being retried', async () => {
+  const f = await inboxFixture();
+  const raw = rawDatabase(f.dbPath);
+  try {
+    await mention(f);
+    await raw.trigger('fixture_refuse_result', 'inbox_results');
+    const c = await claim(f);
+    await deliver(f.store, c, f.binding, f.factory, signal());
+    const row = await f.inbox.get(c.id);
+    assert.equal(row.state, 'blocked');
+    assert.equal(row.reason, 'authority-or-contract-blocked');
+    assert.notEqual(row.reference, null);
+    assert.equal(row.resultMessageId, null);
+    await due(f.dbPath);
+    assert.equal(await f.inbox.claim([f.agent.id]), undefined);
+    await raw.dropTrigger('fixture_refuse_result', 'inbox_results');
+    await f.inbox.resume(c.id);
+    await deliver(f.store, await claim(f), f.binding, f.factory, signal());
+    assert.equal((await f.inbox.get(c.id)).state, 'acked');
+    assert.equal(
+      f.wire.calls.filter((call) => call.name === 't3_thread_launch').length,
+      1,
+    );
   } finally {
     await raw.close();
     await f.dispose();

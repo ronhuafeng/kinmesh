@@ -1,4 +1,4 @@
-import { and, eq, sql } from 'drizzle-orm';
+import { and, eq, inArray, isNull, lt, sql } from 'drizzle-orm';
 import { z } from 'zod';
 import * as s from './schema.js';
 import type { agentRepository } from './agents.js';
@@ -48,7 +48,47 @@ export function managedRepository(
       .limit(1);
     return row ?? null;
   }
+  /**
+   * The hub keeps the credential of a worker it serves valid: a managed
+   * grant nobody revoked, with less than two thirds of `lifetimeSeconds`
+   * left (or already ended), ends `lifetimeSeconds` from now. It is renewed
+   * in place, so the grant a run was frozen under stays the same grant and
+   * the token in the hub's private file stays the worker's. A revoked grant
+   * is never renewed, and one whose binding is gone ages out.
+   */
+  async function renew(lifetimeSeconds: number, agentId?: AgentId) {
+    const now = Date.now();
+    const lifetime = z.number().int().min(60).parse(lifetimeSeconds) * 1000;
+    const renewed = await q()
+      .update(s.agentGrants)
+      .set({ expiresAt: new Date(now + lifetime).toISOString() })
+      .where(
+        and(
+          isNull(s.agentGrants.revokedAt),
+          lt(
+            s.agentGrants.expiresAt,
+            new Date(now + (lifetime * 2) / 3).toISOString(),
+          ),
+          inArray(
+            s.agentGrants.id,
+            q()
+              .select({ id: s.managedBindings.grantId })
+              .from(s.managedBindings)
+              .where(
+                agentId === undefined
+                  ? undefined
+                  : eq(s.managedBindings.agentId, agentId),
+              ),
+          ),
+        ),
+      );
+    return renewed.count;
+  }
   return {
+    /** Renews every worker credential the hub holds; returns how many. */
+    renewWorkerGrants(lifetimeSeconds: number) {
+      return atomic(() => renew(lifetimeSeconds));
+    },
     async connection(p: Principal, teamId: TeamId) {
       await person(p, teamId);
       return connection(teamId);
@@ -180,10 +220,16 @@ export function managedRepository(
           },
         });
         const old = await binding(teamId, agentId);
+        // Connecting again keeps the credential the worker has, renewed if
+        // it was running out; only a revoked one is replaced.
+        if (old !== null) await renew(input.lifetimeSeconds, agentId);
         const live =
           old !== null &&
           (await agents.grants(p, teamId, agentId)).some(
-            (g) => g.id === old.grantId && g.revokedAt === null,
+            (g) =>
+              g.id === old.grantId &&
+              g.revokedAt === null &&
+              g.expiresAt > new Date().toISOString(),
           );
         if (old !== null && live) {
           await q()

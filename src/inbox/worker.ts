@@ -1,5 +1,6 @@
 import { setTimeout as delay } from 'node:timers/promises';
 import type { Store } from '../persistence/store.js';
+import { refused } from '../persistence/database.js';
 import { loadAgentToken } from '../team-mcp/client.js';
 import { z } from 'zod';
 import {
@@ -19,6 +20,7 @@ import {
   INBOX_HEARTBEAT_MS,
   Result,
   NativeTerminalNotice,
+  clip,
   inboxIntent,
   type BlockedReason,
   type Claim,
@@ -105,7 +107,7 @@ export async function assistantResult(
       const result = Result.safeParse({
         reference,
         itemId: selected.id,
-        text: selected.text.slice(0, 6000),
+        text: clip(selected.text, 6000),
         truncated: selected.truncated || selected.text.length > 6000,
         state: terminal,
         position: selected.position,
@@ -211,10 +213,11 @@ export async function deliver(
         grantId: principal.kind === 'agent' ? principal.grantId : '',
         input: {
           target: { kind: 'scratch' },
-          title: (
+          title: clip(
             `Kinmesh: ${profile.name} in #${context.channelName}` +
-            (context.topic === null ? '' : ` / ${context.topic}`)
-          ).slice(0, 200),
+              (context.topic === null ? '' : ` / ${context.topic}`),
+            200,
+          ),
           mode: 'approval-required',
           model,
           message: wakePrompt(
@@ -365,6 +368,8 @@ export async function deliver(
       (error instanceof IdentityError && error.statusCode !== 409) ||
       // Data that doesn't fit a contract doesn't fit on the next attempt.
       error instanceof z.ZodError ||
+      // Nor does a publication the database's rules refuse.
+      (stage === 'publication' && refused(error)) ||
       (error instanceof ExecutionFailure &&
         [
           'permission',

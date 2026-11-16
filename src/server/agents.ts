@@ -161,7 +161,7 @@ export function registerAgents(
     base + '/:agentId/grants/:grantId/rotate',
     async (request, reply) => {
       const { teamId, agentId, grantId } = GrantPath.parse(request.params);
-      // The hub rotates its own worker credential by reconnecting; a rotated
+      // The hub renews its own worker credential in place; a rotated
       // token shown in the browser would never reach the worker.
       if (
         (await store.managed.binding(principal(request), teamId, agentId))
