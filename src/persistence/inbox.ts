@@ -983,7 +983,8 @@ export function inboxRepository(
      * ends at once; one whose run may be in T3 is marked, and the worker
      * interrupts the run and posts how it ended. One already finished stays
      * as it is. A blocked one that may be in T3 can't be reached from here
-     * (a conflict). Retrying the same operation key replays.
+     * (a conflict), unless the authority its run launched under is gone: that one
+     * ends at once. Retrying the same operation key replays.
      */
     stopByPerson(
       p: Principal,
@@ -1037,8 +1038,29 @@ export function inboxRepository(
               );
             const row = await get(id);
             if (ended.count === 1) await history(row, 'stopped');
-            else if (row.state === 'blocked') throw new DomainError('conflict');
-            else if (
+            else if (row.state === 'blocked') {
+              // Its run launched under a T3 authority the agent no longer
+              // has: Kinmesh can't reach it and nothing can be posted for
+              // it, so it ends here, keeping why, without asking T3.
+              const unreachable = await q()
+                .update(t)
+                .set({
+                  state: 'expired',
+                  stopRequestedAt: sql`coalesce(${t.stopRequestedAt}, ${dbNow})`,
+                  claimToken: null,
+                  leaseUntil: 0,
+                })
+                .where(
+                  and(
+                    eq(t.id, id),
+                    eq(t.state, 'blocked'),
+                    eq(t.reason, 'authority-changed'),
+                    lte(t.leaseUntil, dbNow),
+                  ),
+                );
+              if (unreachable.count !== 1) throw new DomainError('conflict');
+              await history(await get(id), 'authority-changed');
+            } else if (
               row.state !== 'acked' &&
               row.state !== 'expired' &&
               row.stopRequestedAt === null
@@ -1056,6 +1078,37 @@ export function inboxRepository(
             return { id };
           },
         );
+      });
+    },
+    /**
+     * The run in T3 a delivery is, for a person who can read its channel:
+     * null until it has one. Only the server reads it, to ask T3 where the
+     * run is shown; the workspace never sees native references.
+     */
+    runOf(p: Principal, teamId: string, id: string) {
+      return atomic(async () => {
+        if (p.kind !== 'human') throw new DomainError('forbidden');
+        await agents.person(p, TeamId.parse(teamId));
+        const row = (
+          await q()
+            .select({
+              teamId: t.teamId,
+              channelId: t.channelId,
+              reference: t.reference,
+            })
+            .from(t)
+            .where(eq(t.id, z.uuid().parse(id)))
+            .limit(1)
+        )[0];
+        if (row?.teamId !== teamId) throw new DomainError('not-found');
+        await communication.channel(
+          p,
+          TeamId.parse(teamId),
+          ChannelId.parse(row.channelId),
+        );
+        return row.reference === null
+          ? null
+          : Reference.parse(decode(row.reference));
       });
     },
     /** Liveness only, never authority: unknown or foreign agent IDs are ignored. */

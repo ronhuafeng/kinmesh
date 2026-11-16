@@ -146,14 +146,16 @@ it is the authority. Use the custom property for its role, never a raw colour.
   since" line marks what others wrote while the channel or topic was open.
 - **Delivery line**: under a message that mentions an agent, and on a task handed to
   one, one line per agent in plain words: will pick this up, isn't connected, is
-  working on it, is waiting for an approval in T3, will go on once T3 is
+  working on it, is waiting for an approval in T3 (linking the run in T3, where it is
+  approved), will go on once T3 is
   reconnected, replied (linking the reply, with how long it took; no line when the
   reply is the very next message), is stuck (what was lost and the one fix — re-enable the agent,
   add it back or open its setup — next to a retry), or never picked this up. The
   machine state is only a tooltip. Until it is answered a line ends in **Stop**
   (also beside the request on the agent's page); then it reads "is stopping" until
   the run's stopped reply arrives, or "Stopped before _Ada_ started" when nothing
-  had reached T3.
+  had reached T3. A line stuck because _Ada_'s T3 access changed also ends in
+  **Stop**, which ends it at once: "Stopped after _Ada_'s T3 access changed".
 - **Composer**: multi-line input with the `@` mention popover, on the bottom edge of
   the chat over a band of paper that hides the conversation scrolling behind it;
   hints in the placeholder. Send is the round confirm button, shown once there is

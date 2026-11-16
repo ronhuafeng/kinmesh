@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
-import { deliveryText, took } from '../web/deliveries.js';
+import { deliveryText, stoppable, took } from '../web/deliveries.js';
 import type { DeliveryView } from '../web/deliveries.js';
 import { AgentId } from '../src/domain/contracts.js';
 
@@ -76,6 +76,12 @@ await test('every delivery state reads as a plain sentence about the agent', () 
     ],
     ['expired', 'undispatched-expiry', true, /never picked this up/],
     ['expired', 'stopped', true, /^Stopped before Ada started$/],
+    [
+      'expired',
+      'authority-changed',
+      true,
+      /^Stopped after Ada’s T3 access changed$/,
+    ],
     ['expired', 'something-new', true, /request expired/],
   ];
   for (const [state, reason, connected, expected] of cases) {
@@ -107,6 +113,32 @@ await test('a delivery a person asked to stop is stopping until it ends', () => 
       true,
     ).text,
     /^Ada replied/,
+  );
+});
+
+await test('Stop is offered until a delivery ends or is stopping, and for one whose T3 access is gone', () => {
+  for (const state of ['ready', 'waiting', 'uncertain'] as const) {
+    assert.equal(stoppable(delivery(state, 'enqueued')), true);
+    assert.equal(
+      stoppable({ ...delivery(state, 'stop-requested'), stopRequested: true }),
+      false,
+    );
+  }
+  for (const [state, reason] of [
+    ['acked', 'assistant-result-published'],
+    ['expired', 'stopped'],
+    ['expired', 'authority-changed'],
+    ['blocked', 'native-unreadable'],
+  ] as const)
+    assert.equal(stoppable(delivery(state, reason)), false, reason);
+  // Its run can't be reached, so ending it asks nothing of T3, even after
+  // a stop was asked for before its access changed.
+  const unreachable = delivery('blocked', 'authority-changed');
+  assert.equal(stoppable(unreachable), true);
+  assert.equal(stoppable({ ...unreachable, stopRequested: true }), true);
+  assert.match(
+    deliveryText({ ...unreachable, stopRequested: true }, 'Ada', true).text,
+    /^Ada’s T3 access changed/,
   );
 });
 

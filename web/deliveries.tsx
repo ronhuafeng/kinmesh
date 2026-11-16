@@ -1,7 +1,13 @@
+import { useEffect, useState } from 'react';
+import { z } from 'zod';
 import type { WorkspaceSnapshot } from '../src/workspace/contracts.js';
+import { trustedLinkOrigin } from '../src/workspace/links.js';
 import { BlockedReason } from '../src/domain/inbox.js';
-import type { DeliveryReason } from '../src/domain/inbox.js';
-import { useAction } from './api.js';
+import type {
+  BlockedReason as Cause,
+  DeliveryReason,
+} from '../src/domain/inbox.js';
+import { api, useAction } from './api.js';
 import { Notice } from './forms.js';
 import { memberName } from './names.js';
 import { ago, workerConnected } from './ui.js';
@@ -55,8 +61,8 @@ export function deliveryText(
 ): { text: string; tone: Tone } {
   const since = d.queuedAt ? ` · ${ago(d.queuedAt)}` : '';
   // Reasons come from one vocabulary, so a misspelt one fails to compile.
-  const because = (reason: DeliveryReason) => d.reason === reason;
-  if (stoppable(d) && d.stopRequested)
+  const because = (reason: DeliveryReason | Cause) => d.reason === reason;
+  if (unanswered(d) && d.stopRequested)
     return { text: `${name} is stopping`, tone: 'waiting' };
   switch (d.state) {
     case 'ready':
@@ -95,14 +101,26 @@ export function deliveryText(
     case 'expired':
       if (because('stopped'))
         return { text: `Stopped before ${name} started`, tone: 'queued' };
+      if (because('authority-changed'))
+        return {
+          text: `Stopped after ${name}’s T3 access changed`,
+          tone: 'queued',
+        };
       return because('undispatched-expiry')
         ? { text: `${name} never picked this up`, tone: 'problem' }
         : { text: `${name}’s request expired`, tone: 'problem' };
   }
 }
-/** A delivery not yet answered, which a person may stop. */
-export const stoppable = (d: DeliveryView) =>
+const unanswered = (d: DeliveryView) =>
   d.state === 'ready' || d.state === 'waiting' || d.state === 'uncertain';
+/**
+ * Whether a person may stop it: not yet answered, and not already stopping;
+ * or blocked because the T3 access its run started under is gone, which ends
+ * it without T3.
+ */
+export const stoppable = (d: DeliveryView) =>
+  (unanswered(d) && !d.stopRequested) ||
+  (d.state === 'blocked' && d.reason === 'authority-changed');
 /**
  * Stops the agent working on this: what hasn't reached T3 ends at once, a
  * run in T3 is interrupted and its stopped reply posted.
@@ -141,6 +159,72 @@ export function Stop({
       </button>
       {action.error && <Notice>{action.error}</Notice>}
     </>
+  );
+}
+/**
+ * Where T3 shows a run waiting for an approval, as T3 linked it: null until
+ * T3 has said, and whenever it can't be asked.
+ */
+function useApproval(
+  delivery: DeliveryView,
+  teamId: string,
+  t3Origin: string | null,
+) {
+  const [url, setUrl] = useState<string | null>(null);
+  const waiting =
+    delivery.state === 'waiting' &&
+    delivery.reason === 'human-or-approval-wait';
+  useEffect(() => {
+    if (!waiting || t3Origin === null) return;
+    const controller = new AbortController();
+    api(`/api/teams/${teamId}/deliveries/${delivery.id}/link`, {
+      signal: AbortSignal.any([controller.signal, AbortSignal.timeout(10000)]),
+    })
+      .then((raw) => {
+        const { url } = z.object({ url: z.url().nullable() }).parse(raw);
+        if (controller.signal.aborted) return;
+        setUrl(url !== null && trustedLinkOrigin(url, t3Origin) ? url : null);
+      })
+      .catch(() => undefined);
+    return () => {
+      controller.abort();
+    };
+  }, [teamId, delivery.id, waiting, t3Origin]);
+  return waiting ? url : null;
+}
+/**
+ * What came of a request; while its run waits for an approval, a link to the
+ * run in T3, where it is approved.
+ */
+export function Outcome({
+  delivery,
+  teamId,
+  t3Origin,
+  className,
+  children,
+}: {
+  delivery: DeliveryView;
+  teamId: string;
+  t3Origin: string | null;
+  className?: string;
+  children: string;
+}) {
+  const approve = useApproval(delivery, teamId, t3Origin);
+  return (
+    <span className={className}>
+      {approve ? (
+        <a
+          className="link-button"
+          href={approve}
+          target="_blank"
+          rel="noopener noreferrer"
+        >
+          {children} ↗
+        </a>
+      ) : (
+        children
+      )}
+    </span>
   );
 }
 export function DeliveryLine({
@@ -184,9 +268,15 @@ export function DeliveryLine({
           {text} ↓
         </button>
       ) : (
-        <span>{text}</span>
+        <Outcome
+          delivery={delivery}
+          teamId={data.team.id}
+          t3Origin={data.nativeT3Origin}
+        >
+          {text}
+        </Outcome>
       )}
-      {stoppable(delivery) && !delivery.stopRequested && (
+      {stoppable(delivery) && (
         <Stop delivery={delivery} teamId={data.team.id} onDone={onDone} />
       )}
       {delivery.state === 'blocked' && (
