@@ -3,7 +3,10 @@ import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { z } from 'zod';
 import { rawDatabase } from './raw.js';
+import { join } from 'node:path';
 import { deliver } from '../src/inbox/worker.js';
+import { t3Factory } from '../src/inbox/t3.js';
+import { saveCredential } from '../src/adapters/t3/oauth.js';
 import { FrozenLaunch } from '../src/domain/inbox.js';
 import { IdentityError, type Scope } from '../src/domain/agents.js';
 import { launch, options, reference } from './t3-helpers.js';
@@ -311,6 +314,39 @@ await test('a request that never reached T3 is retried under a reconnected T3; o
     } finally {
       await raw.close();
     }
+  } finally {
+    await f.dispose();
+  }
+});
+
+await test('after T3’s sign-in ends a delivery waits, says why, and nothing is sent to T3', async () => {
+  const f = await inboxFixture();
+  try {
+    const claim = await mention(f);
+    // The team's credential, as the hub stores it, whose sign-in has ended.
+    const t3AuthFile = join(f.directory, 'ended', 't3-oauth.json');
+    saveCredential(t3AuthFile, {
+      endpoint: options.endpoint,
+      environmentId: reference.environmentId,
+      tokens: {
+        access_token: 'ended-unit-token',
+        token_type: 'Bearer',
+        scope: 'orchestration:read orchestration:operate',
+      },
+      expiresAt: new Date(Date.now() - 1000).toISOString(),
+    });
+    // The real factory; its T3, at a host that never resolves, isn't asked.
+    await deliver(
+      f.store,
+      claim,
+      { ...f.binding, t3AuthFile },
+      t3Factory(f.store),
+      signal(),
+    );
+    const row = await f.inbox.get(claim.id);
+    assert.deepEqual([row.state, row.reason], ['ready', 'sign-in-expired']);
+    assert.equal(row.launch, null);
+    assert.equal(row.operationId, null);
   } finally {
     await f.dispose();
   }

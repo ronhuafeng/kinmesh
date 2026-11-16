@@ -224,6 +224,7 @@ function oauthFixture(
       return reply({
         access_token: 'fake-unit-only-token',
         token_type: 'Bearer',
+        expires_in: 30 * 86400,
         scope: 'orchestration:read orchestration:operate',
       });
     }
@@ -258,13 +259,19 @@ function oauthFixture(
 }
 await test('AUTH SDK FIXTURE: official SDK DCR/S256 exchange uses original verifier, state and pinned origin', async () => {
   const f = oauthFixture();
+  const before = Date.now();
   const value = await authorize(
     f.endpoint,
     f.interaction,
     f.stop.signal,
     f.transport,
   );
+  const after = Date.now();
   assert.equal(value.environmentId, 'fixture-env');
+  // T3 says how long the token lasts; the end is kept as a time, counted
+  // from before the token was asked for.
+  const ends = Date.parse(value.expiresAt ?? '') - 30 * 86400_000;
+  assert.ok(ends >= before && ends <= after, value.expiresAt);
   assert.deepEqual(f.statistics(), {
     exchanges: 1,
     registrations: 1,

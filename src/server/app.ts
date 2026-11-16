@@ -196,7 +196,7 @@ export async function createApp(
   });
   const changes = watchChanges(store);
   const { grants } = registerAgents(app, store, hub.directory);
-  const { t3Status } = registerConnect(app, store, hub, changes);
+  const { t3Status, renewal } = registerConnect(app, store, hub, changes);
   // The deployment's T3: applied now, then whenever its session is renewed.
   let provisioning: NodeJS.Timeout | undefined;
   if (config.t3) {
@@ -224,6 +224,7 @@ export async function createApp(
     app,
     store,
     t3AuthFile(hub.directory),
+    renewal,
   );
   const { openStreams } = registerEvents(app, store, changes, {
     snapshot,

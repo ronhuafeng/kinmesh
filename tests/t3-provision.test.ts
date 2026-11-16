@@ -47,6 +47,8 @@ await test('the deployment’s T3 session connects the team; a renewed one is th
     const first = loadCredential(t3AuthFile(directory), endpoint);
     assert.equal(first.tokens.access_token, 'first-token');
     assert.equal(first.environmentId, environment.environmentId);
+    // When the session ends, as T3 issued it: an ended one makes work wait.
+    assert.equal(first.expiresAt, '2026-12-16T00:00:00.000Z');
     assert.equal(statSync(t3AuthFile(directory)).mode & 0o777, 0o600);
     const connection = await f.store.managed.connection(f.principal, f.teamId);
     assert.equal(connection?.endpoint, endpoint);

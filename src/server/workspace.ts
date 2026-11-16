@@ -40,6 +40,8 @@ export function registerWorkspace(
   app: FastifyInstance,
   store: Store,
   t3CredentialFile: string,
+  /** T3's sign-in when it needs renewing by a person (`registerConnect`). */
+  renewal: (principal: Person, teamId: TeamId) => Promise<unknown>,
 ) {
   app.get(
     '/api/teams/:teamId/agents/:agentId/executions/:executionId/native',
@@ -210,6 +212,7 @@ export function registerWorkspace(
           (q) => known.has(AgentId.parse(q.agentId)) && !live.has(q.agentId),
         )
         .map((q) => ({ agentId: q.agentId, queued: q.count })),
+      t3: await renewal(principal, teamId),
     };
     const t3 = await store.managed.teamConnection(principal, teamId);
     const t3Origin = t3 ? new URL(t3.endpoint).origin : null;
