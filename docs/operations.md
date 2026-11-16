@@ -18,7 +18,7 @@ The hub writes JSON lines to standard output: one record per failure, with its r
 | `KINMESH_ORIGIN`, `KINMESH_PORT`                    | Public origin (an HTTPS origin, or exactly `http://127.0.0.1:<port>`) and listener port                                           |
 | `KINMESH_HOST`                                      | Listener address (default `127.0.0.1`); `0.0.0.0` only inside a container network behind the reverse proxy                        |
 | `KINMESH_INBOX_CONFIG`                              | Optional operator worker configuration (below)                                                                                    |
-| `KINMESH_RATE_LIMIT`                                | Requests per minute per client (default 60); see [security](security.md)                                                          |
+| `KINMESH_RATE_LIMIT`                                | Requests per minute per session or address (default 60); see [security](security.md)                                              |
 | `KINMESH_TRUSTED_PROXIES`                           | The reverse proxies, comma-separated addresses or CIDR ranges; required with an HTTPS origin                                      |
 | `KINMESH_T3_ENDPOINT`, `KINMESH_T3_CREDENTIAL_FILE` | Optional, together; a T3 the deployment connects, and the file holding the session it issued for the hub ([T3](t3.md#t3-sign-in)) |
 | `KINMESH_METRICS_TOKEN`                             | Optional; lets a scraper elsewhere read `/metrics` (at least 32 characters)                                                       |

@@ -34,7 +34,10 @@ const Environment = z.object({
     .trim()
     .refine((value) => isIP(value) !== 0)
     .default('127.0.0.1'),
-  /** Requests per minute per client: a guard against floods, at human pace. */
+  /**
+   * Requests per minute for each signed-in session, and for each address
+   * among everyone else: a guard against floods, at human pace.
+   */
   KINMESH_RATE_LIMIT: z.coerce.number().int().min(1).max(100_000).default(60),
   /** The Feishu app people sign in through. */
   FEISHU_APP_ID: z.string().trim().min(1),

@@ -116,6 +116,56 @@ await test('the overall rate limit bounds every client, at the configured pace',
     await f.cleanup();
   }
 });
+/**
+ * Proves the pace is each person's own: people signed in from one address
+ * don't spend each other's budget or the address's, a made-up credential
+ * earns no budget of its own, signing in stays counted by address, and the
+ * built assets count against nobody.
+ */
+await test('people behind one address each keep their own pace; whoever is not signed in shares the address’s', async () => {
+  const f = await fixture();
+  const app = await hub(f, { ...f.config, rateLimit: 3 });
+  try {
+    const ada = await signInAs(app, 'ada@example.com');
+    const grace = await signInAs(app, 'grace@example.com');
+    const me = (cookies: Record<string, string>) =>
+      app.inject({ url: '/api/me', cookies });
+    for (let i = 0; i < 3; i++) assert.equal((await me(ada)).statusCode, 200);
+    assert.equal((await me(ada)).statusCode, 429);
+    // Grace, at the same address, has spent nothing.
+    assert.equal((await me(grace)).statusCode, 200);
+    // Nor has the address, which whoever is not signed in shares.
+    for (let i = 0; i < 3; i++)
+      assert.equal((await app.inject({ url: '/health/live' })).statusCode, 200);
+    assert.equal((await app.inject({ url: '/health/live' })).statusCode, 429);
+    // A credential anyone can make up is counted by address, not by itself.
+    for (const made of [
+      { headers: { authorization: 'Bearer kma_' + 'x'.repeat(43) } },
+      { cookies: { 'kinmesh-session': 'made-up' } },
+    ])
+      assert.equal(
+        (await app.inject({ url: '/api/me', ...made })).statusCode,
+        429,
+      );
+    // Signing in is counted by address, whatever session comes with it:
+    // the two sign-ins above and eight more are the address's ten.
+    for (let i = 0; i < 8; i++)
+      assert.equal((await app.inject({ url: '/login' })).statusCode, 302);
+    assert.equal(
+      (await app.inject({ url: '/login', cookies: grace })).statusCode,
+      429,
+    );
+    // The built assets are not counted, for an address already out of budget.
+    for (let i = 0; i < 5; i++)
+      assert.notEqual(
+        (await app.inject({ url: '/assets/none.js' })).statusCode,
+        429,
+      );
+  } finally {
+    await app.close();
+    await f.cleanup();
+  }
+});
 await test('sign-in attempts are bounded per minute', async () => {
   const f = await fixture();
   const app = await hub(f);

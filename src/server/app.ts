@@ -26,6 +26,7 @@ import type { Config } from './config.js';
 import { describeFailure } from '../diagnostics.js';
 import { feishuClient, type Feishu } from './feishu.js';
 import { registerLogin } from './login.js';
+import { limitKey, unlimited } from './limits.js';
 import { createMetrics } from './metrics.js';
 
 declare module '@fastify/secure-session' {
@@ -71,11 +72,8 @@ export async function createApp(
       config.trustedProxies.length > 0 ? config.trustedProxies : false,
   });
   const metrics = createMetrics();
-  await app.register(rateLimit, {
-    max: config.rateLimit,
-    timeWindow: '1 minute',
-    onExceeded: metrics.limited,
-  });
+  // The session is unsealed first: the limit counts a signed-in person by
+  // their session, everyone else by address.
   await app.register(secureSession, {
     key: config.sessionKey,
     cookieName: 'kinmesh-session',
@@ -89,6 +87,13 @@ export async function createApp(
       secure: config.secureCookie,
       maxAge: SESSION_LIFETIME_MS / 1000,
     },
+  });
+  await app.register(rateLimit, {
+    max: config.rateLimit,
+    timeWindow: '1 minute',
+    keyGenerator: limitKey,
+    allowList: unlimited,
+    onExceeded: metrics.limited,
   });
   app.decorateRequest('principal', null);
   app.addHook('onSend', async (_request, reply) => {

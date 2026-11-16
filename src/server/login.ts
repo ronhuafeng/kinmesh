@@ -5,6 +5,7 @@ import type { Config } from './config.js';
 import { LOGIN_STATE_MS } from '../domain/contracts.js';
 import { describeFailure } from '../diagnostics.js';
 import { organizationMember, type Feishu } from './feishu.js';
+import { clientAddress } from './limits.js';
 
 const STATE_COOKIE = 'kinmesh-login';
 const Callback = z.object({
@@ -23,7 +24,16 @@ export function registerLogin(
   feishu: Feishu,
 ) {
   const redirectUri = `${config.origin}/login/callback`;
-  const limit = { config: { rateLimit: { max: 10, timeWindow: '1 minute' } } };
+  // Signing in is counted by address, whatever session the browser holds.
+  const limit = {
+    config: {
+      rateLimit: {
+        max: 10,
+        timeWindow: '1 minute',
+        keyGenerator: clientAddress,
+      },
+    },
+  };
   // A link, not a form: the page's form-action policy keeps forms on-site.
   app.get('/login', limit, async (_request, reply) => {
     const state = await store.logins.begin(Date.now());
