@@ -153,7 +153,7 @@ await test('MOCK HTTP: private credential/issuer/environment failures return gen
   }
 });
 
-await test('MOCK SDK/HTTP: official protocol reads only two tools, validates returned link and hides upstream auth/status errors', async () => {
+await test('MOCK SDK/HTTP: official protocol reads only two tools, links the thread on T3’s own origin and hides upstream auth/status errors', async () => {
   const mock = await mockNativeServer();
   const f = await agentFixture();
   saveCredential(await connectTeam(f, mock.endpoint), mock.credential);

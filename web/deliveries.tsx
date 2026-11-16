@@ -162,7 +162,7 @@ export function Stop({
   );
 }
 /**
- * Where T3 shows a run waiting for an approval, as T3 linked it: null until
+ * Where T3 shows a run waiting for an approval, on the team's T3: null until
  * T3 has said, and whenever it can't be asked.
  */
 function useApproval(

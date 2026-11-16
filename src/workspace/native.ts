@@ -7,28 +7,24 @@ import {
   selectRun,
 } from '../adapters/t3/contracts.js';
 import { Endpoint, type Credential } from '../adapters/t3/oauth.js';
-import { nativeThreadUrl, trustedLinkOrigin } from './links.js';
+import { threadLink } from './links.js';
 import { SdkWire } from '../adapters/t3/sdk.js';
 import { NativeObservation } from './contracts.js';
 
 type ExecutionReference = z.infer<typeof Reference>;
 
 /**
- * A link is presented only when the actual native read supplied the documented
- * outside-OAuth-client URL on the T3 origin or T3's web app for the exact thread.
- * Never make up deep links from IDs or accept external/untrusted redirects.
+ * Where the T3 serving this endpoint shows the thread: on the endpoint's own
+ * origin, never a link from T3's read, which may point anywhere (T3 0.1.9
+ * links its hosted app whichever T3 serves the thread).
  */
 export function verifiedNativeLink(
-  candidate: unknown,
   endpoint: string,
   reference: ExecutionReference,
 ): string | null {
-  const link = nativeThreadUrl(candidate, reference);
-  if (!link) return null;
   const authority = Endpoint.safeParse(endpoint);
-  return authority.success &&
-    trustedLinkOrigin(link, new URL(authority.data).origin)
-    ? link
+  return authority.success
+    ? threadLink(new URL(authority.data).origin, reference)
     : null;
 }
 
@@ -53,7 +49,7 @@ export function projectNativeRead(
     threadPendingRequests: read.thread.pendingRequestCount,
     providerId,
     modelId,
-    verifiedUrl: verifiedNativeLink(read.thread.link, endpoint, ref),
+    verifiedUrl: verifiedNativeLink(endpoint, ref),
   });
 }
 

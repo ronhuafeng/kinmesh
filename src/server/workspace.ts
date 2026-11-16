@@ -113,7 +113,7 @@ export function registerWorkspace(
   );
   /**
    * Where T3 shows a delivery's run, for going there to approve what it waits
-   * for: the thread's link as T3 gave it and verified, or null.
+   * for: its thread on the team's T3 origin, or null before it is in T3.
    */
   app.get(
     '/api/teams/:teamId/deliveries/:deliveryId/link',

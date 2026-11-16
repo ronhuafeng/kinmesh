@@ -14,24 +14,65 @@ import { captured, reference } from './t3-helpers.js';
 const endpoint = 'https://t3.example/mcp';
 const url = `https://t3.example/${reference.environmentId}/${reference.threadId}`;
 
-await test('native link accepts only supplied exact origin/environment/thread browser URLs', () => {
-  assert.equal(verifiedNativeLink(url, endpoint, reference), url);
+/**
+ * Proves the link to a thread is built on the endpoint's own origin, where
+ * T3's web UI opens it as `/<environment>/<thread>` with each ID one encoded
+ * segment, and that no link is made for an endpoint or IDs it can't be.
+ */
+await test('native link is the thread on the endpoint’s own origin', () => {
+  assert.equal(verifiedNativeLink(endpoint, reference), url);
+  const launched = { ...reference, threadId: 'mcp:launch:0c75' };
   assert.equal(
-    verifiedNativeLink(
-      url.replace(reference.threadId, '%66' + reference.threadId.slice(1)),
-      endpoint,
-      reference,
-    ),
-    url.replace(reference.threadId, '%66' + reference.threadId.slice(1)),
+    verifiedNativeLink('https://t3.self.example/mcp', launched),
+    `https://t3.self.example/${reference.environmentId}/mcp%3Alaunch%3A0c75`,
   );
-  for (const candidate of [
-    undefined,
-    null,
-    '',
-    'x'.repeat(4097),
+  assert.equal(
+    verifiedNativeLink('http://127.0.0.1:3773/mcp', reference),
+    `http://127.0.0.1:3773/${reference.environmentId}/${reference.threadId}`,
+  );
+  for (const wrong of [
+    'https://t3.example/wrong',
+    'http://t3.example/mcp',
+    'https://owner:secret@t3.example/mcp',
+  ])
+    assert.equal(verifiedNativeLink(wrong, reference), null, wrong);
+  for (const threadId of ['..', 'a/b', 'a b', 'a\nb'])
+    assert.equal(
+      verifiedNativeLink(endpoint, { ...reference, threadId }),
+      null,
+      threadId,
+    );
+});
+
+/**
+ * Proves a link the server sends is accepted only for exactly the run's
+ * thread on the team's T3 origin: never on T3's hosted app, another origin
+ * or a path that isn't the thread's.
+ */
+await test('native link is refused anywhere but the thread on the team’s T3 origin', () => {
+  const observation = projectNativeRead(
+    captured.t3_thread_read,
+    reference,
+    endpoint,
+  );
+  assert.equal(observation.verifiedUrl, url);
+  for (const verifiedUrl of [
     url.replace('t3.example', 'evil.example'),
     url.replace('t3.example', 't3.example.evil.test'),
-    url.replace('https:', 'http:'),
+    `https://app.t3.codes/${reference.environmentId}/${reference.threadId}`,
+  ])
+    assert.throws(
+      () =>
+        decodeNativeObservation(
+          { ...observation, verifiedUrl },
+          reference,
+          'https://t3.example',
+        ),
+      verifiedUrl,
+    );
+  for (const verifiedUrl of [
+    `https://app.t3.codes/threads/${reference.environmentId}/${reference.threadId}`,
+    url.replace('.example/', '.example/threads/'),
     url.replace('https:', 'javascript:'),
     url.replace('https://', 'https://owner:secret@'),
     url + '?token=secret',
@@ -43,64 +84,17 @@ await test('native link accepts only supplied exact origin/environment/thread br
     url.replace(reference.threadId, 'wrong-thread'),
     url.replace(reference.environmentId, 'wrong-env'),
     't3-thread://' + reference.threadId,
-    '/' + reference.threadId,
     url.replace(reference.threadId, '%FF'),
     url.replace(reference.threadId, '%zz'),
     url.replace(reference.threadId, '%'),
-    url + '\n',
     url.replace(reference.threadId, 'x/../' + reference.threadId),
     url.replace(reference.threadId, '%2F' + reference.threadId),
   ])
     assert.equal(
-      verifiedNativeLink(candidate, endpoint, reference),
-      null,
-      String(candidate),
+      NativeObservation.safeParse({ ...observation, verifiedUrl }).success,
+      false,
+      verifiedUrl,
     );
-  assert.equal(
-    verifiedNativeLink(url, 'https://t3.example/wrong', reference),
-    null,
-  );
-});
-
-/**
- * Proves the link T3 0.1.9 gives, on T3's web app under `/threads`, is shown
- * for exactly its thread, whichever endpoint serves T3, and nothing else
- * under `/threads` or on another origin is.
- */
-await test('native link accepts T3’s web app link to the exact thread', () => {
-  const app = `https://app.t3.codes/threads/${reference.environmentId}/${encodeURIComponent(reference.threadId)}`;
-  for (const served of [endpoint, 'http://127.0.0.1:3773/mcp'])
-    assert.equal(verifiedNativeLink(app, served, reference), app);
-  assert.equal(
-    verifiedNativeLink(
-      url.replace('.example/', '.example/threads/'),
-      endpoint,
-      reference,
-    ),
-    url.replace('.example/', '.example/threads/'),
-  );
-  for (const candidate of [
-    app.replace('app.t3.codes', 'evil.example'),
-    app.replace('app.t3.codes', 'app.t3.codes.evil.test'),
-    app.replace('/threads/', '/thread/'),
-    app.replace('/threads/', '/threads/threads/'),
-    app.replace('https:', 'http:'),
-    app.replace(encodeURIComponent(reference.threadId), 'wrong-thread'),
-    app + '/extra',
-  ])
-    assert.equal(
-      verifiedNativeLink(candidate, endpoint, reference),
-      null,
-      candidate,
-    );
-  const observation = {
-    ...projectNativeRead(captured.t3_thread_read, reference, endpoint),
-    verifiedUrl: app,
-  };
-  assert.deepEqual(
-    decodeNativeObservation(observation, reference, 'https://t3.example'),
-    observation,
-  );
 });
 
 await test('captured v0.1.5 Run1 completed and Run2 interrupted remain distinct from latest thread state', () => {
@@ -108,7 +102,8 @@ await test('captured v0.1.5 Run1 completed and Run2 interrupted remain distinct 
   const run1 = projectNativeRead(raw, reference, endpoint);
   assert.equal(run1.status, 'completed');
   assert.equal(run1.terminal, true);
-  assert.equal(run1.verifiedUrl, null); // Captured response did not supply a link.
+  // T3 supplied no link; the thread's is on the endpoint's origin.
+  assert.equal(run1.verifiedUrl, url);
   const run2 = projectNativeRead(
     raw,
     { ...reference, runId: raw.recentRuns[0]?.runId },
@@ -164,8 +159,14 @@ await test('MOCK projection: native status is exact, pending requests remain thr
       ].includes(status),
     );
   }
-  raw.thread.link = 'https://evil.example/env/thread';
-  assert.equal(projectNativeRead(raw, reference, endpoint).verifiedUrl, null);
+  // Whatever T3 links, the thread's link is on the endpoint's origin.
+  for (const link of [
+    'https://evil.example/env/thread',
+    `https://app.t3.codes/threads/${reference.environmentId}/${reference.threadId}`,
+  ]) {
+    raw.thread.link = link;
+    assert.equal(projectNativeRead(raw, reference, endpoint).verifiedUrl, url);
+  }
   const threadReference = {
     backend: reference.backend,
     environmentId: reference.environmentId,
