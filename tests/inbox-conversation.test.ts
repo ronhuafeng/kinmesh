@@ -343,3 +343,28 @@ await test('a run whose thread is deleted in T3 ends with a stopped notice', asy
     await f.dispose();
   }
 });
+
+await test('a reply whose T3 item id is long, as pi’s are, is published', async () => {
+  const f = await inboxFixture();
+  try {
+    await mention(f);
+    const read = assistantRead('From pi');
+    const [item] = read.items;
+    assert.ok(item);
+    f.wire.values.t3_thread_read = {
+      ...read,
+      items: [{ ...item, itemId: 'turn-item:provider:pi:' + 'x'.repeat(600) }],
+    };
+    const delivery = await attempt(f);
+    assert.equal(delivery.state, 'acked', delivery.reason);
+    const reply = await f.comm.message(
+      f.principal,
+      f.teamId,
+      f.channelId,
+      MessageId.parse(delivery.resultMessageId),
+    );
+    assert.equal(reply.body, 'From pi');
+  } finally {
+    await f.dispose();
+  }
+});
