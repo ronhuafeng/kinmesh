@@ -65,6 +65,30 @@ await test('AUTH UNIT: credentials are private, endpoint-bound and scope-validat
     assert.throws(() => loadCredential(file, credential.endpoint));
     writeFileSync(file, 'not JSON', { mode: 0o600 });
     assert.throws(() => loadCredential(file, credential.endpoint));
+    // Full access adds settings and source control to operate; nothing else
+    // beyond Kinmesh's own scopes is taken.
+    const fullAccess = {
+      ...credential,
+      tokens: {
+        ...credential.tokens,
+        scope:
+          'orchestration:read orchestration:operate settings:write source-control:write',
+      },
+    };
+    saveCredential(file, fullAccess);
+    assert.equal(
+      loadCredential(file, credential.endpoint).tokens.scope,
+      fullAccess.tokens.scope,
+    );
+    assert.throws(() => {
+      saveCredential(file, {
+        ...credential,
+        tokens: {
+          ...credential.tokens,
+          scope: 'orchestration:read orchestration:operate admin:write',
+        },
+      });
+    });
     saveCredential(file, credential);
     const link = join(f.directory, 'link.json');
     symlinkSync(file, link);

@@ -6,6 +6,7 @@ import { AgentId, TeamId } from '../domain/contracts.js';
 import { IdentityError, type Principal, type Scope } from '../domain/agents.js';
 import {
   AUTH_TIMEOUT_MS,
+  PASTED_AUTH_TIMEOUT_MS,
   authorize,
   callbackReceiver,
   type AuthorizationInteraction,
@@ -174,7 +175,9 @@ export function registerConnect(
     changes.emit();
     const signal = AbortSignal.any([
       stop.signal,
-      AbortSignal.timeout(AUTH_TIMEOUT_MS),
+      AbortSignal.timeout(
+        hub.pasteCallback ? PASTED_AUTH_TIMEOUT_MS : AUTH_TIMEOUT_MS,
+      ),
     ]);
     let shown: (url: string) => void = () => undefined;
     const url = new Promise<string>((done) => {

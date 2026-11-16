@@ -393,7 +393,7 @@ await test('AUTH CLI: manual non-TTY and invalid mode reject before networking w
     assert.ok(!result.stderr.includes('127.0.0.1'));
   }
 });
-await test('AUTH SMOKE FIXTURE: read/capabilities only, scope distinction, pinning and Full access rejection', async () => {
+await test('AUTH SMOKE FIXTURE: read/capabilities only, scope distinction, pinning and the grant’s ceiling reported', async () => {
   const credential = Credential.parse({
     endpoint: issuer + '/mcp',
     environmentId: environment.environmentId,
@@ -434,7 +434,8 @@ await test('AUTH SMOKE FIXTURE: read/capabilities only, scope distinction, pinni
       .parse(wire.values.orchestrator_capabilities),
     runtimeMode: 'full-access',
   };
-  await assert.rejects(readSmoke(wire, credential));
+  // The ceiling is the person's choice in T3, reported, never exercised.
+  assert.equal((await readSmoke(wire, credential)).ceiling, 'full-access');
 });
 
 await test('AUTH READ TOOL DISCOVERY: scope-filtered listing succeeds without write tools', async () => {

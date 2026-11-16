@@ -22,6 +22,11 @@ import { verifiedOAuthMetadata } from './metadata.js';
 
 export { CALLBACK };
 export const AUTH_TIMEOUT_MS = 180_000;
+/**
+ * From the workspace to a T3 elsewhere, the person may first pair their
+ * browser with T3, then approve and paste the callback: more time.
+ */
+export const PASTED_AUTH_TIMEOUT_MS = 600_000;
 const SCOPE = ORCHESTRATION_SCOPES.join(' ');
 const MAX_URL = 8192;
 const rejected = () => new Error('Authorization input rejected');
