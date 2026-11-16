@@ -753,6 +753,7 @@ export function App() {
                           data={data}
                           channelPath={channelPath}
                           topic={selection.topic}
+                          current={tabValue === 'chat' || tabValue === 'board'}
                           onTopic={(topic) => {
                             leavePage();
                             setView('chat');

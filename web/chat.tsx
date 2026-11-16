@@ -1,10 +1,11 @@
 import { useEffect, useId, useLayoutEffect, useRef, useState } from 'react';
 import { z } from 'zod';
 import type { Agent } from '../src/domain/agents.js';
-import type { Message } from '../src/domain/communication.js';
+import { REACH, type Message } from '../src/domain/communication.js';
 import type { WorkspaceSnapshot } from '../src/workspace/contracts.js';
 import { value } from './api.js';
 import { ActionForm, AddButton, Field, InlineField } from './forms.js';
+import { ArrowIcon } from './icons.js';
 import { joinedAgents, memberName } from './names.js';
 import { Avatar, Presence, shortTime, workerConnected } from './ui.js';
 import { keep, kept } from './session.js';
@@ -71,6 +72,7 @@ function Composer({
       'end',
     );
     keep(draftKey, el.value);
+    setReady(true);
     el.focus();
     setChips((old) =>
       old.some((c) => c.id === agent.id) ? old : [...old, agent].slice(0, 20),
@@ -88,15 +90,22 @@ function Composer({
   // What was typed and not sent survives a reload, per channel.
   const draftKey = 'message:' + channelPath;
   const unsent = kept(draftKey);
+  // Send shows once there is something to send.
+  const [ready, setReady] = useState(
+    () => typeof unsent === 'string' && unsent.trim() !== '',
+  );
   return (
     <div className="composer">
       <ActionForm
         title="Message your team"
         path={channelPath + '/messages'}
         submit="Send message"
+        icon={<ArrowIcon />}
+        ready={ready}
         onDone={() => {
           setChips([]);
           setQuery(null);
+          setReady(false);
           keep(draftKey, null);
           onDone();
         }}
@@ -193,6 +202,7 @@ function Composer({
               defaultValue={typeof unsent === 'string' ? unsent : ''}
               onInput={(e) => {
                 keep(draftKey, e.currentTarget.value || null);
+                setReady(e.currentTarget.value.trim() !== '');
                 track();
               }}
               onClick={track}
@@ -257,12 +267,14 @@ function Composer({
 /**
  * The current channel's topics, under it in the sidebar like a tree: "All",
  * the ten most recently active, then the rest only when asked for, a "+" to
- * start one, and leaving the channel.
+ * start one, and leaving the channel. A topic is pressed only while its
+ * channel's chat or board is the place on screen (`current`).
  */
 export function ChannelTopics({
   data,
   channelPath,
   topic,
+  current: here,
   onTopic,
   next,
   onLeave,
@@ -270,6 +282,7 @@ export function ChannelTopics({
   data: WorkspaceSnapshot;
   channelPath: string;
   topic: string;
+  current: boolean;
   onTopic: (topic: string) => void;
   next: (key: string, cursor: string | null) => void;
   onLeave: () => void;
@@ -288,7 +301,7 @@ export function ChannelTopics({
     <li key={t.id}>
       <button
         type="button"
-        aria-pressed={topic === t.id}
+        aria-pressed={here && topic === t.id}
         onClick={() => {
           onTopic(t.id);
         }}
@@ -304,7 +317,7 @@ export function ChannelTopics({
           <li>
             <button
               type="button"
-              aria-pressed={topic === ''}
+              aria-pressed={here && topic === ''}
               onClick={() => {
                 onTopic('');
               }}
@@ -568,6 +581,8 @@ export function Chat({
   const messages = data.messages.items;
   const shown = (channel?.id ?? '') + ':' + shownTopic;
   const { divider, fresh } = useArrivals(shown, messages, data.human.id);
+  // The message tapped on a touch screen, which shows its actions.
+  const [chosen, setChosen] = useState<string | null>(null);
   const reading = useReadingPosition(shown, messages);
   const earlier = useEarlier(data.messages.nextCursor, onEarlier);
   if (!channel) return null;
@@ -636,7 +651,13 @@ export function Chat({
           )}
           <NewTopic channelPath={channelPath} onCreated={onTopic} />
         </div>
-        <div className="leave-channel">
+      </div>
+      {/* Coming near it reads older messages. */}
+      <div ref={earlier} aria-hidden="true" />
+      {/* On a phone, leaving waits where the conversation begins, away from
+          the topics a thumb taps all day. */}
+      {(data.messages.nextCursor === null || messages.length >= REACH) && (
+        <div className="leave-channel channel-start">
           <ActionForm
             title="Channel membership"
             path={channelPath + '/leave'}
@@ -645,9 +666,7 @@ export function Chat({
             onDone={onLeave}
           />
         </div>
-      </div>
-      {/* Coming near it reads older messages. */}
-      <div ref={earlier} aria-hidden="true" />
+      )}
       <ol className="messages" aria-label="Channel messages">
         {messages.map((m, index) => {
           const previous = messages[index - 1];
@@ -665,6 +684,14 @@ export function Chat({
                   (a) => m.author.kind === 'agent' && a.id === m.author.agentId,
                 )
               : undefined;
+          // A reply right under what it answers needs neither the quote
+          // nor the "replied" line to say so.
+          const answers = replyTo.get(m.id);
+          const quoted = answers !== undefined && answers !== previous?.id;
+          const following = messages[index + 1]?.id;
+          const lines = (asked.get(m.id) ?? []).filter(
+            (d) => !(d.state === 'acked' && d.resultMessageId === following),
+          );
           return (
             <li
               key={m.id}
@@ -672,6 +699,16 @@ export function Chat({
               data-kind={m.author.kind}
               data-continued={sameAuthor ? 'true' : undefined}
               data-new={fresh.has(m.id) ? 'true' : undefined}
+              // On touch, a tapped message shows what can be done with it.
+              data-chosen={chosen === m.id ? 'true' : undefined}
+              onClick={(event) => {
+                if (
+                  event.target instanceof Element &&
+                  event.target.closest('a, button')
+                )
+                  return;
+                setChosen((old) => (old === m.id ? null : m.id));
+              }}
             >
               {divider === m.id && (
                 <div className="new-divider" role="separator">
@@ -699,21 +736,22 @@ export function Chat({
                     <strong>{name}</strong>
                   )}
                   <time dateTime={m.createdAt}>{shortTime(m.createdAt)}</time>
-                  {m.topicId && (
+                  {/* Filtered to a topic, its messages need no tag for it. */}
+                  {m.topicId && m.topicId !== topic && (
                     <small className="topic-tag">{topicTitle(m.topicId)}</small>
                   )}
                 </header>
-                {replyTo.get(m.id) && (
+                {quoted && (
                   <button
                     type="button"
                     className="reply-to link-button"
                     onClick={() => {
-                      showMessage(replyTo.get(m.id) ?? '');
+                      showMessage(answers);
                     }}
                   >
                     <span aria-hidden="true">↩</span>{' '}
                     <span className="visually-hidden">In reply to </span>
-                    {replySource(replyTo.get(m.id) ?? '')}
+                    {replySource(answers)}
                   </button>
                 )}
                 <div className="message-text">
@@ -733,9 +771,9 @@ export function Chat({
                     ))}
                   </ul>
                 )}
-                {(asked.get(m.id) ?? []).length > 0 && (
+                {lines.length > 0 && (
                   <ul className="deliveries" aria-label="Agent responses">
-                    {(asked.get(m.id) ?? []).map((d) => (
+                    {lines.map((d) => (
                       <DeliveryLine
                         key={d.id}
                         delivery={d}

@@ -233,7 +233,6 @@ function Activity({
                 <span role="columnheader">Time</span>
                 <span role="columnheader">By</span>
                 <span role="columnheader">T3 thread</span>
-                <span role="columnheader">T3 run</span>
                 <span role="columnheader">
                   <span className="visually-hidden">Check</span>
                 </span>
@@ -268,19 +267,22 @@ function Activity({
                     <span role="cell" className="run-by">
                       {latest ? 'by ' + by(latest.author.kind) : '—'}
                     </span>
+                    {/* One reference per run: the thread, with the run and
+                        environment on hover. */}
                     <code
                       role="cell"
                       className="run-ref"
-                      title={`${ref.threadId} · environment ${ref.environmentId}`}
+                      title={[
+                        ref.threadId,
+                        ref.runId && ref.runId !== ref.threadId
+                          ? 'run ' + ref.runId
+                          : null,
+                        'environment ' + ref.environmentId,
+                      ]
+                        .filter(Boolean)
+                        .join(' · ')}
                     >
                       {ref.threadId}
-                    </code>
-                    <code
-                      role="cell"
-                      className="run-ref"
-                      title={ref.runId ?? undefined}
-                    >
-                      {ref.runId ?? 'none recorded'}
                     </code>
                     <NativeStatus
                       correlation={e.correlation}
