@@ -61,12 +61,12 @@ jobs:
           echo "$TOKEN" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
           docker buildx imagetools create -t "$IMAGE" "$IMAGE-amd64" "$IMAGE-arm64"
           docker buildx imagetools inspect "$IMAGE"
-  # Proposes the published hub to the deployment: a pull request on the infra
-  # repository setting the hub image's tag to this commit. Skipped until the
-  # owner adds the token (docs/operations.md, Deploying a commit).
+  # Deploys the published hub: commits the hub image's tag, set to this
+  # commit, to the infra repository's main, which Flux applies. Skipped until
+  # the owner adds the token (docs/operations.md, Deploying a commit).
   deploy:
     needs: manifest
-    if: github.ref == 'refs/heads/main'
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     environment: infra
@@ -78,55 +78,52 @@ jobs:
     env:
       HAS_TOKEN: ${{ secrets.INFRA_PR_TOKEN != '' }}
     steps:
-      - name: Open or update the infra pull request
+      - name: Set the hub's tag on infra main
         if: env.HAS_TOKEN == 'true'
         env:
           GH_TOKEN: ${{ secrets.INFRA_PR_TOKEN }}
           OWN_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           REPO: weavertech-group/infra
           FILE: apps/kinmesh/kustomization.yaml
-          BRANCH: deploy/kinmesh-hub
           IMAGE: ghcr.io/${{ github.repository_owner }}/kinmesh
         run: |
           set -euo pipefail
-          # Only the newest commit on main is proposed; an older run that
+          # Only the newest commit on main is deployed; an older run that
           # finishes late changes nothing.
           head=$(GH_TOKEN="$OWN_TOKEN" gh api "repos/$GITHUB_REPOSITORY/commits/main" --jq .sha)
           if [ "$head" != "$GITHUB_SHA" ]; then
-            echo "main is at $head now; its own run proposes it."
+            echo "main is at $head now; its own run deploys it."
             exit 0
           fi
           cd "$RUNNER_TEMP"
-          base=$(gh api "repos/$REPO/git/ref/heads/main" --jq .object.sha)
-          gh api "repos/$REPO/contents/$FILE?ref=$base" --jq .content | base64 -d > current.yaml
-          # The tag under this image's entry, and nothing else.
-          awk -v entry="  - name: $IMAGE" -v tag="$GITHUB_SHA" '
-            /^  - name: / { inside = ($0 == entry) }
-            inside && /^    newTag: / { $0 = "    newTag: " tag; changed = 1 }
-            { print }
-            END { if (!changed) exit 1 }
-          ' current.yaml > updated.yaml
-          if cmp -s current.yaml updated.yaml; then
-            echo "The deployment already runs $GITHUB_SHA."
-            exit 0
-          fi
-          short=${GITHUB_SHA::7}
-          # The branch is this workflow's alone: it starts again from main.
-          if gh api "repos/$REPO/git/ref/heads/$BRANCH" --silent 2>/dev/null; then
-            gh api -X PATCH "repos/$REPO/git/refs/heads/$BRANCH" -f sha="$base" -F force=true --silent
-          else
-            gh api -X POST "repos/$REPO/git/refs" -f ref="refs/heads/$BRANCH" -f sha="$base" --silent
-          fi
-          gh api -X PUT "repos/$REPO/contents/$FILE" \
-            -f branch="$BRANCH" \
-            -f sha="$(gh api "repos/$REPO/contents/$FILE?ref=$BRANCH" --jq .sha)" \
-            -f message="deploy: Kinmesh hub $short" \
-            -f content="$(base64 -w0 updated.yaml)" --silent
-          title="deploy: Kinmesh hub $short"
-          body="Runs \`$IMAGE:$GITHUB_SHA\`, published from $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/commit/$GITHUB_SHA."
-          open=$(gh pr list -R "$REPO" --head "$BRANCH" --state open --json number --jq '.[0].number // empty')
-          if [ -n "$open" ]; then
-            gh pr edit "$open" -R "$REPO" --title "$title" --body "$body"
-          else
-            gh pr create -R "$REPO" --base main --head "$BRANCH" --title "$title" --body "$body"
-          fi
+          message=$(printf 'deploy: Kinmesh hub %s\n\nRuns %s:%s, published from %s/%s/commit/%s.' \
+            "${GITHUB_SHA::7}" "$IMAGE" "$GITHUB_SHA" "$GITHUB_SERVER_URL" "$GITHUB_REPOSITORY" "$GITHUB_SHA")
+          # A commit to the file on infra main between the read and the write
+          # fails the write with 409; then it reads again, once.
+          for attempt in 1 2; do
+            gh api "repos/$REPO/contents/$FILE?ref=main" > file.json
+            jq -r .content file.json | base64 -d > current.yaml
+            # The tag under this image's entry, and nothing else.
+            awk -v entry="  - name: $IMAGE" -v tag="$GITHUB_SHA" '
+              /^  - name: / { inside = ($0 == entry) }
+              inside && /^    newTag: / { $0 = "    newTag: " tag; changed = 1 }
+              { print }
+              END { if (!changed) exit 1 }
+            ' current.yaml > updated.yaml
+            if cmp -s current.yaml updated.yaml; then
+              echo "The deployment already runs $GITHUB_SHA."
+              exit 0
+            fi
+            if gh api -X PUT "repos/$REPO/contents/$FILE" \
+              -f branch=main \
+              -f sha="$(jq -r .sha file.json)" \
+              -f message="$message" \
+              -f content="$(base64 -w0 updated.yaml)" \
+              --jq '"Committed " + .commit.html_url' 2> error.txt; then
+              exit 0
+            fi
+            cat error.txt >&2
+            if [ "$attempt" = 2 ] || ! grep -q 'HTTP 409' error.txt; then
+              exit 1
+            fi
+          done
