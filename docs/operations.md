@@ -318,7 +318,7 @@ Before any model runs, the aggregate rejects linked or non-private files, aliase
 | `CI` → `chromium`             | Same                                  | `npm run test:browser`: real desktop and mobile Chromium against disposable databases                                                    |
 | `Live collaboration`          | Manual dispatch on `main`             | `test:collaboration-live` for Codex and Grok, each on a fresh GitHub-hosted VM                                                           |
 | `Authenticated T3 acceptance` | Manual dispatch on `main`             | `release:check` on the owner's `kinmesh-t3-acceptance` self-hosted runner                                                                |
-| `Publish image`               | Pushes on `main`                      | Both images for both architectures, then the [infra pull request](#deploying-a-commit)                                                   |
+| `Publish image`               | Pushes on `main`                      | Both images for both architectures, then the [deployment](#deploying-a-commit)                                                           |
 
 Tests run against PostgreSQL in a Docker container that each run starts once: its migrated template is copied into a new database for every test, dropped afterwards. `main` requires `foundation` and `chromium`. Routine CI has no model credentials and never starts a provider run; native DTO cases use labelled fixtures. Browser tests use real Chromium with generated secrets, no Inbox or T3 credentials, and no traces or video. A green CI run is not live evidence.
 
@@ -328,9 +328,11 @@ Dependabot (`.github/dependabot.yml`) proposes updates weekly: npm minor and pat
 
 ### Deploying a commit
 
-Once `Publish image` has tagged `ghcr.io/ronhuafeng/kinmesh:<commit>`, its `deploy` job opens a pull request on `weavertech-group/infra` from the branch `deploy/kinmesh-hub` that sets that image's `newTag` in `apps/kinmesh/kustomization.yaml` to the commit, and nothing else; while it is open, each later commit on `main` replaces it with its own. Only the newest commit on `main` is proposed, so a run that finishes late changes nothing. Merging it deploys.
+Merging to `main` deploys. Once `Publish image` has tagged `ghcr.io/ronhuafeng/kinmesh:<commit>`, its `deploy` job commits to `main` of `weavertech-group/infra` the hub image's `newTag` in `apps/kinmesh/kustomization.yaml`, set to the commit, and nothing else; Flux then applies it and waits for the pods to be ready, and the team's Feishu group hears of a failure. Only the newest commit on `main` is deployed, so a run that finishes late changes nothing; when the tag already names the commit, the job changes nothing. The hub applies its migrations as it starts, and they only go forward.
 
-The job is skipped until the `infra` environment of this repository holds the secret `INFRA_PR_TOKEN`: a fine-grained personal access token with resource owner `weavertech-group`, repository access to `infra` only, the repository permissions **Contents: Read and write** and **Pull requests: Read and write** (Metadata: Read comes with them) and nothing else, approved by the organization if it requires that, with an expiry. Limit the environment's deployment branches to `main`, then:
+To roll back, set that `newTag` in infra to an earlier commit; the database keeps the newer migrations. To pause deploying, remove the secret below: the job is then skipped, and the tag in infra is set by hand.
+
+The job is skipped until the `infra` environment of this repository holds the secret `INFRA_PR_TOKEN`: a fine-grained personal access token with resource owner `weavertech-group`, repository access to `infra` only, the repository permission **Contents: Read and write** (Metadata: Read comes with it) and nothing else, approved by the organization if it requires that, with an expiry. Limit the environment's deployment branches to `main`, then:
 
 ```sh
 gh secret set INFRA_PR_TOKEN --env infra --repo ronhuafeng/kinmesh
