@@ -84,5 +84,9 @@ jobs:
         run: |
           test "$(docker exec kinmesh id -u)" != 0
           docker exec kinmesh sh -c 'test ! -e /app/tests && test ! -e /app/.env && test -z "$(find /app/dist -name "*.map" -o -name "*.ts")"'
+      - name: The agents' runtime image runs T3 and pi as a non-root user
+        run: |
+          docker build -t kinmesh-t3:ci deploy/t3
+          docker run --rm kinmesh-t3:ci sh -c 't3 --version && pi --version && test "$(id -u)" != 0'
       - if: always()
         run: docker rm -f kinmesh postgres || true
