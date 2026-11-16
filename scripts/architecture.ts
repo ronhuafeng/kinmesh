@@ -5,5 +5,5 @@ if (errors.length > 0) {
   process.exitCode = 1;
 } else
   console.info(
-    'PASS: source imports, resource calls, manifests, language and domain boundaries. Static guard only; review still required.',
+    'PASS: source imports, resource calls, manifests, language, domain and adapter boundaries. Static guard only; review still required.',
   );
