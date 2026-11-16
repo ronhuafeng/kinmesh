@@ -20,7 +20,7 @@ import { managedDirectory } from '../inbox/managed.js';
 import { principal, resolvePrincipal } from './principals.js';
 import { IdentityError } from '../domain/agents.js';
 import { z } from 'zod';
-import Fastify, { type FastifyRequest } from 'fastify';
+import Fastify, { LogController, type FastifyRequest } from 'fastify';
 import secureSession from '@fastify/secure-session';
 import rateLimit from '@fastify/rate-limit';
 import { randomUUID } from 'node:crypto';
@@ -67,7 +67,7 @@ export async function createApp(
       level: 'info',
       ...(options.logStream ? { stream: options.logStream } : {}),
     },
-    disableRequestLogging: true,
+    logController: new LogController({ disableRequestLogging: true }),
     genReqId: () => randomUUID(),
     bodyLimit: 16_384,
     // Only the configured proxies may say who the client is; limits then

@@ -145,7 +145,7 @@ Run every process as the same private OS user with `umask 077`. Configuration ed
 
 The hub validates the configuration before listening. The worker's `database` must be the same URL as `KINMESH_DATABASE_URL`; the database's name and identity are pinned across restarts, so replacing the database means stopping everything. The hub forks `src/inbox/main.ts` without the session key, the Feishu app secret or `NODE_OPTIONS`; each startup step has a 10-second deadline, and a failed start exits 1.
 
-An unexpected worker exit gets **three replacements per hub lifetime**, after 250, 500 and 1000 ms; exhausting them stops the hub with exit 1, so the outer service manager can alert and restart. `SIGTERM`/`SIGINT` stop the worker first: it gets 10 seconds to abort claims and close its connections, then SIGKILL and five more seconds. Allow at least 20 seconds for hub shutdown. If the hub dies, the worker stops claiming and exits within 10 seconds. Native work is never interrupted by shutdown.
+An unexpected worker exit gets a replacement, at most **three in any ten minutes**, after 250, 500 and 1000 ms (fewer recent replacements, shorter wait); a replacement stops counting ten minutes after it, so a hub running for months survives rare crashes. One more within the ten minutes stops the hub with exit 1, so the outer service manager can alert and restart. `SIGTERM`/`SIGINT` stop the worker first: it gets 10 seconds to abort claims and close its connections, then SIGKILL and five more seconds. Allow at least 20 seconds for hub shutdown. If the hub dies, the worker stops claiming and exits within 10 seconds. Native work is never interrupted by shutdown.
 
 ### Independent supervision
 
