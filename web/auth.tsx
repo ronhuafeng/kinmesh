@@ -14,12 +14,16 @@ const turnedBack: Record<string, string> = {
  */
 let pending = new URLSearchParams(window.location.search).get('signin');
 
-export function Auth() {
-  const [reason] = useState(() => {
+/** `denied`: signed out here because the account lost its access. */
+export function Auth({ denied = false }: { denied?: boolean }) {
+  const [turned] = useState(() => {
     const value = pending === null ? undefined : turnedBack[pending];
     pending = null;
     return value;
   });
+  const reason = denied
+    ? 'That account no longer has access to this workspace.'
+    : turned;
   return (
     <main className="auth-shell">
       <section className="auth-intro">

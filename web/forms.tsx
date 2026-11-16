@@ -1,5 +1,13 @@
-import { useContext, useId, useRef, isValidElement, cloneElement } from 'react';
+import {
+  createContext,
+  useContext,
+  useId,
+  useRef,
+  isValidElement,
+  cloneElement,
+} from 'react';
 import type { ReactNode } from 'react';
+import { z } from 'zod';
 import { MutationPermission, useAction, value } from './api.js';
 import { PlusIcon } from './icons.js';
 /** A labelled input; a hint is said in the input itself, as its placeholder. */
@@ -27,7 +35,12 @@ export function Field({
     </div>
   );
 }
-/** Groups submit buttons supplied by a caller so they pause with the workspace. */
+/** True while the form around is sending, so its buttons wait. */
+const Sending = createContext(false);
+/**
+ * Groups submit buttons supplied by a caller so they pause with the
+ * workspace, and while their form is sending.
+ */
 export function SubmitGroup({
   className,
   children,
@@ -39,8 +52,9 @@ export function SubmitGroup({
   held?: boolean;
 }) {
   const permitted = useContext(MutationPermission);
+  const sending = useContext(Sending);
   return (
-    <fieldset className={className} disabled={!permitted || held}>
+    <fieldset className={className} disabled={!permitted || held || sending}>
       {children}
     </fieldset>
   );
@@ -114,12 +128,14 @@ export function ActionForm({
         }
       }}
     >
-      {/* Inputs stay editable during a background refresh; only sending is paused. */}
-      <fieldset disabled={action.busy || action.uncertain}>
-        {children}
+      {/* Inputs stay editable, and keep the keyboard, during a refresh and
+          while sending: only the buttons wait. An uncertain send holds
+          exactly what was sent. */}
+      <fieldset disabled={action.uncertain}>
+        <Sending value={action.busy}>{children}</Sending>
         {submit && (
-          <button type="submit" disabled={action.disabled}>
-            {action.busy ? 'Saving…' : submit}
+          <button type="submit" disabled={action.disabled || action.busy}>
+            {submit}
           </button>
         )}
       </fieldset>
@@ -167,7 +183,8 @@ export function AddButton({
 }
 /**
  * One field typed in place: Enter creates, Esc or leaving it empty closes.
- * For things that need only a name (a topic, a channel).
+ * For things that need only a name (a topic, a channel); what it made is
+ * handed on by ID, so the caller can open it.
  */
 export function InlineField({
   name,
@@ -176,8 +193,9 @@ export function InlineField({
   maxLength,
   path,
   className = '',
+  taken,
   onClose,
-  onDone,
+  onCreated,
 }: {
   name: string;
   label: string;
@@ -185,10 +203,12 @@ export function InlineField({
   maxLength: number;
   path: string;
   className?: string;
+  /** What to say when the name is already in use. */
+  taken?: string;
   onClose: () => void;
-  onDone: () => void;
+  onCreated: (id: string) => void;
 }) {
-  const action = useAction();
+  const action = useAction(taken ? { 409: taken } : {});
   return (
     <form
       className={'inline-field ' + className}
@@ -196,11 +216,16 @@ export function InlineField({
         event.preventDefault();
         const text = value(new FormData(event.currentTarget), name).trim();
         if (!text || action.disabled) return;
-        void action.send(path, { [name]: text }).then((ok) => {
-          if (!ok) return;
-          onClose();
-          onDone();
-        });
+        let created = '';
+        void action
+          .send(path, { [name]: text }, true, {}, undefined, 'POST', (raw) => {
+            created = z.object({ id: z.string() }).parse(raw).id;
+          })
+          .then((ok) => {
+            if (!ok) return;
+            onClose();
+            onCreated(created);
+          });
       }}
     >
       <input

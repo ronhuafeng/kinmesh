@@ -77,6 +77,13 @@ function Composer({
     );
     setQuery(null);
   }
+  // A channel or topic that opens is ready to type in. A touch keyboard
+  // stays down until asked for, and typing elsewhere is never interrupted.
+  useEffect(() => {
+    if (!window.matchMedia('(hover: hover)').matches) return;
+    if (document.activeElement?.matches('input, textarea, select')) return;
+    input.current?.focus({ preventScroll: true });
+  }, [topicId]);
   const narrow = window.matchMedia('(max-width: 720px)').matches;
   // What was typed and not sent survives a reload, per channel.
   const draftKey = 'message:' + channelPath;
@@ -258,7 +265,6 @@ export function ChannelTopics({
   topic,
   onTopic,
   next,
-  onDone,
   onLeave,
 }: {
   data: WorkspaceSnapshot;
@@ -266,7 +272,6 @@ export function ChannelTopics({
   topic: string;
   onTopic: (topic: string) => void;
   next: (key: string, cursor: string | null) => void;
-  onDone: () => void;
   onLeave: () => void;
 }) {
   const [all, setAll] = useState(false);
@@ -340,7 +345,7 @@ export function ChannelTopics({
             )
           ))}
         <li>
-          <NewTopic channelPath={channelPath} onDone={onDone} />
+          <NewTopic channelPath={channelPath} onCreated={onTopic} />
         </li>
       </ul>
       <div className="leave-channel">
@@ -355,13 +360,16 @@ export function ChannelTopics({
     </div>
   );
 }
-/** A topic starts from a "+" after the topics: one field, Enter creates it. */
+/**
+ * A topic starts from a "+" after the topics: one field, Enter creates it
+ * and opens it.
+ */
 function NewTopic({
   channelPath,
-  onDone,
+  onCreated,
 }: {
   channelPath: string;
-  onDone: () => void;
+  onCreated: (id: string) => void;
 }) {
   const [open, setOpen] = useState(false);
   return open ? (
@@ -375,7 +383,7 @@ function NewTopic({
       onClose={() => {
         setOpen(false);
       }}
-      onDone={onDone}
+      onCreated={onCreated}
     />
   ) : (
     <AddButton
@@ -518,7 +526,7 @@ export function Chat({
               More topics
             </button>
           )}
-          <NewTopic channelPath={channelPath} onDone={onDone} />
+          <NewTopic channelPath={channelPath} onCreated={onTopic} />
         </div>
         <div className="leave-channel">
           <ActionForm
