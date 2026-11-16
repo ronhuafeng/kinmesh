@@ -254,7 +254,7 @@ export class ValidatedTools {
       throw new ExecutionFailure('unavailable');
     }
     const parsed = Envelope.safeParse(raw);
-    if (!parsed.success) throw new ExecutionFailure('incompatible');
+    if (!parsed.success) throw new ExecutionFailure('unreadable');
     const envelope = parsed.data;
     let value: unknown = envelope.structuredContent;
     if (value === undefined) {
@@ -262,7 +262,7 @@ export class ValidatedTools {
       try {
         value = JSON.parse(text ?? '');
       } catch {
-        throw new ExecutionFailure('incompatible');
+        throw new ExecutionFailure('unreadable');
       }
     }
     if (envelope.isError) {
@@ -273,7 +273,16 @@ export class ValidatedTools {
         throw new ExecutionFailure('gone');
       throw new ExecutionFailure('incompatible');
     }
-    if (!validator.output(value)) throw new ExecutionFailure('incompatible');
+    if (!validator.output(value)) throw new ExecutionFailure('unreadable');
     return value;
   }
+}
+/**
+ * What T3 returned, held to the contract Kinmesh reads it by. Asking again
+ * returns the same reply, so a mismatch is `unreadable`, never a passing outage.
+ */
+export function reply<T extends z.ZodType>(schema: T, raw: unknown) {
+  const parsed = schema.safeParse(raw);
+  if (!parsed.success) throw new ExecutionFailure('unreadable');
+  return parsed.data;
 }

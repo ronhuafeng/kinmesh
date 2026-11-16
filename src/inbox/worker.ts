@@ -1,7 +1,7 @@
 import { setTimeout as delay } from 'node:timers/promises';
 import type { Store } from '../persistence/store.js';
 import { loadAgentToken } from '../team-mcp/client.js';
-import type { z } from 'zod';
+import { z } from 'zod';
 import {
   ExecutionFailure,
   Reference,
@@ -100,17 +100,18 @@ export async function assistantResult(
         };
       if (!selected?.text || reference.runId === undefined)
         return { kind: 'waiting', reason: 'assistant-result-unavailable' };
-      return {
-        kind: 'result',
-        result: Result.parse({
-          reference,
-          itemId: selected.id,
-          text: selected.text.slice(0, 6000),
-          truncated: selected.truncated || selected.text.length > 6000,
-          state: terminal,
-          position: selected.position,
-        }),
-      };
+      // T3's reply that doesn't fit the result Kinmesh posts reads no
+      // better on the next attempt.
+      const result = Result.safeParse({
+        reference,
+        itemId: selected.id,
+        text: selected.text.slice(0, 6000),
+        truncated: selected.truncated || selected.text.length > 6000,
+        state: terminal,
+        position: selected.position,
+      });
+      if (!result.success) throw new ExecutionFailure('unreadable');
+      return { kind: 'result', result: result.data };
     }
     if (
       observation.nextPosition === null ||
@@ -140,6 +141,7 @@ class CatchingUp extends Error {
 function nativeCause(failure: ExecutionFailure): BlockedReason {
   if (['permission', 'authentication'].includes(failure.kind))
     return 'native-access';
+  if (failure.kind === 'unreadable') return 'native-unreadable';
   return failure.kind === 'incompatible'
     ? 'native-incompatible'
     : 'authority-or-contract-blocked';
@@ -289,6 +291,14 @@ export async function deliver(
         await store.inbox.remember(claim, {
           operationId: dispatch.operationId,
         });
+        // T3 answered, but not as the contract says: reconciling gets the
+        // same answer, so the delivery stops with the cause. Its retry
+        // reconciles under the same request key; nothing is sent twice.
+        if (
+          dispatch.reason === 'incompatible' ||
+          dispatch.reason === 'unreadable'
+        )
+          throw new ExecutionFailure(dispatch.reason);
         await store.inbox.defer(claim, 'uncertain', 'native-launch-uncertain');
         return;
       }
@@ -346,11 +356,14 @@ export async function deliver(
       error instanceof EnvironmentChanged ||
       error instanceof AuthorityChanged ||
       (error instanceof IdentityError && error.statusCode !== 409) ||
+      // Data that doesn't fit a contract doesn't fit on the next attempt.
+      error instanceof z.ZodError ||
       (error instanceof ExecutionFailure &&
         [
           'permission',
           'authentication',
           'incompatible',
+          'unreadable',
           'conflict',
           'invalid-input',
         ].includes(error.kind));

@@ -33,6 +33,7 @@ export const BlockedReason = z.enum([
   'not-assigned',
   'native-access',
   'native-incompatible',
+  'native-unreadable',
   'environment-changed',
   'authority-changed',
   'authority-or-contract-blocked',

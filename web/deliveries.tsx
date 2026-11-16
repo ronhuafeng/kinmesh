@@ -34,6 +34,8 @@ function blockedText(reason: string, name: string) {
       return `T3 refused ${name}’s access: reconnect T3 and choose Supervised`;
     case 'native-incompatible':
       return `${name}’s model isn’t available in T3: choose another one`;
+    case 'native-unreadable':
+      return `Kinmesh can’t read what T3 returned for ${name}: update Kinmesh`;
     case 'authority-changed':
       return `${name} was reconnected while this ran in T3, so its answer can’t be posted: ask again`;
     case 'environment-changed':

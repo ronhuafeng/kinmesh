@@ -159,7 +159,7 @@ await test('MOCK: malformed nested responses are rejected, not mistaken for comp
       status: 'completed',
       runId: reference.runId,
     };
-    await assert.rejects(f.backend.read(reference), failure('incompatible'));
+    await assert.rejects(f.backend.read(reference), failure('unreadable'));
     const tools = new ValidatedTools(f.wire, await f.wire.list());
     const before = f.wire.calls.length;
     await assert.rejects(
