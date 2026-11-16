@@ -61,6 +61,7 @@ export async function rows(path: string) {
       'result_message_id "resultMessageId"',
       'reason',
       'stop_requested_at "stopRequestedAt"',
+      'steered',
     ];
     return z
       .array(Delivery)

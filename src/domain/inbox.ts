@@ -69,6 +69,8 @@ export const DeliveryReason = z.enum([
   'stop-requested',
   /** A person stopped it before anything reached T3. */
   'stopped',
+  /** Its message was lost with the run it steered; it was sent again. */
+  'message-resent',
 ]);
 export type DeliveryReason = z.infer<typeof DeliveryReason>;
 /**
@@ -78,6 +80,14 @@ export type DeliveryReason = z.infer<typeof DeliveryReason>;
 export const inboxIntent = (agentId: string, deliveryId: string): Intent => ({
   actor: 'inbox-agent:' + agentId,
   operationKey: 'inbox:' + deliveryId,
+});
+/**
+ * The native operation that sends a delivery's message again, as a new turn,
+ * when the run it steered stopped without answering it.
+ */
+export const resendIntent = (agentId: string, deliveryId: string): Intent => ({
+  actor: 'inbox-agent:' + agentId,
+  operationKey: 'inbox-again:' + deliveryId,
 });
 /** The native operation that interrupts a delivery's run when a person stops it. */
 export const stopIntent = (agentId: string, deliveryId: string): Intent => ({
@@ -120,6 +130,7 @@ export const Delivery = z.object({
   resultMessageId: MessageId.nullable(),
   reason: z.string().max(80),
   stopRequestedAt: z.number().int().nonnegative().nullable(),
+  steered: z.boolean(),
 });
 export type Delivery = z.infer<typeof Delivery>;
 export const Claim = Delivery.extend({

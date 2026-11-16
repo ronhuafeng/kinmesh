@@ -4,6 +4,7 @@ import {
   text,
   integer,
   bigint,
+  boolean,
   customType,
   primaryKey,
   check,
@@ -547,6 +548,8 @@ export const agentInbox = pgTable(
     reason: text('reason').notNull().default('enqueued'),
     /** When a person asked to stop it; kept once set. */
     stopRequestedAt: millis('stop_requested_at'),
+    /** Its message steered a run another message started. */
+    steered: boolean('steered').notNull().default(false),
   },
   (t) => [
     foreignKey({
