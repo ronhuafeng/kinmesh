@@ -146,13 +146,15 @@ it is the authority. Use the custom property for its role, never a raw colour.
   add it back or open its setup — next to a retry), or never picked this up. The
   machine state is only a tooltip.
 - **Composer**: multi-line input with the `@` mention popover, docked at the bottom
-  of the chat; hints in the placeholder.
+  of the chat; hints in the placeholder. A channel or topic that opens is ready to
+  type in (a touch keyboard waits to be asked for), and sending keeps the keyboard.
 - **Channels**: the sidebar lists joined channels; a channel you left can be rejoined
   by name. A channel where something waits on you ends in a decision-coloured dot, the
   size of a presence dot and on its edge. The current channel holds its topics under
   it like a tree on a hairline trunk: "All", the ten most recently active, "More
   topics" for the rest, a `+` that starts one, and "Leave channel". On a phone the
-  topics are pills above the conversation.
+  topics are pills above the conversation. A channel or topic just created is
+  opened.
 - **Board**: five stage columns, the stages of the lifecycle: Proposed → Working →
   Review → Human sign-off → Done. Rework stays in Working (marked "Sent back");
   cancelled work goes to Done (marked "Cancelled", hidden until asked for). Columns sit
@@ -189,7 +191,8 @@ it is the authority. Use the custom property for its role, never a raw colour.
 - **Credential once**: a newly issued token appears once, with copy and download,
   and is gone when dismissed.
 - **Team**: a gallery of faces with names and presence — you, the other people,
-  then the agents; the last tile adds an agent.
+  then the agents; the last tile adds an agent. Someone who isn't in the open
+  channel, person or agent, carries **Add _name_ to channel** on their tile.
 - **People in the sidebar**: you (your row opens Settings), the other people in the
   channel, then its agents. Someone else has no page: their row is their face, name
   and presence, sized and aligned exactly like a row that opens. Owner and reviewer
@@ -223,11 +226,15 @@ it is the authority. Use the custom property for its role, never a raw colour.
 - **Sign out**: the power icon at the far right of the header.
 - **Opening the workspace**: quiet. A load that is quick shows nothing; one that takes
   more than 0.6 s fades in the brand, "Opening your workspace…" and a skeleton board
-  (at once without motion). Only a failure says "Workspace unavailable", why, and offers
-  **Try again**.
-- **Connection pill**: absent while healthy; dot + "Refreshing… / Disconnected" with
-  last time and **Reconnect**; offline turns into a full-width stale banner. **Refresh
-  now** lives in the command palette (⌘K / Ctrl+K).
+  (at once without motion). Only a failure says "Workspace unavailable" and offers
+  **Try again**. An address that can't be opened is not a failure: a channel you are
+  not in opens the default channel, a topic that isn't there opens its channel, a task
+  that isn't there opens the board, each without a word.
+- **Refreshing**: absent while healthy. A refresh asked for (**Refresh now** in the
+  command palette, ⌘K / Ctrl+K) or a slow one shows a dot and "Refreshing…".
+- **Out of reach**: one quiet line under the views — "Can't reach Kinmesh. Showing
+  what was here before; sending is paused until it's back." — with nothing to press:
+  it comes back by itself.
 - **Uncertain send**: when a request's outcome is unknown, the form keeps exactly what
   was sent and offers **Retry same action**; nothing is resent on its own.
 
@@ -281,3 +288,6 @@ guarantee stays; only its wording changes:
 - The machinery is silent when healthy: no heartbeat, no "connected" badge, no polling
   interval. Show state only when it needs the person.
 - History and status are sentences ("You accepted it: '…'"), never API verbs.
+- An error never shows a status code. A refusal is one sentence where the person can
+  act on it ("That name is taken" under the field); what they can't act on isn't
+  said.

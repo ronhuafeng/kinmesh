@@ -16,7 +16,7 @@ import { TopicId } from '../src/domain/communication.js';
 import { WorkspaceSnapshot } from '../src/workspace/contracts.js';
 import { Auth } from './auth.js';
 import { api, HttpError, MutationPermission, Offline } from './api.js';
-import { ActionForm, AddButton, InlineField, Notice } from './forms.js';
+import { ActionForm, AddButton, InlineField } from './forms.js';
 import { AgentPage, Team } from './agents.js';
 import { OwnWorkerPage } from './setup.js';
 import { ChannelTopics, Chat, showMessage } from './chat.js';
@@ -168,7 +168,8 @@ export function App() {
   const [status, setStatus] = useState<
     'loading' | 'ready' | 'offline' | 'signedout'
   >('loading');
-  const [error, setError] = useState('');
+  // Signed out because this account lost its access, not by choice.
+  const [denied, setDenied] = useState(false);
   // Which channel selection the snapshot on screen was loaded for, and whether
   // the most recent refresh succeeded. Sending depends on these two facts,
   // never on whether a background request happens to be running.
@@ -179,6 +180,8 @@ export function App() {
   const refused = useRef(false);
   const [streamTry, setStreamTry] = useState(0);
   const [lastOk, setLastOk] = useState(false);
+  // The last read failed; it stays so through the retries that follow.
+  const [unreachable, setUnreachable] = useState(false);
   const [revision, setRevision] = useState(0);
   const [manual, setManual] = useState(false);
   const [slow, setSlow] = useState(false);
@@ -207,7 +210,7 @@ export function App() {
    * Signed out, or access lost: nothing protected stays on screen, and no
    * channel or page identifiers are left for whoever signs in next.
    */
-  const toSignedOut = useCallback((message: string) => {
+  const toSignedOut = useCallback((lostAccess = false) => {
     shown.current = null;
     setData(null);
     setFocus(null);
@@ -221,8 +224,9 @@ export function App() {
     setCursors((previous) =>
       Object.keys(previous).length === 0 ? previous : {},
     );
-    setError(message);
+    setDenied(lostAccess);
     setLastOk(false);
+    setUnreachable(false);
     setStatus('signedout');
   }, []);
   const refresh = useCallback(() => {
@@ -255,6 +259,7 @@ export function App() {
     if (selection.topic) query.set('topicId', selection.topic);
     return query.toString();
   }, [cursors, selection.channel, selection.topic]);
+  const paged = Object.keys(cursors).length > 0;
   useEffect(() => {
     const controller = new AbortController();
     setStatus((previous) => (previous === 'signedout' ? previous : 'loading'));
@@ -263,6 +268,8 @@ export function App() {
       signal: controller.signal,
     })
       .then((raw) => {
+        // An answer for a place already left says nothing about this one.
+        if (controller.signal.aborted) return;
         const next = WorkspaceSnapshot.parse(raw);
         const apply = () => {
           settle('workspace', next.revision);
@@ -272,11 +279,18 @@ export function App() {
           setLoadedFor(selection.channel);
           setLoadedPlace(place);
           setLastOk(true);
+          setUnreachable(false);
           if (refused.current) {
             refused.current = false;
             setStreamTry((n) => n + 1);
           }
-          setError('');
+          // A task that isn't here closes to the board.
+          setFocus((old) =>
+            old?.kind === 'task' &&
+            !next.tasks.items.some((task) => task.id === old.id)
+              ? null
+              : old,
+          );
         };
         // Cards on screen travel to their new column; other refreshes stay
         // instant.
@@ -290,26 +304,40 @@ export function App() {
       .catch((cause: unknown) => {
         if (controller.signal.aborted) return;
         drop('workspace');
-        if (
-          cause instanceof HttpError &&
-          (cause.status === 401 || cause.status === 403)
-        ) {
+        const refusal = cause instanceof HttpError ? cause.status : null;
+        const unopenable = refusal === 404 || refusal === 400;
+        if (refusal === 401 || refusal === 403) {
           // Auth loss is not a transient outage: purge the protected snapshot.
-          toSignedOut(cause.status === 403 ? cause.message : '');
+          toSignedOut(refusal === 403);
+        } else if (unopenable && paged) {
+          // A page of a list that can no longer be read: back to its start.
+          setCursors({});
+        } else if (unopenable && selection.topic) {
+          setSelection((old) => ({ ...old, topic: '' }));
+        } else if (unopenable && selection.channel) {
+          // A channel that can't be opened (left, removed from, or never
+          // joined) is not an outage: the default channel opens instead.
+          setSelection({ channel: '', topic: '' });
         } else {
-          setError(
-            cause instanceof HttpError
-              ? cause.message
-              : 'You’re offline. Showing what was here before; sending is paused until you’re back.',
-          );
           setLastOk(false);
+          setUnreachable(true);
           setStatus('offline');
         }
       });
     return () => {
       controller.abort();
     };
-  }, [place, selection.channel, revision, toSignedOut, begin, settle, drop]);
+  }, [
+    place,
+    paged,
+    selection.channel,
+    selection.topic,
+    revision,
+    toSignedOut,
+    begin,
+    settle,
+    drop,
+  ]);
   // The address follows the place. Going somewhere new adds a history
   // entry, so Back returns; a topic switch only rewrites the address.
   const routed = useRef(false);
@@ -421,26 +449,19 @@ export function App() {
     // On a phone the team is on Home, so a channel opens on its chat.
     if (view === 'agent' || (phone && view === 'team')) setView('chat');
   };
-  if (status === 'signedout')
+  if (status === 'signedout') return <Auth denied={denied} />;
+  if (!data) {
+    const failed = unreachable;
     return (
-      <>
-        {error && <Notice>{error} Sign in with an authorized account.</Notice>}
-        <Auth />
-      </>
-    );
-  if (!data)
-    return (
-      <main className="initial-state" aria-busy={!error}>
+      <main className="initial-state" aria-busy={!failed}>
         <a className="brand" href="/">
           <span className="brand-mark" aria-hidden="true">
             k
           </span>
           <span>kinmesh</span>
         </a>
-        <h1>{error ? 'Workspace unavailable' : 'Opening your workspace…'}</h1>
-        {error ? (
-          <Notice>{error}</Notice>
-        ) : (
+        <h1>{failed ? 'Workspace unavailable' : 'Opening your workspace…'}</h1>
+        {!failed && (
           <div className="skeleton-board" aria-hidden="true">
             {[3, 2, 1].map((cards, column) => (
               <div className="skeleton-column" key={column}>
@@ -452,9 +473,10 @@ export function App() {
           </div>
         )}
         {/* Only a failure offers anything to do. */}
-        {error && <button onClick={refreshNow}>Try again</button>}
+        {failed && <button onClick={refreshNow}>Try again</button>}
       </main>
     );
+  }
   const channel = data.channel;
   const channelPath = channel
     ? `/api/teams/${data.team.id}/channels/${channel.id}`
@@ -469,9 +491,10 @@ export function App() {
   // Act on a confirmed snapshot of the channel in view. A background refresh
   // changes neither, so it never interrupts typing or sending.
   const canAct = lastOk && onScreen && status !== 'offline';
-  // The heartbeat refresh stays silent unless asked for, failing, or slow.
-  const connection =
-    status === 'loading' && !manual && !slow && lastOk ? 'ready' : status;
+  // A refresh stays silent unless asked for or slow. What is on screen is
+  // stale from a failed read until the next good one, retries included.
+  const refreshing = lastOk && status === 'loading' && (manual || slow);
+  const stale = unreachable;
   const shownChannelName = switching
     ? data.channels.items.find((c) => c.id === selection.channel)?.name
     : channel?.name;
@@ -530,20 +553,20 @@ export function App() {
     if (!canAct) return;
     void api('/api/logout', { method: 'POST' })
       .then(() => {
-        toSignedOut('');
+        toSignedOut();
       })
       .catch(() => {
-        setError('Sign out failed. Reconnect and try again.');
+        notify('Sign out didn’t go through. Try again.');
       });
   };
   const signOutEverywhere = () => {
     if (!canAct) return;
     void api('/api/me/sessions/end', { method: 'POST' })
       .then(() => {
-        toSignedOut('');
+        toSignedOut();
       })
       .catch(() => {
-        setError('Signing out everywhere failed. Reconnect and try again.');
+        notify('Sign out didn’t go through. Try again.');
       });
   };
   const goHome = () => {
@@ -717,7 +740,6 @@ export function App() {
                             setCursors({});
                           }}
                           next={next}
-                          onDone={refresh}
                           onLeave={() => {
                             selectChannel('');
                           }}
@@ -733,10 +755,12 @@ export function App() {
                       maxLength={80}
                       path={`/api/teams/${data.team.id}/channels`}
                       className="channel-new"
+                      taken="That name is taken"
                       onClose={() => {
                         setAddingChannel(false);
                       }}
-                      onDone={refresh}
+                      // The channel just made is where you meant to go.
+                      onCreated={selectChannel}
                     />
                   )}
                   {/* Channels you left, only when there are any: one click back. */}
@@ -922,29 +946,12 @@ export function App() {
                       )}
                     </Tabs.List>
                     <div className="header-end">
-                      {/* Healthy is silent: the pill appears only when something is off. */}
-                      {connection !== 'ready' && (
-                        <div className="connection" data-state={connection}>
+                      {/* Healthy is silent; a refresh asked for, or a slow
+                          one, says so. */}
+                      {refreshing && (
+                        <div className="connection">
                           <span className="connection-dot" aria-hidden="true" />
-                          <span role="status">
-                            {connection === 'loading'
-                              ? 'Refreshing…'
-                              : 'Disconnected'}
-                          </span>
-                          {connection === 'offline' && (
-                            <>
-                              <small>
-                                Last update{' '}
-                                {new Date(data.observedAt).toLocaleTimeString()}
-                              </small>
-                              <button
-                                className="secondary"
-                                onClick={refreshNow}
-                              >
-                                Reconnect
-                              </button>
-                            </>
-                          )}
+                          <span role="status">Refreshing…</span>
                         </div>
                       )}
                       {!phone && (
@@ -960,20 +967,12 @@ export function App() {
                       )}
                     </div>
                   </header>
-                  {error && (
-                    <div className="stale-banner" data-state={status}>
-                      <Notice>
-                        {error}{' '}
-                        <button
-                          onClick={() => {
-                            selectChannel('');
-                            setError('');
-                          }}
-                        >
-                          Return to joined channels
-                        </button>
-                      </Notice>
-                    </div>
+                  {/* One line, and nothing to press: it comes back by itself. */}
+                  {stale && (
+                    <p className="stale-line" role="status">
+                      Can’t reach Kinmesh. Showing what was here before; sending
+                      is paused until it’s back.
+                    </p>
                   )}
                   <fieldset
                     className="view-content"

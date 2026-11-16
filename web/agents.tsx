@@ -599,6 +599,16 @@ export function Team({
                 <span className="roster-name">{person.username}</span>
                 <Presence online={person.online} />
               </span>
+              {/* Like an agent: only a missing membership needs a fix. */}
+              {channelPath && !data.joinedHumanIds.includes(person.id) && (
+                <ActionForm
+                  title={'Enroll ' + person.username}
+                  path={channelPath + '/participants/invite'}
+                  build={() => ({ member: { kind: 'human', id: person.id } })}
+                  onDone={onDone}
+                  submit={'Add ' + person.username + ' to channel'}
+                />
+              )}
             </li>
           ))}
         {data.agents.map((agent) => {

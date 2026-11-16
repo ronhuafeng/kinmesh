@@ -29,13 +29,50 @@ async function snapshot(request: APIRequestContext, origin: string) {
   expect(response.status()).toBe(200);
   return WorkspaceSnapshot.parse(await response.json());
 }
-/** Healthy means no connection pill at all. */
+/** The one line that says what is on screen is stale. */
+function staleLine(page: Page) {
+  return page.getByRole('status').filter({ hasText: 'Can’t reach Kinmesh' });
+}
+/** Healthy is silent: no refresh pill and no stale line. */
 async function expectHealthy(page: Page) {
   await expect(
-    page
-      .getByRole('status')
-      .filter({ hasText: /^(Refreshing…|Disconnected)$/ }),
+    page.getByRole('status').filter({ hasText: /^Refreshing…$/ }),
   ).toHaveCount(0);
+  await expect(staleLine(page)).toHaveCount(0);
+}
+/** WCAG contrast of an element's text against the surface it sits on. */
+function contrast(page: Page, selector: string) {
+  return page.evaluate((target) => {
+    const rgba = (color: string) => {
+      const context = document.createElement('canvas').getContext('2d');
+      if (!context) throw new Error('No canvas');
+      context.fillStyle = color;
+      context.fillRect(0, 0, 1, 1);
+      return [...context.getImageData(0, 0, 1, 1).data];
+    };
+    const luminance = (color: number[]) => {
+      const [r = 0, g = 0, b = 0] = color.slice(0, 3).map((value) => {
+        const c = value / 255;
+        return c <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4;
+      });
+      return 0.2126 * r + 0.7152 * g + 0.0722 * b;
+    };
+    const element = document.querySelector(target);
+    if (!element) throw new Error('Nothing matches ' + target);
+    // The nearest ancestor that paints an opaque background.
+    let surface: number[] | null = null;
+    for (let node: Element | null = element; node; node = node.parentElement) {
+      const painted = rgba(getComputedStyle(node).backgroundColor);
+      if (painted[3] === 255) {
+        surface = painted;
+        break;
+      }
+    }
+    if (!surface) throw new Error('No surface under ' + target);
+    const ink = luminance(rgba(getComputedStyle(element).color));
+    const paper = luminance(surface);
+    return (Math.max(ink, paper) + 0.05) / (Math.min(ink, paper) + 0.05);
+  }, selector);
 }
 /** A run's state as its row says it. */
 function runState(page: Page, label: string) {
@@ -108,10 +145,21 @@ test('a second person of the organization signs in to the same workspace and see
     });
     await expect(people.getByText('ada', { exact: true })).toBeVisible();
     // And Ada sees Grace arrive, online, without reloading.
+    const here = page.getByRole('region', { name: 'People in this channel' });
+    await expect(here.getByText('grace', { exact: true })).toBeVisible();
+    // A person is added to a channel the way an agent is: from their tile.
+    await createChannel(page, 'design');
+    await expect(here.getByText('grace', { exact: true })).toHaveCount(0);
+    await page.getByRole('tab', { name: 'Team', exact: true }).click();
+    const add = page.getByRole('button', { name: 'Add grace to channel' });
+    await add.click();
+    await expect(here.getByText('grace', { exact: true })).toBeVisible();
+    await expect(add).toHaveCount(0);
+    // Grace finds the channel in her sidebar without reloading.
     await expect(
-      page
-        .getByRole('region', { name: 'People in this channel' })
-        .getByText('grace', { exact: true }),
+      grace
+        .getByRole('navigation', { name: 'Channels' })
+        .getByRole('button', { name: 'design', exact: true }),
     ).toBeVisible();
   } finally {
     await theirs.close();
@@ -148,10 +196,8 @@ test('real workspace onboarding, mentions and reconnect on a phone', async ({
   await page.getByRole('button', { name: 'Start a topic' }).click();
   await page.getByLabel('Topic title').fill('Release planning');
   await page.getByLabel('Topic title').press('Enter');
+  // The topic just made is the one you are in.
   const topics = page.getByRole('group', { name: 'Topics' });
-  await topics
-    .getByRole('button', { name: 'Release planning', exact: true })
-    .click();
   await expect(
     topics.getByRole('button', { name: 'Release planning', exact: true }),
   ).toHaveAttribute('aria-pressed', 'true');
@@ -187,14 +233,21 @@ test('real workspace onboarding, mentions and reconnect on a phone', async ({
   await page.reload();
   await expect(page.getByText(sent, { exact: true })).toBeVisible();
   expect(await page.locator('.messages img').count()).toBe(0);
-  // Healthy is silent; the pill and its Reconnect button appear only offline.
+  // Healthy is silent. Out of reach is one line with nothing to press, and
+  // nothing in it speaks HTTP.
   await expectHealthy(page);
   await context.setOffline(true);
   await refreshNow(page);
-  await expect(page.getByText('Disconnected', { exact: true })).toBeVisible();
-  // Reconnecting while still offline keeps the honest state.
-  await page.getByRole('button', { name: 'Reconnect', exact: true }).click();
-  await expect(page.getByText('Disconnected', { exact: true })).toBeVisible();
+  await expect(staleLine(page)).toBeVisible();
+  await expect(page.getByText(/HTTP \d|Disconnected|Last update/)).toHaveCount(
+    0,
+  );
+  await expect(
+    page.getByRole('button', { name: /Reconnect|Try again|Return to/ }),
+  ).toHaveCount(0);
+  // Asking again while still out of reach keeps the honest state.
+  await refreshNow(page);
+  await expect(staleLine(page)).toBeVisible();
   // Coming back online reconnects by itself.
   await context.setOffline(false);
   await expectHealthy(page);
@@ -408,13 +461,16 @@ test('keyboard mention, and a message becomes a task in its topic', async ({
   await page.getByRole('button', { name: 'Start a topic' }).click();
   await page.getByLabel('Topic title').fill('Billing');
   await page.getByLabel('Topic title').press('Enter');
-  await page
-    .getByRole('list', { name: 'Topics' })
-    .getByRole('button', { name: 'Billing', exact: true })
-    .click();
-  // No wait for the topic refresh: typing must survive a background reload.
+  // The topic just made opens, with the composer ready to type in.
+  await expect(
+    page
+      .getByRole('list', { name: 'Topics' })
+      .getByRole('button', { name: 'Billing', exact: true }),
+  ).toHaveAttribute('aria-pressed', 'true');
   const composer = page.getByRole('form', { name: 'Message your team' });
   const message = composer.getByLabel('Message', { exact: true });
+  await expect(message).toBeFocused();
+  // No wait for the topic refresh: typing must survive a background reload.
   await message.fill('Validate postal codes per country');
   await message.pressSequentially(' @a');
   await expect(message).toHaveValue('Validate postal codes per country @a');
@@ -433,6 +489,9 @@ test('keyboard mention, and a message becomes a task in its topic', async ({
     .getByRole('listitem')
     .filter({ hasText: 'Validate postal codes per country @Ada' });
   await expect(posted).toBeVisible();
+  // Sending keeps the keyboard: the next message can be typed at once.
+  await expect(message).toBeFocused();
+  await expect(message).toHaveValue('');
   await posted.getByRole('button', { name: 'Make task', exact: true }).click();
   await expect(
     page.getByRole('tab', { name: 'Board', exact: true }),
@@ -1284,7 +1343,7 @@ test('a heartbeat refresh never interrupts work; after a failure nothing submits
   ).toBeEnabled();
   // B: once a refresh fails, the snapshot is stale and every submission stops.
   failRefresh();
-  await expect(page.getByText('Disconnected', { exact: true })).toBeVisible();
+  await expect(staleLine(page)).toBeVisible();
   // Typing goes on (nothing is lost); only sending waits for a confirmed snapshot.
   await expect(create.getByLabel('Channel name')).toBeEditable();
   await expect(composer.getByLabel('Message', { exact: true })).toBeEditable();
@@ -1292,12 +1351,11 @@ test('a heartbeat refresh never interrupts work; after a failure nothing submits
   // B': a reconnect still in flight has not confirmed anything yet.
   const succeed = await holdWorkspace(200);
   await refreshNow(page);
-  await expect(page.getByText('Refreshing…', { exact: true })).toBeVisible();
+  await expect(staleLine(page)).toBeVisible();
   await expect(create.getByLabel('Channel name')).toBeEditable();
   await expectNothingSubmits();
-  await expect(
-    composer.getByRole('alert').or(page.getByRole('alert')).first(),
-  ).toBeVisible();
+  // Asked to send anyway, the composer says why nothing went.
+  await expect(composer.getByRole('alert')).toContainText('Not sent');
   // Only GET is broken: real server POST remains reachable to the authenticated owner.
   const probe = await context.request.post(
     `${hub.origin}/api/teams/${state.team.id}/channels`,
@@ -1313,11 +1371,67 @@ test('a heartbeat refresh never interrupts work; after a failure nothing submits
   ).toBeVisible();
   await channelName.press('Enter');
   await expect(
-    page
-      .getByRole('navigation', { name: 'Channels' })
-      .getByRole('button', { name: 'after-reconnect', exact: true }),
+    page.getByRole('heading', { name: '# after-reconnect', exact: true }),
   ).toBeVisible();
   expect(posts).toBe(2);
+});
+
+test('a link that can’t open leads to the default channel, and a taken name says so', async ({
+  page,
+  hub,
+}) => {
+  await signIn(page, hub);
+  // A channel this person is not in, a topic that is not there and a task
+  // that is not on the board are not outages: each opens what can be opened.
+  for (const address of [
+    '/?channel=' + randomUUID(),
+    '/?topic=' + randomUUID(),
+    '/?channel=' + randomUUID() + '&topic=' + randomUUID(),
+  ]) {
+    await page.goto(hub.origin + address);
+    await expect(
+      page.getByRole('heading', { name: '# general', exact: true }),
+    ).toBeVisible();
+    await expect(page).toHaveURL(hub.origin + '/');
+  }
+  await page.goto(hub.origin + '/?task=' + randomUUID());
+  await expect(page.getByRole('region', { name: 'Task board' })).toBeVisible();
+  await expect(page).toHaveURL(hub.origin + '/?view=board');
+  await expect(page.getByText('Workspace unavailable')).toHaveCount(0);
+  await expectHealthy(page);
+  // A refusal is said once, where it can be acted on, in plain words.
+  await page.getByRole('button', { name: 'New channel' }).click();
+  await page.getByLabel('Channel name').fill('general');
+  await page.getByLabel('Channel name').press('Enter');
+  await expect(
+    page.getByRole('navigation', { name: 'Channels' }).getByRole('alert'),
+  ).toHaveText('That name is taken');
+  await expect(page.getByText(/HTTP \d/)).toHaveCount(0);
+});
+
+test('quiet text is readable where it sits, in light and dark', async ({
+  page,
+  hub,
+}) => {
+  await signIn(page, hub);
+  await page.getByRole('button', { name: 'Start a topic' }).click();
+  await page.getByLabel('Topic title').fill('Billing');
+  await page.getByLabel('Topic title').press('Enter');
+  const composer = page.getByRole('form', { name: 'Message your team' });
+  await composer.getByLabel('Message', { exact: true }).fill('Hello');
+  await composer.getByRole('button', { name: 'Send message' }).click();
+  await expect(
+    page.getByRole('list', { name: 'Channel messages' }).getByText('Hello'),
+  ).toBeVisible();
+  // A message's time, and a topic you are not in ("All", here).
+  for (const colorScheme of ['light', 'dark'] as const) {
+    await page.emulateMedia({ colorScheme });
+    for (const quiet of [
+      '.message-body time',
+      '.channel-topics button[aria-pressed="false"]',
+    ])
+      expect(await contrast(page, quiet)).toBeGreaterThanOrEqual(4.5);
+  }
 });
 
 test('the organization names the team at the top of the sidebar; nobody renames it', async ({
@@ -1398,8 +1512,9 @@ test('permission loss purges workspace snapshot instead of retaining stale team 
     page.getByRole('link', { name: 'Sign in with Feishu' }),
   ).toBeVisible();
   await expect(
-    page.getByText(/HTTP 403: You are not authorized for this action/),
+    page.getByText('That account no longer has access to this workspace.'),
   ).toBeVisible();
+  await expect(page.getByText(/HTTP \d/)).toHaveCount(0);
   await expect(page.getByText(privateMessage, { exact: true })).toHaveCount(0);
   await expect(
     page.getByRole('article', { name: 'Previously authorized task' }),

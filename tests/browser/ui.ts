@@ -34,10 +34,6 @@ export async function createChannel(page: Page, name: string) {
   await page.getByRole('button', { name: 'New channel' }).click();
   await page.getByLabel('Channel name').fill(name);
   await page.getByLabel('Channel name').press('Enter');
-  await page
-    .getByRole('navigation', { name: 'Channels' })
-    .getByRole('button', { name, exact: true })
-    .click();
   await expect(
     page.getByRole('heading', { name: '# ' + name, exact: true }),
   ).toBeVisible();

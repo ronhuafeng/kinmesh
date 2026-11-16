@@ -3,19 +3,17 @@ import { createContext, useContext, useEffect, useRef, useState } from 'react';
 export const MutationPermission = createContext(true);
 /** True only while disconnected, as opposed to a brief background refresh. */
 export const Offline = createContext(false);
+/** What went wrong, in the person's words; a status code is never shown. */
+const FAILED = 'That did not go through. Nothing was changed; try again.';
+const said: Partial<Record<number, string>> = {
+  401: 'Sign in again.',
+  403: 'You don’t have access to do that.',
+  409: 'That no longer applies; the page shows what changed.',
+  429: 'Too many requests. Wait a minute, then try again.',
+};
 export class HttpError extends Error {
   constructor(readonly status: number) {
-    super(
-      status === 409
-        ? 'HTTP 409: State changed or duplicate action. Refresh and inspect before continuing.'
-        : status === 403
-          ? 'HTTP 403: You are not authorized for this action.'
-          : status === 401
-            ? 'HTTP 401: Sign in again.'
-            : status === 429
-              ? 'HTTP 429: Too many requests. Wait a minute, then reconnect.'
-              : `HTTP ${String(status)}: Request rejected.`,
-    );
+    super(said[status] ?? FAILED);
   }
 }
 export async function api(
@@ -66,7 +64,7 @@ export function request(
  */
 export function useRequest(
   messages: Partial<Record<number, string>> = {},
-  fallback = 'That did not go through. Nothing was changed; try again.',
+  fallback = FAILED,
 ) {
   const permitted = useContext(MutationPermission);
   const [busy, setBusy] = useState(false);
@@ -109,8 +107,12 @@ interface Pending {
   /** The server's answer, for a caller that goes on to show what it made. */
   onResult?: (raw: unknown) => void;
 }
-/** A lost response keeps the exact command/key in memory for an explicit retry. Never auto-resend. */
-export function useAction() {
+/**
+ * A lost response keeps the exact command/key in memory for an explicit
+ * retry. Never auto-resend. `messages` says a refusal in the terms of the
+ * thing being done ("That name is taken"), by HTTP status.
+ */
+export function useAction(messages: Partial<Record<number, string>> = {}) {
   const permitted = useContext(MutationPermission);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
@@ -147,13 +149,11 @@ export function useAction() {
       ) {
         pending.current = null;
         setUncertain(false);
-        setError(cause.message);
+        setError(messages[cause.status] ?? cause.message);
       } else {
         pending.current = command;
         setUncertain(true);
-        setError(
-          'Connection lost. The action may have committed. Retry the same action or reconnect to inspect; no automatic retry.',
-        );
+        setError('That may not have gone through.');
       }
       return false;
     } finally {
@@ -175,7 +175,7 @@ export function useAction() {
     paused() {
       pausedNotice.current = true;
       setError(
-        'Not sent: the workspace is reconnecting. Your text is still here.',
+        'Not sent while Kinmesh can’t be reached. Your text is still here.',
       );
     },
     async send(
