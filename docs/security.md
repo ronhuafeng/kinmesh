@@ -46,6 +46,8 @@ For agents connected from the workspace, the hub holds the worker's Kinmesh toke
 
 ## T3 credentials
 
+- A session T3 issued for the hub (`KINMESH_T3_CREDENTIAL_FILE`) is a bearer credential like any other: the deployment keeps it secret, readable only by the hub, with only the scopes the hub needs and a bounded lifetime it renews before expiry.
+
 - T3 OAuth credential files are 0600, outside the repository, owned by the service user; loading rejects symlinks and shared, executable, oversized or wrong-endpoint files, and any scope beyond `orchestration:read` and `orchestration:operate`.
 - Kinmesh asks T3 only for `orchestration:read` and `orchestration:operate`, launches every run in the mode it chooses, and never approves on anyone's behalf. The person approving picks the grant's ceiling: Supervised for a T3 they share or run beside other work; Full access, which adds `settings:write` and `source-control:write`, only for a T3 that runs isolated, in a container whose network reaches nothing it should not. A credential with any other scope is refused. Authorization URLs and callback values are never printed to logs; manual mode writes only to the controlling terminal. Never paste pairing codes, callback URLs or tokens into chat, issues or prompts.
 - Workers never open consent or widen authority. A frozen delivery cannot move to a different T3 authority unless it provably never reached T3.

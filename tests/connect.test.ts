@@ -537,3 +537,29 @@ await test('in team mode T3 is reached over HTTPS: no T3 on the hub’s loopback
     await f.dispose();
   }
 });
+
+await test('a T3 the deployment connects offers no sign-in from the workspace', async () => {
+  const f = await connectFixture({ provisioned: true });
+  try {
+    const status = z
+      .object({ provisioned: z.boolean() })
+      .loose()
+      .parse((await f.call('GET', f.team + '/t3')).json<unknown>());
+    assert.equal(status.provisioned, true);
+    assert.deepEqual(
+      (await f.call('GET', f.team + '/t3/local')).json<unknown>(),
+      { endpoint: null },
+    );
+    assert.equal(
+      (
+        await f.call('POST', f.team + '/t3/connect', {
+          endpoint,
+          replace: false,
+        })
+      ).statusCode,
+      409,
+    );
+  } finally {
+    await f.dispose();
+  }
+});

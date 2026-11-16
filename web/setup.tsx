@@ -45,6 +45,8 @@ const T3Status = z.object({
   signIn: z.enum(['waiting', 'failed']).nullable(),
   /** Approval returns to the person's own computer, whose address they paste. */
   pasteCallback: z.boolean(),
+  /** The deployment connects T3; nobody signs in from here. */
+  provisioned: z.boolean(),
   revision: z.string(),
 });
 type T3Status = z.infer<typeof T3Status>;
@@ -835,6 +837,8 @@ export function AgentSetup({
       <p className="muted">{agent.name} is disabled, so it can’t be woken.</p>
     );
   else if (t3.status === null) next = <p className="muted">Checking T3…</p>;
+  else if (t3.status.provisioned && !t3Ready)
+    next = <p className="muted">Connecting T3…</p>;
   else if (!t3Ready || reconnecting)
     next = (
       <ConnectT3
@@ -873,7 +877,7 @@ export function AgentSetup({
       {next ? (
         <>
           {next}
-          {t3Ready && !reconnecting && (
+          {t3Ready && !reconnecting && !t3.status?.provisioned && (
             <p className="setup-t3">
               {t3Line}{' '}
               <button
@@ -906,15 +910,17 @@ export function AgentSetup({
             >
               Change model
             </button>
-            <button
-              type="button"
-              className="link-button"
-              onClick={() => {
-                setReconnecting(true);
-              }}
-            >
-              Reconnect
-            </button>
+            {!t3.status?.provisioned && (
+              <button
+                type="button"
+                className="link-button"
+                onClick={() => {
+                  setReconnecting(true);
+                }}
+              >
+                Reconnect
+              </button>
+            )}
             <button
               type="button"
               className="link-button subtle-danger"

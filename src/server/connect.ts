@@ -45,6 +45,8 @@ export interface Hub {
    * returns to that computer's loopback, whose address the person pastes.
    */
   pasteCallback: boolean;
+  /** The deployment connects T3 (KINMESH_T3_ENDPOINT); nobody signs in. */
+  provisioned: boolean;
 }
 /** T3 desktop's fixed loopback address; only this one address is probed. */
 const LOCAL_T3 = 'http://127.0.0.1:3773';
@@ -61,13 +63,18 @@ async function discoverLocal() {
     return null;
   }
 }
-export const defaultHub = (directory: string, team: boolean): Hub => ({
+export const defaultHub = (
+  directory: string,
+  team: boolean,
+  provisioned: boolean,
+): Hub => ({
   directory,
   ensureWorker: () => Promise.resolve(),
   authorize,
   providers: t3Providers,
   discover: discoverLocal,
   pasteCallback: team,
+  provisioned,
 });
 /** Scopes the worker uses (docs/collaboration.md, Grants and scopes), for 90 days. */
 export const WORKER_GRANT = {
@@ -133,6 +140,7 @@ export function registerConnect(
       },
       signIn: flow?.teamId === teamId ? flow.state : null,
       pasteCallback: hub.pasteCallback,
+      provisioned: hub.provisioned,
     };
     return { ...status, revision: fingerprint(status) };
   };
@@ -147,7 +155,10 @@ export function registerConnect(
     const { teamId } = TeamPath.parse(request.params);
     await store.managed.connection(principal(request), teamId);
     // A T3 on the hub's loopback is out of reach of a browser elsewhere.
-    return { endpoint: hub.pasteCallback ? null : await hub.discover() };
+    return {
+      endpoint:
+        hub.pasteCallback || hub.provisioned ? null : await hub.discover(),
+    };
   });
   app.post('/api/teams/:teamId/t3/connect', async (request, reply) => {
     reply.header('Cache-Control', 'no-store');
@@ -158,6 +169,10 @@ export function registerConnect(
       .parse(request.body);
     // A person of the team, checked before any file or network access.
     await store.managed.connection(p, teamId);
+    if (hub.provisioned)
+      return reply
+        .code(409)
+        .send({ error: 'T3 is connected by the deployment' });
     if (hub.pasteCallback && new URL(endpoint).protocol !== 'https:')
       return reply.code(400).send({ error: 'T3 must be reached over HTTPS' });
     if (flow?.state === 'waiting') throw new IdentityError(409);

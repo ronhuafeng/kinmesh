@@ -1,6 +1,7 @@
 import { isIP } from 'node:net';
 import { z } from 'zod';
 import { DatabaseUrl } from '../persistence/database.js';
+import { Endpoint } from '../adapters/t3/oauth.js';
 
 /** An address or a CIDR range, as a proxy may be named. */
 const ProxyAddress = z
@@ -46,6 +47,13 @@ const Environment = z.object({
     .regex(
       /^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]*[a-z0-9])?)+$/,
     ),
+  /**
+   * A T3 the deployment connects: its MCP URL, and the file holding the
+   * session it issued for the hub (`t3 auth session issue --json`). Both or
+   * neither; with them nobody signs in to T3 from the workspace.
+   */
+  KINMESH_T3_ENDPOINT: Endpoint.optional(),
+  KINMESH_T3_CREDENTIAL_FILE: z.string().min(1).optional(),
   /** Lets a scraper elsewhere read /metrics; this machine needs none. */
   KINMESH_METRICS_TOKEN: z.string().min(32).optional(),
   /** A stand-in for Feishu's hosts, for tests only. */
@@ -82,6 +90,13 @@ export function loadConfig(env: NodeJS.ProcessEnv) {
     value.KINMESH_TRUSTED_PROXIES.length === 0
   )
     throw new Error('An HTTPS origin needs KINMESH_TRUSTED_PROXIES.');
+  if (
+    (value.KINMESH_T3_ENDPOINT === undefined) !==
+    (value.KINMESH_T3_CREDENTIAL_FILE === undefined)
+  )
+    throw new Error(
+      'Set KINMESH_T3_ENDPOINT and KINMESH_T3_CREDENTIAL_FILE together.',
+    );
   return {
     database: value.KINMESH_DATABASE_URL,
     state: value.KINMESH_STATE,
@@ -93,6 +108,14 @@ export function loadConfig(env: NodeJS.ProcessEnv) {
     rateLimit: value.KINMESH_RATE_LIMIT,
     trustedProxies: value.KINMESH_TRUSTED_PROXIES,
     metricsToken: value.KINMESH_METRICS_TOKEN ?? null,
+    /** The T3 the deployment connects, if it does. */
+    t3:
+      value.KINMESH_T3_ENDPOINT && value.KINMESH_T3_CREDENTIAL_FILE
+        ? {
+            endpoint: value.KINMESH_T3_ENDPOINT,
+            credentialFile: value.KINMESH_T3_CREDENTIAL_FILE,
+          }
+        : null,
     feishu: {
       appId: value.FEISHU_APP_ID,
       appSecret: value.FEISHU_APP_SECRET,
