@@ -1423,14 +1423,18 @@ test('quiet text is readable where it sits, in light and dark', async ({
   await expect(
     page.getByRole('list', { name: 'Channel messages' }).getByText('Hello'),
   ).toBeVisible();
-  // A message's time, and a topic you are not in ("All", here).
+  // A message's time, and a topic you are not in ("All", here). A switched
+  // scheme reaches a button through its colour transition, so the reading
+  // is taken once it settles.
   for (const colorScheme of ['light', 'dark'] as const) {
     await page.emulateMedia({ colorScheme });
     for (const quiet of [
       '.message-body time',
       '.channel-topics button[aria-pressed="false"]',
     ])
-      expect(await contrast(page, quiet)).toBeGreaterThanOrEqual(4.5);
+      await expect
+        .poll(() => contrast(page, quiet))
+        .toBeGreaterThanOrEqual(4.5);
   }
 });
 
