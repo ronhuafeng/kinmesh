@@ -14,10 +14,10 @@ import {
 import {
   Endpoint,
   RENEW_BEFORE_MS,
-  loadCredential,
+  chooseCredential,
+  credentialIn,
   saveCredential,
   signInEnded,
-  type Credential,
 } from '../adapters/t3/oauth.js';
 import {
   t3Ceiling,
@@ -30,6 +30,7 @@ import {
   privateDirectory,
   removeAgentToken,
   t3AuthFile,
+  t3DeploymentFile,
   writeAgentToken,
 } from '../inbox/managed.js';
 import type { Changes } from './changes.js';
@@ -55,7 +56,10 @@ export interface Hub {
    * returns to that computer's loopback, whose address the person pastes.
    */
   pasteCallback: boolean;
-  /** The deployment connects T3 (KINMESH_T3_ENDPOINT); nobody signs in. */
+  /**
+   * The deployment connects T3 (KINMESH_T3_ENDPOINT) with a session of its
+   * own; a person may still sign in, to that T3, to let runs go further.
+   */
   provisioned: boolean;
 }
 /** T3 desktop's fixed loopback address; only this one address is probed. */
@@ -128,18 +132,27 @@ export function registerConnect(
         submit?: (url: string) => boolean;
       }
     | undefined;
+  // A person's sign-in; the deployment's session is kept apart from it.
   const credentialFile = t3AuthFile(hub.directory);
-  const credentialFor = (endpoint: string): Credential | null => {
-    try {
-      return loadCredential(credentialFile, endpoint);
-    } catch {
-      return null;
-    }
+  const sessions = (endpoint: string) => ({
+    person: credentialIn(credentialFile, endpoint),
+    deployment: credentialIn(t3DeploymentFile(hub.directory), endpoint),
+  });
+  /** The credential agents' runs use now (`chooseCredential`), if any. */
+  const runCredential = (endpoint: string) => {
+    const { person, deployment } = sessions(endpoint);
+    return chooseCredential([person, deployment]);
   };
   /** The team's T3 connection and any sign-in under way. */
   const t3Status = async (caller: Principal, teamId: TeamId) => {
     const connection = await store.managed.connection(caller, teamId);
-    const credential = connection && credentialFor(connection.endpoint);
+    const held = connection && sessions(connection.endpoint);
+    // What runs use; when T3 honours nothing, the sign-in that ended.
+    const credential =
+      held &&
+      (chooseCredential([held.person, held.deployment]) ??
+        held.person ??
+        held.deployment);
     // Whether T3 let agents run, or only read: a read-only approval looks
     // connected but every wake would be refused.
     const scopes = credential?.tokens.scope?.split(/\s+/) ?? [];
@@ -153,10 +166,10 @@ export function registerConnect(
             ? ('operate' as const)
             : ('read' as const)
           : null,
-        // The mode the person chose on T3's approval page: runs launch in it,
-        // or the broadest below it their provider runs. Null when unknown.
+        // The mode chosen for the credential runs use: they launch in it, or
+        // the broadest below it their provider runs. Null when unknown.
         ceiling: credential?.ceiling ?? null,
-        // T3 no longer honours the sign-in: agents wait until it is renewed.
+        // T3 honours no credential: agents wait until someone signs in.
         expired: credential !== null && signInEnded(credential),
       },
       signIn: flow?.teamId === teamId ? flow.state : null,
@@ -166,21 +179,30 @@ export function registerConnect(
     return { ...status, revision: fingerprint(status) };
   };
   /**
-   * T3's sign-in as it waits on every person of the team: from a week
-   * before it ends, until someone signs in again. The deployment renews
-   * its own session, so nobody is asked then.
+   * A person's T3 sign-in as it waits on every person of the team: from a
+   * week before it ends, until someone signs in again, with the mode runs
+   * fall back to once it has ended (the deployment's session), if any. The
+   * deployment renews its own session, so nobody is asked for that; only a
+   * session it no longer provides is.
    */
   const renewal = async (caller: Principal, teamId: TeamId) => {
-    if (hub.provisioned) return null;
     const connection = await store.managed.connection(caller, teamId);
-    const credential = connection && credentialFor(connection.endpoint);
-    if (!connection || credential?.expiresAt === undefined) return null;
+    if (!connection) return null;
+    const { person, deployment } = sessions(connection.endpoint);
     const now = Date.now();
-    if (Date.parse(credential.expiresAt) - now > RENEW_BEFORE_MS) return null;
+    const ending = person ?? (hub.provisioned ? null : deployment);
+    if (ending?.expiresAt === undefined) return null;
+    if (Date.parse(ending.expiresAt) - now > RENEW_BEFORE_MS) return null;
     return {
       endpoint: connection.endpoint,
-      expiresAt: credential.expiresAt,
-      expired: signInEnded(credential, now),
+      expiresAt: ending.expiresAt,
+      expired: signInEnded(ending, now),
+      fallback:
+        ending === person &&
+        deployment !== null &&
+        !signInEnded(deployment, now)
+          ? (deployment.ceiling ?? 'approval-required')
+          : null,
       pasteCallback: hub.pasteCallback,
       signIn: flow?.teamId === teamId ? flow.state : null,
     };
@@ -209,11 +231,12 @@ export function registerConnect(
       .strictObject({ endpoint: Endpoint, replace: z.boolean() })
       .parse(request.body);
     // A person of the team, checked before any file or network access.
-    await store.managed.connection(p, teamId);
-    if (hub.provisioned)
+    const connected = await store.managed.connection(p, teamId);
+    // Beside the deployment's session, a person signs in to the same T3.
+    if (hub.provisioned && connected?.endpoint !== endpoint)
       return reply
         .code(409)
-        .send({ error: 'T3 is connected by the deployment' });
+        .send({ error: 'Sign in to the T3 the deployment connects' });
     if (hub.pasteCallback && new URL(endpoint).protocol !== 'https:')
       return reply.code(400).send({ error: 'T3 must be reached over HTTPS' });
     if (flow?.state === 'waiting') throw new IdentityError(409);
@@ -315,7 +338,8 @@ export function registerConnect(
     );
     if (connection === null) throw new IdentityError(409);
     try {
-      const credential = loadCredential(credentialFile, connection.endpoint);
+      const credential = runCredential(connection.endpoint);
+      if (credential === null) throw new Error('No credential');
       return {
         // A healthy T3 answers in well under a second; a failed read is
         // simply read again, so nobody waits long on one that is down.
@@ -370,5 +394,5 @@ export function registerConnect(
       return reply.code(204).send();
     },
   );
-  return { t3Status, renewal };
+  return { t3Status, renewal, runCredential };
 }

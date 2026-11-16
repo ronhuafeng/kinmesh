@@ -37,7 +37,7 @@ function blockedText(reason: string, name: string) {
     case 'native-unreadable':
       return `Kinmesh can’t read what T3 returned for ${name}: update Kinmesh`;
     case 'authority-changed':
-      return `${name} was reconnected while this ran in T3, so its answer can’t be posted: ask again`;
+      return `${name}’s T3 access changed while this ran, so its answer can’t be posted: ask again`;
     case 'environment-changed':
       return `T3 is no longer the environment ${name} was connected to: connect ${name} again`;
     default:

@@ -11,8 +11,12 @@ import {
   registerConnect,
   type Hub,
 } from './connect.js';
-import { endProvisionedT3, provisionedT3 } from './provision.js';
-import { managedDirectory, t3AuthFile } from '../inbox/managed.js';
+import {
+  endProvisionedT3,
+  provisionedT3,
+  separateDeploymentSession,
+} from './provision.js';
+import { managedDirectory } from '../inbox/managed.js';
 import { principal, resolvePrincipal } from './principals.js';
 import { IdentityError } from '../domain/agents.js';
 import { z } from 'zod';
@@ -206,11 +210,27 @@ export async function createApp(
   });
   const changes = watchChanges(store);
   const { grants } = registerAgents(app, store, hub.directory);
-  const { t3Status, renewal } = registerConnect(app, store, hub, changes);
+  const { t3Status, renewal, runCredential } = registerConnect(
+    app,
+    store,
+    hub,
+    changes,
+  );
+  try {
+    separateDeploymentSession(hub.directory);
+  } catch (error) {
+    app.log.error(describeFailure(error), 't3_session_separation_failed');
+  }
   // The deployment's T3: applied now, then whenever its session is renewed.
   let provisioning: NodeJS.Timeout | undefined;
   if (config.t3) {
-    const sync = provisionedT3(store, hub.directory, config.t3);
+    const sync = provisionedT3(
+      store,
+      hub.directory,
+      config.t3,
+      fetch,
+      hub.ceiling,
+    );
     const run = () => {
       sync().then(
         (changed) => {
@@ -229,7 +249,7 @@ export async function createApp(
     provisioning.unref();
   } else
     try {
-      // A person signs in now; the deployment's session is not renewed.
+      // Only a person's sign-in runs now; the deployment's is not renewed.
       endProvisionedT3(hub.directory);
     } catch (error) {
       app.log.error(describeFailure(error), 't3_provision_end_failed');
@@ -250,7 +270,7 @@ export async function createApp(
   const { snapshot, runs } = registerWorkspace(
     app,
     store,
-    t3AuthFile(hub.directory),
+    runCredential,
     renewal,
   );
   const { openStreams } = registerEvents(app, store, changes, {
