@@ -69,9 +69,10 @@ export async function assistantResult(
       throw new ExecutionFailure('incompatible');
     if (observation.state === 'uncertain')
       return { kind: 'uncertain', reason: 'run-unobserved' };
-    // pendingRequests belongs to the whole T3 thread, not this exact Run.
-    // A newer Run awaiting approval cannot keep an older terminal Run's
-    // Inbox delivery blocked, or hide its real assistant item.
+    // pendingRequests are the exact Run's, or the whole thread's for a
+    // reference naming none. A newer Run awaiting approval cannot keep an
+    // older terminal Run's Inbox delivery blocked, or hide its real
+    // assistant item.
     if (
       !observation.terminal ||
       (reference.runId === undefined && observation.pendingRequests > 0)

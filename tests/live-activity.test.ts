@@ -23,6 +23,7 @@ function page(items: Activity['items'], hasMore = false): Activity {
       latestRunId: 'run',
       activeRunId: null,
       pendingRequestCount: 0,
+      itemCount: 10,
       providerInstanceId: 'provider',
       model: 'model',
     },

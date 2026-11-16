@@ -6,7 +6,7 @@ import { deliver } from '../src/inbox/worker.js';
 import { MessageId } from '../src/domain/communication.js';
 import { due, inboxFixture } from './inbox-helpers.js';
 import { key, postInput } from './communication-helpers.js';
-import { launched, mockRead } from './t3-helpers.js';
+import { envelope, launched, mockRead } from './t3-helpers.js';
 import { rawDatabase } from './raw.js';
 
 type Fixture = Awaited<ReturnType<typeof inboxFixture>>;
@@ -110,6 +110,71 @@ await test('a person stops a run waiting in T3: it is interrupted once and its s
     );
   } finally {
     await raw.close();
+    await f.dispose();
+  }
+});
+
+/**
+ * Proves only the delivery's own run waits for an approval: T3 keeps the
+ * request a run interrupted while waiting left behind and counts it for the
+ * thread, so a later run that is working must not read as waiting for one.
+ */
+await test('an approval an interrupted run left in T3 does not make a later run wait for one', async () => {
+  const f = await inboxFixture();
+  try {
+    await mention(f);
+    const [template] = mockRead().items;
+    assert.ok(template);
+    /** T3's thread with its activity: the requests still waiting, by run. */
+    const thread = (waiting: string[]) => {
+      const read = run('running');
+      Object.assign(read.thread, {
+        pendingRequestCount: waiting.length,
+        itemCount: 120,
+      });
+      return {
+        read,
+        activity: {
+          ...read,
+          items: waiting.map((runId, i) => ({
+            ...template,
+            itemId: 'request-' + String(i),
+            position: 110 + i,
+            runId,
+            type: 'approval_request',
+            status: 'waiting',
+          })),
+        },
+      };
+    };
+    let t3 = thread(['interrupted-earlier-run']);
+    f.wire.handler = (name, args) =>
+      Promise.resolve(
+        envelope(
+          name !== 't3_thread_read'
+            ? f.wire.values[name]
+            : args.view === 'activity'
+              ? t3.activity
+              : t3.read,
+        ),
+      );
+    const working = await attempt(f);
+    assert.equal(working.state, 'waiting', working.reason);
+    assert.equal(working.reason, 'execution-active');
+    // Only the thread's latest activity is read, without its text.
+    const [activity] = calls(f, 't3_thread_read').filter(
+      (c) => c.view === 'activity',
+    );
+    assert.ok(activity);
+    assert.equal(activity.afterPosition, 19);
+    assert.equal(activity.maxCharsPerItem, 1);
+
+    // The run asks for an approval of its own.
+    t3 = thread(['interrupted-earlier-run', launched.runId ?? '']);
+    const asking = await attempt(f);
+    assert.equal(asking.state, 'waiting', asking.reason);
+    assert.equal(asking.reason, 'human-or-approval-wait');
+  } finally {
     await f.dispose();
   }
 });

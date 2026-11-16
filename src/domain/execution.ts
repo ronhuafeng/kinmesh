@@ -67,6 +67,7 @@ export interface Observation {
   model: { providerId: string; modelId: string };
   terminal: boolean;
   acceptance: 'not-evaluated';
+  /** Requests waiting on a person: the run's, or the thread's when none is named. */
   pendingRequests: number;
   history: {
     id: string;
