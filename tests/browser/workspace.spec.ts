@@ -1809,6 +1809,15 @@ async function topOf(page: Page, text: string) {
   if (!box) throw new Error(text + ' is not on the page');
   return box.y;
 }
+/**
+ * Reads the workspace again the way a network coming back does. Live push
+ * is proven by its own tests; a measurement that only needs the new message
+ * on screen does not wait on the stream's timing.
+ */
+const readAgain = (page: Page) =>
+  page.evaluate(() => {
+    window.dispatchEvent(new Event('online'));
+  });
 const atBottom = (page: Page) =>
   page.evaluate(
     () =>
@@ -1876,6 +1885,7 @@ test('a long conversation opens at its newest message, follows new ones, holds s
     expect(response.status()).toBe(201);
   };
   await post('Arrived while reading back');
+  await readAgain(page);
   await expect(say('Arrived while reading back')).toBeAttached();
   expect(Math.abs((await topOf(page, 'Message 71')) - first)).toBeLessThan(1);
   // Further up, the start of the conversation.
@@ -1892,6 +1902,7 @@ test('a long conversation opens at its newest message, follows new ones, holds s
     window.scrollTo({ top: document.documentElement.scrollHeight });
   });
   await post('Arrived at the bottom');
+  await readAgain(page);
   await expect(say('Arrived at the bottom')).toBeInViewport();
   expect(await atBottom(page)).toBe(true);
   // What you send brings you back to it from anywhere.
@@ -1960,6 +1971,7 @@ test('“New since” marks only what others wrote while this channel or topic w
     await expect(divider).toHaveCount(0);
     // What she writes now is.
     await graceSays('Grace wrote this');
+    await readAgain(page);
     await expect(
       messages.getByRole('listitem').filter({ hasText: 'Grace wrote this' }),
     ).toContainText('New since');

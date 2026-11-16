@@ -253,9 +253,20 @@ export function App() {
       clearTimeout(timer);
     };
   }, [status, revision]);
-  // The task open on the board is part of the place: the snapshot carries
-  // it even when it is older than the board's newest tasks.
-  const openTaskId = focus?.kind === 'task' ? focus.id : '';
+  // A task opened that isn't on the board on screen (by its address, or
+  // older than the board's newest) is part of the place, so the snapshot
+  // carries it; decided once per task opened. One on the board is already
+  // on screen: opening it reads nothing.
+  const focusTask = focus?.kind === 'task' ? focus.id : '';
+  const taskReach = useRef({ id: '', reach: false });
+  if (taskReach.current.id !== focusTask)
+    taskReach.current = {
+      id: focusTask,
+      reach:
+        focusTask !== '' &&
+        !(data?.tasks.items.some((task) => task.id === focusTask) ?? false),
+    };
+  const openTaskId = taskReach.current.reach ? focusTask : '';
   const place = useMemo(() => {
     const query = new URLSearchParams(cursors);
     if (selection.channel) query.set('channelId', selection.channel);
