@@ -122,6 +122,7 @@ export const Read = z.object({
     latestRunId: z.string().nullable(),
     activeRunId: z.string().nullable(),
     pendingRequestCount: z.number().int().nonnegative(),
+    itemCount: z.number().int().nonnegative(),
     providerInstanceId: z.string(),
     model: z.string(),
   }),
@@ -139,6 +140,8 @@ export const Read = z.object({
       position: z.number().int().nonnegative(),
       runId: z.string().nullable(),
       type: z.string(),
+      /** `waiting` while it waits on a person, such as an approval. */
+      status: z.string(),
       text: z.string().nullable(),
       textTruncated: z.boolean(),
     }),

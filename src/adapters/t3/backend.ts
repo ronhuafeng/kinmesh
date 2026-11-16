@@ -411,6 +411,54 @@ export class T3Backend implements ExecutionBackend {
     }
     return null;
   }
+  /**
+   * The requests in T3 waiting on a person for this run. T3 counts pending
+   * requests for the whole thread, and keeps the one a run interrupted while
+   * waiting for an approval left behind, so the thread's count would have a
+   * later run waiting for an approval it never asked for. The run's own are
+   * the items it wrote that still wait; a run waiting on a person wrote them
+   * last, so they are among the thread's latest items.
+   */
+  private async waitingOn(
+    threadId: string,
+    runId: string,
+    itemCount: number,
+    signal?: AbortSignal,
+  ) {
+    let after = itemCount > 100 ? itemCount - 101 : undefined;
+    let waiting = 0;
+    // A page bound keeps a thread that grows while it is read from looping.
+    for (let page = 0; page < 4; page++) {
+      const result = reply(
+        Read,
+        await this.tools.call(
+          't3_thread_read',
+          {
+            threadId,
+            view: 'activity',
+            limit: 100,
+            runLimit: 1,
+            maxCharsPerItem: 1,
+            ...(after === undefined ? {} : { afterPosition: after }),
+          },
+          signal,
+        ),
+      );
+      if (result.thread.threadId !== threadId)
+        throw new ExecutionFailure('incompatible');
+      waiting += result.items.filter(
+        (i) => i.runId === runId && i.status === 'waiting',
+      ).length;
+      if (
+        !result.hasMore ||
+        result.nextPosition === null ||
+        result.nextPosition === after
+      )
+        break;
+      after = result.nextPosition;
+    }
+    return waiting;
+  }
   async read(
     reference: Reference,
     afterPosition?: number,
@@ -465,7 +513,17 @@ export class T3Backend implements ExecutionBackend {
       model: { providerId, modelId },
       terminal,
       acceptance: 'not-evaluated',
-      pendingRequests: result.thread.pendingRequestCount,
+      pendingRequests:
+        ref.runId === undefined
+          ? result.thread.pendingRequestCount
+          : terminal || result.thread.pendingRequestCount === 0
+            ? 0
+            : await this.waitingOn(
+                ref.threadId,
+                ref.runId,
+                result.thread.itemCount,
+                signal,
+              ),
       history: result.items.map((i) => ({
         id: i.itemId,
         position: i.position,
