@@ -53,6 +53,14 @@ export const ORCHESTRATION_SCOPES: readonly string[] = [
   'orchestration:read',
   'orchestration:operate',
 ];
+/**
+ * What T3 grants besides operate when a person approves Full access. A
+ * credential may hold them only with operate, and nothing else beyond.
+ */
+export const FULL_ACCESS_SCOPES: readonly string[] = [
+  'settings:write',
+  'source-control:write',
+];
 /** The fixed loopback OAuth redirect and the public client it registers. */
 export const CALLBACK = 'http://127.0.0.1:49871/callback';
 export const CLIENT_METADATA = {
@@ -64,10 +72,15 @@ export const CLIENT_METADATA = {
 };
 function approvedScopes(credential: Credential) {
   const scopes = credential.tokens.scope?.split(/\s+/) ?? [];
+  const operate = scopes.includes('orchestration:operate');
   if (
     credential.tokens.token_type.toLowerCase() !== 'bearer' ||
     !scopes.includes('orchestration:read') ||
-    scopes.some((scope) => !ORCHESTRATION_SCOPES.includes(scope))
+    scopes.some(
+      (scope) =>
+        !ORCHESTRATION_SCOPES.includes(scope) &&
+        !(operate && FULL_ACCESS_SCOPES.includes(scope)),
+    )
   )
     throw new ExecutionFailure('authentication');
 }

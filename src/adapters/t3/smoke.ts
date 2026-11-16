@@ -26,7 +26,7 @@ export async function readSmoke(wire: Wire, credential: Credential) {
   const operate =
     credential.tokens.scope?.split(/\s+/).includes('orchestration:operate') ??
     false;
-  if (operate && capabilities.runtimeMode !== 'approval-required')
-    throw new ExecutionFailure('permission');
-  return { operate };
+  // The grant's ceiling is the person's choice in T3; Kinmesh launches each
+  // run in the mode it asks for, never above it.
+  return { operate, ceiling: capabilities.runtimeMode };
 }
