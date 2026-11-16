@@ -17,9 +17,9 @@ import {
   Scope,
   CorrelationInput,
   RuntimeEventInput,
-  IdentityError,
   type RuntimeState,
 } from '../domain/agents.js';
+import { DomainError } from '../domain/errors.js';
 import { principalAuthor as author } from '../domain/tasks.js';
 
 function parseJson(value: string): unknown {
@@ -53,7 +53,7 @@ export function agentRepository(d: Database) {
         .where(and(eq(s.agents.id, agentId), eq(s.agents.teamId, teamId)))
         .limit(1)
     )[0];
-    if (row === undefined) throw new IdentityError(404);
+    if (row === undefined) throw new DomainError('not-found');
     return Agent.parse({
       ...row,
       capabilities: parseJson(row.capabilities),
@@ -74,14 +74,14 @@ export function agentRepository(d: Database) {
       grant.revokedAt !== null ||
       grant.expiresAt <= now()
     )
-      throw new IdentityError(401);
+      throw new DomainError('unauthenticated');
     const agent = await profile(p.teamId, p.agentId);
-    if (agent.lifecycle !== 'active') throw new IdentityError(401);
+    if (agent.lifecycle !== 'active') throw new DomainError('unauthenticated');
     return { grant, scopes: z.array(Scope).parse(parseJson(grant.scopes)) };
   }
   /**
-   * Membership of the team, holding every scope given (agents) — 401 for an
-   * unknown human or a dead grant, 403 otherwise.
+   * Membership of the team, holding every scope given (agents) — unauthenticated
+   * for an unknown human or a dead grant, forbidden otherwise.
    */
   async function teamAccess(p: Principal, teamId: TeamId, ...scopes: Scope[]) {
     Principal.parse(p);
@@ -92,7 +92,7 @@ export function agentRepository(d: Database) {
         p.teamId !== teamId ||
         !scopes.every((scope) => current.scopes.includes(scope))
       )
-        throw new IdentityError(403);
+        throw new DomainError('forbidden');
       return { role: 'agent' as const };
     }
     // Only whether they exist: nothing else about a person is needed here.
@@ -103,7 +103,7 @@ export function agentRepository(d: Database) {
         .where(eq(s.humans.id, p.humanId))
         .limit(1)
     )[0];
-    if (human === undefined) throw new IdentityError(401);
+    if (human === undefined) throw new DomainError('unauthenticated');
     const membership = (
       await q()
         .select()
@@ -116,7 +116,7 @@ export function agentRepository(d: Database) {
         )
         .limit(1)
     )[0];
-    if (membership === undefined) throw new IdentityError(403);
+    if (membership === undefined) throw new DomainError('forbidden');
   }
   /**
    * A person of the team: any member, since everyone is equal; an agent is
@@ -124,7 +124,7 @@ export function agentRepository(d: Database) {
    */
   async function person(p: Principal, teamId: TeamId) {
     await teamAccess(p, teamId);
-    if (p.kind !== 'human') throw new IdentityError(403);
+    if (p.kind !== 'human') throw new DomainError('forbidden');
   }
   async function access(
     p: Principal,
@@ -143,7 +143,7 @@ export function agentRepository(d: Database) {
         p.agentId !== agentId ||
         !current.scopes.includes(scope)
       )
-        throw new IdentityError(403);
+        throw new DomainError('forbidden');
     }
     return profile(teamId, agentId);
   }
@@ -156,7 +156,7 @@ export function agentRepository(d: Database) {
     else {
       await checkedGrant(p);
       if (p.teamId !== teamId || p.agentId !== agentId)
-        throw new IdentityError(403);
+        throw new DomainError('forbidden');
     }
     return profile(teamId, agentId);
   }
@@ -196,7 +196,7 @@ export function agentRepository(d: Database) {
       p.kind !== 'human' ||
       (await profile(teamId, agentId)).lifecycle !== 'active'
     )
-      throw new IdentityError(409);
+      throw new DomainError('conflict');
     const data = GrantInput.parse(input);
     const token = 'kma_' + randomBytes(32).toString('base64url');
     const grant = {
@@ -237,7 +237,7 @@ export function agentRepository(d: Database) {
         )
         .limit(1)
     )[0];
-    if (row === undefined) throw new IdentityError(404);
+    if (row === undefined) throw new DomainError('not-found');
     return row;
   }
   async function revoke(
@@ -272,7 +272,7 @@ export function agentRepository(d: Database) {
         )
         .limit(1)
     )[0];
-    if (row === undefined) throw new IdentityError(404);
+    if (row === undefined) throw new DomainError('not-found');
     return Correlation.parse({
       id: row.id,
       agentId: AgentId.parse(row.agentId),
@@ -289,7 +289,8 @@ export function agentRepository(d: Database) {
   }
   return {
     async resolveToken(token: string): Promise<Principal> {
-      if (!/^kma_[A-Za-z0-9_-]{43}$/.test(token)) throw new IdentityError(401);
+      if (!/^kma_[A-Za-z0-9_-]{43}$/.test(token))
+        throw new DomainError('unauthenticated');
       const row = (
         await q()
           .select()
@@ -297,7 +298,7 @@ export function agentRepository(d: Database) {
           .where(eq(s.agentGrants.tokenHash, digest(token)))
           .limit(1)
       )[0];
-      if (row === undefined) throw new IdentityError(401);
+      if (row === undefined) throw new DomainError('unauthenticated');
       const principal = Principal.parse({
         kind: 'agent',
         agentId: row.agentId,
@@ -305,7 +306,7 @@ export function agentRepository(d: Database) {
         grantId: row.id,
         scopes: parseJson(row.scopes),
       });
-      if (principal.kind !== 'agent') throw new IdentityError(401);
+      if (principal.kind !== 'agent') throw new DomainError('unauthenticated');
       await checkedGrant(principal);
       return principal;
     },
@@ -440,7 +441,7 @@ export function agentRepository(d: Database) {
         await self(p, teamId, agentId);
         const mime = avatarType(bytes);
         if (mime === null || bytes.length > AVATAR_LIMIT)
-          throw new IdentityError(400);
+          throw new DomainError('invalid');
         const updatedAt = now();
         await q()
           .insert(s.agentAvatars)
@@ -548,7 +549,7 @@ export function agentRepository(d: Database) {
       return atomic(async () => {
         await person(p, teamId);
         if ((await grantFor(teamId, agentId, grantId)).revokedAt !== null)
-          throw new IdentityError(409);
+          throw new DomainError('conflict');
         await revoke(p, teamId, agentId, grantId);
         return issue(p, teamId, agentId, input);
       });
@@ -588,7 +589,7 @@ export function agentRepository(d: Database) {
     ) {
       return atomic(async () => {
         const agent = await access(p, teamId, agentId, 'executions:write');
-        if (agent.lifecycle !== 'active') throw new IdentityError(409);
+        if (agent.lifecycle !== 'active') throw new DomainError('conflict');
         const data = CorrelationInput.parse(input);
         const id = randomUUID();
         const ref = data.reference;
@@ -645,7 +646,7 @@ export function agentRepository(d: Database) {
     ) {
       return atomic(async () => {
         const agent = await access(p, teamId, agentId, 'executions:write');
-        if (agent.lifecycle !== 'active') throw new IdentityError(409);
+        if (agent.lifecycle !== 'active') throw new DomainError('conflict');
         await correlation(teamId, agentId, id);
         RuntimeEventInput.parse({ state });
         const event = {

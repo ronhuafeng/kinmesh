@@ -2,7 +2,8 @@ import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { PROTOCOL_VERSION } from '@ag-ui/core';
 import { AgentId, TeamId } from '../domain/contracts.js';
-import { IdentityError, type Principal } from '../domain/agents.js';
+import type { Principal } from '../domain/agents.js';
+import { DomainError } from '../domain/errors.js';
 import { INBOX_LIVENESS_MS } from '../domain/inbox.js';
 import type { Store } from '../persistence/store.js';
 import { fingerprint } from '../persistence/transactional.js';
@@ -48,7 +49,7 @@ export function registerWorkspace(
     async (request, reply) => {
       reply.header('Cache-Control', 'no-store');
       const principal = request.principal;
-      if (principal?.kind !== 'human') throw new IdentityError(403);
+      if (principal?.kind !== 'human') throw new DomainError('forbidden');
       const { teamId, agentId, executionId } = z
         .strictObject({
           teamId: TeamId,
@@ -88,7 +89,7 @@ export function registerWorkspace(
         );
         return observation;
       } catch (error) {
-        if (error instanceof IdentityError) throw error;
+        if (error instanceof DomainError) throw error;
         // A concurrent Kinmesh access loss still takes precedence over an upstream outage.
         await store.agents.getCorrelation(
           principal,
@@ -105,7 +106,7 @@ export function registerWorkspace(
   const snapshot = async (principal: Person, query: WorkspaceQuery) => {
     const human = await store.human(principal.humanId);
     const membership = await store.teamFor(principal.humanId);
-    if (!human || !membership) throw new IdentityError(403);
+    if (!human || !membership) throw new DomainError('forbidden');
     const teamId = membership.team.id;
     const channels = await store.communication.channels(principal, teamId, {
       limit: 100,
@@ -157,7 +158,7 @@ export function registerWorkspace(
         ? await store.tasks
             .get(principal, teamId, channel.id, query.taskId)
             .catch((error: unknown) => {
-              if (error instanceof IdentityError && error.statusCode === 404)
+              if (error instanceof DomainError && error.kind === 'not-found')
                 return null;
               throw error;
             })
@@ -301,7 +302,7 @@ export function registerWorkspace(
   app.get('/api/workspace', (request, reply) => {
     reply.header('Cache-Control', 'no-store');
     const principal = request.principal;
-    if (principal?.kind !== 'human') throw new IdentityError(403);
+    if (principal?.kind !== 'human') throw new DomainError('forbidden');
     return snapshot(principal, WorkspaceQuery.parse(request.query));
   });
   app.get('/api/agui/:teamId/:memberId', async (request, reply) => {
@@ -311,7 +312,7 @@ export function registerWorkspace(
       .strictObject({ teamId: TeamId, memberId: AgentId })
       .parse(request.params);
     const principal = request.principal;
-    if (principal?.kind !== 'human') throw new IdentityError(403);
+    if (principal?.kind !== 'human') throw new DomainError('forbidden');
     return executionEvent(await runs(principal, teamId, memberId));
   });
   return { snapshot, runs };

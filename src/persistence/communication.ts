@@ -24,7 +24,8 @@ import {
   type ChannelId,
   type TeamId,
 } from '../domain/contracts.js';
-import { IdentityError, type Principal } from '../domain/agents.js';
+import type { Principal } from '../domain/agents.js';
+import { DomainError } from '../domain/errors.js';
 import {
   principalAuthor as author,
   principalMember as member,
@@ -94,7 +95,7 @@ export function communicationRepository(
       participant.state === 'removed' ||
       (!inactive && participant.state !== 'joined')
     )
-      throw new IdentityError(404);
+      throw new DomainError('not-found');
     return {
       channel: ChannelView.parse(channel),
       participant,
@@ -122,7 +123,7 @@ export function communicationRepository(
         )
         .limit(1)
     )[0];
-    if (row === undefined) throw new IdentityError(404);
+    if (row === undefined) throw new DomainError('not-found');
     return Participant.parse({
       channelId,
       teamId,
@@ -152,7 +153,7 @@ export function communicationRepository(
             .limit(1)
         )[0] === undefined
       )
-        throw new IdentityError(404);
+        throw new DomainError('not-found');
     } else {
       const agent = (
         await q()
@@ -161,13 +162,13 @@ export function communicationRepository(
           .where(and(eq(s.agents.id, target.id), eq(s.agents.teamId, teamId)))
           .limit(1)
       )[0];
-      if (agent?.lifecycle !== 'active') throw new IdentityError(404);
+      if (agent?.lifecycle !== 'active') throw new DomainError('not-found');
     }
     if (
       joined &&
       (await participantView(teamId, channelId, target)).state !== 'joined'
     )
-      throw new IdentityError(404);
+      throw new DomainError('not-found');
   }
   function mutation<T>(
     p: Principal,
@@ -222,7 +223,7 @@ export function communicationRepository(
         .where(and(eq(s.topics.id, id), eq(s.topics.channelId, channelId)))
         .limit(1)
     )[0];
-    if (row === undefined) throw new IdentityError(404);
+    if (row === undefined) throw new DomainError('not-found');
     return Topic.parse({ ...row, author: decode(row.author) });
   }
   async function message(channelId: ChannelId, id: MessageId) {
@@ -233,7 +234,7 @@ export function communicationRepository(
         .where(and(eq(s.messages.id, id), eq(s.messages.channelId, channelId)))
         .limit(1)
     )[0];
-    if (row === undefined) throw new IdentityError(404);
+    if (row === undefined) throw new DomainError('not-found');
     const mentions = (
       await q()
         .select()
@@ -263,13 +264,13 @@ export function communicationRepository(
         )
         .limit(1)
     )[0];
-    if (row === undefined) throw new IdentityError(404);
+    if (row === undefined) throw new DomainError('not-found');
     if (OutboxFact.parse(decode(row.fact)).kind === 'task.changed') {
       try {
         await agents.teamAccess(p, teamId, 'tasks:read');
       } catch (error) {
-        if (error instanceof IdentityError && error.statusCode === 403)
-          throw new IdentityError(404);
+        if (error instanceof DomainError && error.kind === 'forbidden')
+          throw new DomainError('not-found');
         throw error;
       }
     }
@@ -580,7 +581,7 @@ export function communicationRepository(
           action === 'remove' &&
           memberKey(data.member) === memberKey(member(p))
         )
-          throw new IdentityError(400);
+          throw new DomainError('invalid');
         return mutation(
           p,
           teamId,
@@ -881,7 +882,7 @@ export function communicationRepository(
           try {
             await agents.teamAccess(p, teamId, 'tasks:read');
           } catch (error) {
-            if (error instanceof IdentityError && error.statusCode === 403)
+            if (error instanceof DomainError && error.kind === 'forbidden')
               taskFacts = false;
             else throw error;
           }

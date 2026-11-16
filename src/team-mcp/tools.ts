@@ -1,7 +1,8 @@
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
 import { ChannelId, TaskId } from '../domain/contracts.js';
-import { IdentityError, type Principal } from '../domain/agents.js';
+import type { Principal } from '../domain/agents.js';
+import { DomainError } from '../domain/errors.js';
 import {
   ChannelView,
   Message,
@@ -50,17 +51,17 @@ export const outcome = <T extends z.ZodType>(data: T) =>
     ]),
   });
 function failure(error: unknown): z.infer<typeof Failure> {
-  if (error instanceof IdentityError) {
-    switch (error.statusCode) {
-      case 400:
+  if (error instanceof DomainError) {
+    switch (error.kind) {
+      case 'invalid':
         return { code: 'invalid_input', message: 'Invalid input' };
-      case 401:
+      case 'unauthenticated':
         return { code: 'unauthenticated', message: 'Authentication required' };
-      case 403:
+      case 'forbidden':
         return { code: 'forbidden', message: 'Permission denied' };
-      case 404:
+      case 'not-found':
         return { code: 'not_found', message: 'Resource unavailable' };
-      case 409:
+      case 'conflict':
         return { code: 'conflict', message: 'Operation conflicts' };
     }
   }
@@ -71,7 +72,7 @@ export async function agentPrincipal(
   authorization: string | undefined,
 ) {
   const principal = await resolvePrincipal(store, authorization, undefined);
-  if (principal.kind !== 'agent') throw new IdentityError(401);
+  if (principal.kind !== 'agent') throw new DomainError('unauthenticated');
   return principal;
 }
 /** One stateless SDK instance per HTTP request. Credentials never come from tool arguments. */

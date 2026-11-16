@@ -28,12 +28,8 @@ import {
 } from './transactional.js';
 import type { TeamId, TaskId } from '../domain/contracts.js';
 import { HumanId, type ChannelId } from '../domain/contracts.js';
-import {
-  Author,
-  IdentityError,
-  type Principal,
-  type Scope,
-} from '../domain/agents.js';
+import { Author, type Principal, type Scope } from '../domain/agents.js';
+import { DomainError } from '../domain/errors.js';
 import {
   memberKey,
   type Member,
@@ -84,7 +80,7 @@ export function taskRepository(
         )
         .limit(1)
     )[0];
-    if (value === undefined) throw new IdentityError(404);
+    if (value === undefined) throw new DomainError('not-found');
     return value;
   }
   function view(value: typeof s.tasks.$inferSelect): Task {
@@ -259,10 +255,10 @@ export function taskRepository(
     if (p.kind === 'human') {
       if (data.acceptor === null) return p.humanId;
       if (!(await joinedPerson(channelId, data.acceptor)))
-        throw new IdentityError(404);
+        throw new DomainError('not-found');
       return data.acceptor;
     }
-    if (data.acceptor !== null) throw new IdentityError(403);
+    if (data.acceptor !== null) throw new DomainError('forbidden');
     const rootAuthor = personOf(
       data.sourceEventId === null
         ? undefined
@@ -338,7 +334,7 @@ export function taskRepository(
       }
     const acceptor = chosen ?? anyone;
     // Nobody in the channel can decide on it.
-    if (!acceptor) throw new IdentityError(409);
+    if (!acceptor) throw new DomainError('conflict');
     return HumanId.parse(acceptor);
   }
   return {
@@ -369,7 +365,7 @@ export function taskRepository(
                 memberKey(data.owner) !== memberKey(principalMember(p))) ||
                 data.reviewer !== null)
             )
-              throw new IdentityError(403);
+              throw new DomainError('forbidden');
             await target(p, teamId, channelId, data.owner);
             await target(p, teamId, channelId, data.reviewer);
             if (data.topicId !== null)
@@ -438,7 +434,7 @@ export function taskRepository(
      */
     waitingOn(p: Principal, teamId: TeamId) {
       return atomic(async () => {
-        if (p.kind !== 'human') throw new IdentityError(403);
+        if (p.kind !== 'human') throw new DomainError('forbidden');
         await agents.teamAccess(p, teamId, 'tasks:read');
         const me = memberKey(principalMember(p));
         return (
@@ -525,7 +521,7 @@ export function taskRepository(
           p.kind !== 'agent' ||
           !retainsExecutionResponsibility(current, p.agentId)
         )
-          throw new IdentityError(403);
+          throw new DomainError('forbidden');
         // Recording execution evidence does not create a workflow decision or change its version.
         return insertExecution(
           p,
@@ -599,7 +595,7 @@ export function taskRepository(
                     : undefined,
                 ),
               );
-            if (changed.count !== 1) throw new IdentityError(409);
+            if (changed.count !== 1) throw new DomainError('conflict');
             let executionLink: z.infer<typeof TaskExecution> | null = null;
             if (data.type === 'link-execution')
               executionLink = await insertExecution(

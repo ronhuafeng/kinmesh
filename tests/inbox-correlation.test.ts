@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { rawDatabase, type RawDatabase } from './raw.js';
 import { Correlation } from '../src/domain/agents.js';
-import { IdentityError } from '../src/domain/agents.js';
+import { DomainError } from '../src/domain/errors.js';
 import { FrozenLaunch } from '../src/domain/inbox.js';
 import type { Reference } from '../src/domain/execution.js';
 import { deliver } from '../src/inbox/worker.js';
@@ -160,7 +160,7 @@ for (const denied of [
         const before = await counts(raw);
         await assert.rejects(
           async () => f.inbox.ack(f.claim, f.workerPrincipal, fixtureResult()),
-          IdentityError,
+          DomainError,
         );
         assert.deepEqual(await counts(raw), before);
         assert.equal((await f.inbox.get(f.claim.id)).resultMessageId, null);
@@ -230,7 +230,7 @@ for (const failedTable of ['inbox_results', 'inbox_history'])
         );
         await assert.rejects(
           async () => f.inbox.ack(f.claim, f.workerPrincipal, fixtureResult()),
-          IdentityError,
+          DomainError,
         );
       } finally {
         await raw.close();

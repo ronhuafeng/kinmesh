@@ -1,6 +1,7 @@
 import type { FastifyInstance } from 'fastify';
 import type { AgentId, TeamId } from '../domain/contracts.js';
-import { IdentityError, type Principal } from '../domain/agents.js';
+import type { Principal } from '../domain/agents.js';
+import { DomainError } from '../domain/errors.js';
 import { fingerprint } from '../persistence/transactional.js';
 import type { Store } from '../persistence/store.js';
 import type { WorkspaceQuery } from '../workspace/contracts.js';
@@ -59,12 +60,12 @@ export function registerEvents(
   });
   app.get('/api/events', async (request, reply) => {
     const principal = request.principal;
-    if (principal?.kind !== 'human') throw new IdentityError(403);
+    if (principal?.kind !== 'human') throw new DomainError('forbidden');
     const { page, ...place } = WatchQuery.parse(request.query);
     const resources = watched({ ...place, page });
     const session = request.session.get('session');
     const membership = await store.teamFor(principal.humanId);
-    if (!membership) throw new IdentityError(403);
+    if (!membership) throw new DomainError('forbidden');
     const teamId = membership.team.id;
     const mine = [...open.values()].filter((h) => h === principal.humanId);
     if (open.size >= TOTAL || mine.length >= PER_HUMAN)
@@ -73,7 +74,7 @@ export function registerEvents(
       try {
         return (await read()).revision;
       } catch (error) {
-        if (error instanceof IdentityError) return UNREADABLE;
+        if (error instanceof DomainError) return UNREADABLE;
         throw error;
       }
     };

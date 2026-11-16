@@ -6,12 +6,8 @@ import {
   ChannelId,
   type AgentId,
 } from './contracts.js';
-import {
-  Author,
-  IdentityError,
-  Principal,
-  CorrelationInput,
-} from './agents.js';
+import { Author, Principal, CorrelationInput } from './agents.js';
+import { DomainError } from './errors.js';
 import { Member, TopicId, Mutation, memberKey } from './communication.js';
 import { TaskAction, type TaskStatus } from './task-state.js';
 export { TaskId } from './contracts.js';
@@ -182,25 +178,26 @@ export function transition(
   const command = TaskCommand.parse(input);
   const p = principalMember(principal);
   const state = current.state;
-  if (command.expectedVersion !== current.version) throw new IdentityError(409);
+  if (command.expectedVersion !== current.version)
+    throw new DomainError('conflict');
   if (state.status === 'accepted' || state.status === 'cancelled')
-    throw new IdentityError(409);
+    throw new DomainError('conflict');
   const owns = state.owner !== null && memberKey(state.owner) === memberKey(p);
   // Only the task's acceptor decides on it.
   const finalHuman =
     principal.kind === 'human' && principal.humanId === current.acceptorHumanId;
   const work = () => {
-    if (!owns) throw new IdentityError(403);
+    if (!owns) throw new DomainError('forbidden');
   };
   const ready = () => {
     if (state.status !== 'in-progress' && state.status !== 'rework-requested')
-      throw new IdentityError(409);
+      throw new DomainError('conflict');
   };
   switch (command.type) {
     case 'claim':
-      if (state.status !== 'proposed') throw new IdentityError(409);
+      if (state.status !== 'proposed') throw new DomainError('conflict');
       if (state.reviewer !== null && memberKey(state.reviewer) === memberKey(p))
-        throw new IdentityError(409);
+        throw new DomainError('conflict');
       return TaskState.parse({
         status: 'in-progress',
         owner: p,
@@ -219,7 +216,7 @@ export function transition(
     case 'handoff':
       if (command.mode === 'work' && finalHuman) {
         // Explicit audited recovery when the old owner cannot act. Review restarts.
-        if (state.owner === null) throw new IdentityError(409);
+        if (state.owner === null) throw new DomainError('conflict');
       } else {
         work();
         ready();
@@ -228,7 +225,7 @@ export function transition(
         state.owner !== null &&
         memberKey(command.recipient) === memberKey(state.owner)
       )
-        throw new IdentityError(409);
+        throw new DomainError('conflict');
       return command.mode === 'review'
         ? TaskState.parse({
             status: 'review-requested',
@@ -244,9 +241,9 @@ export function transition(
           });
     case 'request-review':
       work();
-      if (state.status !== 'in-progress') throw new IdentityError(409);
+      if (state.status !== 'in-progress') throw new DomainError('conflict');
       if (memberKey(command.reviewer) === memberKey(p))
-        throw new IdentityError(409);
+        throw new DomainError('conflict');
       return TaskState.parse({
         status: 'review-requested',
         owner: state.owner,
@@ -254,9 +251,10 @@ export function transition(
         note: command.note,
       });
     case 'review':
-      if (state.status !== 'review-requested') throw new IdentityError(409);
+      if (state.status !== 'review-requested')
+        throw new DomainError('conflict');
       if (memberKey(state.reviewer) !== memberKey(p))
-        throw new IdentityError(403);
+        throw new DomainError('forbidden');
       return TaskState.parse({
         status:
           command.decision === 'approve'
@@ -267,8 +265,8 @@ export function transition(
         note: command.note,
       });
     case 'accept':
-      if (!finalHuman) throw new IdentityError(403);
-      if (state.status !== 'awaiting-human') throw new IdentityError(409);
+      if (!finalHuman) throw new DomainError('forbidden');
+      if (state.status !== 'awaiting-human') throw new DomainError('conflict');
       return TaskState.parse({
         ...state,
         status: 'accepted',
@@ -277,8 +275,8 @@ export function transition(
         acceptedAt: time,
       });
     case 'rework':
-      if (!finalHuman) throw new IdentityError(403);
-      if (state.owner === null) throw new IdentityError(409);
+      if (!finalHuman) throw new DomainError('forbidden');
+      if (state.owner === null) throw new DomainError('conflict');
       return TaskState.parse({
         status: 'rework-requested',
         owner: state.owner,
@@ -286,7 +284,7 @@ export function transition(
         note: command.note,
       });
     case 'cancel':
-      if (!finalHuman) throw new IdentityError(403);
+      if (!finalHuman) throw new DomainError('forbidden');
       return TaskState.parse({
         status: 'cancelled',
         owner: state.owner,
@@ -303,7 +301,7 @@ export function transition(
           memberKey(state.reviewer) === memberKey(p)
         )
       )
-        throw new IdentityError(403);
+        throw new DomainError('forbidden');
       return state;
   }
 }

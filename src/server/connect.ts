@@ -3,7 +3,8 @@ import { existsSync } from 'node:fs';
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { AgentId, TeamId } from '../domain/contracts.js';
-import { IdentityError, type Principal, type Scope } from '../domain/agents.js';
+import type { Principal, Scope } from '../domain/agents.js';
+import { DomainError } from '../domain/errors.js';
 import {
   AUTH_TIMEOUT_MS,
   PASTED_AUTH_TIMEOUT_MS,
@@ -239,9 +240,10 @@ export function registerConnect(
         .send({ error: 'Sign in to the T3 the deployment connects' });
     if (hub.pasteCallback && new URL(endpoint).protocol !== 'https:')
       return reply.code(400).send({ error: 'T3 must be reached over HTTPS' });
-    if (flow?.state === 'waiting') throw new IdentityError(409);
+    if (flow?.state === 'waiting') throw new DomainError('conflict');
     // Never replace an approved credential without being asked to.
-    if (existsSync(credentialFile) && !replace) throw new IdentityError(409);
+    if (existsSync(credentialFile) && !replace)
+      throw new DomainError('conflict');
     privateDirectory(hub.directory);
     flow?.stop.abort();
     const stop = new AbortController();
@@ -324,7 +326,7 @@ export function registerConnect(
     await store.managed.connection(principal(request), teamId);
     const current = flow;
     if (current?.teamId !== teamId || current.state !== 'waiting')
-      throw new IdentityError(409);
+      throw new DomainError('conflict');
     if (!current.submit?.(url.trim()))
       return reply.code(400).send({ error: 'Not this sign-in’s address' });
     return reply.code(204).send();
@@ -336,7 +338,7 @@ export function registerConnect(
       principal(request),
       teamId,
     );
-    if (connection === null) throw new IdentityError(409);
+    if (connection === null) throw new DomainError('conflict');
     try {
       const credential = runCredential(connection.endpoint);
       if (credential === null) throw new Error('No credential');

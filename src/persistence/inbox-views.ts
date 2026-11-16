@@ -4,7 +4,8 @@ import * as s from './schema.js';
 import type { agentRepository } from './agents.js';
 import type { communicationRepository } from './communication.js';
 import type { Database } from './database.js';
-import { IdentityError, type Principal } from '../domain/agents.js';
+import type { Principal } from '../domain/agents.js';
+import { DomainError } from '../domain/errors.js';
 import type {
   ChannelId as ChannelIdSchema,
   TeamId,
@@ -30,7 +31,7 @@ export function inboxViews(
   const t = s.agentInbox;
   async function person(p: Principal, teamId: TeamId) {
     // Agents are refused before their grant is looked at.
-    if (p.kind !== 'human') throw new IdentityError(403);
+    if (p.kind !== 'human') throw new DomainError('forbidden');
     await agents.person(p, teamId);
     return p;
   }
