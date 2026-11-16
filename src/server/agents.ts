@@ -182,10 +182,6 @@ export function registerAgents(
         );
     },
   );
-  app.get(base + '/:agentId/audit', (request) => {
-    const { teamId, agentId } = AgentPath.parse(request.params);
-    return store.agents.audit(principal(request), teamId, agentId);
-  });
   app.post(base + '/:agentId/executions', async (request, reply) => {
     const { teamId, agentId } = AgentPath.parse(request.params);
     return reply
@@ -198,10 +194,6 @@ export function registerAgents(
           CorrelationInput.parse(request.body),
         ),
       );
-  });
-  app.get(base + '/:agentId/executions', (request) => {
-    const { teamId, agentId } = AgentPath.parse(request.params);
-    return store.agents.correlations(principal(request), teamId, agentId);
   });
   app.post(
     base + '/:agentId/executions/:executionId/events',
@@ -222,16 +214,5 @@ export function registerAgents(
         );
     },
   );
-  app.get(base + '/:agentId/executions/:executionId/events', (request) => {
-    const { teamId, agentId, executionId } = ExecutionPath.parse(
-      request.params,
-    );
-    return store.agents.runtimeEvents(
-      principal(request),
-      teamId,
-      agentId,
-      executionId,
-    );
-  });
   return { grants };
 }

@@ -237,11 +237,8 @@ await test('opaque agent credentials use independent 256-bit randomness, hash-on
     assert.equal(get.statusCode, 200);
     for (const secret of [second.token, f.grant.token, stored.token_hash])
       assert.equal(get.body.includes(secret), false);
-    const audit = await f.app.inject({
-      url: f.path + '/audit',
-      cookies: f.cookies,
-    });
-    assert.equal(audit.body.includes(second.token), false);
+    const audit = await f.store.agents.audit(f.principal, f.teamId, f.agent.id);
+    assert.equal(JSON.stringify(audit).includes(second.token), false);
     for (const token of ['kma_bad', 'invalid', 'kma_' + 'x'.repeat(43)]) {
       assert.equal(
         (
@@ -277,10 +274,6 @@ await test('agent scopes are checked from persisted grants and never confer huma
       403,
     );
     assert.equal(
-      (await f.app.inject({ url: f.path + '/executions', headers })).statusCode,
-      200,
-    );
-    assert.equal(
       (
         await f.app.inject({
           method: 'POST',
@@ -293,6 +286,10 @@ await test('agent scopes are checked from persisted grants and never confer huma
     );
     const agent = await f.store.agents.resolveToken(scoped.token);
     assert.equal(agent.kind, 'agent');
+    assert.deepEqual(
+      await f.store.agents.correlations(agent, f.teamId, f.agent.id),
+      [],
+    );
     await assert.rejects(
       () =>
         f.store.agents.authorize(
@@ -316,13 +313,7 @@ await test('agent scopes are checked from persisted grants and never confer huma
       ).statusCode,
       403,
     );
-    for (const url of [
-      '/api/me',
-      '/api/team',
-      f.base,
-      f.path + '/grants',
-      f.path + '/audit',
-    ])
+    for (const url of ['/api/me', '/api/team', f.base, f.path + '/grants'])
       assert.equal(
         (await f.app.inject({ url, headers: f.headers })).statusCode,
         403,
@@ -568,15 +559,10 @@ await test('revoke blocks every agent profile/execution route and stale principa
         action,
         (e) => e instanceof IdentityError && e.statusCode === 401,
       );
-    for (const url of [
-      f.path,
-      f.path + '/executions',
-      f.path + '/executions/' + execution.id + '/events',
-    ])
-      assert.equal(
-        (await f.app.inject({ url, headers: f.headers })).statusCode,
-        401,
-      );
+    assert.equal(
+      (await f.app.inject({ url: f.path, headers: f.headers })).statusCode,
+      401,
+    );
     for (const [url, payload] of [
       [f.path + '/executions', correlationInput],
       [f.path + '/executions/' + execution.id + '/events', { state: 'active' }],
@@ -624,20 +610,15 @@ await test('disable revokes all grants atomically and reactivation cannot resurr
       200,
     );
     for (const token of [second.token, f.grant.token]) {
-      for (const url of [
-        f.path,
-        f.path + '/executions',
-        f.path + '/executions/' + execution.id + '/events',
-      ])
-        assert.equal(
-          (
-            await f.app.inject({
-              url,
-              headers: { authorization: 'Bearer ' + token },
-            })
-          ).statusCode,
-          401,
-        );
+      assert.equal(
+        (
+          await f.app.inject({
+            url: f.path,
+            headers: { authorization: 'Bearer ' + token },
+          })
+        ).statusCode,
+        401,
+      );
       for (const [url, payload] of [
         [f.path + '/executions', correlationInput],
         [
@@ -781,7 +762,7 @@ await test('expiration and removed human membership are checked on every request
       (e) => e instanceof IdentityError && e.statusCode === 401,
     );
     await raw.exec('DELETE FROM memberships');
-    for (const url of [f.path, f.path + '/executions', f.path + '/grants'])
+    for (const url of [f.path, f.path + '/grants'])
       assert.equal(
         (await f.app.inject({ url, cookies: f.cookies })).statusCode,
         403,
@@ -951,12 +932,9 @@ await test('service restart preserves stable agent, grant, correlations, provena
       (await restarted.inject({ url: f.path, cookies: f.cookies })).statusCode,
       200,
     );
-    const correlations = await restarted.inject({
-      url: f.path + '/executions',
-      headers: f.headers,
-    });
     assert.equal(
-      z.array(Correlation).parse(correlations.json<unknown>())[0]?.id,
+      (await reopened.agents.correlations(f.principal, f.teamId, f.agent.id))[0]
+        ?.id,
       execution.id,
     );
     assert.equal(
@@ -1026,14 +1004,7 @@ await test('disabled lifecycle independently blocks unrevoked grants and every p
       () => f.store.agents.get(stale, f.teamId, f.agent.id),
       (e) => e instanceof IdentityError && e.statusCode === 401,
     );
-    const paths = [
-      f.base,
-      f.path,
-      f.path + '/executions',
-      f.path + '/executions/' + execution.id + '/events',
-      f.path + '/grants',
-      f.path + '/audit',
-    ];
+    const paths = [f.base, f.path, f.path + '/grants'];
     for (const url of paths)
       assert.equal(
         (await f.app.inject({ url, headers: f.headers })).statusCode,

@@ -254,6 +254,33 @@ export function inboxRepository(
     }
     return { profile, channel, task, principal: p };
   }
+  /**
+   * Every agent's work that never reached T3 and is past its lifetime
+   * expires, whether a worker serves the agent or not; anything that may be
+   * in T3 must stay reconcilable. A launch in flight is uncertain, not
+   * ready. Runs under the claim lock.
+   */
+  async function expireUndispatched() {
+    const expired = await q()
+      .update(t)
+      .set({
+        state: 'expired',
+        reason: 'undispatched-expiry',
+        claimToken: null,
+        leaseUntil: 0,
+      })
+      .where(
+        and(
+          eq(t.state, 'ready'),
+          sql`NOT ${mayBeInT3}`,
+          lte(t.expiresAt, dbNow),
+          lte(t.leaseUntil, dbNow),
+        ),
+      )
+      .returning();
+    for (const row of expired)
+      await history(Delivery.parse(row), 'undispatched-expiry');
+  }
   async function update(
     c: Claim,
     data: {
@@ -285,28 +312,7 @@ export function inboxRepository(
         // held until this transaction ends. Row locks alone (SKIP LOCKED)
         // would let two claims each see room and exceed the capacity.
         await q().execute(sql`select pg_advisory_xact_lock(${CLAIM_LOCK})`);
-        // Expire only work that never reached T3; anything that may be there
-        // must stay reconcilable. A launch in flight is uncertain, not ready.
-        const expired = await q()
-          .update(t)
-          .set({
-            state: 'expired',
-            reason: 'undispatched-expiry',
-            claimToken: null,
-            leaseUntil: 0,
-          })
-          .where(
-            and(
-              among(t.agentId, ids),
-              eq(t.state, 'ready'),
-              sql`NOT ${mayBeInT3}`,
-              lte(t.expiresAt, dbNow),
-              lte(t.leaseUntil, dbNow),
-            ),
-          )
-          .returning();
-        for (const row of expired)
-          await history(Delivery.parse(row), 'undispatched-expiry');
+        await expireUndispatched();
         // Global capacity and per-agent oldest outstanding event serialize across independent processes.
         const capacity =
           (
@@ -910,6 +916,16 @@ export function inboxRepository(
             return { id };
           },
         );
+      });
+    },
+    /**
+     * Expires undispatched work past its lifetime for every agent, also those
+     * no worker serves, whose work no claim ever looks at.
+     */
+    expire() {
+      return atomic(async () => {
+        await q().execute(sql`select pg_advisory_xact_lock(${CLAIM_LOCK})`);
+        await expireUndispatched();
       });
     },
     /** Liveness only, never authority: unknown or foreign agent IDs are ignored. */

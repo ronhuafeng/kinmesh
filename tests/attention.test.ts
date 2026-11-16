@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { WorkspaceSnapshot } from '../src/workspace/contracts.js';
 import { inboxFixture } from './inbox-helpers.js';
 import { key, postInput } from './communication-helpers.js';
+import { rawDatabase } from './raw.js';
 
 type Fixture = Awaited<ReturnType<typeof inboxFixture>>;
 const raw = async (f: Fixture, channelId: string) =>
@@ -119,6 +120,47 @@ await test('blocked deliveries and unwakeable agents are listed without worker i
     );
     assert.deepEqual((await snapshot(f, other)).attention.unstuck, []);
   } finally {
+    await f.dispose();
+  }
+});
+
+await test('work for an agent no worker serves expires on time, and stops asking for one', async () => {
+  const f = await inboxFixture();
+  const raw = rawDatabase(f.dbPath);
+  try {
+    const other = await elsewhere(f);
+    await f.comm.post(
+      f.principal,
+      f.teamId,
+      f.channelId,
+      postInput({
+        body: 'Ada, please check this',
+        mentions: [{ kind: 'agent', id: f.agent.id }],
+      }),
+    );
+    const [row] = await f.rows();
+    assert.ok(row);
+    // No worker serves the agent, so no claim ever looks at its work; what
+    // the hub runs every minute does. Within its lifetime, the work waits.
+    await f.inbox.expire();
+    assert.equal((await f.inbox.get(row.id)).state, 'ready');
+    assert.deepEqual((await snapshot(f, other)).attention.connect, [
+      { agentId: f.agent.id, queued: 1 },
+    ]);
+    // Controlled clock fixture only: production code cannot edit expiry.
+    await raw.exec('DROP TRIGGER inbox_source_immutable ON agent_inbox');
+    await raw
+      .prepare('UPDATE agent_inbox SET expires_at=1 WHERE id=?')
+      .run(row.id);
+    await f.inbox.expire();
+    const expired = await f.inbox.get(row.id);
+    assert.deepEqual(
+      [expired.state, expired.reason],
+      ['expired', 'undispatched-expiry'],
+    );
+    assert.deepEqual((await snapshot(f, other)).attention.connect, []);
+  } finally {
+    await raw.close();
     await f.dispose();
   }
 });
