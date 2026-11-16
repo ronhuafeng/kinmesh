@@ -31,6 +31,11 @@ import { feishuEnv } from './helpers.js';
 import { signInOver, startFeishuStandIn } from './feishu.js';
 
 const root = fileURLToPath(new URL('../', import.meta.url));
+/**
+ * Reads `get` until it is accepted. Only for what announces nothing: the
+ * process table, and the worker's liveness in the database. Neither read
+ * reaches the hub, so it can't spend the hub's request limit.
+ */
 async function until<T>(
   get: () => T | Promise<T>,
   accept: (value: T) => boolean,
@@ -201,27 +206,50 @@ async function fixture(database?: string, shared?: string) {
       stdio: ['ignore', 'pipe', 'pipe'],
     });
     let output = '';
-    child.stdout.on('data', (chunk: Buffer) => {
+    // Each waiting said(), looked at again whenever the hub prints.
+    const waiting = new Set<() => void>();
+    const heard = (chunk: Buffer) => {
       output = (output + chunk.toString()).slice(-65536);
-    });
-    child.stderr.on('data', (chunk: Buffer) => {
-      output = (output + chunk.toString()).slice(-65536);
-    });
+      for (const check of waiting) check();
+    };
+    child.stdout.on('data', heard);
+    child.stderr.on('data', heard);
     const closed = new Promise<number | null>((done, reject) => {
       child.once('error', reject);
       child.once('close', (code) => {
         done(code);
       });
     });
+    /**
+     * Resolves once the hub has printed `line` `times` times; rejects if it
+     * exits first. Waiting on its output costs no request to it.
+     */
+    const said = (line: string, times = 1) =>
+      deadline(
+        new Promise<void>((done, reject) => {
+          const check = () => {
+            if (output.split(line).length - 1 < times) return;
+            waiting.delete(check);
+            done();
+          };
+          const gone = () => {
+            if (waiting.delete(check))
+              reject(new Error('The hub exited before it said: ' + line));
+          };
+          waiting.add(check);
+          check();
+          void closed.then(gone, gone);
+        }),
+        15000,
+        'Subprocess fixture deadline',
+      );
     const runner = {
       child,
       closed,
       output: () => output,
+      said,
       async ready() {
-        await until(
-          () => output,
-          (s) => s.includes('Kinmesh Team Hub ready'),
-        );
+        await said('Kinmesh Team Hub ready');
         assert.equal(await health(), 200);
       },
       hub() {
@@ -396,6 +424,11 @@ await test(
   },
 );
 
+/**
+ * Proves the hub replaces a killed worker after a backoff, is not ready while
+ * it has none, and that a pending delivery survives both the worker's and the
+ * hub's restarts untouched.
+ */
 await test(
   'opt-in npm start supervises actual worker; HTTP mention persists across child and parent restarts without T3',
   { timeout: 40000 },
@@ -435,7 +468,10 @@ await test(
       assert.equal(row.generation, 0, 'empty bindings never dispatch');
       const killedAt = Date.now();
       process.kill(original, 'SIGKILL');
-      await until(f.health, (status) => status === 503);
+      // The hub has seen its worker go, and says it is not ready until the
+      // replacement runs.
+      await p.said('Kinmesh Inbox worker unavailable');
+      assert.equal(await f.health(), 503);
       const replacement = await until(
         () => p.workers(),
         (ids) => ids.length === 1 && ids[0] !== original,
@@ -444,11 +480,7 @@ await test(
         Date.now() - killedAt >= 200,
         'bounded restart backoff is applied',
       );
-      await until(
-        () =>
-          p.output().match(/supervised Inbox worker running\./g)?.length ?? 0,
-        (count) => count === 2,
-      );
+      await p.said('supervised Inbox worker running.', 2);
       assert.equal(await f.health(), 200);
       assert.deepEqual(
         (await seed.rows())[0],
@@ -483,6 +515,10 @@ await test(
   },
 );
 
+/**
+ * Proves a worker that keeps dying stops the hub after three replacements,
+ * even though each replacement ran: a crash loop never runs forever.
+ */
 await test(
   'restart budget is finite even when each worker briefly becomes healthy',
   { timeout: 30000 },
@@ -495,14 +531,8 @@ await test(
         const id = p.workers()[0];
         assert.ok(id);
         process.kill(id, 'SIGKILL');
-        if (attempt < 3) {
-          await until(
-            () =>
-              p.output().match(/supervised Inbox worker running\./g)?.length ??
-              0,
-            (count) => count === attempt + 2,
-          );
-        }
+        if (attempt < 3)
+          await p.said('supervised Inbox worker running.', attempt + 2);
       }
       assert.equal(await deadline(p.closed, 15000), 1);
       assert.ok(p.output().includes('restart budget exhausted'));

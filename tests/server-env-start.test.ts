@@ -11,12 +11,15 @@ import {
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { test } from 'node:test';
-import { setTimeout as delay } from 'node:timers/promises';
 import { z } from 'zod';
-import { freePort, stop } from './process-helpers.js';
+import { deadline, freePort, printed, stop } from './process-helpers.js';
 import { feishuEnv } from './helpers.js';
 import { testDatabase } from './database.js';
 
+/**
+ * Proves the hub's start script runs on secrets from the process environment
+ * alone, with no .env file, and still refuses an unauthenticated request.
+ */
 await test(
   'ordinary hub startup accepts private process environment without a local .env',
   { timeout: 30000 },
@@ -53,26 +56,16 @@ await test(
       child = spawn(
         process.execPath,
         ['--env-file-if-exists=.env', '--import', 'tsx', 'src/server/main.ts'],
-        { cwd: directory, env, stdio: 'ignore' },
+        { cwd: directory, env, stdio: ['ignore', 'pipe', 'ignore'] },
       );
-      let ready = false;
-      const deadline = Date.now() + 18000;
-      while (Date.now() < deadline) {
-        if (child.exitCode !== null || child.signalCode !== null) break;
-        try {
-          const result = await fetch(origin + '/health', {
-            signal: AbortSignal.timeout(700),
-          });
-          if (result.status === 200) {
-            ready = true;
-            break;
-          }
-        } catch {
-          // Readiness is eventually consistent; no provider or native Run is used.
-        }
-        await delay(100);
-      }
-      assert.equal(ready, true, 'hub must start with environment-only secrets');
+      // It says when it is ready, and then answers ready: no polling spends
+      // the address's request budget.
+      await deadline(
+        printed(child, 'Kinmesh Team Hub ready'),
+        18000,
+        'hub must start with environment-only secrets',
+      );
+      assert.equal((await fetch(origin + '/health')).status, 200);
       const unauthenticated = await fetch(origin + '/api/me');
       assert.equal(unauthenticated.status, 401);
     } finally {
