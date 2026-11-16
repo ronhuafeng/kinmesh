@@ -35,7 +35,7 @@ docker compose up -d --build
 docker compose ps      # healthy once the database and worker are ready
 ```
 
-The hub is published on this machine's loopback only (`127.0.0.1:3000`), for the reverse proxy below; its proxy then reaches it from the host, so `KINMESH_TRUSTED_PROXIES` names the Docker network's gateway (for the default bridge, `172.16.0.0/12`). Back up the `kinmesh-data` volume with the database (below). CI builds the image on every pull request; publishing it is a separate, deliberate step.
+The hub is published on this machine's loopback only (`127.0.0.1:3000`), for the reverse proxy below; its proxy then reaches it from the host, so `KINMESH_TRUSTED_PROXIES` names the Docker network's gateway (for the default bridge, `172.16.0.0/12`). Back up the `kinmesh-data` volume with the database (below). CI builds the image on every pull request. Each commit on `main` is published for linux/amd64 and linux/arm64 as `ghcr.io/ronhuafeng/kinmesh:<commit>`; deployments pin that commit.
 
 ### Behind a reverse proxy
 
