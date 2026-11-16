@@ -10,6 +10,7 @@ import type {
   TeamId,
 } from '../domain/contracts.js';
 import { FrozenLaunch, InboxState, PublishedOutcome } from '../domain/inbox.js';
+import { REACH } from '../domain/communication.js';
 
 type ChannelId = z.infer<typeof ChannelIdSchema>;
 const decode = (value: string): unknown => JSON.parse(value);
@@ -79,8 +80,9 @@ export function inboxViews(
     ) {
       return atomic(async () => {
         await inChannel(p, teamId, channelId);
-        const ids = z.array(z.uuid()).max(100).parse(messageIds);
-        const tasks = z.array(z.uuid()).max(100).parse(taskIds);
+        const ids = z.array(z.uuid()).max(REACH).parse(messageIds);
+        // A page of tasks, and the one open beside it.
+        const tasks = z.array(z.uuid()).max(101).parse(taskIds);
         if (ids.length === 0 && tasks.length === 0) return [];
         const rows = await q()
           .select({
@@ -182,7 +184,7 @@ export function inboxViews(
     ) {
       return atomic(async () => {
         await inChannel(p, teamId, channelId);
-        const ids = z.array(z.uuid()).max(100).parse(messageIds);
+        const ids = z.array(z.uuid()).max(REACH).parse(messageIds);
         if (ids.length === 0) return [];
         return (
           await q()

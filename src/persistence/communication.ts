@@ -1,8 +1,20 @@
 import type { Database } from './database.js';
 import { enqueueFact } from './inbox-enqueue.js';
-import { transactional, snapshotPage } from './transactional.js';
+import { transactional, snapshotPage, latestPage } from './transactional.js';
 import { randomUUID } from 'node:crypto';
-import { and, asc, desc, eq, gt, isNotNull, lte, max, sql } from 'drizzle-orm';
+import {
+  and,
+  asc,
+  desc,
+  eq,
+  gt,
+  gte,
+  isNotNull,
+  lt,
+  lte,
+  max,
+  sql,
+} from 'drizzle-orm';
 import type { z } from 'zod';
 import * as s from './schema.js';
 import type { agentRepository } from './agents.js';
@@ -809,12 +821,18 @@ export function communicationRepository(
         return message(channelId, id);
       });
     },
+    /**
+     * A channel's (or topic's) messages from the newest: the latest page,
+     * then older pages by cursor (`latestPage`). `reach` widens the latest
+     * page back through an older one, for a view that scrolled back.
+     */
     history(
       p: Principal,
       teamId: TeamId,
       channelId: ChannelId,
       input: PageInput = {},
       topicId: TopicId | null = null,
+      reach?: string,
     ) {
       return atomic(async () => {
         await access(p, teamId, channelId);
@@ -823,21 +841,11 @@ export function communicationRepository(
           eq(s.messages.channelId, channelId),
           topicId === null ? undefined : eq(s.messages.topicId, topicId),
         );
-        return page(
+        return latestPage(
           input,
           ['messages', teamId, channelId, topicId, memberKey(member(p))],
           Message,
-          async () =>
-            highest(
-              (
-                await q()
-                  .select({ value: max(s.messages.position) })
-                  .from(s.messages)
-                  .where(condition)
-                  .limit(1)
-              )[0]?.value,
-            ),
-          async (after, maximum, limit) =>
+          async (before, floor, limit) =>
             Promise.all(
               (
                 await q()
@@ -846,14 +854,17 @@ export function communicationRepository(
                   .where(
                     and(
                       condition,
-                      gt(s.messages.position, after),
-                      lte(s.messages.position, maximum),
+                      before === null
+                        ? undefined
+                        : lt(s.messages.position, before),
+                      gte(s.messages.position, floor),
                     ),
                   )
-                  .orderBy(asc(s.messages.position))
+                  .orderBy(desc(s.messages.position))
                   .limit(limit)
               ).map((r) => message(channelId, MessageId.parse(r.id))),
             ),
+          reach,
         );
       });
     },

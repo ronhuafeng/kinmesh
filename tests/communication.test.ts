@@ -547,7 +547,7 @@ await test('channel/topic/invite/leave/subscribe operations replay exactly and r
   }
 });
 
-await test('snapshot keyset pagination has deterministic no-skip/no-duplicate history under concurrent inserts and rejects cross-view cursors', async () => {
+await test('history opens at the newest page and pages back without skips or duplicates under concurrent inserts; widening reaches back; cross-view cursors are rejected', async () => {
   const f = await communicationFixture();
   try {
     await f.invite();
@@ -568,9 +568,14 @@ await test('snapshot keyset pagination has deterministic no-skip/no-duplicate hi
     const first = await f.comm.history(f.principal, f.teamId, f.channelId, {
       limit: 2,
     });
+    // The newest two, oldest of them first.
+    assert.deepEqual(
+      first.items.map((m) => m.body),
+      ['5', '6'],
+    );
     assert.ok(first.nextCursor);
     const firstCursor = first.nextCursor;
-    const ids = first.items.map((m) => m.id);
+    const pages = [first.items.map((m) => m.id)];
     const secondStore = await f.open();
     try {
       await secondStore.communication.post(
@@ -582,24 +587,41 @@ await test('snapshot keyset pagination has deterministic no-skip/no-duplicate hi
     } finally {
       await secondStore.close();
     }
+    // Older pages are untouched by the newer message.
     let cursor: string | null = first.nextCursor;
     while (cursor !== null) {
       const page = await f.comm.history(f.principal, f.teamId, f.channelId, {
         limit: 2,
         cursor,
       });
-      ids.push(...page.items.map((m) => m.id));
+      pages.unshift(page.items.map((m) => m.id));
       cursor = page.nextCursor;
     }
+    const ids = pages.flat();
     assert.deepEqual(
       ids,
       original.map((m) => m.id),
     );
     assert.equal(new Set(ids).size, 7);
-    assert.equal(
-      (await f.comm.history(f.principal, f.teamId, f.channelId)).items.length,
-      8,
+    const latest = await f.comm.history(f.principal, f.teamId, f.channelId);
+    assert.equal(latest.items.length, 8);
+    assert.equal(latest.items.at(-1)?.body, 'Concurrent');
+    assert.equal(latest.nextCursor, null);
+    // Widened through the page a cursor names, the newest page keeps that
+    // page and everything after it, the new message included.
+    const reached = await f.comm.history(
+      f.principal,
+      f.teamId,
+      f.channelId,
+      { limit: 2 },
+      null,
+      firstCursor,
     );
+    assert.deepEqual(
+      reached.items.map((m) => m.body),
+      ['3', '4', '5', '6', 'Concurrent'],
+    );
+    assert.ok(reached.nextCursor);
     await assert.rejects(
       () =>
         f.comm.history(

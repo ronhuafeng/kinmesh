@@ -1773,6 +1773,244 @@ test('MOCK UI only: native HTTP 401 or 403 purges native result and protected AG
   }
 });
 
+/** `count` messages by `humanId` in a channel, "Message 1" oldest, written below the API so a long history needs no rate-limited posts. */
+async function seedMessages(
+  database: string,
+  channelId: string,
+  humanId: string,
+  count: number,
+) {
+  const sql = rawDatabase(database);
+  try {
+    await sql
+      .prepare(
+        `INSERT INTO messages (id, channel_id, topic_id, author, created_at, body)
+         SELECT gen_random_uuid()::text, ?, NULL, ?,
+           to_char((now() AT TIME ZONE 'utc') - make_interval(mins => ? - g), 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'),
+           'Message ' || g
+         FROM generate_series(1, ?) AS g ORDER BY g`,
+      )
+      .run(
+        channelId,
+        JSON.stringify({ kind: 'human', humanId }),
+        count + 10,
+        count,
+      );
+  } finally {
+    await sql.close();
+  }
+}
+/** Where a message sits in the viewport, by its exact text. */
+async function topOf(page: Page, text: string) {
+  const box = await page
+    .getByRole('list', { name: 'Channel messages' })
+    .getByText(text, { exact: true })
+    .boundingBox();
+  if (!box) throw new Error(text + ' is not on the page');
+  return box.y;
+}
+const atBottom = (page: Page) =>
+  page.evaluate(
+    () =>
+      window.innerHeight + window.scrollY >=
+      document.documentElement.scrollHeight - 48,
+  );
+
+test('a long conversation opens at its newest message, follows new ones, holds still while read back, and reads older ones by scrolling up', async ({
+  page,
+  context,
+  hub,
+}) => {
+  await page.setViewportSize({ width: 1280, height: 800 });
+  await signIn(page, hub);
+  const state = await snapshot(context.request, hub.origin);
+  if (!state.channel) throw new Error('Local channel missing');
+  await seedMessages(hub.database, state.channel.id, state.human.id, 120);
+  const messages = page.getByRole('list', { name: 'Channel messages' });
+  const say = (text: string) => messages.getByText(text, { exact: true });
+  // It opens at the newest message, with nothing to page through.
+  await page.reload();
+  await expect(say('Message 120')).toBeInViewport();
+  expect(await atBottom(page)).toBe(true);
+  await expect(say('Message 70')).toHaveCount(0);
+  await expect(page.getByRole('button', { name: /messages page/ })).toHaveCount(
+    0,
+  );
+  // Scrolling to the top reads the page before; the message that was first
+  // stays exactly where it was on screen. The read is held until its place
+  // is measured.
+  let release: () => void = () => {
+    throw new Error('The older page was not asked for');
+  };
+  const held = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  const reachBack = (url: URL) =>
+    url.pathname === '/api/workspace' && url.searchParams.has('messagesCursor');
+  await page.route(reachBack, async (route) => {
+    await held;
+    await route.continue();
+  });
+  await page.evaluate(() => {
+    window.scrollTo({ top: 0 });
+  });
+  const first = await topOf(page, 'Message 71');
+  release();
+  await expect(say('Message 70')).toBeAttached();
+  await page.unroute(reachBack);
+  expect(Math.abs((await topOf(page, 'Message 71')) - first)).toBeLessThan(1);
+  // Read back, a new message arrives at the end and nothing moves.
+  const base = `${hub.origin}/api/teams/${state.team.id}/channels/${state.channel.id}/messages`;
+  const post = async (body: string) => {
+    const response = await context.request.post(base, {
+      data: {
+        operationKey: randomUUID(),
+        body,
+        topicId: null,
+        mentions: [],
+        sourceMessageId: null,
+        sourceEventId: null,
+      },
+    });
+    expect(response.status()).toBe(201);
+  };
+  await post('Arrived while reading back');
+  await expect(say('Arrived while reading back')).toBeAttached();
+  expect(Math.abs((await topOf(page, 'Message 71')) - first)).toBeLessThan(1);
+  // Further up, the start of the conversation.
+  await expect
+    .poll(async () => {
+      await page.evaluate(() => {
+        window.scrollTo({ top: 0 });
+      });
+      return say('Message 1').count();
+    })
+    .toBe(1);
+  // At the bottom, it stays at the bottom as messages arrive.
+  await page.evaluate(() => {
+    window.scrollTo({ top: document.documentElement.scrollHeight });
+  });
+  await post('Arrived at the bottom');
+  await expect(say('Arrived at the bottom')).toBeInViewport();
+  expect(await atBottom(page)).toBe(true);
+  // What you send brings you back to it from anywhere.
+  await page.evaluate(() => {
+    window.scrollTo({ top: 0 });
+  });
+  const composer = page.getByRole('form', { name: 'Message your team' });
+  await composer
+    .getByLabel('Message', { exact: true })
+    .fill('Sent from up top');
+  await composer
+    .getByLabel('Message', { exact: true })
+    .press('ControlOrMeta+Enter');
+  await expect(say('Sent from up top')).toBeInViewport();
+});
+
+test('“New since” marks only what others wrote while this channel or topic was open', async ({
+  page,
+  browser,
+  context,
+  hub,
+}) => {
+  await signIn(page, hub);
+  const state = await snapshot(context.request, hub.origin);
+  if (!state.channel) throw new Error('Local channel missing');
+  const messages = page.getByRole('list', { name: 'Channel messages' });
+  const divider = page.getByRole('separator').filter({ hasText: /New since/ });
+  const theirs = await browser.newContext();
+  try {
+    const grace = await theirs.newPage();
+    await signIn(grace, hub, 'grace@example.com');
+    const graceSays = async (body: string) => {
+      const response = await grace.request.post(
+        `${hub.origin}/api/teams/${state.team.id}/channels/${state.channel?.id ?? ''}/messages`,
+        {
+          data: {
+            operationKey: randomUUID(),
+            body,
+            topicId: null,
+            mentions: [],
+            sourceMessageId: null,
+            sourceEventId: null,
+          },
+        },
+      );
+      expect(response.status()).toBe(201);
+    };
+    await graceSays('Grace wrote before');
+    await expect(messages.getByText('Grace wrote before')).toBeVisible();
+    await page.getByRole('button', { name: 'Start a topic' }).click();
+    await page.getByLabel('Topic title').fill('Billing');
+    await page.getByLabel('Topic title').press('Enter');
+    const composer = page.getByRole('form', { name: 'Message your team' });
+    await composer.getByLabel('Message', { exact: true }).fill('In the topic');
+    await composer.getByRole('button', { name: 'Send message' }).click();
+    await expect(messages.getByText('In the topic')).toBeVisible();
+    // Reloaded inside the topic, then widened to All: what Grace wrote
+    // before is not new, only out of the topic.
+    await page.reload();
+    await expect(messages.getByText('In the topic')).toBeVisible();
+    await page
+      .getByRole('list', { name: 'Topics' })
+      .getByRole('button', { name: 'All', exact: true })
+      .click();
+    await expect(messages.getByText('Grace wrote before')).toBeVisible();
+    await expect(divider).toHaveCount(0);
+    // What she writes now is.
+    await graceSays('Grace wrote this');
+    await expect(
+      messages.getByRole('listitem').filter({ hasText: 'Grace wrote this' }),
+    ).toContainText('New since');
+    await expect(divider).toHaveCount(1);
+  } finally {
+    await theirs.close();
+  }
+});
+
+test('a task older than the board’s newest still opens by its address', async ({
+  page,
+  context,
+  hub,
+}) => {
+  await signIn(page, hub);
+  const oldest = await newTask(page, {
+    title: 'The oldest task',
+    criteria: ['Still reachable'],
+  });
+  await expect(oldest).toBeVisible();
+  const state = await snapshot(context.request, hub.origin);
+  const task = state.tasks.items[0];
+  if (!task) throw new Error('Task missing');
+  // A hundred newer tasks, copied from it below the API.
+  const sql = rawDatabase(hub.database);
+  try {
+    await sql
+      .prepare(
+        `INSERT INTO tasks (id, team_id, channel_id, topic_id, title, description, criteria, creator,
+           acceptor_human_id, state, status, owner_key, version, created_at, updated_at)
+         SELECT gen_random_uuid()::text, team_id, channel_id, topic_id, 'Newer task ' || g, description,
+           criteria, creator, acceptor_human_id, state, status, owner_key, version, created_at, updated_at
+         FROM tasks, generate_series(1, 100) AS g WHERE id = ? ORDER BY g`,
+      )
+      .run(task.id);
+  } finally {
+    await sql.close();
+  }
+  await page.goto(hub.origin + '/?task=' + task.id);
+  await expect(taskPage(page, 'The oldest task')).toBeVisible();
+  // The board shows the newest tasks, with nothing to page through.
+  await page.keyboard.press('Escape');
+  await expect(page.getByRole('region', { name: 'Task board' })).toBeVisible();
+  await expect(
+    page.getByRole('article', { name: 'Newer task 100', exact: true }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole('article', { name: 'The oldest task', exact: true }),
+  ).toHaveCount(0);
+  await expect(page.getByRole('button', { name: /tasks page/ })).toHaveCount(0);
+});
+
 test('a reload keeps the place and unsent work; Back returns to where you were', async ({
   page,
   hub,

@@ -137,22 +137,33 @@ export function registerWorkspace(
         connected: now - row.lastSeenAt <= INBOX_LIVENESS_MS,
         lastSeenAt: new Date(row.lastSeenAt).toISOString(),
       }));
+    // The newest messages, reaching back as far as the view has scrolled.
     const messages = channel
       ? await store.communication.history(
           principal,
           teamId,
           channel.id,
-          {
-            ...(query.messagesCursor ? { cursor: query.messagesCursor } : {}),
-          },
+          {},
           query.topicId,
+          query.messagesCursor,
         )
       : { items: [], nextCursor: null };
     const tasks = channel
-      ? await store.tasks.list(principal, teamId, channel.id, {
-          ...(query.tasksCursor ? { cursor: query.tasksCursor } : {}),
-        })
+      ? await store.tasks.list(principal, teamId, channel.id, { limit: 100 })
       : { items: [], nextCursor: null };
+    // A task opened by its address is shown even when older than the board.
+    const openTask =
+      channel &&
+      query.taskId !== undefined &&
+      !tasks.items.some((task) => task.id === query.taskId)
+        ? await store.tasks
+            .get(principal, teamId, channel.id, query.taskId)
+            .catch((error: unknown) => {
+              if (error instanceof IdentityError && error.statusCode === 404)
+                return null;
+              throw error;
+            })
+        : null;
     // The projection is allow-listed.
     const iso = (ms: number | null) =>
       ms === null ? null : new Date(ms).toISOString();
@@ -184,7 +195,7 @@ export function registerWorkspace(
             teamId,
             channel.id,
             messages.items.map((m) => m.id),
-            tasks.items.map((t) => t.id),
+            [...tasks.items, ...(openTask ? [openTask] : [])].map((t) => t.id),
           )
         ).map(project)
       : [];
@@ -267,6 +278,7 @@ export function registerWorkspace(
             )
           : { items: [], more: false },
         tasks,
+        openTask,
       }),
     );
   };

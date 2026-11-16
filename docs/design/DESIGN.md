@@ -138,6 +138,10 @@ it is the authority. Use the custom property for its role, never a raw colour.
   already written as `@Name` gets no second chip. An agent's reply shows the message
   it answers and carries a line only for an exception (failed, stopped, shortened);
   what ran it lives with the run on the agent's page.
+- **Conversation**: opens at the newest message and stays at the bottom as messages
+  arrive while you are there (and after you send); scrolled up, nothing moves under
+  you. Scrolling up reads older messages in place; there are no page buttons. A "New
+  since" line marks what others wrote while the channel or topic was open.
 - **Delivery line**: under a message that mentions an agent, and on a task handed to
   one, one line per agent in plain words: will pick this up, isn't connected, is
   working on it, is waiting for an approval in T3, will go on once T3 is

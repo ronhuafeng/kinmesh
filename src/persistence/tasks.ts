@@ -7,8 +7,10 @@ import {
   desc,
   eq,
   gt,
+  gte,
   isNotNull,
   isNull,
+  lt,
   lte,
   max,
   or,
@@ -18,7 +20,12 @@ import { z } from 'zod';
 import * as s from './schema.js';
 import type { agentRepository } from './agents.js';
 import type { communicationRepository } from './communication.js';
-import { transactional, snapshotPage, referenceKey } from './transactional.js';
+import {
+  transactional,
+  snapshotPage,
+  latestPage,
+  referenceKey,
+} from './transactional.js';
 import type { TeamId, TaskId } from '../domain/contracts.js';
 import { HumanId, type ChannelId } from '../domain/contracts.js';
 import {
@@ -472,6 +479,7 @@ export function taskRepository(
         ).map((r) => ({ task: view(r.task), channelName: r.channelName }));
       });
     },
+    /** A channel's tasks from the newest: the latest page, then older ones (`latestPage`). */
     list(
       p: Principal,
       teamId: TeamId,
@@ -480,19 +488,11 @@ export function taskRepository(
     ) {
       return atomic(async () => {
         await access(p, teamId, channelId);
-        return snapshotPage(
+        return latestPage(
           input,
           ['tasks', teamId, channelId, memberKey(principalMember(p))],
           Task,
-          async () =>
-            (
-              await q()
-                .select({ value: max(s.tasks.position) })
-                .from(s.tasks)
-                .where(eq(s.tasks.channelId, channelId))
-                .limit(1)
-            )[0]?.value ?? 0,
-          async (after, maximum, limit) =>
+          async (before, floor, limit) =>
             (
               await q()
                 .select()
@@ -500,11 +500,11 @@ export function taskRepository(
                 .where(
                   and(
                     eq(s.tasks.channelId, channelId),
-                    gt(s.tasks.position, after),
-                    lte(s.tasks.position, maximum),
+                    before === null ? undefined : lt(s.tasks.position, before),
+                    gte(s.tasks.position, floor),
                   ),
                 )
-                .orderBy(asc(s.tasks.position))
+                .orderBy(desc(s.tasks.position))
                 .limit(limit)
             ).map(view),
         );

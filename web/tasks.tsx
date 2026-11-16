@@ -1234,13 +1234,11 @@ export function draftFromMessage(
  */
 export function Board({
   data,
-  next,
   openTask,
   onNewTask,
   openId = null,
 }: {
   data: WorkspaceSnapshot;
-  next: () => void;
   openTask: (id: string) => void;
   onNewTask: () => void;
   /** The task whose page is open, beside the board on a wide tablet. */
@@ -1333,11 +1331,6 @@ export function Board({
           );
         })}
       </div>
-      {data.tasks.nextCursor && (
-        <button className="quiet page-control" onClick={next}>
-          Next tasks page
-        </button>
-      )}
     </section>
   );
 }

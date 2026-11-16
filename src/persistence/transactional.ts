@@ -3,7 +3,7 @@ import { and, eq } from 'drizzle-orm';
 import { z } from 'zod';
 import * as s from './schema.js';
 import { IdentityError } from '../domain/agents.js';
-import { PageInput, pageOf } from '../domain/communication.js';
+import { PageInput, REACH, pageOf } from '../domain/communication.js';
 import type { Reference } from '../domain/execution.js';
 import type { Database } from './database.js';
 const decode = (value: string): unknown => JSON.parse(value);
@@ -67,6 +67,68 @@ const Cursor = z
     max: z.number().int().nonnegative(),
   })
   .refine((v) => v.after <= v.max);
+const Older = z.strictObject({
+  v: z.literal(2),
+  context: z.string().max(1024),
+  before: z.number().int().positive(),
+});
+/**
+ * A list read from its newest end, for timelines that grow while they are
+ * read (messages, tasks). The first page is the newest `limit` items; each
+ * `nextCursor` reads the page of items older than the oldest one returned,
+ * so newer items never shift an older page. Within a page, items run oldest
+ * to newest.
+ *
+ * `reach`, a cursor this read issued earlier, widens the newest page back
+ * through the page that cursor names, up to `REACH` items: a view that has
+ * scrolled back keeps what it shows while new items arrive at the end.
+ *
+ * `select(before, floor, limit)` returns up to `limit` items, newest first,
+ * with a position below `before` (when given) and at least `floor`.
+ */
+export async function latestPage<T extends { position: number }>(
+  input: PageInput,
+  context: unknown,
+  schema: z.ZodType<T>,
+  select: (before: number | null, floor: number, limit: number) => Promise<T[]>,
+  reach?: string,
+) {
+  const parsed = PageInput.parse(input);
+  const binding = JSON.stringify(context);
+  const before = (raw: string) => {
+    try {
+      const cursor = Older.parse(
+        decode(Buffer.from(raw, 'base64url').toString('utf8')),
+      );
+      if (cursor.context !== binding) throw new Error('Wrong cursor');
+      return cursor.before;
+    } catch {
+      throw new IdentityError(400);
+    }
+  };
+  let floor = 0;
+  let limit = parsed.limit;
+  if (reach !== undefined) {
+    const reached = await select(before(reach), 0, parsed.limit);
+    floor = reached.at(-1)?.position ?? 0;
+    limit = REACH;
+  }
+  const from = parsed.cursor === undefined ? null : before(parsed.cursor);
+  const items = (await select(from, floor, limit)).reverse();
+  const oldest = items[0];
+  const nextCursor =
+    oldest !== undefined && (await select(oldest.position, 0, 1)).length > 0
+      ? Buffer.from(
+          JSON.stringify({ v: 2, context: binding, before: oldest.position }),
+        ).toString('base64url')
+      : null;
+  return z
+    .strictObject({
+      items: z.array(schema).max(REACH),
+      nextCursor: z.string().nullable(),
+    })
+    .parse({ items, nextCursor });
+}
 export async function snapshotPage<T extends { position: number }>(
   input: PageInput,
   context: unknown,

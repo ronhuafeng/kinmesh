@@ -775,11 +775,6 @@ button.person[aria-pressed='true'] {
 .empty h3 {
   margin-bottom: 0.35rem;
 }
-.page-control {
-  justify-self: center;
-  margin: 0.5rem auto;
-  display: block;
-}
 
 /* ------------------------------------------------------------------
  * Chat (P2)
@@ -788,6 +783,12 @@ button.person[aria-pressed='true'] {
   display: flex;
   flex-direction: column;
   gap: 0.75rem;
+}
+/* The conversation keeps its own reading position (web/chat.tsx); the
+ * browser's scroll anchoring would move it a second time. */
+:root:has(.conversation),
+:root:has(.conversation) body {
+  overflow-anchor: none;
 }
 .topic-bar {
   display: flex;

@@ -16,10 +16,11 @@ import { TopicId } from '../domain/communication.js';
 import {
   ChannelView,
   Message,
+  REACH,
   Topic,
   pageOf,
 } from '../domain/communication.js';
-import { Task } from '../domain/tasks.js';
+import { Task, TaskId } from '../domain/tasks.js';
 import { InboxState } from '../domain/inbox.js';
 
 /** A delivery as people see it: no leases, launches or native references. */
@@ -36,12 +37,16 @@ export const DeliveryView = z.strictObject({
 });
 /** Names what one read shows: equal revisions, equal screens. */
 export const Revision = z.string().regex(/^[a-f0-9]{64}$/);
-/** The place a workspace snapshot shows: channel, topic and pages. */
+/**
+ * The place a workspace snapshot shows: channel, topic, the task open on
+ * it, and pages. Messages are always the newest; `messagesCursor`, one the
+ * snapshot issued, reaches further back from them.
+ */
 export const WorkspaceQuery = z.strictObject({
   channelId: ChannelId.optional(),
   topicId: TopicId.optional(),
+  taskId: TaskId.optional(),
   messagesCursor: z.string().min(1).max(2048).optional(),
-  tasksCursor: z.string().min(1).max(2048).optional(),
   topicsCursor: z.string().min(1).max(2048).optional(),
   channelsCursor: z.string().min(1).max(2048).optional(),
 });
@@ -84,7 +89,7 @@ export const WorkspaceSnapshot = z.strictObject({
         runId: z.string().max(256),
       }),
     )
-    .max(100),
+    .max(REACH),
   /** What waits on this human across the team: one list, grouped by action. */
   attention: z.strictObject({
     decide: z
@@ -149,14 +154,21 @@ export const WorkspaceSnapshot = z.strictObject({
   avatars: z
     .array(z.strictObject({ agentId: AgentId, updatedAt: z.iso.datetime() }))
     .max(100),
-  messages: pageOf(Message),
+  /** The newest messages, oldest first; `nextCursor` reaches further back. */
+  messages: z.strictObject({
+    items: z.array(Message).max(REACH),
+    nextCursor: z.string().nullable(),
+  }),
   topics: pageOf(Topic),
   /** The channel's most recently active topics, newest first. */
   activeTopics: z.strictObject({
     items: z.array(Topic).max(10),
     more: z.boolean(),
   }),
+  /** The channel's newest tasks, oldest first. */
   tasks: pageOf(Task),
+  /** The task open on the board, when it is older than those. */
+  openTask: Task.nullable(),
 });
 export type WorkspaceSnapshot = z.infer<typeof WorkspaceSnapshot>;
 export const ExecutionSnapshot = z.strictObject({
