@@ -131,6 +131,65 @@ export function loadCredential(path: string, endpoint: string): Credential {
     if (fd !== undefined) closeSync(fd);
   }
 }
+/** The credential in `path` for `endpoint`, or null when none is usable there. */
+export function credentialIn(path: string, endpoint: string) {
+  try {
+    return loadCredential(path, endpoint);
+  } catch {
+    return null;
+  }
+}
+/** How far runs under a credential may go: its ceiling, or nothing beyond reading. */
+function breadth(credential: Credential) {
+  if (!credential.tokens.scope?.split(/\s+/).includes('orchestration:operate'))
+    return -1;
+  // A ceiling that wasn't read is taken as the narrowest a run may launch in.
+  return RUNTIME_MODES.indexOf(credential.ceiling ?? 'approval-required');
+}
+/**
+ * The credential agents' runs use, among those T3 still honours, listed most
+ * preferred first (a person's sign-in, then the deployment's session): the
+ * broadest, the earlier when equal. A run that may already be in T3 keeps the
+ * authority it launched under (`pinned`) while a credential for it is
+ * honoured. Null when T3 honours none of them.
+ */
+export function chooseCredential(
+  candidates: readonly (Credential | null)[],
+  pinned?: string,
+  now = Date.now(),
+): Credential | null {
+  const honoured = candidates.filter(
+    (c): c is Credential => c !== null && !signInEnded(c, now),
+  );
+  const kept = honoured.find((c) => authority(c) === pinned);
+  if (kept !== undefined) return kept;
+  return honoured.reduce<Credential | null>(
+    (best, c) => (best === null || breadth(c) > breadth(best) ? c : best),
+    null,
+  );
+}
+/**
+ * T3 refused this credential (it was revoked): it reads as ended from now,
+ * unless the file meanwhile holds another one. Returns whether it was ended.
+ */
+export function endCredential(
+  path: string,
+  credential: Credential,
+  now = Date.now(),
+) {
+  const current = credentialIn(path, credential.endpoint);
+  if (
+    current?.tokens.access_token !== credential.tokens.access_token ||
+    signInEnded(current, now)
+  )
+    return false;
+  saveCredential(
+    path,
+    { ...current, expiresAt: new Date(now).toISOString() },
+    { replace: true },
+  );
+  return true;
+}
 export function credentialDestination(path: string, replace = false) {
   mkdirSync(dirname(path), { recursive: true, mode: 0o700 });
   const directory = lstatSync(dirname(path));

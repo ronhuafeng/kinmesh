@@ -4,7 +4,15 @@ import { z } from 'zod';
 import { deliver } from '../src/inbox/worker.js';
 import { assistantRead, due, inboxFixture } from './inbox-helpers.js';
 import { key, postInput } from './communication-helpers.js';
-import { envelope, launched } from './t3-helpers.js';
+import { envelope, launched, options, reference } from './t3-helpers.js';
+import { join } from 'node:path';
+import {
+  Credential,
+  authority,
+  saveCredential,
+} from '../src/adapters/t3/oauth.js';
+import { T3Backend } from '../src/adapters/t3/backend.js';
+import { runCredential, type BackendFactory } from '../src/inbox/t3.js';
 import { MessageId, type TopicId } from '../src/domain/communication.js';
 import { rawDatabase } from './raw.js';
 
@@ -250,6 +258,192 @@ await test('runs launch in the grant’s ceiling, Full access included', async (
     assert.equal(fourth.state, 'acked', fourth.reason);
     assert.equal(frozenMode(fourth), 'auto');
     assert.equal(calls(f, 't3_thread_launch')[2]?.runtimeMode, 'auto');
+  } finally {
+    await f.dispose();
+  }
+});
+
+/**
+ * The deployment's Supervised session and a person's sign-in, as the hub
+ * keeps them, with the real choice between them: T3 reports the chosen
+ * credential's ceiling and authority to each connection.
+ */
+function twoCredentials(f: Fixture) {
+  const binding = {
+    ...f.binding,
+    t3AuthFile: join(f.directory, 'credentials', 'person.json'),
+    t3FallbackAuthFile: join(f.directory, 'credentials', 'deployment.json'),
+  };
+  const credential = (
+    token: string,
+    scope: string,
+    ceiling: Credential['ceiling'],
+  ) =>
+    Credential.parse({
+      endpoint: binding.t3Endpoint,
+      environmentId: reference.environmentId,
+      tokens: { access_token: token, token_type: 'Bearer', scope },
+      expiresAt: new Date(Date.now() + 30 * 86400_000).toISOString(),
+      ceiling,
+    });
+  const deployment = credential(
+    'deployment-token',
+    'orchestration:read orchestration:operate',
+    'approval-required',
+  );
+  // Full access adds scopes, so it is another T3 authority.
+  const person = credential(
+    'person-token',
+    'orchestration:read orchestration:operate settings:write source-control:write',
+    'full-access',
+  );
+  const factory: BackendFactory = async (b, _profile, _signal, pinned) => {
+    const { credential: chosen } = runCredential(b, pinned);
+    ceiling(f, chosen.ceiling ?? 'approval-required');
+    const identity = {
+      endpoint: b.t3Endpoint,
+      environmentId: reference.environmentId,
+      authority: authority(chosen),
+    };
+    return {
+      backend: await T3Backend.connect(f.wire, f.store.operations, {
+        ...options,
+        authority: identity.authority,
+      }),
+      identity,
+      close: () => f.wire.close(),
+    };
+  };
+  return {
+    binding,
+    factory,
+    deployment,
+    person,
+    authorities: {
+      deployment: authority(deployment),
+      person: authority(person),
+    },
+    /** One worker attempt at whatever is due. */
+    attempt: async () => {
+      await due(f.dbPath);
+      const claim = await f.inbox.claim([f.agent.id]);
+      assert.ok(claim);
+      await deliver(f.store, claim, binding, factory, signal());
+      return f.inbox.get(claim.id);
+    },
+  };
+}
+/** The T3 authority a delivery was frozen under. */
+function frozenAuthority(row: { launch: string | null }) {
+  return z
+    .object({ execution: z.object({ authority: z.string() }) })
+    .parse(JSON.parse(row.launch ?? 'null')).execution.authority;
+}
+
+/**
+ * Proves the hub's choice between the deployment's Supervised session and a
+ * person's Full access sign-in as the conversation goes on: runs use the
+ * broader one; a run already in T3 finishes and posts under the credential
+ * it launched with while that one is honoured; switching starts a new
+ * thread for the next message; and when the person's sign-in ends, new
+ * messages run Supervised at once, while its run under way is stopped as
+ * `authority-changed` instead of being sent again or waiting.
+ */
+await test('runs use the broadest credential T3 honours; a switch never loses, repeats or holds a message', async () => {
+  const f = await inboxFixture();
+  try {
+    const t = twoCredentials(f);
+    // The deployment's session alone: Supervised.
+    saveCredential(t.binding.t3FallbackAuthFile, t.deployment);
+    await mention(f);
+    f.wire.values.t3_thread_read = thread([
+      { runId: RUN, status: 'completed', text: 'Supervised', position: 2 },
+    ]);
+    const first = await t.attempt();
+    assert.equal(first.state, 'acked', first.reason);
+    assert.equal(frozenMode(first), 'approval-required');
+    assert.equal(frozenAuthority(first), t.authorities.deployment);
+
+    // A message in the same thread, still running in T3.
+    await mention(f);
+    sendReturns(f, 'second-run', 'started');
+    f.wire.values.t3_thread_read = thread([
+      { runId: 'second-run', status: 'running', position: 6 },
+      { runId: RUN, status: 'completed', text: 'Supervised', position: 2 },
+    ]);
+    const running = await t.attempt();
+    assert.equal(running.state, 'waiting', running.reason);
+
+    // A person signs in with Full access meanwhile. The run under way
+    // finishes and posts under the session it started with.
+    saveCredential(t.binding.t3AuthFile, t.person);
+    f.wire.values.t3_thread_read = thread([
+      { runId: 'second-run', status: 'completed', text: 'Second', position: 6 },
+      { runId: RUN, status: 'completed', text: 'Supervised', position: 2 },
+    ]);
+    const finished = await t.attempt();
+    assert.equal(finished.id, running.id);
+    assert.equal(finished.state, 'acked', finished.reason);
+    assert.equal(frozenAuthority(finished), t.authorities.deployment);
+    assert.equal(calls(f, 't3_thread_launch').length, 1);
+    assert.equal(calls(f, 't3_thread_send').length, 1);
+
+    // The next message runs in Full access, in a new thread.
+    await mention(f);
+    f.wire.values.t3_thread_read = thread([
+      { runId: RUN, status: 'completed', text: 'Full access', position: 2 },
+    ]);
+    const full = await t.attempt();
+    assert.equal(full.state, 'acked', full.reason);
+    assert.equal(frozenMode(full), 'full-access');
+    assert.equal(frozenAuthority(full), t.authorities.person);
+    assert.equal(calls(f, 't3_thread_launch').length, 2);
+    assert.equal(calls(f, 't3_thread_launch')[1]?.runtimeMode, 'full-access');
+
+    // Another message, under way in Full access, when the sign-in ends.
+    await mention(f);
+    sendReturns(f, 'fourth-run', 'started');
+    f.wire.values.t3_thread_read = thread([
+      { runId: 'fourth-run', status: 'running', position: 6 },
+      { runId: RUN, status: 'completed', text: 'Full access', position: 2 },
+    ]);
+    const underWay = await t.attempt();
+    assert.equal(underWay.state, 'waiting', underWay.reason);
+    assert.equal(calls(f, 't3_thread_send').length, 2);
+    saveCredential(t.binding.t3AuthFile, {
+      ...t.person,
+      expiresAt: new Date(Date.now() - 1000).toISOString(),
+    });
+
+    // A new message runs Supervised at once, in a new thread; nothing waits.
+    await mention(f);
+    f.wire.values.t3_thread_read = thread([
+      {
+        runId: RUN,
+        status: 'completed',
+        text: 'Supervised again',
+        position: 2,
+      },
+    ]);
+    const settled = [await t.attempt(), await t.attempt()];
+    const stopped = settled.find((r) => r.id === underWay.id);
+    const fallback = settled.find((r) => r.id !== underWay.id);
+    assert.ok(stopped && fallback);
+    // The run started under the ended sign-in can't post: a person asks
+    // again; it is neither sent again nor left waiting.
+    assert.deepEqual(
+      [stopped.state, stopped.reason],
+      ['blocked', 'authority-changed'],
+    );
+    assert.equal(fallback.state, 'acked', fallback.reason);
+    assert.equal(frozenMode(fallback), 'approval-required');
+    assert.equal(frozenAuthority(fallback), t.authorities.deployment);
+    assert.equal(calls(f, 't3_thread_launch').length, 3);
+    assert.equal(
+      calls(f, 't3_thread_launch')[2]?.runtimeMode,
+      'approval-required',
+    );
+    assert.equal(calls(f, 't3_thread_send').length, 2);
   } finally {
     await f.dispose();
   }

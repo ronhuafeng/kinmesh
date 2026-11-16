@@ -3,7 +3,7 @@ import type { WorkspaceSnapshot } from '../src/workspace/contracts.js';
 import { deliveryText, Recovery } from './deliveries.js';
 import { InboxIcon } from './icons.js';
 import { memberName } from './names.js';
-import { ReconnectT3 } from './setup.js';
+import { MODE_NAMES, ReconnectT3 } from './setup.js';
 import { humanAsk } from './tasks.js';
 import { Avatar, Page, ago, plural, workerConnected } from './ui.js';
 
@@ -123,12 +123,14 @@ export function InboxPage({
   if (t3)
     items.unshift({
       key: 't3',
-      tone: t3.expired ? 'problem' : 'setup',
+      tone: t3.expired && t3.fallback === null ? 'problem' : 'setup',
       agentId: null,
       who: 'T3',
-      what: t3.expired
-        ? 'T3’s sign-in ended, so agents are waiting'
-        : `T3’s sign-in ends ${day(t3.expiresAt)}`,
+      what: !t3.expired
+        ? `T3’s sign-in ends ${day(t3.expiresAt)}`
+        : t3.fallback === null
+          ? 'T3’s sign-in ended, so agents are waiting'
+          : `T3’s sign-in ended, so agents run ${MODE_NAMES[t3.fallback]}`,
       where: new URL(t3.endpoint).host,
       at: null,
       fix: <ReconnectT3 teamId={data.team.id} renewal={t3} onDone={onDone} />,

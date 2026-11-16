@@ -65,7 +65,7 @@ await test('every delivery state reads as a plain sentence about the agent', () 
       'blocked',
       'authority-changed',
       true,
-      /^Ada was reconnected while this ran in T3.*ask again$/,
+      /^Ada’s T3 access changed while this ran.*ask again$/,
     ],
     [
       'blocked',

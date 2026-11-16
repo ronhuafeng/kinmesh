@@ -21,8 +21,12 @@ export function managedDirectory(state: string) {
   const parent = resolve(state);
   return join(existsSync(parent) ? realpathSync(parent) : parent, 'managed');
 }
+/** A person's T3 sign-in, approved from the workspace. */
 export const t3AuthFile = (directory: string) =>
   join(directory, 't3-oauth.json');
+/** The T3 session the deployment issued for the hub, kept apart from it. */
+export const t3DeploymentFile = (directory: string) =>
+  join(directory, 't3-deployment.json');
 export const agentTokenFile = (directory: string, agentId: string) =>
   join(directory, 'agents', AgentId.parse(agentId) + '.json');
 

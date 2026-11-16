@@ -188,13 +188,14 @@ it is the authority. Use the custom property for its role, never a raw colour.
   page that does not load; its address goes into **Address after approving** and
   **Finish** completes the connection. The pairing-code hint names the T3 being
   connected. A read-only approval shows as the next step, never as success, and
-  so does a sign-in that ended ("T3’s sign-in ended"). Wherever the T3 is named, the
-  mode chosen there follows it, in T3's words ("supervised", "auto", "full access").
+  so does a sign-in that ended ("T3’s sign-in ended") when nothing else lets agents
+  run. Wherever the T3 is named, the mode agents' runs use follows it, in T3's words
+  ("supervised", "auto", "full access"). When the deployment connects T3 there is no
+  first step (until it has connected, the step reads "Connecting T3…"), and
+  **Reconnect** is how a person signs in to that T3 for a broader mode.
   Then choose what the agent runs on from one list of every provider's models. After
   that a single line says the agent is ready (or its worker is starting), with
-  **Change model**, **Reconnect** and **Disconnect** (no **Reconnect** when the
-  deployment connects T3: no sign-in is offered, and until it has connected the step
-  reads "Connecting T3…"), and offers to add the agent to
+  **Change model**, **Reconnect** and **Disconnect**, and offers to add the agent to
   the channel on screen when it isn't in it. **Run the worker yourself** opens a page
   for operators: runtime preferences, the worker credential (issue, rotate, revoke),
   the `npm run t3:auth` step and an `inbox.json` binding without secrets.
@@ -211,10 +212,11 @@ it is the authority. Use the custom property for its role, never a raw colour.
 - **Inbox**: the tab after Team, with how many things wait on you. Everything across
   the team waiting on you, one list, newest first: tasks for your sign-off, review or
   rework; stuck deliveries you caused; agents with queued work and no worker; and,
-  first, T3's sign-in from a week before it ends ("T3’s sign-in ends Mon, Nov 23",
-  then "T3’s sign-in ended, so agents are waiting" with a red rule) with
-  **Reconnect T3** under it, the same sign-in as **Connect T3** — never when the
-  deployment connects T3. A row is a face, what it is, where and when, an orange or red rule for a
+  first, a person's T3 sign-in from a week before it ends ("T3’s sign-in ends Mon,
+  Nov 23", then "T3’s sign-in ended, so agents are waiting" with a red rule, or
+  "T3’s sign-in ended, so agents run supervised" without one while the deployment's
+  session carries on) with **Reconnect T3** under it, the same sign-in as
+  **Connect T3**; the deployment's own session never asks. A row is a face, what it is, where and when, an orange or red rule for a
   decision or a problem; the row opens where it is resolved (task, channel or agent),
   or holds the fix under it.
   A row leaves when its cause is resolved; there is nothing to dismiss. Expired

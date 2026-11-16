@@ -1,13 +1,19 @@
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync, readFileSync, renameSync } from 'node:fs';
 import { z } from 'zod';
 import { Descriptor } from '../adapters/t3/contracts.js';
 import {
+  Credential,
   Endpoint,
   loadCredential,
   saveCredential,
   signInEnded,
 } from '../adapters/t3/oauth.js';
-import { privateDirectory, t3AuthFile } from '../inbox/managed.js';
+import { t3Ceiling, type T3Ceiling } from '../adapters/t3/providers.js';
+import {
+  privateDirectory,
+  t3AuthFile,
+  t3DeploymentFile,
+} from '../inbox/managed.js';
 import type { Store } from '../persistence/store.js';
 
 /** What `t3 auth session issue --json` prints; only these fields are kept. */
@@ -22,15 +28,17 @@ const Issued = z
 /**
  * The T3 the deployment connects: the session T3 issued for the hub, in a
  * file the deployment keeps current. Each sync that finds it changed asks
- * T3 which environment it is, stores the credential where the worker reads
- * it, and records the team's connection. A renewed session is the same
- * authority, so work under way goes on.
+ * T3 which environment it is and the session's ceiling, stores it where the
+ * worker reads it, beside any person's sign-in, and records the team's
+ * connection. A renewed session is the same authority, so work under way
+ * goes on.
  */
 export function provisionedT3(
   store: Store,
   directory: string,
   t3: { endpoint: string; credentialFile: string },
   fetchFn: typeof fetch = fetch,
+  ceiling: T3Ceiling = t3Ceiling,
 ) {
   let applied: string | null = null;
   return async function sync() {
@@ -43,21 +51,27 @@ export function provisionedT3(
     );
     if (!response.ok) throw new Error('T3 environment unavailable');
     const { environmentId } = Descriptor.parse(await response.json());
+    const credential = Credential.parse({
+      endpoint: t3.endpoint,
+      environmentId,
+      tokens: {
+        access_token: issued.token,
+        token_type: 'Bearer',
+        scope: issued.scopes.join(' '),
+      },
+      ...(issued.expiresAt === undefined
+        ? {}
+        : { expiresAt: new Date(issued.expiresAt).toISOString() }),
+    });
+    // How far its runs may go, so a person's broader sign-in is preferred
+    // and the workspace says how agents run; the session stands without it.
+    const mode = await ceiling(credential, AbortSignal.timeout(10_000)).catch(
+      () => undefined,
+    );
     privateDirectory(directory);
     saveCredential(
-      t3AuthFile(directory),
-      {
-        endpoint: t3.endpoint,
-        environmentId,
-        tokens: {
-          access_token: issued.token,
-          token_type: 'Bearer',
-          scope: issued.scopes.join(' '),
-        },
-        ...(issued.expiresAt === undefined
-          ? {}
-          : { expiresAt: new Date(issued.expiresAt).toISOString() }),
-      },
+      t3DeploymentFile(directory),
+      mode === undefined ? credential : { ...credential, ceiling: mode },
       { replace: true },
     );
     // Before anyone has signed in there is no team yet: try again later.
@@ -67,21 +81,34 @@ export function provisionedT3(
     return true;
   };
 }
-/**
- * A session the deployment issued lasts only while the deployment provides
- * it. A hub it no longer connects ends that session, so agents wait for a
- * person's sign-in instead of running on a session nobody renews. A person's
- * sign-in, which carries its OAuth client, is left as it is.
- */
-export function endProvisionedT3(directory: string, now = Date.now()) {
-  const file = t3AuthFile(directory);
-  if (!existsSync(file)) return false;
+/** The credential a file holds, for whichever endpoint it names. */
+function stored(file: string) {
   const { endpoint } = z
     .object({ endpoint: Endpoint })
     .parse(JSON.parse(readFileSync(file, 'utf8')));
-  const credential = loadCredential(file, endpoint);
-  if (credential.client !== undefined || signInEnded(credential, now))
-    return false;
+  return loadCredential(file, endpoint);
+}
+/**
+ * A session the deployment issued is kept apart from a person's sign-in.
+ * One found where a person's sign-in goes (it carries no OAuth client, as a
+ * person's does) moves to the deployment's file.
+ */
+export function separateDeploymentSession(directory: string) {
+  const file = t3AuthFile(directory);
+  if (!existsSync(file) || stored(file).client !== undefined) return false;
+  renameSync(file, t3DeploymentFile(directory));
+  return true;
+}
+/**
+ * A session the deployment issued lasts only while the deployment provides
+ * it. A hub it no longer connects ends that session, so agents run under a
+ * person's sign-in, or wait for one, instead of on a session nobody renews.
+ */
+export function endProvisionedT3(directory: string, now = Date.now()) {
+  const file = t3DeploymentFile(directory);
+  if (!existsSync(file)) return false;
+  const credential = stored(file);
+  if (signInEnded(credential, now)) return false;
   saveCredential(
     file,
     { ...credential, expiresAt: new Date(now).toISOString() },

@@ -20,6 +20,11 @@ export const Binding = z.strictObject({
   tokenFile: z.string().min(1).max(4096),
   t3Endpoint: Endpoint,
   t3AuthFile: z.string().min(1).max(4096),
+  /**
+   * Another credential for the same T3, used when T3 no longer honours
+   * `t3AuthFile`'s or this one lets runs go further (`chooseCredential`).
+   */
+  t3FallbackAuthFile: z.string().min(1).max(4096).optional(),
   isolatedProviderId: z.string().min(1).max(256),
   externalTeamMcpConfigured: z.literal(true),
 });

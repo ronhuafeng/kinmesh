@@ -4,7 +4,7 @@ import { StateSnapshotEventSchema } from '@ag-ui/core/schemas';
 import { Agent, Correlation, RuntimeEvent } from '../domain/agents.js';
 import { Reference } from '../domain/execution.js';
 import { nativeThreadUrl } from './links.js';
-import { Status, TERMINAL } from '../adapters/t3/contracts.js';
+import { RUNTIME_MODES, Status, TERMINAL } from '../adapters/t3/contracts.js';
 import {
   Human,
   HumanId,
@@ -112,14 +112,17 @@ export const WorkspaceSnapshot = z.strictObject({
       )
       .max(100),
     /**
-     * T3's sign-in, from a week before it ends until someone signs in again;
-     * null otherwise, and always when the deployment connects T3.
+     * A person's T3 sign-in, from a week before it ends until someone signs
+     * in again (or a session the deployment no longer provides); null
+     * otherwise.
      */
     t3: z
       .strictObject({
         endpoint: z.url(),
         expiresAt: z.iso.datetime(),
         expired: z.boolean(),
+        /** The mode runs use once it has ended, under the deployment's session; null: they wait. */
+        fallback: z.enum(RUNTIME_MODES).nullable(),
         /** Approval returns to the person's own computer; they paste its address. */
         pasteCallback: z.boolean(),
         signIn: z.enum(['waiting', 'failed']).nullable(),

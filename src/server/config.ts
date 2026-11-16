@@ -53,7 +53,8 @@ const Environment = z.object({
   /**
    * A T3 the deployment connects: its MCP URL, and the file holding the
    * session it issued for the hub (`t3 auth session issue --json`). Both or
-   * neither; with them nobody signs in to T3 from the workspace.
+   * neither; with them agents run without anyone signing in, and a person's
+   * broader sign-in to the same T3 is used while it lasts.
    */
   KINMESH_T3_ENDPOINT: Endpoint.optional(),
   KINMESH_T3_CREDENTIAL_FILE: z.string().min(1).optional(),

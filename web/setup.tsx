@@ -51,7 +51,7 @@ const T3Status = z.object({
   signIn: z.enum(['waiting', 'failed']).nullable(),
   /** Approval returns to the person's own computer, whose address they paste. */
   pasteCallback: z.boolean(),
-  /** The deployment connects T3; nobody signs in from here. */
+  /** The deployment connects T3; a person may still sign in to it. */
   provisioned: z.boolean(),
   revision: z.string(),
 });
@@ -62,7 +62,7 @@ const Providers = z.object({
 type Step = 'done' | 'todo' | 'manual';
 type T3Connection = NonNullable<T3Status['connection']>;
 /** T3's names for the modes a person chooses on its approval page. */
-const MODE_NAMES = {
+export const MODE_NAMES = {
   'approval-required': 'supervised',
   'auto-accept-edits': 'accepts edits',
   auto: 'auto',
@@ -937,7 +937,7 @@ export function AgentSetup({
       <p className="muted">{agent.name} is disabled, so it can’t be woken.</p>
     );
   else if (t3.status === null) next = <p className="muted">Checking T3…</p>;
-  else if (t3.status.provisioned && !t3Ready)
+  else if (t3.status.provisioned && connection === null)
     next = <p className="muted">Connecting T3…</p>;
   else if (!t3Ready || reconnecting)
     next = (
@@ -978,7 +978,7 @@ export function AgentSetup({
       {next ? (
         <>
           {next}
-          {t3Ready && !reconnecting && !t3.status?.provisioned && (
+          {t3Ready && !reconnecting && (
             <p className="setup-t3">
               {t3Line}{' '}
               <button
@@ -1011,17 +1011,15 @@ export function AgentSetup({
             >
               Change model
             </button>
-            {!t3.status?.provisioned && (
-              <button
-                type="button"
-                className="link-button"
-                onClick={() => {
-                  setReconnecting(true);
-                }}
-              >
-                Reconnect
-              </button>
-            )}
+            <button
+              type="button"
+              className="link-button"
+              onClick={() => {
+                setReconnecting(true);
+              }}
+            >
+              Reconnect
+            </button>
             <button
               type="button"
               className="link-button subtle-danger"

@@ -4,12 +4,17 @@ import { existsSync, readFileSync, statSync } from 'node:fs';
 import { dirname } from 'node:path';
 import { z } from 'zod';
 import { createApp } from '../src/server/app.js';
-import { Credential, saveCredential } from '../src/adapters/t3/oauth.js';
+import {
+  Credential,
+  loadCredential,
+  saveCredential,
+} from '../src/adapters/t3/oauth.js';
 import type { Hub } from '../src/server/connect.js';
 import {
   agentTokenFile,
   managedDirectory,
   t3AuthFile,
+  t3DeploymentFile,
   writeAgentToken,
 } from '../src/inbox/managed.js';
 import { managedBindings, runWorker } from '../src/inbox/worker.js';
@@ -642,7 +647,11 @@ await test('in team mode T3 is reached over HTTPS: no T3 on the hub’s loopback
   }
 });
 
-await test('a T3 the deployment connects offers no sign-in from the workspace', async () => {
+/**
+ * Proves a person can always sign in beside the deployment's session, to the
+ * T3 the deployment connects and no other.
+ */
+await test('beside the deployment’s session a person signs in to the same T3', async () => {
   const f = await connectFixture({ provisioned: true });
   try {
     const status = z
@@ -654,14 +663,19 @@ await test('a T3 the deployment connects offers no sign-in from the workspace', 
       (await f.call('GET', f.team + '/t3/local')).json<unknown>(),
       { endpoint: null },
     );
+    // Before the deployment has connected T3 there is nothing to sign in to.
+    const connect = (to: string) =>
+      f.call('POST', f.team + '/t3/connect', { endpoint: to, replace: true });
+    assert.equal((await connect(endpoint)).statusCode, 409);
+    await f.store.managed.provision(endpoint, credential.environmentId);
+    // Another T3 is refused; the deployment's is offered.
+    assert.equal((await connect('https://other.test/mcp')).statusCode, 409);
+    assert.equal((await connect(endpoint)).statusCode, 200);
+    f.approve();
+    await settle(f);
     assert.equal(
-      (
-        await f.call('POST', f.team + '/t3/connect', {
-          endpoint,
-          replace: false,
-        })
-      ).statusCode,
-      409,
+      loadCredential(t3AuthFile(f.directory), endpoint).client?.client_id,
+      'kinmesh-test',
     );
   } finally {
     await f.dispose();
@@ -719,6 +733,7 @@ await test('from a week before T3’s sign-in ends every person is asked to reco
         endpoint,
         expiresAt: soon.expiresAt,
         expired: false,
+        fallback: null,
         pasteCallback: false,
         signIn: null,
       });
@@ -746,16 +761,33 @@ await test('from a week before T3’s sign-in ends every person is asked to reco
   }
 });
 
+/** The deployment's session, Supervised, as the hub stores it. */
+const deployment = (after: number) =>
+  Credential.parse({
+    endpoint,
+    environmentId: credential.environmentId,
+    tokens: { ...credential.tokens, access_token: 'deployment-access' },
+    expiresAt: new Date(Date.now() + after).toISOString(),
+    ceiling: 'approval-required',
+  });
+const T3Connection = z.object({
+  connection: z.object({
+    access: z.string().nullable(),
+    ceiling: z.string().nullable(),
+    expired: z.boolean(),
+  }),
+});
+
 await test('the deployment renews its own T3 session: nobody is asked, and an ended one still reads as ended', async () => {
   const f = await connectFixture({ provisioned: true });
   try {
     await f.store.managed.provision(endpoint, credential.environmentId);
-    saveCredential(t3AuthFile(f.directory), ending(DAY));
+    saveCredential(t3DeploymentFile(f.directory), deployment(DAY));
     const snapshot = WorkspaceSnapshot.parse(
       (await f.call('GET', '/api/workspace')).json<unknown>(),
     );
     assert.equal(snapshot.attention.t3, null);
-    saveCredential(t3AuthFile(f.directory), ending(-1000));
+    saveCredential(t3DeploymentFile(f.directory), deployment(-1000));
     assert.equal(
       WorkspaceSnapshot.parse(
         (await f.call('GET', '/api/workspace')).json<unknown>(),
@@ -763,12 +795,69 @@ await test('the deployment renews its own T3 session: nobody is asked, and an en
       null,
     );
     assert.equal(
-      z
-        .object({ connection: z.object({ expired: z.boolean() }) })
-        .parse((await f.call('GET', f.team + '/t3')).json<unknown>()).connection
-        .expired,
+      T3Connection.parse((await f.call('GET', f.team + '/t3')).json<unknown>())
+        .connection.expired,
       true,
     );
+  } finally {
+    await f.dispose();
+  }
+});
+
+/**
+ * Proves the workspace says truthfully which mode agents' runs use when both
+ * the deployment's session and a person's sign-in exist: the broader one,
+ * the deployment's once the person's has ended, and that everyone is then
+ * invited to sign in again while agents go on.
+ */
+await test('runs use a person’s broader sign-in, and the deployment’s session once it ends', async () => {
+  const f = await connectFixture({ provisioned: true });
+  try {
+    await f.store.managed.provision(endpoint, credential.environmentId);
+    const connection = async () =>
+      T3Connection.parse((await f.call('GET', f.team + '/t3')).json<unknown>())
+        .connection;
+    const renewal = async () =>
+      WorkspaceSnapshot.parse(
+        (await f.call('GET', '/api/workspace')).json<unknown>(),
+      ).attention.t3;
+    // The deployment's session alone: Supervised.
+    saveCredential(t3DeploymentFile(f.directory), deployment(30 * DAY));
+    assert.deepEqual(await connection(), {
+      access: 'operate',
+      ceiling: 'approval-required',
+      expired: false,
+    });
+    assert.equal(await renewal(), null);
+    // A person signs in with Full access: that is what runs use.
+    saveCredential(t3AuthFile(f.directory), {
+      ...ending(30 * DAY),
+      ceiling: 'full-access',
+    });
+    assert.deepEqual(await connection(), {
+      access: 'operate',
+      ceiling: 'full-access',
+      expired: false,
+    });
+    // From a week before it ends everyone is invited to sign in again.
+    saveCredential(t3AuthFile(f.directory), {
+      ...ending(6 * DAY),
+      ceiling: 'full-access',
+    });
+    assert.equal((await renewal())?.fallback, 'approval-required');
+    // It ended: runs go on Supervised, nothing waits, and the invitation stays.
+    saveCredential(t3AuthFile(f.directory), {
+      ...ending(-1000),
+      ceiling: 'full-access',
+    });
+    assert.deepEqual(await connection(), {
+      access: 'operate',
+      ceiling: 'approval-required',
+      expired: false,
+    });
+    const ended = await renewal();
+    assert.equal(ended?.expired, true);
+    assert.equal(ended.fallback, 'approval-required');
   } finally {
     await f.dispose();
   }

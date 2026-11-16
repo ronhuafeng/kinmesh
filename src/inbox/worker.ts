@@ -29,7 +29,12 @@ import {
 } from '../domain/inbox.js';
 import type { Launch } from '../domain/execution.js';
 import { WorkerBinding, type WorkerConfig } from './config.js';
-import { agentTokenFile, managedDirectory, t3AuthFile } from './managed.js';
+import {
+  agentTokenFile,
+  managedDirectory,
+  t3AuthFile,
+  t3DeploymentFile,
+} from './managed.js';
 import type { BackendFactory } from './t3.js';
 import { spaceProvisioner, type Provisioner } from './space.js';
 
@@ -188,7 +193,17 @@ export async function deliver(
     )
       throw new ExecutionFailure('incompatible');
     stage = 'connect';
-    handle = await factory(binding, profile, signal);
+    // A run that may already be in T3 finishes under the authority it
+    // launched under, while T3 still honours a credential for it.
+    const before = await store.inbox.get(claim.id);
+    handle = await factory(
+      binding,
+      profile,
+      signal,
+      before.launch === null
+        ? undefined
+        : FrozenLaunch.parse(JSON.parse(before.launch)).execution.authority,
+    );
     signal.throwIfAborted();
     if (handle.identity.endpoint !== binding.t3Endpoint)
       throw new ExecutionFailure('incompatible');
@@ -470,6 +485,7 @@ export async function managedBindings(
       tokenFile: agentTokenFile(directory, b.agentId),
       t3Endpoint: b.endpoint,
       t3AuthFile: t3AuthFile(directory),
+      t3FallbackAuthFile: t3DeploymentFile(directory),
       isolatedProviderId: b.providerId,
     }),
   );

@@ -1,6 +1,12 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import {
+  existsSync,
+  mkdtempSync,
+  rmSync,
+  statSync,
+  writeFileSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import {
@@ -9,8 +15,12 @@ import {
   saveCredential,
   signInEnded,
 } from '../src/adapters/t3/oauth.js';
-import { endProvisionedT3, provisionedT3 } from '../src/server/provision.js';
-import { t3AuthFile } from '../src/inbox/managed.js';
+import {
+  endProvisionedT3,
+  provisionedT3,
+  separateDeploymentSession,
+} from '../src/server/provision.js';
+import { t3AuthFile, t3DeploymentFile } from '../src/inbox/managed.js';
 import { agentFixture } from './agent-helpers.js';
 import { environment } from './t3-helpers.js';
 
@@ -23,6 +33,8 @@ const t3 = (): typeof fetch => (input) => {
   );
   return Promise.resolve(Response.json(environment));
 };
+/** T3 reporting the session's ceiling: what an issued session gets. */
+const supervised = () => Promise.resolve('approval-required' as const);
 const issued = (
   token: string,
   scopes = ['orchestration:read', 'orchestration:operate'],
@@ -47,14 +59,19 @@ await test('the deployment’s T3 session connects the team; a renewed one is th
       directory,
       { endpoint, credentialFile },
       t3(),
+      supervised,
     );
     assert.equal(await sync(), true);
-    const first = loadCredential(t3AuthFile(directory), endpoint);
+    // Kept apart from a person's sign-in, which stays theirs.
+    assert.equal(existsSync(t3AuthFile(directory)), false);
+    const first = loadCredential(t3DeploymentFile(directory), endpoint);
     assert.equal(first.tokens.access_token, 'first-token');
     assert.equal(first.environmentId, environment.environmentId);
+    // What its runs launch in, as T3 reports it.
+    assert.equal(first.ceiling, 'approval-required');
     // When the session ends, as T3 issued it: an ended one makes work wait.
     assert.equal(first.expiresAt, '2026-12-16T00:00:00.000Z');
-    assert.equal(statSync(t3AuthFile(directory)).mode & 0o777, 0o600);
+    assert.equal(statSync(t3DeploymentFile(directory)).mode & 0o777, 0o600);
     const connection = await f.store.managed.connection(f.principal, f.teamId);
     assert.equal(connection?.endpoint, endpoint);
     assert.equal(connection.environmentId, environment.environmentId);
@@ -65,7 +82,7 @@ await test('the deployment’s T3 session connects the team; a renewed one is th
     // way goes on; the team's connection is unchanged.
     writeFileSync(credentialFile, issued('second-token'));
     assert.equal(await sync(), true);
-    const second = loadCredential(t3AuthFile(directory), endpoint);
+    const second = loadCredential(t3DeploymentFile(directory), endpoint);
     assert.equal(second.tokens.access_token, 'second-token');
     assert.equal(authority(second), authority(first));
     assert.equal(
@@ -85,7 +102,7 @@ await test('the deployment’s T3 session connects the team; a renewed one is th
     );
     assert.equal(await sync(), true);
     assert.notEqual(
-      authority(loadCredential(t3AuthFile(directory), endpoint)),
+      authority(loadCredential(t3DeploymentFile(directory), endpoint)),
       authority(first),
     );
   } finally {
@@ -96,8 +113,8 @@ await test('the deployment’s T3 session connects the team; a renewed one is th
 
 /**
  * Proves a hub the deployment no longer connects stops using the session the
- * deployment issued: it reads as ended, so deliveries wait for a person's
- * sign-in instead of being refused by T3. A person's sign-in is kept.
+ * deployment issued: it reads as ended, so runs use a person's sign-in or
+ * wait for one instead of being refused by T3. A person's sign-in is kept.
  */
 await test('a hub no longer connected by the deployment ends its session; a person’s sign-in stays', async () => {
   const f = await agentFixture();
@@ -113,24 +130,25 @@ await test('a hub no longer connected by the deployment ends its session; a pers
       directory,
       { endpoint, credentialFile },
       t3(),
+      supervised,
     )();
     const now = Date.parse('2026-11-20T00:00:00.000Z');
-    assert.equal(endProvisionedT3(directory, now), true);
-    const ended = loadCredential(t3AuthFile(directory), endpoint);
-    assert.equal(signInEnded(ended, now), true);
-    assert.equal(ended.tokens.access_token, 'deployment-token');
-    assert.equal(statSync(t3AuthFile(directory)).mode & 0o777, 0o600);
-    // Already ended: left as it is.
-    assert.equal(endProvisionedT3(directory, now + 1000), false);
-
-    // A person's sign-in carries its OAuth client and is never ended here.
+    const deployment = loadCredential(t3DeploymentFile(directory), endpoint);
     const person = {
-      ...ended,
+      ...deployment,
       client: { client_id: 'person-client' },
+      tokens: { ...deployment.tokens, access_token: 'person-token' },
       expiresAt: '2026-12-20T00:00:00.000Z',
     };
     saveCredential(t3AuthFile(directory), person, { replace: true });
-    assert.equal(endProvisionedT3(directory, now), false);
+    assert.equal(endProvisionedT3(directory, now), true);
+    const ended = loadCredential(t3DeploymentFile(directory), endpoint);
+    assert.equal(signInEnded(ended, now), true);
+    assert.equal(ended.tokens.access_token, 'deployment-token');
+    assert.equal(statSync(t3DeploymentFile(directory)).mode & 0o777, 0o600);
+    // Already ended: left as it is.
+    assert.equal(endProvisionedT3(directory, now + 1000), false);
+    // A person's sign-in is never ended here.
     assert.equal(
       loadCredential(t3AuthFile(directory), endpoint).expiresAt,
       person.expiresAt,
@@ -138,5 +156,44 @@ await test('a hub no longer connected by the deployment ends its session; a pers
   } finally {
     rmSync(dir, { recursive: true, force: true });
     await f.dispose();
+  }
+});
+
+/**
+ * Proves a deployment's session found where a person's sign-in goes (it has
+ * no OAuth client) moves to the deployment's own file, so it is never taken
+ * for a person's sign-in that asks everyone to sign in again; a person's
+ * stays where it is.
+ */
+await test('a deployment’s session kept with a person’s sign-in moves to its own file', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'kinmesh-provision-'));
+  try {
+    const directory = join(dir, 'managed');
+    assert.equal(separateDeploymentSession(directory), false);
+    const session = {
+      endpoint,
+      environmentId: environment.environmentId,
+      tokens: {
+        access_token: 'deployment-token',
+        token_type: 'Bearer',
+        scope: 'orchestration:read orchestration:operate',
+      },
+      expiresAt: '2026-11-16T00:00:00.000Z',
+    };
+    saveCredential(t3AuthFile(directory), session);
+    assert.equal(separateDeploymentSession(directory), true);
+    assert.equal(existsSync(t3AuthFile(directory)), false);
+    const moved = loadCredential(t3DeploymentFile(directory), endpoint);
+    assert.equal(moved.tokens.access_token, 'deployment-token');
+    assert.equal(statSync(t3DeploymentFile(directory)).mode & 0o777, 0o600);
+
+    saveCredential(t3AuthFile(directory), {
+      ...session,
+      client: { client_id: 'person-client' },
+    });
+    assert.equal(separateDeploymentSession(directory), false);
+    assert.equal(existsSync(t3AuthFile(directory)), true);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
   }
 });

@@ -6,7 +6,7 @@ import { IdentityError, type Principal } from '../domain/agents.js';
 import { INBOX_LIVENESS_MS } from '../domain/inbox.js';
 import type { Store } from '../persistence/store.js';
 import { fingerprint } from '../persistence/transactional.js';
-import { loadCredential } from '../adapters/t3/oauth.js';
+import type { Credential } from '../adapters/t3/oauth.js';
 import { readNativeExecution } from '../workspace/native.js';
 import {
   ExecutionSnapshot,
@@ -33,13 +33,13 @@ function withRevision<
   };
 }
 /**
- * `t3CredentialFile` is the team's T3 credential, the one approved in the
- * workspace: checking a run reads T3 through the same connection agents use.
+ * `runCredential` is the team's T3 credential agents' runs use now: checking
+ * a run reads T3 through the same connection they use.
  */
 export function registerWorkspace(
   app: FastifyInstance,
   store: Store,
-  t3CredentialFile: string,
+  runCredential: (endpoint: string) => Credential | null,
   /** T3's sign-in when it needs renewing by a person (`registerConnect`). */
   renewal: (principal: Person, teamId: TeamId) => Promise<unknown>,
 ) {
@@ -70,10 +70,8 @@ export function registerWorkspace(
           teamId,
         );
         if (!connection) throw new Error('Unavailable');
-        const credential = loadCredential(
-          t3CredentialFile,
-          connection.endpoint,
-        );
+        const credential = runCredential(connection.endpoint);
+        if (credential === null) throw new Error('Unavailable');
         if (credential.environmentId !== correlation.reference.environmentId)
           throw new Error('Unavailable');
         const observation = await readNativeExecution(
