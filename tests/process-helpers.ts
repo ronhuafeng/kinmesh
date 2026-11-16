@@ -66,6 +66,39 @@ export async function deadline<T>(
   }
 }
 
+/**
+ * Resolves once the child has printed `line` on its piped stdout; rejects if
+ * it closes first. Its output keeps flowing afterwards, so it never blocks on
+ * a full pipe.
+ */
+export function printed(child: ChildProcess, line: string): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const stdout = child.stdout;
+    if (stdout === null) {
+      reject(new Error('The child’s stdout is not piped'));
+      return;
+    }
+    let tail = '';
+    const settle = () => {
+      stdout.off('data', onData);
+      child.off('close', onClose);
+    };
+    const onData = (chunk: Buffer) => {
+      const text = tail + chunk.toString();
+      if (text.includes(line)) {
+        settle();
+        resolve();
+      } else tail = text.slice(-line.length);
+    };
+    const onClose = () => {
+      settle();
+      reject(new Error(`The child closed before it printed: ${line}`));
+    };
+    stdout.on('data', onData);
+    child.once('close', onClose);
+  });
+}
+
 /** Fork a TypeScript fixture with only an IPC channel (its output is discarded). */
 export function forkWorker(
   script: URL,

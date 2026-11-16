@@ -4,20 +4,17 @@ import { createServer } from 'node:http';
 import { spawn, type ChildProcess } from 'node:child_process';
 import { once } from 'node:events';
 import { createHash } from 'node:crypto';
-import { setTimeout as delay } from 'node:timers/promises';
 import { join } from 'node:path';
 import { existsSync, readFileSync, statSync } from 'node:fs';
 import { z } from 'zod';
 import { fixture } from './helpers.js';
 import { CALLBACK } from '../src/adapters/t3/authorization.js';
 
-async function until(check: () => boolean) {
-  const end = Date.now() + 10000;
-  while (!check()) {
-    if (Date.now() > end) throw new Error('Private terminal fixture deadline');
-    await delay(20);
-  }
-}
+/**
+ * Proves the T3 sign-in CLI, in a real terminal, presents one authorization
+ * URL, takes the pasted redirect without echoing it (Ctrl+T can't reveal it),
+ * and leaves the token exchange to the official SDK with a valid PKCE pair.
+ */
 await test(
   'AUTH MANUAL MOCK PTY: real CLI uses hidden paste with Ctrl+T disabled; official SDK alone exchanges PKCE',
   { timeout: 25000 },
@@ -145,15 +142,19 @@ await test(
       );
       closed = once(child, 'close', { signal: AbortSignal.timeout(20000) });
       let transcript = '';
-      child.stdout?.on('data', (buffer: Buffer) => {
+      // Settles when the CLI asks for the paste, or fails if it exits first.
+      const asked = Promise.withResolvers<undefined>();
+      const heard = (buffer: Buffer) => {
         transcript = (transcript + buffer.toString()).slice(-32768);
+        if (transcript.includes('Paste the FINAL localhost redirect URL'))
+          asked.resolve(undefined);
+      };
+      child.stdout?.on('data', heard);
+      child.stderr?.on('data', heard);
+      child.once('close', () => {
+        asked.reject(new Error('The CLI exited before it asked for the URL'));
       });
-      child.stderr?.on('data', (buffer: Buffer) => {
-        transcript = (transcript + buffer.toString()).slice(-32768);
-      });
-      await until(() =>
-        transcript.includes('Paste the FINAL localhost redirect URL'),
-      );
+      await asked.promise;
       const printed = transcript
         .split(/\r?\n/)
         .find((line) => line.startsWith(origin + '/oauth/mcp/authorize?'));

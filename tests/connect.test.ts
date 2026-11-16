@@ -18,7 +18,7 @@ import {
   writeAgentToken,
 } from '../src/inbox/managed.js';
 import { managedBindings, runWorker } from '../src/inbox/worker.js';
-import { setTimeout as delay } from 'node:timers/promises';
+import { EventEmitter } from 'node:events';
 import { WORKER_GRANT } from '../src/server/connect.js';
 import { inboxFixture } from './inbox-helpers.js';
 import { loadAgentToken } from '../src/team-mcp/client.js';
@@ -444,9 +444,42 @@ await test('Team MCP presence is recorded per agent and shown as evidence', asyn
   }
 });
 
+/**
+ * Proves the hub's worker takes up an agent connected from the workspace
+ * without a restart, and lets it go when it is disconnected: the liveness the
+ * workspace reads follows the connection. Each step waits for the worker's
+ * own liveness write (or, for "nobody yet", its first pass), then reads what
+ * the workspace would show.
+ */
 await test('the hub’s worker serves a connected agent without a restart and lets go when disconnected', async () => {
   const f = await inboxFixture();
   const stopping = new AbortController();
+  // The worker's liveness writes, as it makes them.
+  const writes = new EventEmitter<{
+    heartbeat: [string[]];
+    release: [string[]];
+  }>();
+  const inbox = {
+    ...f.store.inbox,
+    heartbeat: async (ids: string[]) => {
+      await f.store.inbox.heartbeat(ids);
+      writes.emit('heartbeat', ids);
+    },
+    release: async (ids: string[]) => {
+      await f.store.inbox.release(ids);
+      writes.emit('release', ids);
+    },
+  };
+  /** Resolves when the worker next writes `kind` for the agent. */
+  const wrote = (kind: 'heartbeat' | 'release') =>
+    new Promise<void>((done) => {
+      const seen = (ids: string[]) => {
+        if (!ids.includes(f.agent.id)) return;
+        writes.off(kind, seen);
+        done();
+      };
+      writes.on(kind, seen);
+    });
   try {
     await f.store.managed.saveConnection(
       f.principal,
@@ -454,18 +487,25 @@ await test('the hub’s worker serves a connected agent without a restart and le
       endpoint,
       'env-live',
     );
+    const passed = Promise.withResolvers<undefined>();
     const running = runWorker(
-      f.store,
+      { ...f.store, inbox },
       { ...f.workerConfig, bindings: [], pollMs: 100 },
       f.factory,
       stopping.signal,
+      () => {
+        passed.resolve(undefined);
+        return Promise.resolve();
+      },
     );
     const live = async () =>
       (await f.store.inboxViews.liveness(f.principal, f.teamId)).map(
         (r) => r.agentId,
       );
-    await delay(200);
+    // Its first pass is done and found nobody to serve.
+    await passed.promise;
     assert.deepEqual(await live(), []);
+    const beat = wrote('heartbeat');
     const issued = await f.store.managed.connect(
       f.principal,
       f.teamId,
@@ -476,10 +516,11 @@ await test('the hub’s worker serves a connected agent without a restart and le
     assert.ok(issued);
     const { token } = issued;
     writeAgentToken(managedDirectory(f.directory), f.agent.id, token);
-    await delay(300);
+    await beat;
     assert.deepEqual(await live(), [f.agent.id]);
+    const released = wrote('release');
     await f.store.managed.disconnect(f.principal, f.teamId, f.agent.id);
-    await delay(300);
+    await released;
     assert.deepEqual(await live(), []);
     stopping.abort();
     await running;

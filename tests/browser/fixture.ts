@@ -4,8 +4,7 @@ import { mkdtempSync, rmSync, chmodSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { randomBytes } from 'node:crypto';
-import { setTimeout as delay } from 'node:timers/promises';
-import { freePort, stop } from '../process-helpers.js';
+import { deadline, freePort, printed, stop } from '../process-helpers.js';
 import { feishuEnv } from '../helpers.js';
 import { startFeishuStandIn } from '../feishu.js';
 import { testDatabase } from '../database.js';
@@ -25,7 +24,7 @@ export const test = base.extend<{
       ['--import', 'tsx', 'src/server/main.ts'],
       {
         cwd: process.cwd(),
-        stdio: 'ignore',
+        stdio: ['ignore', 'pipe', 'ignore'],
         env: {
           PATH: process.env.PATH,
           NODE_ENV: 'test',
@@ -39,24 +38,11 @@ export const test = base.extend<{
         },
       },
     );
+    // The hub says it is ready once it listens: waiting for that spends none
+    // of the address's request budget the tests' sign-ins need.
+    const ready = printed(child, 'Kinmesh Team Hub ready');
     try {
-      let ready = false;
-      const deadline = Date.now() + 20000;
-      while (Date.now() < deadline && child.exitCode === null) {
-        try {
-          const response = await fetch(origin + '/health', {
-            signal: AbortSignal.timeout(500),
-          });
-          if (response.ok) {
-            ready = true;
-            break;
-          }
-        } catch {
-          /* bounded startup polling */
-        }
-        await delay(100);
-      }
-      if (!ready) throw new Error('Disposable Kinmesh startup failed');
+      await deadline(ready, 20000, 'Disposable Kinmesh startup failed');
       await use({ origin, database: database.url, state: dir });
     } finally {
       await stop(child);
