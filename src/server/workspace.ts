@@ -5,6 +5,7 @@ import { AgentId, TeamId } from '../domain/contracts.js';
 import type { Principal } from '../domain/agents.js';
 import { DomainError } from '../domain/errors.js';
 import { INBOX_LIVENESS_MS } from '../domain/inbox.js';
+import type { Reference } from '../domain/execution.js';
 import type { Store } from '../persistence/store.js';
 import { fingerprint } from '../persistence/transactional.js';
 import type { Credential } from '../adapters/t3/oauth.js';
@@ -44,6 +45,23 @@ export function registerWorkspace(
   /** T3's sign-in when it needs renewing by a person (`registerConnect`). */
   renewal: (principal: Person, teamId: TeamId) => Promise<unknown>,
 ) {
+  /** One read of a run through the team's T3 connection, the one runs use. */
+  async function readRun(
+    principal: Person,
+    teamId: TeamId,
+    reference: z.infer<typeof Reference>,
+  ) {
+    const connection = await store.managed.teamConnection(principal, teamId);
+    if (!connection) throw new Error('Unavailable');
+    const credential = runCredential(connection.endpoint);
+    if (credential?.environmentId !== reference.environmentId)
+      throw new Error('Unavailable');
+    return readNativeExecution(
+      credential,
+      reference,
+      AbortSignal.timeout(8000),
+    );
+  }
   app.get(
     '/api/teams/:teamId/agents/:agentId/executions/:executionId/native',
     async (request, reply) => {
@@ -66,19 +84,10 @@ export function registerWorkspace(
         executionId,
       );
       try {
-        const connection = await store.managed.teamConnection(
+        const observation = await readRun(
           principal,
           teamId,
-        );
-        if (!connection) throw new Error('Unavailable');
-        const credential = runCredential(connection.endpoint);
-        if (credential === null) throw new Error('Unavailable');
-        if (credential.environmentId !== correlation.reference.environmentId)
-          throw new Error('Unavailable');
-        const observation = await readNativeExecution(
-          credential,
           correlation.reference,
-          AbortSignal.timeout(8000),
         );
         // Access may have changed while the external read was in flight.
         await store.agents.getCorrelation(
@@ -98,6 +107,34 @@ export function registerWorkspace(
           executionId,
         );
         // External OAuth/permission failures are never Kinmesh session expiry.
+        return reply.code(503).send({ error: 'Native T3 status unavailable' });
+      }
+    },
+  );
+  /**
+   * Where T3 shows a delivery's run, for going there to approve what it waits
+   * for: the thread's link as T3 gave it and verified, or null.
+   */
+  app.get(
+    '/api/teams/:teamId/deliveries/:deliveryId/link',
+    async (request, reply) => {
+      reply.header('Cache-Control', 'no-store');
+      const principal = request.principal;
+      if (principal?.kind !== 'human') throw new DomainError('forbidden');
+      const { teamId, deliveryId } = z
+        .strictObject({ teamId: TeamId, deliveryId: z.uuid() })
+        .parse(request.params);
+      z.strictObject({}).parse(request.query);
+      const run = await store.inbox.runOf(principal, teamId, deliveryId);
+      if (run === null) return { url: null };
+      try {
+        const { verifiedUrl } = await readRun(principal, teamId, run);
+        // Access may have changed while T3 was read.
+        await store.inbox.runOf(principal, teamId, deliveryId);
+        return { url: verifiedUrl };
+      } catch (error) {
+        if (error instanceof DomainError) throw error;
+        await store.inbox.runOf(principal, teamId, deliveryId);
         return reply.code(503).send({ error: 'Native T3 status unavailable' });
       }
     },

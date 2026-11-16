@@ -839,10 +839,16 @@ test('a request waiting for an approval in T3 is stopped from its line, and one 
   await expect(unsent).toContainText('Stopped before Ada started');
   await expect(unsent.getByRole('button', { name: 'Stop' })).toHaveCount(0);
   // The next one's run waits for an approval in T3, as the worker records
-  // it. MOCK only: no T3 is reached.
+  // it, in the team's T3. MOCK only: no T3 is reached; the link is the one
+  // T3 0.1.9 gives a thread, on its web app.
   await say('@Ada and the changelog?');
   const waiting = responses('and the changelog?');
   await expect(waiting).toContainText('Ada isn’t connected');
+  const thread = 'https://app.t3.codes/threads/env-mock/thread-mock';
+  await page.route('**/api/teams/*/deliveries/*/link', (route) =>
+    route.fulfill({ json: { url: thread } }),
+  );
+  const team = (await snapshot(context.request, hub.origin)).team.id;
   const sql = rawDatabase(hub.database);
   try {
     await sql
@@ -857,10 +863,21 @@ test('a request waiting for an approval in T3 is stopped from its line, and one 
           runId: 'run-mock',
         }),
       );
+    await sql
+      .prepare(
+        'INSERT INTO t3_connections (team_id, endpoint, environment_id, connected_at) VALUES (?, ?, ?, ?)',
+      )
+      .run(team, 'http://127.0.0.1:3773/mcp', 'env-mock', Date.now());
   } finally {
     await sql.close();
   }
-  await expect(waiting).toContainText('Ada is waiting for an approval in T3');
+  // The sentence itself goes to T3, where the approval is given.
+  const approve = waiting.getByRole('link', {
+    name: 'Ada is waiting for an approval in T3 ↗',
+    exact: true,
+  });
+  await expect(approve).toHaveAttribute('href', thread);
+  await expect(approve).toHaveAttribute('target', '_blank');
   await waiting.getByRole('button', { name: 'Stop', exact: true }).click();
   // The worker interrupts the run; the line says so until it has ended.
   await expect(waiting).toContainText('Ada is stopping');

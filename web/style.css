@@ -710,6 +710,11 @@ button.person[aria-pressed='true'] {
   border-color: transparent;
   text-decoration: underline;
 }
+/* A link elsewhere reads like the link buttons beside it. */
+a.link-button {
+  font-weight: 600;
+  text-decoration: none;
+}
 
 /* Main column ------------------------------------------------------ */
 .workspace-main {
@@ -2357,6 +2362,11 @@ span.person {
 .request .link-button {
   padding: 0.1rem 0;
   font-size: 0.85rem;
+}
+/* The outcome itself links to T3; it keeps the outcome's type. */
+.request-outcome .link-button {
+  padding: 0;
+  font-size: inherit;
 }
 .request-fix {
   grid-column: 2 / -1;

@@ -1,6 +1,18 @@
 import type { Reference } from '../domain/execution.js';
 
-/** Validate an actually supplied browser link; never synthesize one from IDs. */
+/**
+ * T3's web app, where T3 links a thread whichever endpoint serves it
+ * (`https://app.t3.codes/threads/<environment>/<thread>`).
+ */
+export const T3_APP_ORIGIN = 'https://app.t3.codes';
+/** A link T3 gave is shown only on its own origin or T3's web app. */
+export const trustedLinkOrigin = (link: string, t3Origin: string) =>
+  [t3Origin, T3_APP_ORIGIN].includes(new URL(link).origin);
+/**
+ * Validate an actually supplied browser link to exactly this thread
+ * (`/<environment>/<thread>`, or under `/threads`); never synthesize one
+ * from IDs.
+ */
 export function nativeThreadUrl(
   candidate: unknown,
   reference: Reference,
@@ -20,9 +32,10 @@ export function nativeThreadUrl(
       )
     )
       return null;
-    const segments = url.pathname.split('/');
-    if (segments.length !== 3) return null;
-    const ids = segments.slice(1).map((segment) => decodeURIComponent(segment));
+    const segments = url.pathname.split('/').slice(1);
+    if (segments.length === 3 && segments[0] === 'threads') segments.shift();
+    if (segments.length !== 2) return null;
+    const ids = segments.map((segment) => decodeURIComponent(segment));
     if (
       ids.some((id) => id === '.' || id === '..' || /[/\\\s\p{Cc}]/u.test(id))
     )

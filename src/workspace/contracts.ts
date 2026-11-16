@@ -3,7 +3,7 @@ import { EventType, PROTOCOL_VERSION } from '@ag-ui/core';
 import { StateSnapshotEventSchema } from '@ag-ui/core/schemas';
 import { Agent, Correlation, RuntimeEvent } from '../domain/agents.js';
 import { Reference } from '../domain/execution.js';
-import { nativeThreadUrl } from './links.js';
+import { nativeThreadUrl, trustedLinkOrigin } from './links.js';
 import { RUNTIME_MODES, Status, TERMINAL } from '../adapters/t3/contracts.js';
 import {
   Human,
@@ -247,7 +247,7 @@ export function decodeNativeObservation(
   if (
     result.verifiedUrl !== null &&
     (trustedOrigin === null ||
-      new URL(result.verifiedUrl).origin !== trustedOrigin)
+      !trustedLinkOrigin(result.verifiedUrl, trustedOrigin))
   )
     throw new Error('Mismatched native origin');
   return result;

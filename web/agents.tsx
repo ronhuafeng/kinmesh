@@ -14,7 +14,13 @@ import { api, HttpError, request, useRequest, value } from './api.js';
 import { ActionForm, Notice } from './forms.js';
 import { ArrowIcon, PlusIcon } from './icons.js';
 import { ago, Avatar, Page, Presence, workerConnected } from './ui.js';
-import { deliveryText, Recovery, Stop, stoppable } from './deliveries.js';
+import {
+  deliveryText,
+  Outcome,
+  Recovery,
+  Stop,
+  stoppable,
+} from './deliveries.js';
 import type { DeliveryView } from './deliveries.js';
 import { AgentAbout, AgentSetup, useT3 } from './setup.js';
 import { plainLine } from './tasks.js';
@@ -409,7 +415,14 @@ function Requests({
               <span className="request-text">
                 {what ? `“${what}”` : 'A request'}
               </span>
-              <span className="request-outcome">{outcome}</span>
+              <Outcome
+                delivery={d}
+                teamId={data.team.id}
+                t3Origin={data.nativeT3Origin}
+                className="request-outcome"
+              >
+                {outcome}
+              </Outcome>
               <span className="request-time">{when ? ago(when) : ''}</span>
               {onPage ? (
                 <button
@@ -421,7 +434,7 @@ function Requests({
                 >
                   View reply
                 </button>
-              ) : stoppable(d) && !d.stopRequested ? (
+              ) : stoppable(d) ? (
                 <Stop delivery={d} teamId={data.team.id} onDone={onDone} />
               ) : (
                 <span />

@@ -6,8 +6,15 @@ import { deliver } from '../src/inbox/worker.js';
 import { MessageId } from '../src/domain/communication.js';
 import { due, inboxFixture } from './inbox-helpers.js';
 import { key, postInput } from './communication-helpers.js';
-import { envelope, launched, mockRead } from './t3-helpers.js';
+import { envelope, launched, mockRead, reference } from './t3-helpers.js';
 import { rawDatabase } from './raw.js';
+import { mockNativeServer } from './native-helpers.js';
+import { saveCredential } from '../src/adapters/t3/oauth.js';
+import {
+  managedDirectory,
+  privateDirectory,
+  t3AuthFile,
+} from '../src/inbox/managed.js';
 
 type Fixture = Awaited<ReturnType<typeof inboxFixture>>;
 const signal = () => new AbortController().signal;
@@ -250,6 +257,109 @@ await test('stopping follows the resume rule: people who can read the channel, n
     );
     assert.notEqual((await stop(f, working.id)).statusCode, 200);
   } finally {
+    await f.dispose();
+  }
+});
+
+/**
+ * Proves a delivery blocked because the T3 access its run started under is
+ * gone can be ended: T3 is never asked, it ends keeping why, a retry
+ * replays, and nothing is ever posted for it.
+ */
+await test('a delivery whose run’s T3 access is gone ends at once without asking T3', async () => {
+  const f = await inboxFixture();
+  try {
+    await mention(f);
+    f.wire.values.t3_thread_read = run('running');
+    const working = await attempt(f);
+    assert.equal(working.state, 'waiting', working.reason);
+    await due(f.dbPath);
+    const held = await f.inbox.claim([f.agent.id]);
+    assert.ok(held);
+    await f.inbox.defer(held, 'blocked', 'authority-changed');
+    const before = f.wire.calls.length;
+
+    const operation = key();
+    assert.equal((await stop(f, working.id, operation)).statusCode, 200);
+    // A lost response is retried with the same key and replays.
+    assert.equal((await stop(f, working.id, operation)).statusCode, 200);
+    const ended = await f.inbox.get(working.id);
+    assert.equal(ended.state, 'expired');
+    assert.equal(ended.reason, 'authority-changed');
+    assert.notEqual(ended.stopRequestedAt, null);
+    assert.equal(ended.resultMessageId, null);
+    assert.equal(f.wire.calls.length, before);
+
+    // Nothing is left for a worker, and stopping it again changes nothing.
+    await due(f.dbPath);
+    assert.equal(await f.inbox.claim([f.agent.id]), undefined);
+    assert.equal((await stop(f, working.id)).statusCode, 200);
+    assert.deepEqual(await f.inbox.get(working.id), ended);
+  } finally {
+    await f.dispose();
+  }
+});
+
+/**
+ * Proves a run waiting for an approval links to its thread where T3 shows
+ * it, as T3 linked it (T3's web app, as T3 0.1.9 does), for a person who can
+ * read the channel; never a link elsewhere, and never for an agent.
+ */
+await test('a run waiting for an approval links to its thread in T3', async () => {
+  const f = await inboxFixture();
+  const mock = await mockNativeServer();
+  try {
+    await mention(f);
+    const [queued] = await f.rows();
+    assert.ok(queued);
+    const url = `/api/teams/${f.teamId}/deliveries/${queued.id}/link`;
+    const link = () => f.app.inject({ url, cookies: f.cookies });
+    // Before its run is in T3 there is nothing to link to.
+    assert.deepEqual((await link()).json(), { url: null });
+
+    f.wire.values.t3_thread_read = run('waiting');
+    const waiting = await attempt(f);
+    assert.equal(waiting.reason, 'human-or-approval-wait');
+    await f.store.managed.saveConnection(
+      f.principal,
+      f.teamId,
+      mock.endpoint,
+      'env-one',
+    );
+    const directory = managedDirectory(f.directory);
+    privateDirectory(directory);
+    saveCredential(t3AuthFile(directory), mock.credential);
+    mock.link.value = `https://app.t3.codes/threads/${reference.environmentId}/${encodeURIComponent(reference.threadId)}`;
+    const linked = await link();
+    assert.equal(linked.statusCode, 200, linked.body);
+    assert.equal(linked.headers['cache-control'], 'no-store');
+    assert.deepEqual(linked.json(), { url: mock.link.value });
+    assert.ok(
+      mock.calls.every((call) =>
+        ['t3_environment_read', 't3_thread_read'].includes(call.name),
+      ),
+    );
+
+    // A link anywhere else, or to another thread, is not shown.
+    for (const elsewhere of [
+      `https://evil.example/threads/${reference.environmentId}/${encodeURIComponent(reference.threadId)}`,
+      `https://app.t3.codes/threads/${reference.environmentId}/other-thread`,
+    ]) {
+      mock.link.value = elsewhere;
+      assert.deepEqual((await link()).json(), { url: null });
+    }
+    // T3 that can't be read is one generic answer.
+    mock.mode.value = 'bad-read';
+    assert.equal((await link()).statusCode, 503);
+
+    // Agents never ask.
+    const agent = await f.app.inject({
+      url,
+      headers: { authorization: 'Bearer ' + f.inboxGrant.token },
+    });
+    assert.equal(agent.statusCode, 403);
+  } finally {
+    await mock.close();
     await f.dispose();
   }
 });
