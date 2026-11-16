@@ -178,7 +178,9 @@ it is the authority. Use the custom property for its role, never a raw colour.
   connected. A read-only approval shows as the next step, never as success.
   Then choose what the agent runs on from one list of every provider's models. After
   that a single line says the agent is ready (or its worker is starting), with
-  **Change model**, **Reconnect** and **Disconnect**, and offers to add the agent to
+  **Change model**, **Reconnect** and **Disconnect** (no **Reconnect** when the
+  deployment connects T3: no sign-in is offered, and until it has connected the step
+  reads "Connecting T3…"), and offers to add the agent to
   the channel on screen when it isn't in it. **Run the worker yourself** opens a page
   for operators: runtime preferences, the worker credential (issue, rotate, revoke),
   the `npm run t3:auth` step and an `inbox.json` binding without secrets.

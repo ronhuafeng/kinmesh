@@ -44,7 +44,8 @@ export const Endpoint = z
 export const Credential = z.object({
   endpoint: Endpoint,
   environmentId: z.string().min(1),
-  client: OAuthClientInformationSchema,
+  /** The OAuth client of a person's sign-in; a token the deployment issues has none. */
+  client: OAuthClientInformationSchema.optional(),
   tokens: OAuthTokensSchema,
 });
 export type Credential = z.infer<typeof Credential>;
@@ -147,9 +148,20 @@ export function saveCredential(
     rmSync(temporary, { force: true });
   }
 }
+/**
+ * Who Kinmesh acts as in T3: this endpoint and environment, with these
+ * scopes. A new token for the same (a renewed or reissued grant) is the same
+ * authority, so work under way continues; another environment or other
+ * scopes are another authority.
+ */
 export function authority(credential: Credential) {
+  const scopes = [...new Set(credential.tokens.scope?.split(/\s+/) ?? [])]
+    .filter(Boolean)
+    .sort();
   return createHash('sha256')
-    .update(credential.tokens.access_token)
+    .update(
+      JSON.stringify([credential.endpoint, credential.environmentId, scopes]),
+    )
     .digest('hex');
 }
 export function storedProvider(credential: Credential): OAuthClientProvider {

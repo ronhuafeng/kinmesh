@@ -6,6 +6,7 @@ import { registerTasks } from './tasks.js';
 import { registerCommunication } from './communication.js';
 import { registerAgents } from './agents.js';
 import { defaultHub, registerConnect, type Hub } from './connect.js';
+import { provisionedT3 } from './provision.js';
 import { managedDirectory, t3AuthFile } from '../inbox/managed.js';
 import { principal, resolvePrincipal } from './principals.js';
 import { IdentityError } from '../domain/agents.js';
@@ -45,6 +46,7 @@ export async function createApp(
     ...defaultHub(
       managedDirectory(config.state),
       new URL(config.origin).protocol === 'https:',
+      config.t3 !== null,
     ),
     ...overrides,
   };
@@ -195,6 +197,27 @@ export async function createApp(
   const changes = watchChanges(store);
   const { grants } = registerAgents(app, store, hub.directory);
   const { t3Status } = registerConnect(app, store, hub, changes);
+  // The deployment's T3: applied now, then whenever its session is renewed.
+  let provisioning: NodeJS.Timeout | undefined;
+  if (config.t3) {
+    const sync = provisionedT3(store, hub.directory, config.t3);
+    const run = () => {
+      sync().then(
+        (changed) => {
+          if (changed) changes.emit();
+        },
+        (error: unknown) => {
+          app.log.error(
+            { error: error instanceof Error ? error.name : 'Error' },
+            't3_provision_failed',
+          );
+        },
+      );
+    };
+    run();
+    provisioning = setInterval(run, 60_000);
+    provisioning.unref();
+  }
   registerCommunication(app, store);
   registerTasks(app, store);
   const { snapshot, runs } = registerWorkspace(
@@ -231,6 +254,7 @@ export async function createApp(
   });
   if (beforeClose) app.addHook('preClose', beforeClose);
   app.addHook('onClose', async () => {
+    clearInterval(provisioning);
     changes.close();
     await store.close();
   });

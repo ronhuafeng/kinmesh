@@ -82,6 +82,41 @@ export function managedRepository(
           .onConflictDoUpdate({ target: s.t3Connections.teamId, set: row });
       });
     },
+    /**
+     * The T3 the deployment connects, for the instance's team: no person
+     * signs it in. Returns how many teams it was set for (none before the
+     * first person has signed in and so made the team).
+     */
+    async provision(endpoint: string, environmentId: string) {
+      return atomic(async () => {
+        const row = {
+          endpoint: Endpoint.parse(endpoint),
+          environmentId: z.string().min(1).max(256).parse(environmentId),
+        };
+        const teams = await q().select({ id: s.teams.id }).from(s.teams);
+        for (const team of teams) {
+          const [current] = await q()
+            .select()
+            .from(s.t3Connections)
+            .where(eq(s.t3Connections.teamId, team.id))
+            .limit(1);
+          // Unchanged: keep when it was connected.
+          if (
+            current?.endpoint === row.endpoint &&
+            current.environmentId === row.environmentId
+          )
+            continue;
+          await q()
+            .insert(s.t3Connections)
+            .values({ teamId: team.id, ...row, connectedAt: Date.now() })
+            .onConflictDoUpdate({
+              target: s.t3Connections.teamId,
+              set: { ...row, connectedAt: Date.now() },
+            });
+        }
+        return teams.length;
+      });
+    },
     async binding(p: Principal, teamId: TeamId, agentId: AgentId) {
       await person(p, teamId);
       return binding(teamId, agentId);
