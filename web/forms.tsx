@@ -235,7 +235,9 @@ export function InlineField({
         maxLength={maxLength}
         required
         autoFocus
-        disabled={action.busy}
+        // Held, not disabled, while it sends: a refused name stays in the
+        // field with the caret, ready to be corrected.
+        readOnly={action.busy}
         onKeyDown={(event) => {
           if (event.key !== 'Escape') return;
           event.preventDefault();

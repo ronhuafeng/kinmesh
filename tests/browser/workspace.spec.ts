@@ -1407,6 +1407,8 @@ test('a link that can’t open leads to the default channel, and a taken name sa
     page.getByRole('navigation', { name: 'Channels' }).getByRole('alert'),
   ).toHaveText('That name is taken');
   await expect(page.getByText(/HTTP \d/)).toHaveCount(0);
+  // The refused name keeps the caret, ready to be corrected.
+  await expect(page.getByLabel('Channel name')).toBeFocused();
 });
 
 test('quiet text is readable where it sits, in light and dark', async ({
