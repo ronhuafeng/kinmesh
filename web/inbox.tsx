@@ -3,6 +3,7 @@ import type { WorkspaceSnapshot } from '../src/workspace/contracts.js';
 import { deliveryText, Recovery } from './deliveries.js';
 import { InboxIcon } from './icons.js';
 import { memberName } from './names.js';
+import { ReconnectT3 } from './setup.js';
 import { humanAsk } from './tasks.js';
 import { Avatar, Page, ago, plural, workerConnected } from './ui.js';
 
@@ -11,7 +12,8 @@ export function attentionCount(attention: WorkspaceSnapshot['attention']) {
   return (
     attention.decide.length +
     attention.unstuck.length +
-    attention.connect.length
+    attention.connect.length +
+    (attention.t3 ? 1 : 0)
   );
 }
 /** One row: who it is about, what it is, where and when; the row opens it. */
@@ -23,8 +25,17 @@ interface Item {
   what: string;
   where: string | null;
   at: string | null;
-  open: () => void;
+  /** Where it is resolved; absent when it is resolved right here. */
+  open?: () => void;
   fix?: ReactNode;
+}
+/** The day T3's sign-in ends, the way a person would say it. */
+function day(iso: string) {
+  return new Date(iso).toLocaleDateString(undefined, {
+    weekday: 'short',
+    month: 'short',
+    day: 'numeric',
+  });
 }
 /**
  * Everything waiting on this person across the team, as one list, newest
@@ -46,7 +57,7 @@ export function InboxPage({
   openChannel: (channelId: string) => void;
   openAgent: (agentId: string) => void;
 }) {
-  const { decide, unstuck, connect } = data.attention;
+  const { decide, unstuck, connect, t3 } = data.attention;
   const name = (id: string) => memberName({ kind: 'agent', id }, data);
   const items: Item[] = [
     ...decide.map(({ task, channelName }): Item => {
@@ -108,6 +119,20 @@ export function InboxPage({
       },
     })),
   ].sort((a, b) => (b.at ?? '').localeCompare(a.at ?? ''));
+  // T3 is every agent's: its sign-in comes first.
+  if (t3)
+    items.unshift({
+      key: 't3',
+      tone: t3.expired ? 'problem' : 'setup',
+      agentId: null,
+      who: 'T3',
+      what: t3.expired
+        ? 'T3’s sign-in ended, so agents are waiting'
+        : `T3’s sign-in ends ${day(t3.expiresAt)}`,
+      where: new URL(t3.endpoint).host,
+      at: null,
+      fix: <ReconnectT3 teamId={data.team.id} renewal={t3} onDone={onDone} />,
+    });
   return (
     <Page label="Inbox" onClose={onClose} className="inbox" bar={false}>
       {items.length === 0 ? (
@@ -125,20 +150,32 @@ export function InboxPage({
                 {item.agentId ? (
                   <Avatar kind="agent" name={item.who} id={item.agentId} />
                 ) : (
-                  <Avatar kind="human" name={item.who} />
+                  <Avatar
+                    kind={item.key === 't3' ? 'agent' : 'human'}
+                    name={item.who}
+                  />
                 )}
               </span>
-              <button
-                type="button"
-                className="inbox-main"
-                aria-label={item.what}
-                onClick={item.open}
-              >
-                <span className="inbox-what">{item.what}</span>
-                {item.where && (
-                  <span className="inbox-where">{item.where}</span>
-                )}
-              </button>
+              {item.open ? (
+                <button
+                  type="button"
+                  className="inbox-main"
+                  aria-label={item.what}
+                  onClick={item.open}
+                >
+                  <span className="inbox-what">{item.what}</span>
+                  {item.where && (
+                    <span className="inbox-where">{item.where}</span>
+                  )}
+                </button>
+              ) : (
+                <div className="inbox-main">
+                  <span className="inbox-what">{item.what}</span>
+                  {item.where && (
+                    <span className="inbox-where">{item.where}</span>
+                  )}
+                </div>
+              )}
               {item.at && (
                 <time dateTime={item.at} className="inbox-time">
                   {ago(item.at)}

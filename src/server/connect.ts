@@ -13,8 +13,11 @@ import {
 } from '../adapters/t3/authorization.js';
 import {
   Endpoint,
+  RENEW_BEFORE_MS,
   loadCredential,
   saveCredential,
+  signInEnded,
+  type Credential,
 } from '../adapters/t3/oauth.js';
 import { t3Providers, type T3Providers } from '../adapters/t3/providers.js';
 import { Descriptor } from '../adapters/t3/contracts.js';
@@ -114,35 +117,58 @@ export function registerConnect(
       }
     | undefined;
   const credentialFile = t3AuthFile(hub.directory);
+  const credentialFor = (endpoint: string): Credential | null => {
+    try {
+      return loadCredential(credentialFile, endpoint);
+    } catch {
+      return null;
+    }
+  };
   /** The team's T3 connection and any sign-in under way. */
   const t3Status = async (caller: Principal, teamId: TeamId) => {
     const connection = await store.managed.connection(caller, teamId);
+    const credential = connection && credentialFor(connection.endpoint);
     // Whether T3 let agents run, or only read: a read-only approval looks
     // connected but every wake would be refused.
-    let access: 'operate' | 'read' | null = null;
-    if (connection)
-      try {
-        const scopes =
-          loadCredential(
-            credentialFile,
-            connection.endpoint,
-          ).tokens.scope?.split(/\s+/) ?? [];
-        access = scopes.includes('orchestration:operate') ? 'operate' : 'read';
-      } catch {
-        access = null;
-      }
+    const scopes = credential?.tokens.scope?.split(/\s+/) ?? [];
     const status = {
       connection: connection && {
         endpoint: connection.endpoint,
         environmentId: connection.environmentId,
         connectedAt: new Date(connection.connectedAt).toISOString(),
-        access,
+        access: credential
+          ? scopes.includes('orchestration:operate')
+            ? ('operate' as const)
+            : ('read' as const)
+          : null,
+        // T3 no longer honours the sign-in: agents wait until it is renewed.
+        expired: credential !== null && signInEnded(credential),
       },
       signIn: flow?.teamId === teamId ? flow.state : null,
       pasteCallback: hub.pasteCallback,
       provisioned: hub.provisioned,
     };
     return { ...status, revision: fingerprint(status) };
+  };
+  /**
+   * T3's sign-in as it waits on every person of the team: from a week
+   * before it ends, until someone signs in again. The deployment renews
+   * its own session, so nobody is asked then.
+   */
+  const renewal = async (caller: Principal, teamId: TeamId) => {
+    if (hub.provisioned) return null;
+    const connection = await store.managed.connection(caller, teamId);
+    const credential = connection && credentialFor(connection.endpoint);
+    if (!connection || credential?.expiresAt === undefined) return null;
+    const now = Date.now();
+    if (Date.parse(credential.expiresAt) - now > RENEW_BEFORE_MS) return null;
+    return {
+      endpoint: connection.endpoint,
+      expiresAt: credential.expiresAt,
+      expired: signInEnded(credential, now),
+      pasteCallback: hub.pasteCallback,
+      signIn: flow?.teamId === teamId ? flow.state : null,
+    };
   };
   app.get('/api/teams/:teamId/t3', (request, reply) => {
     reply.header('Cache-Control', 'no-store');
@@ -320,5 +346,5 @@ export function registerConnect(
       return reply.code(204).send();
     },
   );
-  return { t3Status };
+  return { t3Status, renewal };
 }

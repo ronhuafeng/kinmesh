@@ -40,6 +40,8 @@ const T3Status = z.object({
       environmentId: z.string(),
       connectedAt: z.string(),
       access: z.enum(['operate', 'read']).nullable(),
+      /** T3 no longer honours the sign-in. */
+      expired: z.boolean(),
     })
     .nullable(),
   signIn: z.enum(['waiting', 'failed']).nullable(),
@@ -213,6 +215,82 @@ function NextStep({ title, children }: { title: string; children: ReactNode }) {
   );
 }
 /**
+ * A sign-in under way: the approval opens in T3. When T3's approval ends on
+ * the person's own computer, its address is pasted here to finish.
+ */
+function Approve({
+  teamId,
+  url,
+  pasteCallback,
+  agentName,
+  reload,
+}: {
+  teamId: string;
+  url: string;
+  pasteCallback: boolean;
+  agentName: string;
+  reload: () => void;
+}) {
+  const pasted = useRequest({
+    400: 'That isn’t the address this approval opened.',
+    409: 'That no longer applies; the panel shows what changed.',
+  });
+  return (
+    <div className="approve">
+      <a
+        className="button-link"
+        href={url}
+        target="_blank"
+        rel="noopener noreferrer"
+      >
+        Approve in T3 ↗
+      </a>
+      <span className="muted" role="status">
+        Waiting for your approval…
+      </span>
+      <ul className="approve-hints">
+        <li>
+          Choose <strong>Supervised</strong>, so {agentName} can run.
+        </li>
+        <li>
+          Asked for a pairing code? Create one on {new URL(url).host} under
+          Settings → Sharing &amp; access.
+        </li>
+      </ul>
+      {pasteCallback && (
+        <form
+          className="t3-connect"
+          onSubmit={(event) => {
+            event.preventDefault();
+            const address = value(new FormData(event.currentTarget), 'url');
+            void pasted
+              .send(`/api/teams/${teamId}/t3/callback`, { url: address })
+              .then((raw) => {
+                if (raw !== undefined) reload();
+              });
+          }}
+        >
+          <Field label="Address after approving">
+            <input
+              name="url"
+              type="url"
+              required
+              autoComplete="off"
+              placeholder="http://127.0.0.1:49871/callback?…"
+            />
+          </Field>
+          <div className="token-actions">
+            <button type="submit" disabled={!pasted.permitted || pasted.busy}>
+              {pasted.busy ? 'Finishing…' : 'Finish'}
+            </button>
+          </div>
+        </form>
+      )}
+      {pasted.error && <Notice>{pasted.error}</Notice>}
+    </div>
+  );
+}
+/**
  * Connect the team to T3 once. The T3 desktop app on this machine is found
  * on its own; another T3 takes its MCP URL.
  */
@@ -228,10 +306,6 @@ function ConnectT3({
   agentName: string;
 }) {
   const { send, busy, error, permitted } = useSetupRequest();
-  const pasted = useRequest({
-    400: 'That isn’t the address this approval opened.',
-    409: 'That no longer applies; the panel shows what changed.',
-  });
   const [approval, setApproval] = useState<string | null>(null);
   const [local, setLocal] = useState<string | null | undefined>(undefined);
   const [other, setOther] = useState(false);
@@ -248,6 +322,7 @@ function ConnectT3({
   }, [teamId]);
   const connection = t3?.connection ?? null;
   const readOnly = connection?.access === 'read';
+  const ended = connection?.expired === true;
   const waiting = t3?.signIn === 'waiting' && approval !== null;
   const start = (endpoint: string) => {
     void send(`/api/teams/${teamId}/t3/connect`, {
@@ -268,66 +343,20 @@ function ConnectT3({
       <p className="muted">
         {readOnly
           ? `T3 only allowed reading, so ${agentName} can’t run there. Connect again and choose Supervised.`
-          : local && !other
-            ? `T3 is running on this Mac. Connect it once for the whole team.`
-            : `Paste the MCP URL from T3: Settings → Environments → Copy MCP URL.`}
+          : ended
+            ? `T3’s sign-in ended, so ${agentName} is waiting. Connect again to go on.`
+            : local && !other
+              ? `T3 is running on this Mac. Connect it once for the whole team.`
+              : `Paste the MCP URL from T3: Settings → Environments → Copy MCP URL.`}
       </p>
       {waiting ? (
-        <div className="approve">
-          <a
-            className="button-link"
-            href={approval}
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Approve in T3 ↗
-          </a>
-          <span className="muted" role="status">
-            Waiting for your approval…
-          </span>
-          <ul className="approve-hints">
-            <li>
-              Choose <strong>Supervised</strong>, so {agentName} can run.
-            </li>
-            <li>
-              Asked for a pairing code? Create one on {new URL(approval).host}{' '}
-              under Settings → Sharing &amp; access.
-            </li>
-          </ul>
-          {t3.pasteCallback && (
-            <form
-              className="t3-connect"
-              onSubmit={(event) => {
-                event.preventDefault();
-                const url = value(new FormData(event.currentTarget), 'url');
-                void pasted
-                  .send(`/api/teams/${teamId}/t3/callback`, { url })
-                  .then((raw) => {
-                    if (raw !== undefined) reload();
-                  });
-              }}
-            >
-              <Field label="Address after approving">
-                <input
-                  name="url"
-                  type="url"
-                  required
-                  autoComplete="off"
-                  placeholder="http://127.0.0.1:49871/callback?…"
-                />
-              </Field>
-              <div className="token-actions">
-                <button
-                  type="submit"
-                  disabled={!pasted.permitted || pasted.busy}
-                >
-                  {pasted.busy ? 'Finishing…' : 'Finish'}
-                </button>
-              </div>
-            </form>
-          )}
-          {pasted.error && <Notice>{pasted.error}</Notice>}
-        </div>
+        <Approve
+          teamId={teamId}
+          url={approval}
+          pasteCallback={t3.pasteCallback}
+          agentName={agentName}
+          reload={reload}
+        />
       ) : (
         <form
           className="t3-connect"
@@ -375,6 +404,59 @@ function ConnectT3({
       )}
       {error && <Notice>{error}</Notice>}
     </NextStep>
+  );
+}
+/**
+ * Sign in to the team's T3 again, wherever that is asked for: the same
+ * sign-in as connecting it, to the T3 already connected.
+ */
+export function ReconnectT3({
+  teamId,
+  renewal,
+  onDone,
+}: {
+  teamId: string;
+  renewal: NonNullable<WorkspaceSnapshot['attention']['t3']>;
+  onDone: () => void;
+}) {
+  const { send, busy, error, permitted } = useSetupRequest();
+  const [approval, setApproval] = useState<string | null>(null);
+  if (renewal.signIn === 'waiting' && approval !== null)
+    return (
+      <Approve
+        teamId={teamId}
+        url={approval}
+        pasteCallback={renewal.pasteCallback}
+        agentName="agents"
+        reload={onDone}
+      />
+    );
+  return (
+    <div className="delivery-recovery">
+      <button
+        type="button"
+        disabled={!permitted || busy}
+        onClick={() => {
+          void send(`/api/teams/${teamId}/t3/connect`, {
+            endpoint: renewal.endpoint,
+            replace: true,
+          }).then((raw) => {
+            if (raw === undefined) return;
+            setApproval(
+              z.object({ authorizationUrl: z.string().nullable() }).parse(raw)
+                .authorizationUrl,
+            );
+            onDone();
+          });
+        }}
+      >
+        {busy ? 'Starting…' : 'Reconnect T3'}
+      </button>
+      {renewal.signIn === 'failed' && (
+        <Notice>T3 didn’t approve the connection. Try again.</Notice>
+      )}
+      {error && <Notice>{error}</Notice>}
+    </div>
   );
 }
 /** Pick what the agent runs on, as one choice: provider and model together. */
@@ -825,7 +907,8 @@ export function AgentSetup({
   const awake = workerConnected(data.wake, agent.id);
   const managed = managedOf(data, agent.id);
   const connection = t3.status?.connection ?? null;
-  const t3Ready = connection !== null && connection.access !== 'read';
+  const t3Ready =
+    connection !== null && connection.access !== 'read' && !connection.expired;
   const connectedAt = connection?.connectedAt;
   useEffect(() => {
     setReconnecting(false);

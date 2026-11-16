@@ -2882,10 +2882,12 @@ button.roster-person:hover:not(:disabled) {
 .inbox-face {
   display: grid;
 }
-button.inbox-main {
+.inbox-main {
   display: grid;
   gap: 0.15rem;
   min-width: 0;
+}
+button.inbox-main {
   padding: 0;
   border: 0;
   background: transparent;

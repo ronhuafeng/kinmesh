@@ -26,6 +26,12 @@ await test('every delivery state reads as a plain sentence about the agent', () 
     ['ready', 'enqueued', false, /^Ada isn’t connected/],
     ['ready', 'temporarily-unavailable', true, /retry when T3 is reachable/],
     ['ready', 'operator-resume', true, /will pick this up/],
+    [
+      'ready',
+      'sign-in-expired',
+      true,
+      /^Ada will go on once T3 is reconnected$/,
+    ],
     ['waiting', 'execution-active', true, /^Ada is working on it$/],
     ['waiting', 'human-or-approval-wait', true, /waiting for an approval/],
     ['waiting', 'assistant-result-unavailable', true, /working on it/],

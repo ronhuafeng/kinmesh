@@ -63,6 +63,8 @@ export const DeliveryReason = z.enum([
   'owner-resume',
   'setup-catching-up',
   'native-launch-pending',
+  /** The team's T3 sign-in ended; the delivery goes on once T3 is reconnected. */
+  'sign-in-expired',
 ]);
 export type DeliveryReason = z.infer<typeof DeliveryReason>;
 /**

@@ -140,7 +140,8 @@ it is the authority. Use the custom property for its role, never a raw colour.
   what ran it lives with the run on the agent's page.
 - **Delivery line**: under a message that mentions an agent, and on a task handed to
   one, one line per agent in plain words: will pick this up, isn't connected, is
-  working on it, is waiting for an approval in T3, replied (linking the reply, with
+  working on it, is waiting for an approval in T3, will go on once T3 is
+  reconnected, replied (linking the reply, with
   how long it took), is stuck (what was lost and the one fix — re-enable the agent,
   add it back or open its setup — next to a retry), or never picked this up. The
   machine state is only a tooltip.
@@ -175,7 +176,8 @@ it is the authority. Use the custom property for its role, never a raw colour.
   Supervised in T3. When the workspace is reached over HTTPS, T3's approval ends on a
   page that does not load; its address goes into **Address after approving** and
   **Finish** completes the connection. The pairing-code hint names the T3 being
-  connected. A read-only approval shows as the next step, never as success.
+  connected. A read-only approval shows as the next step, never as success, and
+  so does a sign-in that ended ("T3’s sign-in ended").
   Then choose what the agent runs on from one list of every provider's models. After
   that a single line says the agent is ready (or its worker is starting), with
   **Change model**, **Reconnect** and **Disconnect** (no **Reconnect** when the
@@ -195,8 +197,13 @@ it is the authority. Use the custom property for its role, never a raw colour.
   its author's name.
 - **Inbox**: the tab after Team, with how many things wait on you. Everything across
   the team waiting on you, one list, newest first: tasks for your sign-off, review or
-  rework; stuck deliveries you caused; agents with queued work and no worker. A row is a face, what it is, where and when, an orange or red rule for a
-  decision or a problem; the row opens where it is resolved (task, channel or agent).
+  rework; stuck deliveries you caused; agents with queued work and no worker; and,
+  first, T3's sign-in from a week before it ends ("T3’s sign-in ends Mon, Nov 23",
+  then "T3’s sign-in ended, so agents are waiting" with a red rule) with
+  **Reconnect T3** under it, the same sign-in as **Connect T3** — never when the
+  deployment connects T3. A row is a face, what it is, where and when, an orange or red rule for a
+  decision or a problem; the row opens where it is resolved (task, channel or agent),
+  or holds the fix under it.
   A row leaves when its cause is resolved; there is nothing to dismiss. Expired
   deliveries are not listed; they stay on their message's delivery line.
 - **Settings**: your own row among the sidebar's people opens your page; the account

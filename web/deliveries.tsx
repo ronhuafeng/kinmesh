@@ -63,6 +63,11 @@ export function deliveryText(
           text: `${name} isn’t connected, so nothing has picked this up yet`,
           tone: 'problem',
         };
+      if (because('sign-in-expired'))
+        return {
+          text: `${name} will go on once T3 is reconnected`,
+          tone: 'waiting',
+        };
       return because('temporarily-unavailable')
         ? { text: `${name} will retry when T3 is reachable`, tone: 'waiting' }
         : { text: `${name} will pick this up${since}`, tone: 'queued' };

@@ -10,6 +10,7 @@ const Issued = z
   .object({
     token: z.string().min(1),
     scopes: z.array(z.string().min(1)).min(1),
+    expiresAt: z.iso.datetime({ offset: true }).optional(),
   })
   .loose();
 
@@ -48,6 +49,9 @@ export function provisionedT3(
           token_type: 'Bearer',
           scope: issued.scopes.join(' '),
         },
+        ...(issued.expiresAt === undefined
+          ? {}
+          : { expiresAt: new Date(issued.expiresAt).toISOString() }),
       },
       { replace: true },
     );

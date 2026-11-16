@@ -106,6 +106,20 @@ export const WorkspaceSnapshot = z.strictObject({
         }),
       )
       .max(100),
+    /**
+     * T3's sign-in, from a week before it ends until someone signs in again;
+     * null otherwise, and always when the deployment connects T3.
+     */
+    t3: z
+      .strictObject({
+        endpoint: z.url(),
+        expiresAt: z.iso.datetime(),
+        expired: z.boolean(),
+        /** Approval returns to the person's own computer; they paste its address. */
+        pasteCallback: z.boolean(),
+        signIn: z.enum(['waiting', 'failed']).nullable(),
+      })
+      .nullable(),
   }),
   /** Inbox worker liveness per agent; absent means no worker has ever claimed it. */
   wake: z

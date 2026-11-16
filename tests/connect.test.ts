@@ -4,7 +4,7 @@ import { existsSync, readFileSync, statSync } from 'node:fs';
 import { dirname } from 'node:path';
 import { z } from 'zod';
 import { createApp } from '../src/server/app.js';
-import { Credential } from '../src/adapters/t3/oauth.js';
+import { Credential, saveCredential } from '../src/adapters/t3/oauth.js';
 import type { Hub } from '../src/server/connect.js';
 import {
   agentTokenFile,
@@ -558,6 +558,112 @@ await test('a T3 the deployment connects offers no sign-in from the workspace', 
         })
       ).statusCode,
       409,
+    );
+  } finally {
+    await f.dispose();
+  }
+});
+
+const DAY = 86400_000;
+/** The team's credential, as if T3 had issued it to end `in` from now. */
+const ending = (after: number) => ({
+  ...credential,
+  expiresAt: new Date(Date.now() + after).toISOString(),
+});
+
+await test('from a week before T3’s sign-in ends every person is asked to reconnect, until someone does', async () => {
+  let issued = ending(30 * DAY);
+  const f = await connectFixture({
+    authorize: async (_endpoint, interaction, signal) => {
+      await interaction.redirect(
+        new URL('https://t3.test/authorize?state=fixture'),
+        signal,
+      );
+      return issued;
+    },
+  });
+  try {
+    const renewal = async (cookies = f.cookies) =>
+      WorkspaceSnapshot.parse(
+        (await f.app.inject({ url: '/api/workspace', cookies })).json(),
+      ).attention.t3;
+    const expired = async () =>
+      z
+        .object({ connection: z.object({ expired: z.boolean() }) })
+        .parse((await f.call('GET', f.team + '/t3')).json<unknown>()).connection
+        .expired;
+    assert.equal(
+      (
+        await f.call('POST', f.team + '/t3/connect', {
+          endpoint,
+          replace: false,
+        })
+      ).statusCode,
+      200,
+    );
+    await settle(f);
+    // A month to go: nothing to do.
+    assert.equal(await renewal(), null);
+    // Eight days, then six: from a week before, it waits on everyone.
+    saveCredential(t3AuthFile(f.directory), ending(8 * DAY));
+    assert.equal(await renewal(), null);
+    const soon = ending(6 * DAY);
+    saveCredential(t3AuthFile(f.directory), soon);
+    const colleague = await signInAs(f.app, 'colleague@example.com');
+    for (const cookies of [f.cookies, colleague])
+      assert.deepEqual(await renewal(cookies), {
+        endpoint,
+        expiresAt: soon.expiresAt,
+        expired: false,
+        pasteCallback: false,
+        signIn: null,
+      });
+    assert.equal(await expired(), false);
+    // Ended: still asked, and T3 reads as needing a new sign-in.
+    saveCredential(t3AuthFile(f.directory), ending(-1000));
+    assert.equal((await renewal())?.expired, true);
+    assert.equal(await expired(), true);
+    // Someone reconnects the same T3: under way, then answered by a new month.
+    issued = ending(30 * DAY);
+    assert.equal(
+      (
+        await f.call('POST', f.team + '/t3/connect', {
+          endpoint,
+          replace: true,
+        })
+      ).statusCode,
+      200,
+    );
+    await settle(f);
+    assert.equal(await renewal(), null);
+    assert.equal(await expired(), false);
+  } finally {
+    await f.dispose();
+  }
+});
+
+await test('the deployment renews its own T3 session: nobody is asked, and an ended one still reads as ended', async () => {
+  const f = await connectFixture({ provisioned: true });
+  try {
+    await f.store.managed.provision(endpoint, credential.environmentId);
+    saveCredential(t3AuthFile(f.directory), ending(DAY));
+    const snapshot = WorkspaceSnapshot.parse(
+      (await f.call('GET', '/api/workspace')).json<unknown>(),
+    );
+    assert.equal(snapshot.attention.t3, null);
+    saveCredential(t3AuthFile(f.directory), ending(-1000));
+    assert.equal(
+      WorkspaceSnapshot.parse(
+        (await f.call('GET', '/api/workspace')).json<unknown>(),
+      ).attention.t3,
+      null,
+    );
+    assert.equal(
+      z
+        .object({ connection: z.object({ expired: z.boolean() }) })
+        .parse((await f.call('GET', f.team + '/t3')).json<unknown>()).connection
+        .expired,
+      true,
     );
   } finally {
     await f.dispose();

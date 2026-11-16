@@ -6,9 +6,14 @@ import {
 } from '../domain/execution.js';
 import { T3Backend } from '../adapters/t3/backend.js';
 import { SdkWire } from '../adapters/t3/sdk.js';
-import { authority, loadCredential } from '../adapters/t3/oauth.js';
+import {
+  authority,
+  loadCredential,
+  signInEnded,
+} from '../adapters/t3/oauth.js';
 import type { Store } from '../persistence/store.js';
 import type { WorkerBinding } from './config.js';
+import { SignInEnded } from './worker.js';
 export type BackendFactory = (
   binding: WorkerBinding,
   profile: Agent,
@@ -23,6 +28,7 @@ export function t3Factory(store: Store): BackendFactory {
     signal.throwIfAborted();
     // The worker holds the profile to this credential's environment and the binding's provider.
     const credential = loadCredential(binding.t3AuthFile, binding.t3Endpoint);
+    if (signInEnded(credential)) throw new SignInEnded();
     const wire = new SdkWire(credential);
     try {
       const discovered = await wire.list().catch((error: unknown) => {

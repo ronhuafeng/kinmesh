@@ -8,6 +8,8 @@ import { Agent, Grant } from '../../src/domain/agents.js';
 import { Task, TaskResult } from '../../src/domain/tasks.js';
 import { pageOf } from '../../src/domain/communication.js';
 import { WorkspaceSnapshot } from '../../src/workspace/contracts.js';
+import { saveCredential } from '../../src/adapters/t3/oauth.js';
+import { managedDirectory, t3AuthFile } from '../../src/inbox/managed.js';
 import { test, expect } from './fixture.js';
 import {
   agentRow,
@@ -721,6 +723,126 @@ test('a stuck request says what was lost and is fixed and retried in place', asy
   ).toBeVisible();
 });
 
+test('a week before T3’s sign-in ends anyone reconnects it from the Inbox; once it ends, requests wait and say why', async ({
+  page,
+  context,
+  hub,
+}) => {
+  await signIn(page, hub);
+  await register(page, 'Ada', 'developer');
+  const state = await snapshot(context.request, hub.origin);
+  const ada = state.agents[0];
+  if (!ada) throw new Error('Local fixture unavailable');
+  // The team's T3 and the credential its sign-in left, as the hub keeps
+  // them. MOCK T3 only: it is never reached.
+  const endpoint = 'http://127.0.0.1:3773/mcp';
+  const signedIn = (endsIn: number) => {
+    saveCredential(t3AuthFile(managedDirectory(hub.state)), {
+      endpoint,
+      environmentId: 'env-live',
+      tokens: {
+        access_token: 'browser-local-only',
+        token_type: 'Bearer',
+        scope: 'orchestration:read orchestration:operate',
+      },
+      expiresAt: new Date(Date.now() + endsIn).toISOString(),
+    });
+  };
+  const day = 86400_000;
+  signedIn(30 * day);
+  const sql = rawDatabase(hub.database);
+  try {
+    await sql
+      .prepare(
+        'INSERT INTO t3_connections (team_id, endpoint, environment_id, connected_at) VALUES (?, ?, ?, ?)',
+      )
+      .run(state.team.id, endpoint, 'env-live', Date.now());
+  } finally {
+    await sql.close();
+  }
+  const needs = page.getByRole('tab', { name: /^Inbox/ });
+  const inbox = page.getByRole('region', { name: 'Inbox' });
+  const sign = inbox.getByRole('listitem').filter({ hasText: /T3’s sign-in/ });
+  // A month to go: nothing to do.
+  await refreshNow(page);
+  await needs.click();
+  await expect(inbox.getByText('You’re all caught up.')).toBeVisible();
+  // Three days to go: everyone of the team is asked, on the Inbox's count too.
+  signedIn(3 * day);
+  await refreshNow(page);
+  await expect(needs).toContainText('1');
+  await expect(sign).toContainText(/T3’s sign-in ends \w/);
+  await expect(sign).toContainText('127.0.0.1:3773');
+  // One click starts the same sign-in as connecting T3, to the same T3.
+  let connecting = false;
+  const asked: unknown[] = [];
+  await page.route('**/api/teams/*/t3/connect', (route) => {
+    asked.push(route.request().postDataJSON());
+    connecting = true;
+    return route.fulfill({
+      json: { authorizationUrl: 'http://127.0.0.1:3773/authorize?state=x' },
+    });
+  });
+  // The mocked T3 starts no sign-in at the hub; the test says it is under way.
+  await page.route(
+    (url) => url.pathname === '/api/workspace',
+    async (route) => {
+      const response = await route.fetch();
+      const json = WorkspaceSnapshot.parse(await response.json());
+      if (connecting && json.attention.t3) json.attention.t3.signIn = 'waiting';
+      await route.fulfill({ response, json });
+    },
+  );
+  await sign.getByRole('button', { name: 'Reconnect T3', exact: true }).click();
+  await expect(
+    sign.getByRole('link', { name: 'Approve in T3 ↗' }),
+  ).toHaveAttribute('href', 'http://127.0.0.1:3773/authorize?state=x');
+  await expect(sign).toContainText('Supervised');
+  expect(asked).toEqual([{ endpoint, replace: true }]);
+  // The sign-in ends with nobody having reconnected.
+  connecting = false;
+  signedIn(-1000);
+  await refreshNow(page);
+  await expect(sign).toContainText('T3’s sign-in ended, so agents are waiting');
+  await expect(sign).toHaveAttribute('data-tone', 'problem');
+  await expect(
+    sign.getByRole('button', { name: 'Reconnect T3', exact: true }),
+  ).toBeVisible();
+  // A request to Ada waits, and says what it waits for. Ada's worker is
+  // running; it found the sign-in ended and sent nothing to T3.
+  await page.keyboard.press('Escape');
+  await page.getByRole('tab', { name: 'Chat', exact: true }).click();
+  const composer = page.getByRole('form', { name: 'Message your team' });
+  await composer
+    .getByLabel('Message', { exact: true })
+    .fill('@Ada please check the release notes');
+  await composer.getByRole('button', { name: 'Send message' }).click();
+  const responses = page
+    .getByRole('list', { name: 'Channel messages' })
+    .getByRole('listitem')
+    .filter({ hasText: 'please check the release notes' })
+    .first()
+    .getByRole('list', { name: 'Agent responses' });
+  await expect(responses).toContainText('Ada');
+  const db = rawDatabase(hub.database);
+  try {
+    await db
+      .prepare(
+        'INSERT INTO inbox_bindings (agent_id, team_id, last_seen_at) VALUES (?, ?, ?)',
+      )
+      .run(ada.id, state.team.id, Date.now() + 10 * 60_000);
+    await db
+      .prepare(
+        "UPDATE agent_inbox SET state = 'ready', reason = 'sign-in-expired'",
+      )
+      .run();
+  } finally {
+    await db.close();
+  }
+  await expect(responses).toHaveText('Ada will go on once T3 is reconnected');
+  await page.unrouteAll({ behavior: 'ignoreErrors' });
+});
+
 test('a T3 on another computer: the person pastes the address its approval opened', async ({
   page,
   hub,
@@ -740,6 +862,7 @@ test('a T3 on another computer: the person pastes the address its approval opene
                 environmentId: 'env-team',
                 connectedAt: new Date().toISOString(),
                 access: 'operate',
+                expired: false,
               }
             : null,
         signIn: t3 === 'waiting' ? 'waiting' : null,
@@ -820,6 +943,7 @@ test('connect T3 and an agent in two clicks: the hub keeps the credential and wa
                 environmentId: 'env-live',
                 connectedAt: new Date().toISOString(),
                 access: t3,
+                expired: false,
               }
             : null,
         signIn: t3 === 'waiting' ? 'waiting' : null,

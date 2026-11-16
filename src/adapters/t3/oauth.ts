@@ -47,8 +47,22 @@ export const Credential = z.object({
   /** The OAuth client of a person's sign-in; a token the deployment issues has none. */
   client: OAuthClientInformationSchema.optional(),
   tokens: OAuthTokensSchema,
+  /**
+   * When T3 stops honouring the token, as T3 said when it issued it; absent
+   * when T3 didn't say. T3 issues no refresh token, so a person signs in again.
+   */
+  expiresAt: z.iso.datetime().optional(),
 });
 export type Credential = z.infer<typeof Credential>;
+/** From this long before a sign-in ends, the workspace asks to reconnect T3. */
+export const RENEW_BEFORE_MS = 7 * 86400_000;
+/** Whether T3 no longer honours this credential. */
+export function signInEnded(credential: Credential, now = Date.now()) {
+  return (
+    credential.expiresAt !== undefined &&
+    Date.parse(credential.expiresAt) <= now
+  );
+}
 /** The T3 scopes Kinmesh asks for; a credential holds read and nothing else. */
 export const ORCHESTRATION_SCOPES: readonly string[] = [
   'orchestration:read',

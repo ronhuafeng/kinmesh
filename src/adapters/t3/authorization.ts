@@ -298,6 +298,9 @@ export async function authorize(
       throw rejected();
     const code = await beforeAbort(received, signal);
     signal.throwIfAborted();
+    // The token's lifetime counts from before it was asked for, so the
+    // recorded end is never later than T3's own.
+    const requested = Date.now();
     if (
       (await auth(provider, {
         serverUrl: endpoint,
@@ -321,6 +324,13 @@ export async function authorize(
       environmentId: descriptor.environmentId,
       client,
       tokens,
+      ...(tokens.expires_in === undefined
+        ? {}
+        : {
+            expiresAt: new Date(
+              requested + tokens.expires_in * 1000,
+            ).toISOString(),
+          }),
     });
   } catch {
     throw new Error('Owner authorization failed; restart with a fresh request');
