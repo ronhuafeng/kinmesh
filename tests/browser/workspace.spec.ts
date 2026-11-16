@@ -1836,9 +1836,10 @@ test('a long conversation opens at its newest message, follows new ones, holds s
   await expect(page.getByRole('button', { name: /messages page/ })).toHaveCount(
     0,
   );
-  // Scrolling to the top reads the page before; the message that was first
-  // stays exactly where it was on screen. The read is held until its place
-  // is measured.
+  // Scrolling to the top reads the page before; the first message's text
+  // stays exactly where it was on screen, though its header folds into the
+  // same author's older messages. The read is held until its place is
+  // measured.
   let release: () => void = () => {
     throw new Error('The older page was not asked for');
   };

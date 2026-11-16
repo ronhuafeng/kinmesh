@@ -451,27 +451,31 @@ function useReadingPosition(place: string, messages: ChatMessage[]) {
     place: string;
     first: string | undefined;
     last: string | undefined;
-    /** Where the first message sat in the viewport. */
-    top: number;
+    /**
+     * Where the first message ended in the viewport. Its end, not its top:
+     * older messages from the same author fold its header into theirs, and
+     * what follows must not move when they do.
+     */
+    end: number;
     bottom: boolean;
   } | null>(null);
-  const firstTop = (id: string | undefined) =>
+  const endOf = (id: string | undefined) =>
     id === undefined
       ? 0
       : (document.getElementById('message-' + id)?.getBoundingClientRect()
-          .top ?? 0);
+          .bottom ?? 0);
   useLayoutEffect(() => {
     const previous = held.current;
     const first = messages[0]?.id;
     const last = messages.at(-1)?.id;
     if (previous?.place !== place) toBottom();
     else {
-      // Older messages above: the one that was first stays where it was.
+      // Older messages above: what was on screen stays where it was.
       if (first !== previous.first && previous.first !== undefined) {
         const anchor = document.getElementById('message-' + previous.first);
         if (anchor)
           window.scrollBy({
-            top: anchor.getBoundingClientRect().top - previous.top,
+            top: anchor.getBoundingClientRect().bottom - previous.end,
           });
       }
       // At the bottom, it stays there whatever grew (a message, a reply's
@@ -482,7 +486,7 @@ function useReadingPosition(place: string, messages: ChatMessage[]) {
       place,
       first,
       last,
-      top: firstTop(first),
+      end: endOf(first),
       bottom: atBottom(),
     };
   }, [place, messages]);
@@ -490,7 +494,7 @@ function useReadingPosition(place: string, messages: ChatMessage[]) {
   useEffect(() => {
     const note = () => {
       if (!held.current) return;
-      held.current.top = firstTop(held.current.first);
+      held.current.end = endOf(held.current.first);
       held.current.bottom = atBottom();
     };
     window.addEventListener('scroll', note, { passive: true });
