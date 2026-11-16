@@ -1,7 +1,7 @@
 # The agents' runtime beside the hub: unmodified T3 Code, and the pi agent
 # it runs. Agents work in /space; T3's state lives in /opt/t3/userdata and
 # pi's in ~/.pi/agent, both on volumes the deployment provides.
-FROM node:24-bookworm-slim
+FROM node:26-bookworm-slim
 ARG T3CODE_VERSION=0.1.9
 ARG PI_VERSION=1.5.2
 # The second line is what T3's headless browser needs: the libraries and fonts
