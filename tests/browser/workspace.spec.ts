@@ -721,6 +721,82 @@ test('a stuck request says what was lost and is fixed and retried in place', asy
   ).toBeVisible();
 });
 
+test('a T3 on another computer: the person pastes the address its approval opened', async ({
+  page,
+  hub,
+}) => {
+  await signIn(page, hub);
+  await register(page, 'Ada', 'developer');
+  // MOCK T3 only, as a team-mode hub sees it: no local T3, approval by paste.
+  let t3: 'none' | 'waiting' | 'operate' = 'none';
+  const pasted: string[] = [];
+  await page.route('**/api/teams/*/t3', (route) =>
+    route.fulfill({
+      json: {
+        connection:
+          t3 === 'operate'
+            ? {
+                endpoint: 'https://t3.example.com/mcp',
+                environmentId: 'env-team',
+                connectedAt: new Date().toISOString(),
+                access: 'operate',
+              }
+            : null,
+        signIn: t3 === 'waiting' ? 'waiting' : null,
+        pasteCallback: true,
+        revision: t3,
+      },
+    }),
+  );
+  await page.route('**/api/teams/*/t3/local', (route) =>
+    route.fulfill({ json: { endpoint: null } }),
+  );
+  await page.route('**/api/teams/*/t3/connect', (route) => {
+    t3 = 'waiting';
+    return route.fulfill({
+      json: { authorizationUrl: 'https://t3.example.com/authorize?state=x' },
+    });
+  });
+  await page.route('**/api/teams/*/t3/callback', (route) => {
+    const { url } = z
+      .object({ url: z.string() })
+      .parse(route.request().postDataJSON());
+    pasted.push(url);
+    if (!url.includes('state=x'))
+      return route.fulfill({ status: 400, json: {} });
+    t3 = 'operate';
+    return route.fulfill({ status: 204 });
+  });
+  await page.route('**/api/teams/*/t3/providers', (route) =>
+    route.fulfill({ json: { providers: [] } }),
+  );
+  await agentRow(page, 'Ada').click();
+  const connectT3 = page
+    .getByRole('region', { name: 'Ada', exact: true })
+    .getByRole('region', { name: 'Setup' })
+    .getByRole('group', { name: 'Connect T3' });
+  await connectT3.getByLabel('T3 MCP URL').fill('https://t3.example.com/mcp');
+  await connectT3
+    .getByRole('button', { name: 'Connect T3', exact: true })
+    .click();
+  // The pairing code comes from the T3 being connected, named by its address.
+  await expect(connectT3).toContainText('Create one on t3.example.com');
+  const address = connectT3.getByLabel('Address after approving');
+  await address.fill('http://127.0.0.1:49871/callback?state=y&code=c&iss=z');
+  await connectT3.getByRole('button', { name: 'Finish' }).click();
+  await expect(connectT3).toContainText(
+    'That isn’t the address this approval opened.',
+  );
+  const right = 'http://127.0.0.1:49871/callback?state=x&code=c&iss=z';
+  await address.fill(right);
+  await connectT3.getByRole('button', { name: 'Finish' }).click();
+  // Connected: the next step is choosing what Ada runs on.
+  await expect(
+    page.getByRole('form', { name: 'Choose what Ada runs on' }),
+  ).toBeVisible();
+  expect(pasted.at(-1)).toBe(right);
+});
+
 test('connect T3 and an agent in two clicks: the hub keeps the credential and wakes the agent', async ({
   page,
   context,
@@ -746,6 +822,7 @@ test('connect T3 and an agent in two clicks: the hub keeps the credential and wa
               }
             : null,
         signIn: t3 === 'waiting' ? 'waiting' : null,
+        pasteCallback: false,
         revision: t3,
       },
     }),
@@ -789,6 +866,8 @@ test('connect T3 and an agent in two clicks: the hub keeps the credential and wa
   ).toHaveAttribute('href', 'http://127.0.0.1:3773/authorize?state=x');
   await expect(connectT3).toContainText('pairing code');
   await expect(connectT3).toContainText('Supervised');
+  // On this Mac the approval comes straight back: nothing to paste.
+  await expect(connectT3.getByLabel('Address after approving')).toHaveCount(0);
   // Approved read-only by mistake: said plainly, before anyone waits.
   // The mocked hub cannot push, so the test reads again in its place.
   t3 = 'read';

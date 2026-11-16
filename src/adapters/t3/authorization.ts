@@ -58,7 +58,11 @@ export function callbackCode(input: string, state: string, issuer: string) {
   }
 }
 
-/** One-shot receiver, also used by the browser-local flow. Caller owns listen/close. */
+/**
+ * One-shot receiver, also used by the browser-local flow. Caller owns
+ * listen/close. Besides its loopback listener it takes the same callback
+ * URL pasted by the person (`submit`); the first valid one wins.
+ */
 export function callbackReceiver(
   state: string,
   issuer: string,
@@ -83,32 +87,33 @@ export function callbackReceiver(
   });
   signal.addEventListener('abort', refuse, { once: true });
   if (signal.aborted) refuse();
+  /** Takes one exact callback URL; false for anything else, or a second one. */
+  const submit = (input: string) => {
+    if (consumed || signal.aborted) return false;
+    let value: string;
+    try {
+      value = callbackCode(input, state, issuer);
+    } catch {
+      return false;
+    }
+    consumed = true;
+    accept(value);
+    return true;
+  };
   const server = createServer(
     { requestTimeout: 5000, headersTimeout: 5000 },
     (request, response) => {
       response.setHeader('cache-control', 'no-store');
       response.setHeader('referrer-policy', 'no-referrer');
-      try {
-        if (
-          consumed ||
-          signal.aborted ||
-          request.method !== 'GET' ||
-          request.headers.host !== '127.0.0.1:49871'
-        )
-          throw rejected();
-        const value = callbackCode(
-          'http://127.0.0.1:49871' + (request.url ?? ''),
-          state,
-          issuer,
-        );
-        consumed = true;
+      if (
+        request.method === 'GET' &&
+        request.headers.host === '127.0.0.1:49871' &&
+        submit('http://127.0.0.1:49871' + (request.url ?? ''))
+      )
         response
           .writeHead(200, { 'content-type': 'text/plain' })
           .end('Authorization received. Return to your terminal.');
-        accept(value);
-      } catch {
-        response.writeHead(400).end('Authorization callback rejected');
-      }
+      else response.writeHead(400).end('Authorization callback rejected');
     },
   );
   server.maxConnections = 4;
@@ -116,7 +121,7 @@ export function callbackReceiver(
   server.once('close', () => {
     signal.removeEventListener('abort', refuse);
   });
-  return { server, code };
+  return { server, code, submit };
 }
 
 /** Auth discovery/exchange may contact only the pinned T3 origin; never follow redirects. */

@@ -43,6 +43,8 @@ const T3Status = z.object({
     })
     .nullable(),
   signIn: z.enum(['waiting', 'failed']).nullable(),
+  /** Approval returns to the person's own computer, whose address they paste. */
+  pasteCallback: z.boolean(),
   revision: z.string(),
 });
 type T3Status = z.infer<typeof T3Status>;
@@ -224,6 +226,10 @@ function ConnectT3({
   agentName: string;
 }) {
   const { send, busy, error, permitted } = useSetupRequest();
+  const pasted = useRequest({
+    400: 'That isn’t the address this approval opened.',
+    409: 'That no longer applies; the panel shows what changed.',
+  });
   const [approval, setApproval] = useState<string | null>(null);
   const [local, setLocal] = useState<string | null | undefined>(undefined);
   const [other, setOther] = useState(false);
@@ -282,10 +288,43 @@ function ConnectT3({
               Choose <strong>Supervised</strong>, so {agentName} can run.
             </li>
             <li>
-              Asked for a pairing code? Create one in T3 under Settings →
-              Sharing &amp; access.
+              Asked for a pairing code? Create one on {new URL(approval).host}{' '}
+              under Settings → Sharing &amp; access.
             </li>
           </ul>
+          {t3.pasteCallback && (
+            <form
+              className="t3-connect"
+              onSubmit={(event) => {
+                event.preventDefault();
+                const url = value(new FormData(event.currentTarget), 'url');
+                void pasted
+                  .send(`/api/teams/${teamId}/t3/callback`, { url })
+                  .then((raw) => {
+                    if (raw !== undefined) reload();
+                  });
+              }}
+            >
+              <Field label="Address after approving">
+                <input
+                  name="url"
+                  type="url"
+                  required
+                  autoComplete="off"
+                  placeholder="http://127.0.0.1:49871/callback?…"
+                />
+              </Field>
+              <div className="token-actions">
+                <button
+                  type="submit"
+                  disabled={!pasted.permitted || pasted.busy}
+                >
+                  {pasted.busy ? 'Finishing…' : 'Finish'}
+                </button>
+              </div>
+            </form>
+          )}
+          {pasted.error && <Notice>{pasted.error}</Notice>}
         </div>
       ) : (
         <form

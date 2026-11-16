@@ -42,7 +42,10 @@ export async function createApp(
   } = {},
 ) {
   const hub = {
-    ...defaultHub(managedDirectory(config.state)),
+    ...defaultHub(
+      managedDirectory(config.state),
+      new URL(config.origin).protocol === 'https:',
+    ),
     ...overrides,
   };
   const app = Fastify({

@@ -38,6 +38,12 @@ export interface Hub {
   providers: T3Providers;
   /** The local T3 MCP endpoint, when T3 runs on this machine. */
   discover: () => Promise<string | null>;
+  /**
+   * Team mode: the hub is reached over HTTPS, so the browser approving T3 is
+   * on another computer. T3 is reached over HTTPS too, and its approval
+   * returns to that computer's loopback, whose address the person pastes.
+   */
+  pasteCallback: boolean;
 }
 /** T3 desktop's fixed loopback address; only this one address is probed. */
 const LOCAL_T3 = 'http://127.0.0.1:3773';
@@ -54,12 +60,13 @@ async function discoverLocal() {
     return null;
   }
 }
-export const defaultHub = (directory: string): Hub => ({
+export const defaultHub = (directory: string, team: boolean): Hub => ({
   directory,
   ensureWorker: () => Promise.resolve(),
   authorize,
   providers: t3Providers,
   discover: discoverLocal,
+  pasteCallback: team,
 });
 /** Scopes the worker uses (docs/collaboration.md, Grants and scopes), for 90 days. */
 export const WORKER_GRANT = {
@@ -90,7 +97,13 @@ export function registerConnect(
 ) {
   // One sign-in at a time: the OAuth callback port is fixed.
   let flow:
-    | { teamId: string; state: 'waiting' | 'failed'; stop: AbortController }
+    | {
+        teamId: string;
+        state: 'waiting' | 'failed';
+        stop: AbortController;
+        /** Takes the approval's callback URL, pasted by the person. */
+        submit?: (url: string) => boolean;
+      }
     | undefined;
   const credentialFile = t3AuthFile(hub.directory);
   /** The team's T3 connection and any sign-in under way. */
@@ -118,6 +131,7 @@ export function registerConnect(
         access,
       },
       signIn: flow?.teamId === teamId ? flow.state : null,
+      pasteCallback: hub.pasteCallback,
     };
     return { ...status, revision: fingerprint(status) };
   };
@@ -131,7 +145,8 @@ export function registerConnect(
     reply.header('Cache-Control', 'no-store');
     const { teamId } = TeamPath.parse(request.params);
     await store.managed.connection(principal(request), teamId);
-    return { endpoint: await hub.discover() };
+    // A T3 on the hub's loopback is out of reach of a browser elsewhere.
+    return { endpoint: hub.pasteCallback ? null : await hub.discover() };
   });
   app.post('/api/teams/:teamId/t3/connect', async (request, reply) => {
     reply.header('Cache-Control', 'no-store');
@@ -142,13 +157,19 @@ export function registerConnect(
       .parse(request.body);
     // A person of the team, checked before any file or network access.
     await store.managed.connection(p, teamId);
+    if (hub.pasteCallback && new URL(endpoint).protocol !== 'https:')
+      return reply.code(400).send({ error: 'T3 must be reached over HTTPS' });
     if (flow?.state === 'waiting') throw new IdentityError(409);
     // Never replace an approved credential without being asked to.
     if (existsSync(credentialFile) && !replace) throw new IdentityError(409);
     privateDirectory(hub.directory);
     flow?.stop.abort();
     const stop = new AbortController();
-    const current = { teamId, state: 'waiting' as const, stop };
+    const current: NonNullable<typeof flow> = {
+      teamId,
+      state: 'waiting',
+      stop,
+    };
     flow = current;
     changes.emit();
     const signal = AbortSignal.any([
@@ -163,6 +184,7 @@ export function registerConnect(
     const interaction: AuthorizationInteraction = {
       async prepare(state, issuer, s) {
         receiver = callbackReceiver(state, issuer, s);
+        current.submit = receiver.submit;
         receiver.server.listen(49871, '127.0.0.1');
         await once(receiver.server, 'listening', { signal: s });
         return { code: receiver.code };
@@ -200,6 +222,21 @@ export function registerConnect(
     return location.outcome === 'failed'
       ? reply.code(502).send({ error: 'T3 sign-in could not start' })
       : { authorizationUrl: null };
+  });
+  /** The approval's callback URL, pasted from the person's address bar. */
+  app.post('/api/teams/:teamId/t3/callback', async (request, reply) => {
+    reply.header('Cache-Control', 'no-store');
+    const { teamId } = TeamPath.parse(request.params);
+    const { url } = z
+      .strictObject({ url: z.string().max(8192) })
+      .parse(request.body);
+    await store.managed.connection(principal(request), teamId);
+    const current = flow;
+    if (current?.teamId !== teamId || current.state !== 'waiting')
+      throw new IdentityError(409);
+    if (!current.submit?.(url.trim()))
+      return reply.code(400).send({ error: 'Not this sign-in’s address' });
+    return reply.code(204).send();
   });
   app.get('/api/teams/:teamId/t3/providers', async (request, reply) => {
     reply.header('Cache-Control', 'no-store');
