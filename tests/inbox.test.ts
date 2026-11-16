@@ -1338,9 +1338,14 @@ await test('never-dispatched expiry, bounded retry history, retained facts and r
     assert.equal(await f.inbox.claim([f.agent.id]), undefined);
     assert.equal((await f.inbox.get(row.id)).state, 'expired');
     await mention(f);
+    // Transitions each, so each is recorded until the bound.
     for (let n = 0; n < 140; n++) {
       const c = await claim(f);
-      await f.inbox.defer(c, 'ready', 'fixture-retry');
+      await f.inbox.defer(
+        c,
+        'ready',
+        n % 2 ? 'fixture-retry' : 'fixture-other',
+      );
       await due(f.dbPath);
     }
     const c = await claim(f);

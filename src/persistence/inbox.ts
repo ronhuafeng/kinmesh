@@ -34,6 +34,7 @@ import {
   PublishedOutcome,
   clip,
   retryDelay,
+  waitDelay,
   InboxState,
   deliveryScopes,
   inboxIntent,
@@ -90,7 +91,29 @@ export function inboxRepository(
     if (!(await q().select({ id: t.id }).from(t).where(fence(c)).limit(1))[0])
       throw new IdentityError(409);
   }
+  /** The delivery's latest recorded transition. */
+  async function recorded(id: string) {
+    return (
+      await q()
+        .select({
+          state: s.inboxHistory.state,
+          reason: s.inboxHistory.reason,
+          /** How long ago, by the database's clock. */
+          age: sql<number>`(${dbNow} - ${s.inboxHistory.createdAt})::float8`,
+        })
+        .from(s.inboxHistory)
+        .where(eq(s.inboxHistory.deliveryId, id))
+        .orderBy(desc(s.inboxHistory.position))
+        .limit(1)
+    )[0];
+  }
+  /**
+   * Records a transition: a change of state or reason. Looking again and
+   * finding the same is not one, so a long wait keeps its history.
+   */
   async function history(row: Delivery, reason: string) {
+    const last = await recorded(row.id);
+    if (last?.state === row.state && last.reason === reason) return;
     const count =
       (
         await q()
@@ -332,9 +355,8 @@ export function inboxRepository(
             .where(and(eq(t.id, candidate.id), lte(t.leaseUntil, dbNow)))
             .returning()
         )[0];
-        const claim = Claim.parse(row);
-        await history(claim, 'claimed');
-        return claim;
+        // A claim is a lease, not a transition: nothing a person sees changes.
+        return Claim.parse(row);
       });
     },
     context(c: Claim, p: Principal) {
@@ -600,12 +622,19 @@ export function inboxRepository(
         z.string()
           .regex(/^[a-z-]{1,80}$/)
           .parse(reason);
+        // A run under way is looked at on its own cadence, by how long it
+        // has been waiting; everything else backs off by failed attempts.
+        let delay = retryDelay(c.attempts);
+        if (state === 'waiting') {
+          const last = await recorded(c.id);
+          delay = waitDelay(last?.state === 'waiting' ? last.age : 0);
+        }
         await update(c, {
           state,
           reason,
           claimToken: null,
           leaseUntil: 0,
-          nextAttempt: sql`${dbNow}+${retryDelay(c.attempts)}`,
+          nextAttempt: sql`${dbNow}+${delay}`,
         });
         await history(await get(c.id), reason);
       });

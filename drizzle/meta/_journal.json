@@ -22,6 +22,13 @@
       "when": 1794694047009,
       "tag": "0002_gone_thread",
       "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1794850062456,
+      "tag": "0003_quiet_polls",
+      "breakpoints": true
     }
   ]
 }

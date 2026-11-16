@@ -289,5 +289,13 @@ export function wakeTargets(fact: z.infer<typeof OutboxFact>) {
     return [];
   return [target];
 }
+/** After a failure: doubling from one second, at most five minutes. */
 export const retryDelay = (attempts: number) =>
   Math.min(300_000, 1000 * 2 ** Math.min(9, Math.max(0, attempts - 1)));
+/**
+ * While a healthy run is under way, how soon to look at it again, by how long
+ * it has been waiting: every 2 seconds at first, slowing to every 15 once it
+ * has run for two minutes. Failures before or between do not slow it.
+ */
+export const waitDelay = (waitingMs: number) =>
+  Math.min(15_000, Math.max(2_000, Math.floor(Math.max(0, waitingMs) / 8)));
