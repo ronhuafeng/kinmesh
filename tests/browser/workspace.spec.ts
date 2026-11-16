@@ -428,6 +428,11 @@ test('AG-UI snapshots render persisted reports honestly', async ({
   await expect(
     page.getByText('browser-fixture-thread', { exact: true }),
   ).toBeVisible();
+  // One T3 reference per run: the thread, with the run on hover.
+  await expect(page.getByText('browser-fixture-run')).toHaveCount(0);
+  await expect(page.getByRole('columnheader', { name: 'T3 run' })).toHaveCount(
+    0,
+  );
   // No verified link, no link: nothing to click and nothing to explain.
   await expect(
     page.getByRole('link', { name: 'Open in T3', exact: true }),
@@ -568,7 +573,7 @@ test('keyboard mention, and a message becomes a task in its topic', async ({
   ).toBeVisible();
 });
 
-test('a mention says what happened to it and leads to the agent’s reply', async ({
+test('a mention says what happened to it and leads to the agent’s reply, said once', async ({
   page,
   context,
   playwright,
@@ -581,23 +586,24 @@ test('a mention says what happened to it and leads to the agent’s reply', asyn
   if (!ada || !state.channel) throw new Error('Local fixture unavailable');
   await page.getByRole('tab', { name: 'Chat', exact: true }).click();
   const composer = page.getByRole('form', { name: 'Message your team' });
-  await composer
-    .getByLabel('Message', { exact: true })
-    .fill('@Ada please check the release notes');
-  await composer.getByRole('button', { name: 'Send message' }).click();
-  const asked = page
-    .getByRole('list', { name: 'Channel messages' })
-    .getByRole('listitem')
-    .filter({ hasText: 'please check the release notes' })
-    .first();
+  const say = async (text: string) => {
+    await composer.getByLabel('Message', { exact: true }).fill(text);
+    await composer.getByRole('button', { name: 'Send message' }).click();
+    await expect(
+      page.getByRole('list', { name: 'Channel messages' }).getByText(text),
+    ).toBeVisible();
+  };
+  const item = (text: string) =>
+    page
+      .getByRole('list', { name: 'Channel messages' })
+      .getByRole('listitem')
+      .filter({ hasText: text })
+      .first();
+  await say('@Ada please check the release notes');
+  const asked = item('please check the release notes');
   const responses = asked.getByRole('list', { name: 'Agent responses' });
   // Each delivery state's sentence: tests/delivery-copy.test.ts.
   await expect(responses).toContainText('Ada isn’t connected');
-  // Simulate what the worker does on success: the agent replies and the
-  // delivery is acknowledged with that reply.
-  const source = (await snapshot(context.request, hub.origin)).messages
-    .items[0];
-  if (!source) throw new Error('Mention not persisted');
   const token = await agentGrant(
     context.request,
     hub.origin,
@@ -607,13 +613,18 @@ test('a mention says what happened to it and leads to the agent’s reply', asyn
   const agent = await playwright.request.newContext({
     extraHTTPHeaders: { authorization: 'Bearer ' + token },
   });
-  try {
+  /** What the worker does on success: Ada replies, and the delivery is acknowledged with that reply. */
+  const answer = async (question: string, body: string) => {
+    const source = (
+      await snapshot(context.request, hub.origin)
+    ).messages.items.find((m) => m.body.includes(question));
+    if (!source || !state.channel) throw new Error('Mention not persisted');
     const posted = await agent.post(
       `${hub.origin}/api/teams/${state.team.id}/channels/${state.channel.id}/messages`,
       {
         data: {
           operationKey: randomUUID(),
-          body: 'Release notes checked; two links were broken and are fixed.',
+          body,
           topicId: null,
           mentions: [],
           sourceMessageId: source.id,
@@ -633,18 +644,36 @@ test('a mention says what happened to it and leads to the agent’s reply', asyn
     } finally {
       await db.close();
     }
+  };
+  try {
+    // Something else is said before Ada answers: the line leads to her
+    // reply, and the reply quotes what it answers.
+    await say('Meanwhile, the docs build is green');
+    await answer(
+      'please check the release notes',
+      'Release notes checked; two links were broken and are fixed.',
+    );
+    await responses.getByRole('button', { name: /Ada replied/ }).click();
+    const reply = item('two links were broken');
+    await expect(reply).toBeInViewport();
+    await expect(
+      reply.getByRole('button', { name: /In reply to browser_owner/ }),
+    ).toBeVisible();
+    // Answered right under the question, neither is said: the reply's place
+    // says it.
+    await say('@Ada and the changelog?');
+    await answer('and the changelog?', 'The changelog lists both fixes.');
+    const next = item('The changelog lists both fixes.');
+    await expect(next).toBeVisible();
+    await expect(
+      item('and the changelog?').getByRole('list', { name: 'Agent responses' }),
+    ).toHaveCount(0);
+    await expect(next.getByRole('button', { name: /In reply to/ })).toHaveCount(
+      0,
+    );
   } finally {
     await agent.dispose();
   }
-  await responses.getByRole('button', { name: /Ada replied/ }).click();
-  const answer = page
-    .getByRole('list', { name: 'Channel messages' })
-    .getByRole('listitem')
-    .filter({ hasText: 'two links were broken' });
-  await expect(answer).toBeInViewport();
-  await expect(
-    answer.getByRole('button', { name: /In reply to browser_owner/ }),
-  ).toBeVisible();
 });
 
 test('the Inbox gathers what waits on me across channels and leads to the fix', async ({
@@ -2022,6 +2051,191 @@ test('a task older than the board’s newest still opens by its address', async 
     page.getByRole('article', { name: 'The oldest task', exact: true }),
   ).toHaveCount(0);
   await expect(page.getByRole('button', { name: /tasks page/ })).toHaveCount(0);
+});
+
+/**
+ * Whether taps up to 21 px above, below, left and right of an element's
+ * centre land on it: a 44 px target, however small it is drawn.
+ */
+function takesTaps(page: Page, selector: string) {
+  return page.evaluate((target) => {
+    const element = document.querySelector(target);
+    if (!element) throw new Error('Nothing matches ' + target);
+    const box = element.getBoundingClientRect();
+    const x = box.left + box.width / 2;
+    const y = box.top + box.height / 2;
+    return [
+      [x, y - 21],
+      [x, y + 21],
+      [x - 21, y],
+      [x + 21, y],
+    ].map(([px = 0, py = 0]) => {
+      const hit = document.elementFromPoint(px, py);
+      return hit !== null && (hit === element || element.contains(hit));
+    });
+  }, selector);
+}
+
+test('a phone channel: targets a finger can hit, fields that don’t zoom, a composer on the bottom edge', async ({
+  browser,
+  hub,
+}) => {
+  const phone = await browser.newContext({
+    viewport: { width: 1280, height: 900 },
+    isMobile: true,
+    hasTouch: true,
+  });
+  try {
+    const page = await phone.newPage();
+    await signIn(page, hub);
+    const state = await snapshot(page.request, hub.origin);
+    if (!state.channel) throw new Error('Local channel missing');
+    await page.getByRole('button', { name: 'Start a topic' }).click();
+    await page.getByLabel('Topic title').fill('Billing');
+    await page.getByLabel('Topic title').press('Enter');
+    await page
+      .getByRole('list', { name: 'Topics' })
+      .getByRole('button', { name: 'All', exact: true })
+      .click();
+    await page.setViewportSize({ width: 375, height: 812 });
+    await page
+      .getByRole('navigation', { name: 'Channels' })
+      .getByRole('button', { name: 'general', exact: true })
+      .click();
+    const topics = page.getByRole('group', { name: 'Topics' });
+    await expect(topics.getByRole('button', { name: 'Billing' })).toBeVisible();
+    // Back keeps no chrome, so it is drawn at 44 px; the rest take taps
+    // around them.
+    const back = await page
+      .getByRole('button', { name: 'Back', exact: true })
+      .boundingBox();
+    expect(back?.width).toBeGreaterThanOrEqual(44);
+    expect(back?.height).toBeGreaterThanOrEqual(44);
+    for (const target of [
+      '.view-switch [role="tab"]',
+      '.topic-pills button[aria-pressed="false"]',
+      '.topic-pills .topic-add',
+    ])
+      expect(await takesTaps(page, target)).toEqual([true, true, true, true]);
+    // A pill and the "+" after it are one height.
+    const heights = await page
+      .locator('.topic-pills button')
+      .evaluateAll((pills) =>
+        pills.map((pill) => Math.round(pill.getBoundingClientRect().height)),
+      );
+    expect(new Set(heights).size).toBe(1);
+    // Leaving is not among the topics a thumb taps all day; it waits where
+    // the conversation begins.
+    await expect(
+      topics.getByRole('button', { name: 'Leave channel' }),
+    ).toHaveCount(0);
+    await expect(
+      page.getByRole('button', { name: 'Leave channel', exact: true }),
+    ).toBeVisible();
+    // The field is 16 px (iOS zooms below that) and takes the width; Send is
+    // the round confirm, shown once there is something to send.
+    const composer = page.getByRole('form', { name: 'Message your team' });
+    const field = composer.getByLabel('Message', { exact: true });
+    expect(await field.evaluate((el) => getComputedStyle(el).fontSize)).toBe(
+      '16px',
+    );
+    const send = composer.getByRole('button', { name: 'Send message' });
+    await expect(send).toBeDisabled();
+    await field.fill('Ship the release notes');
+    await expect(send).toBeEnabled();
+    const [fieldBox, formBox] = await Promise.all([
+      field.boundingBox(),
+      composer.boundingBox(),
+    ]);
+    expect((fieldBox?.width ?? 0) / (formBox?.width ?? 1)).toBeGreaterThan(0.7);
+    expect(await takesTaps(page, '.composer button[type="submit"]')).toEqual([
+      true,
+      true,
+      true,
+      true,
+    ]);
+    // "@" and Send share a centre.
+    const centre = (selector: string) =>
+      page.locator(selector).evaluate((el) => {
+        const box = el.getBoundingClientRect();
+        return box.top + box.height / 2;
+      });
+    expect(
+      Math.abs(
+        (await centre('.composer .mention-trigger')) -
+          (await centre('.composer button[type="submit"]')),
+      ),
+    ).toBeLessThan(1);
+    await send.tap();
+    const posted = page
+      .getByRole('list', { name: 'Channel messages' })
+      .getByRole('listitem')
+      .filter({ hasText: 'Ship the release notes' });
+    await expect(posted).toBeVisible();
+    // On touch, a message shows what can be done with it once tapped.
+    const makeTask = posted.getByRole('button', { name: 'Make task' });
+    await expect(makeTask).toBeHidden();
+    await posted.getByText('Ship the release notes').tap();
+    await expect(makeTask).toBeVisible();
+    // A long conversation scrolls behind the composer, which sits on the
+    // bottom edge over paper: no message shows below it.
+    await seedMessages(hub.database, state.channel.id, state.human.id, 40);
+    await readAgain(page);
+    await expect(
+      page
+        .getByRole('list', { name: 'Channel messages' })
+        .getByText('Message 40'),
+    ).toBeVisible();
+    await page.evaluate(() => {
+      window.scrollTo({ top: document.documentElement.scrollHeight / 2 });
+    });
+    const edge = await page.evaluate(() => {
+      const composer = document.querySelector('.composer');
+      const under = document.elementFromPoint(
+        window.innerWidth / 2,
+        window.innerHeight - 2,
+      );
+      return {
+        bottom: composer?.getBoundingClientRect().bottom,
+        masked: under !== null && composer?.contains(under) === true,
+      };
+    });
+    expect(edge).toEqual({ bottom: 812, masked: true });
+  } finally {
+    await phone.close();
+  }
+});
+
+test('said once: a topic’s messages carry no tag for it, and a topic is pressed only in its chat or board', async ({
+  page,
+  hub,
+}) => {
+  await signIn(page, hub);
+  await page.getByRole('button', { name: 'Start a topic' }).click();
+  await page.getByLabel('Topic title').fill('Billing');
+  await page.getByLabel('Topic title').press('Enter');
+  const composer = page.getByRole('form', { name: 'Message your team' });
+  await composer.getByLabel('Message', { exact: true }).fill('In the topic');
+  await composer.getByRole('button', { name: 'Send message' }).click();
+  const posted = page
+    .getByRole('list', { name: 'Channel messages' })
+    .getByRole('listitem')
+    .filter({ hasText: 'In the topic' });
+  await expect(posted).toBeVisible();
+  await expect(posted.getByText('Billing', { exact: true })).toHaveCount(0);
+  const topics = page.getByRole('list', { name: 'Topics' });
+  const all = topics.getByRole('button', { name: 'All', exact: true });
+  await all.click();
+  await expect(posted.getByText('Billing', { exact: true })).toBeVisible();
+  await expect(all).toHaveAttribute('aria-pressed', 'true');
+  // On Team the place is Team: neither the channel nor a topic is current.
+  await page.getByRole('tab', { name: 'Team', exact: true }).click();
+  await expect(all).toHaveAttribute('aria-pressed', 'false');
+  await expect(
+    page.locator('nav[aria-label="Channels"] [aria-current="page"]'),
+  ).toHaveCount(0);
+  await page.getByRole('tab', { name: 'Board', exact: true }).click();
+  await expect(all).toHaveAttribute('aria-pressed', 'true');
 });
 
 test('a reload keeps the place and unsent work; Back returns to where you were', async ({

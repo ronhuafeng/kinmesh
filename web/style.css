@@ -804,12 +804,14 @@ button.person[aria-pressed='true'] {
   flex: 1;
   min-width: 0;
 }
+/* Every pill and the "+" after them share one height. */
 .topic-pills button {
+  height: 1.75rem;
   background: var(--surface);
   color: var(--ink-muted);
   border-color: var(--hairline-strong);
   border-radius: 999px;
-  padding: 0.25rem 0.8rem;
+  padding: 0 0.8rem;
   font-size: 0.82rem;
   font-weight: 550;
 }
@@ -976,33 +978,51 @@ button.author-link:hover:not(:disabled) {
   border-color: var(--hairline);
   font-size: 0.78rem;
 }
+/* Touch has no hover: a message shows its actions once tapped. */
 @media (hover: none) {
   .message-actions {
+    display: none;
     position: static;
     opacity: 1;
     margin-top: 0.25rem;
   }
+  .messages > li[data-chosen] .message-actions {
+    display: block;
+  }
+}
+/* The composer sits on the bottom edge; the paper under its box masks the
+ * conversation scrolling behind it, and is the page's bottom margin. */
+.workspace-main:has(.composer) {
+  padding-bottom: 0;
 }
 .composer {
   position: sticky;
-  bottom: 0.75rem;
+  bottom: 0;
   z-index: 3;
+  padding-bottom: calc(0.75rem + env(safe-area-inset-bottom));
+  background: var(--paper);
+  box-shadow: 0 -6px 20px color-mix(in srgb, var(--paper) 80%, transparent);
+}
+.composer > .action-form {
+  gap: 0.4rem;
   background: var(--surface);
   border: 1px solid var(--hairline-strong);
   border-radius: var(--radius-lg);
   padding: 0.6rem 0.7rem;
-  box-shadow: 0 -6px 20px color-mix(in srgb, var(--paper) 80%, transparent);
-}
-.composer .action-form {
-  gap: 0.4rem;
 }
 .composer fieldset {
   grid-template-columns: minmax(0, 1fr) auto;
   align-items: end;
   gap: 0.5rem;
 }
+/* "@" and Send share a centre on the field's last line. */
 .composer fieldset > button[type='submit'] {
   align-self: end;
+  margin-bottom: 0.25rem;
+}
+.composer .mention-trigger {
+  height: 2rem;
+  padding-block: 0;
 }
 .composer .mention-chips {
   grid-column: 1 / -1;
@@ -2059,6 +2079,19 @@ button.icon-button.confirm:disabled {
   font-weight: 600;
   line-height: 1.75rem;
 }
+/* On a phone, leaving a channel waits where its conversation begins; wider
+ * screens leave from the sidebar. */
+.channel-start {
+  display: flex;
+}
+.channel-start button[type='submit'] {
+  min-height: 44px;
+}
+@media (min-width: 721px) {
+  .channel-start {
+    display: none;
+  }
+}
 .leave-channel button[type='submit']:hover:not(:disabled) {
   background: none;
   text-decoration: underline;
@@ -2325,7 +2358,7 @@ span.person {
   display: grid;
   grid-template-columns:
     minmax(6.5rem, auto) minmax(4.5rem, auto) minmax(0, auto)
-    minmax(0, 1fr) minmax(0, 1fr) auto;
+    minmax(0, 1fr) auto;
 }
 .run-head,
 .execution {
@@ -3464,6 +3497,37 @@ button.new-agent-go {
   .view-switch [role='tab'] {
     padding: 0.3rem 0.65rem;
     font-size: 0.82rem;
+  }
+  /* iOS zooms into a field set below 16 px; every field is 16 px here. */
+  input,
+  textarea,
+  select {
+    font-size: 16px !important;
+  }
+  /* A finger's target is 44 px. Back has no chrome to grow; the rest keep
+   * their drawn size and take the taps around them. */
+  .header-back,
+  .page-bar button.icon-button {
+    min-width: 44px;
+    min-height: 44px;
+  }
+  .view-switch [role='tab'],
+  .topic-pills button,
+  .composer button.icon-button,
+  .composer .mention-trigger {
+    position: relative;
+  }
+  .view-switch [role='tab']::after,
+  .topic-pills button::after,
+  .composer button.icon-button::after,
+  .composer .mention-trigger::after {
+    content: '';
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    width: max(100%, 44px);
+    height: max(100%, 44px);
+    transform: translate(-50%, -50%);
   }
   /* A page brings its own bar; a bottom tab's page needs none. */
   .workspace-shell[data-screen='page'] .workspace-header,

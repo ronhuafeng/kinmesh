@@ -132,12 +132,14 @@ it is the authority. Use the custom property for its role, never a raw colour.
   the last 90 seconds (an open workspace keeps it so); an agent while a worker can
   wake it, so an agent nobody runs is offline before anyone asks it. Others see it
   change without reloading.
-- **Message**: avatar, name, time, topic pill; consecutive messages from the same
-  author are grouped. Bodies render a safe Markdown subset (paragraphs, lists,
-  quotes, headings, code, emphasis, http(s) links opening in a new tab). A mention
-  already written as `@Name` gets no second chip. An agent's reply shows the message
-  it answers and carries a line only for an exception (failed, stopped, shortened);
-  what ran it lives with the run on the agent's page.
+- **Message**: avatar, name, time, topic pill (none while the view is that topic);
+  consecutive messages from the same author are grouped. Bodies render a safe
+  Markdown subset (paragraphs, lists, quotes, headings, code, emphasis, http(s) links
+  opening in a new tab). A mention already written as `@Name` gets no second chip. An
+  agent's reply shows the message it answers, unless it is the very next message,
+  and carries a line only for an exception (failed, stopped, shortened); what ran it
+  lives with the run on the agent's page. **Make task** shows on hover, and on touch
+  once the message is tapped.
 - **Conversation**: opens at the newest message and stays at the bottom as messages
   arrive while you are there (and after you send); scrolled up, nothing moves under
   you. Scrolling up reads older messages in place; there are no page buttons. A "New
@@ -145,20 +147,23 @@ it is the authority. Use the custom property for its role, never a raw colour.
 - **Delivery line**: under a message that mentions an agent, and on a task handed to
   one, one line per agent in plain words: will pick this up, isn't connected, is
   working on it, is waiting for an approval in T3, will go on once T3 is
-  reconnected, replied (linking the reply, with
-  how long it took), is stuck (what was lost and the one fix — re-enable the agent,
+  reconnected, replied (linking the reply, with how long it took; no line when the
+  reply is the very next message), is stuck (what was lost and the one fix — re-enable the agent,
   add it back or open its setup — next to a retry), or never picked this up. The
   machine state is only a tooltip.
-- **Composer**: multi-line input with the `@` mention popover, docked at the bottom
-  of the chat; hints in the placeholder. A channel or topic that opens is ready to
+- **Composer**: multi-line input with the `@` mention popover, on the bottom edge of
+  the chat over a band of paper that hides the conversation scrolling behind it;
+  hints in the placeholder. Send is the round confirm button, shown once there is
+  something to send. A channel or topic that opens is ready to
   type in (a touch keyboard waits to be asked for), and sending keeps the keyboard.
 - **Channels**: the sidebar lists joined channels; a channel you left can be rejoined
   by name. A channel where something waits on you ends in a decision-coloured dot, the
   size of a presence dot and on its edge. The current channel holds its topics under
   it like a tree on a hairline trunk: "All", the ten most recently active, "More
-  topics" for the rest, a `+` that starts one, and "Leave channel". On a phone the
-  topics are pills above the conversation. A channel or topic just created is
-  opened.
+  topics" for the rest, a `+` that starts one, and "Leave channel". A topic is
+  highlighted only while its channel's chat or board is the current place. On a
+  phone the topics are pills above the conversation, and "Leave channel" waits where
+  the conversation begins. A channel or topic just created is opened.
 - **Board**: five stage columns, the stages of the lifecycle: Proposed → Working →
   Review → Human sign-off → Done. Rework stays in Working (marked "Sent back");
   cancelled work goes to Done (marked "Cancelled", hidden until asked for). Columns sit
@@ -175,7 +180,7 @@ it is the authority. Use the custom property for its role, never a raw colour.
   record"), the actions as buttons; disabled with a reason only when offline.
 - **Agent page**: status card with its actions, requests in this channel, About
   (every fact visible, picture to change, Team MCP credential), runs as a table at the
-  bottom. A run shows what the agent last reported apart from what T3 confirms on
+  bottom, one T3 reference per run (its thread; the run on hover). A run shows what the agent last reported apart from what T3 confirms on
   **Check in T3**; **Open in T3** appears only when T3 supplied the link.
 - **Agent setup**: one next step at a time. First **Connect T3**, once per team: a T3
   on this machine is found on its own, otherwise paste its MCP URL; approve
@@ -252,6 +257,8 @@ Below 720 px the places stack instead of sitting side by side:
   under Home and the pages they open.
 - **A channel** has the screen under a bar: back to Home, `# name`, then Chat | Board.
   Its topics are pills above the conversation; there is no bottom bar.
+- **Fingers and fields**: every target takes taps over 44 px, drawn no larger than it
+  is; fields are 16 px, so nothing zooms.
 - **A page** (agent, task, a worker you run) opens under its own bar: back, then what it
   is — the agent's name, or a task's channel since its title leads the page.
 - **You** ends with Sign out, in the danger colour; the header's power icon is for wider

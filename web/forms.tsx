@@ -77,6 +77,8 @@ export function ActionForm({
   keyed = true,
   method = 'POST',
   onResult,
+  icon,
+  ready = true,
 }: {
   title: string;
   /** A function path lets one form route each submit button to its own endpoint. */
@@ -91,6 +93,13 @@ export function ActionForm({
   method?: 'POST' | 'PUT';
   /** The server's answer, for a form that goes on to show what it made. */
   onResult?: (raw: unknown) => void;
+  /**
+   * Submits with the shared round confirm button showing this icon; `submit`
+   * is then its accessible name.
+   */
+  icon?: ReactNode;
+  /** False while there is nothing to confirm yet, as in an empty field. */
+  ready?: boolean;
 }) {
   const action = useAction();
   const formRef = useRef<HTMLFormElement>(null);
@@ -133,11 +142,22 @@ export function ActionForm({
           exactly what was sent. */}
       <fieldset disabled={action.uncertain}>
         <Sending value={action.busy}>{children}</Sending>
-        {submit && (
-          <button type="submit" disabled={action.disabled || action.busy}>
-            {submit}
-          </button>
-        )}
+        {submit &&
+          (icon ? (
+            <button
+              type="submit"
+              className="icon-button confirm"
+              aria-label={submit}
+              title={submit}
+              disabled={action.disabled || action.busy || !ready}
+            >
+              {icon}
+            </button>
+          ) : (
+            <button type="submit" disabled={action.disabled || action.busy}>
+              {submit}
+            </button>
+          ))}
       </fieldset>
       {action.error && <Notice>{action.error}</Notice>}
       {action.uncertain && (
