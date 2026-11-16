@@ -125,6 +125,41 @@ await test('MOCK: model/provider and runtime ceilings are checked; tool visibili
     await f.dispose();
   }
 });
+/**
+ * Proves the adapter reads what T3's advertised schemas allow: a field T3
+ * may send as null is not a reason to refuse the connection or a read.
+ */
+await test('MOCK: a provider without runtime modes and a thread without a link, both null, are read', async () => {
+  const f = await backendFixture();
+  try {
+    const capabilities = z
+      .object({ providers: z.array(z.record(z.string(), z.unknown())) })
+      .loose()
+      .parse(structuredClone(captured.orchestrator_capabilities));
+    f.wire.values.orchestrator_capabilities = {
+      ...capabilities,
+      providers: capabilities.providers.map((p) => ({
+        ...p,
+        runtimeModes: null,
+      })),
+    };
+    const read = mockRead();
+    f.wire.values.t3_thread_read = {
+      ...read,
+      thread: { ...read.thread, link: null },
+    };
+    const backend = await T3Backend.connect(
+      f.wire,
+      f.store.operations,
+      options,
+    );
+    // A provider T3 names no modes for runs in the mode Kinmesh asks.
+    assert.equal((await backend.launch(launch, intent)).kind, 'known');
+    assert.equal((await backend.read(reference)).state, 'succeeded');
+  } finally {
+    await f.dispose();
+  }
+});
 await test('MOCK: only typed native capability denial or explicit HTTP auth status is denial evidence', async () => {
   const wire = new MockWire();
   const tools = new ValidatedTools(wire, await wire.list());

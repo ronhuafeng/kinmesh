@@ -32,6 +32,7 @@ import {
   INBOX_LIVENESS_MS,
   SourceContext,
   PublishedOutcome,
+  clip,
   retryDelay,
   InboxState,
   deliveryScopes,
@@ -191,7 +192,8 @@ export function inboxRepository(
               ),
               eq(s.executionOperations.actor, intent.actor),
               eq(s.executionOperations.operationKey, intent.operationKey),
-              eq(s.executionOperations.tool, 't3_thread_launch'),
+              // Its own dispatch, whichever tool carried it: the first
+              // delivery of a conversation launches, every later one sends.
               inArray(s.executionOperations.phase, [
                 'dispatching',
                 'uncertain',
@@ -372,7 +374,7 @@ export function inboxRepository(
               message === null
                 ? null
                 : {
-                    body: message.body.slice(0, 4000),
+                    body: clip(message.body, 4000),
                     truncated: message.body.length > 4000,
                   },
             task:
@@ -383,11 +385,11 @@ export function inboxRepository(
                     change:
                       fact.kind === 'task.changed' ? fact.taskAction : null,
                     title: task.title,
-                    description: task.description.slice(0, 2000),
+                    description: clip(task.description, 2000),
                     status: task.state.status,
                     criteria: task.criteria
                       .slice(0, 5)
-                      .map((v) => v.slice(0, 200)),
+                      .map((v) => clip(v, 200)),
                     truncated:
                       task.description.length > 2000 ||
                       task.criteria.length > 5 ||

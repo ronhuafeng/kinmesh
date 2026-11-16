@@ -5,7 +5,12 @@ import { registerWeb } from './web.js';
 import { registerTasks } from './tasks.js';
 import { registerCommunication } from './communication.js';
 import { registerAgents } from './agents.js';
-import { defaultHub, registerConnect, type Hub } from './connect.js';
+import {
+  WORKER_GRANT,
+  defaultHub,
+  registerConnect,
+  type Hub,
+} from './connect.js';
 import { provisionedT3 } from './provision.js';
 import { managedDirectory, t3AuthFile } from '../inbox/managed.js';
 import { principal, resolvePrincipal } from './principals.js';
@@ -218,6 +223,17 @@ export async function createApp(
     provisioning = setInterval(run, 60_000);
     provisioning.unref();
   }
+  // The hub's own worker credentials never run out while it serves their
+  // agents: renewed now, before anything is served, then every hour.
+  const renew = () =>
+    store.managed
+      .renewWorkerGrants(WORKER_GRANT.lifetimeSeconds)
+      .catch((error: unknown) => {
+        app.log.error(describeFailure(error), 'worker_grant_renewal_failed');
+      });
+  await renew();
+  const renewing = setInterval(() => void renew(), 3_600_000);
+  renewing.unref();
   registerCommunication(app, store);
   registerTasks(app, store);
   const { snapshot, runs } = registerWorkspace(
@@ -256,6 +272,7 @@ export async function createApp(
   if (beforeClose) app.addHook('preClose', beforeClose);
   app.addHook('onClose', async () => {
     clearInterval(provisioning);
+    clearInterval(renewing);
     changes.close();
     await store.close();
   });

@@ -31,7 +31,7 @@ Kinmesh is a single-node service for one organization, with a loopback listener.
 
 ## Agent credentials
 
-- Grants are opaque 256-bit bearer tokens. Only SHA-256 digests are stored; no token is persisted or logged. Each grant binds immutably to one agent and team, expires (60 seconds to 90 days), and is checked with its scopes, the agent's lifecycle and membership on every request.
+- Grants are opaque 256-bit bearer tokens. Only SHA-256 digests are stored; no token is persisted or logged. Each grant binds immutably to one agent and team, expires (60 seconds to 90 days; only [the hub's own](#hub-held-worker-secrets) is renewed), and is checked with its scopes, the agent's lifecycle and membership on every request.
 - A token is returned once, on issue or rotation, with `Cache-Control: no-store`; there is no recovery. The agent page holds it only in page memory, offers copy or a download for the worker's `tokenFile`, and drops it when dismissed; it never reaches browser storage, URLs or logs, and grant lists never contain it. Treat a token shown on a shared screen as exposed and rotate it.
 - Who may issue, rotate and revoke grants, and what each scope allows, is in [collaboration](collaboration.md#grants-and-scopes).
 - Anyone holding a bearer can use it until it expires or is revoked; there is no proof of possession. Use one narrowly scoped grant per agent and provider.
@@ -43,6 +43,8 @@ Kinmesh is a single-node service for one organization, with a loopback listener.
 ## Hub-held worker secrets
 
 For agents connected from the workspace, the hub holds the worker's Kinmesh tokens and the team's T3 OAuth credential as files in `managed/` in the state directory (`KINMESH_STATE`). The directory is 0700 and must be owned by the hub's user and not a symlink; each file is 0600 and written atomically. They are never put in the database, logs, responses or the browser. Back up and protect the directory like the database. Every connect, disconnect and T3 route requires a person's session; agent bearers are refused. Revoking the hub's worker grant disconnects the agent; that grant cannot be rotated from the browser.
+
+The hub's worker grant ends 90 days after the hub last renewed it, and the hub renews it while it serves the agent: when the hub starts, every hour, and when someone connects the agent again, a grant with less than 60 days left (or already ended) gets 90 days from then. It is renewed in place, the same grant and the same token in the same private file, so nobody reconnects an agent because time passed and a run under way keeps the credential it started with. A revoked grant is never renewed. The token therefore still ages out wherever the hub no longer vouches for it: at once when the grant is revoked or the agent is disconnected or disabled, and within 90 days of a hub that stopped running. While the agent stays connected a copy of the token works as the file does; revoke the grant to end it. Grants a person issues are never renewed.
 
 ## T3 credentials
 

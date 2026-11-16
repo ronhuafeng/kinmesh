@@ -79,7 +79,11 @@ export const defaultHub = (
   pasteCallback: team,
   provisioned,
 });
-/** Scopes the worker uses (docs/collaboration.md, Grants and scopes), for 90 days. */
+/**
+ * Scopes the worker uses (docs/collaboration.md, Grants and scopes). It ends
+ * 90 days after the hub last renewed it, which the hub does while it serves
+ * the agent (docs/security.md, Hub-held worker secrets).
+ */
 export const WORKER_GRANT = {
   label: 'Inbox worker (managed)',
   scopes: [

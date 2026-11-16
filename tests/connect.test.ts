@@ -20,6 +20,7 @@ import { loadAgentToken } from '../src/team-mcp/client.js';
 import { WorkspaceSnapshot } from '../src/workspace/contracts.js';
 import { agentFixture, profileInput } from './agent-helpers.js';
 import { signInAs, standInFeishu } from './feishu.js';
+import { rawDatabase } from './raw.js';
 
 const endpoint = 'https://t3.test/mcp';
 const credential = Credential.parse({
@@ -447,6 +448,101 @@ await test('the hub’s worker serves a connected agent without a restart and le
     await running;
   } finally {
     stopping.abort();
+    await f.dispose();
+  }
+});
+
+/**
+ * Proves the credential the hub holds for its own worker never runs out
+ * while the agent stays connected: the hub renews it in place (the same
+ * grant, the same token) when it starts and when someone connects again,
+ * even after it ended; a revocation stays final, and a credential a person
+ * issued is left to end.
+ */
+await test('the hub’s worker credential is renewed in place while the agent stays connected; a revoked one never is', async () => {
+  const f = await agentFixture();
+  const raw = rawDatabase(f.dbPath);
+  try {
+    await f.store.managed.saveConnection(
+      f.principal,
+      f.teamId,
+      endpoint,
+      'env-live',
+    );
+    const connect = () =>
+      f.store.managed.connect(
+        f.principal,
+        f.teamId,
+        f.agent.id,
+        { providerId: 'isolated-dev', modelId: 'model-a' },
+        WORKER_GRANT,
+      );
+    const issued = await connect();
+    assert.ok(issued);
+    const managed = issued.grant.id;
+    const DAY = 86_400_000;
+    /** Sets when a grant ends, as time passing would. */
+    const endsIn = (grantId: string, days: number) =>
+      raw
+        .prepare('UPDATE agent_grants SET expires_at = ? WHERE id = ?')
+        .run(new Date(Date.now() + days * DAY).toISOString(), grantId);
+    const daysLeft = async (grantId: string) =>
+      (Date.parse(
+        z
+          .string()
+          .parse(
+            await raw
+              .prepare('SELECT expires_at FROM agent_grants WHERE id = ?')
+              .pluck()
+              .get(grantId),
+          ),
+      ) -
+        Date.now()) /
+      DAY;
+    const worker = async () => {
+      const p = await f.store.agents.resolveToken(issued.token);
+      return p.kind === 'agent' ? p.grantId : null;
+    };
+    // A fresh credential is left alone.
+    assert.equal(
+      await f.store.managed.renewWorkerGrants(WORKER_GRANT.lifetimeSeconds),
+      0,
+    );
+    // Running out: the hub renews its own when it starts, and no other.
+    await endsIn(managed, 1);
+    await endsIn(f.grant.grant.id, 1);
+    const restarted = await createApp(
+      f.config,
+      await f.open(),
+      undefined,
+      undefined,
+      {},
+      { feishu: standInFeishu },
+    );
+    await restarted.close();
+    assert.ok((await daysLeft(managed)) > 89);
+    assert.ok((await daysLeft(f.grant.grant.id)) < 2);
+    assert.equal(await worker(), managed);
+    // Ended while the hub was away: connecting again brings back the same
+    // credential, so nothing frozen under it is stranded.
+    await endsIn(managed, -1);
+    await assert.rejects(worker);
+    assert.equal(await connect(), null);
+    assert.equal(await worker(), managed);
+    assert.ok((await daysLeft(managed)) > 89);
+    // Revocation is final: nothing renews it, and connecting issues another.
+    await f.store.agents.revoke(f.principal, f.teamId, f.agent.id, managed);
+    await endsIn(managed, 1);
+    assert.equal(
+      await f.store.managed.renewWorkerGrants(WORKER_GRANT.lifetimeSeconds),
+      0,
+    );
+    await assert.rejects(worker);
+    const replaced = await connect();
+    assert.ok(replaced);
+    assert.notEqual(replaced.grant.id, managed);
+  } finally {
+    await raw.close();
     await f.dispose();
   }
 });

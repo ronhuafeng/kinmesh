@@ -170,6 +170,17 @@ export const FrozenLaunch = z.strictObject({
   conversation: Conversation.optional(),
 });
 export type FrozenLaunch = z.infer<typeof FrozenLaunch>;
+/**
+ * At most `max` UTF-16 units of `value`, and well-formed: a cut never keeps
+ * half of a character outside the Basic Multilingual Plane (an emoji, say),
+ * which neither the database nor T3 takes as text.
+ */
+export function clip(value: string, max: number) {
+  const cut = value.slice(0, max);
+  const last = cut.charCodeAt(cut.length - 1);
+  const split = value.length > max && last >= 0xd800 && last <= 0xdbff;
+  return (split ? cut.slice(0, -1) : cut).toWellFormed();
+}
 const text = (value: string) =>
   value
     .replaceAll('&', '&amp;')

@@ -56,7 +56,8 @@ export const Capabilities = z.object({
       providerInstanceId: z.string(),
       driverKind: z.string(),
       models: z.array(z.object({ id: z.string() })),
-      runtimeModes: z.array(z.string()).optional(),
+      /** Absent or null when T3 names no modes for the provider. */
+      runtimeModes: z.array(z.string()).nullish(),
       canRunChildTask: z.boolean(),
       constraints: z.array(z.string()),
     }),
@@ -73,8 +74,7 @@ export function runnable(
   return (
     provider.canRunChildTask &&
     provider.constraints.length === 0 &&
-    (provider.runtimeModes === undefined ||
-      provider.runtimeModes.includes(mode))
+    (provider.runtimeModes == null || provider.runtimeModes.includes(mode))
   );
 }
 export const Launched = z.object({
@@ -93,8 +93,8 @@ export const Read = z.object({
   thread: z.object({
     threadId: z.string(),
     projectId: z.string(),
-    /** Optional native web link; may be custom or absent for other clients. */
-    link: z.string().optional(),
+    /** Optional native web link; may be custom, null or absent for other clients. */
+    link: z.string().nullish(),
     status: Status,
     latestRunId: z.string().nullable(),
     activeRunId: z.string().nullable(),
