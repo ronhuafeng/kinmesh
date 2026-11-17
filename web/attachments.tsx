@@ -3,23 +3,13 @@ import {
   ATTACHMENTS_PER_MESSAGE,
   Attachment,
   INLINE_TYPES,
+  fileSize,
 } from '../src/domain/attachments.js';
+
+export { fileSize };
 import { HttpError, api } from './api.js';
 import { FileIcon } from './icons.js';
 
-/** 2.4 MB, 380 KB, 12 B: one decimal under ten, none above. */
-export function fileSize(bytes: number) {
-  const units = ['B', 'KB', 'MB', 'GB'];
-  let value = bytes;
-  let unit = 0;
-  while (value >= 1024 && unit < units.length - 1) {
-    value /= 1024;
-    unit += 1;
-  }
-  const shown =
-    unit === 0 || value >= 10 ? Math.round(value) : value.toFixed(1);
-  return `${String(shown)} ${units[unit] ?? 'B'}`;
-}
 export const inline = (type: string) =>
   (INLINE_TYPES as readonly string[]).includes(type);
 /** A file on its way into the composer, then attached to what is sent. */
