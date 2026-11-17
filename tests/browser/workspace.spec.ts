@@ -2135,10 +2135,76 @@ test('a long conversation opens at its newest message, follows new ones, holds s
     window.scrollTo({ top: 0 });
   });
   const first = await topOf(page, 'Message 71');
+  // DEBUG: geometry of Message 71 over time.
+  await page.evaluate(() => {
+    const row = [...document.querySelectorAll('.messages > li')].find((li) =>
+      li.textContent?.includes('Message 71'),
+    );
+    const w = window as unknown as { __dbg: unknown[] };
+    w.__dbg = [];
+    const t0 = performance.now();
+    const rec = (why: string) => {
+      const li = row?.isConnected
+        ? row
+        : [...document.querySelectorAll('.messages > li')].find((x) =>
+            x.textContent?.includes('Message 71'),
+          );
+      if (!li) return;
+      const r = li.getBoundingClientRect();
+      const t = li.querySelector('.message-text p')?.getBoundingClientRect();
+      const g = li.querySelector('.gutter-time')?.getBoundingClientRect();
+      const b = li.querySelector('.message-body')?.getBoundingClientRect();
+      w.__dbg.push({
+        t: Math.round(performance.now() - t0),
+        why,
+        n: document.querySelectorAll('.messages > li[id^="message-"]').length,
+        same: li === row,
+        cont: (li as HTMLElement).dataset.continued ?? '-',
+        liTop: r.top,
+        liBottom: r.bottom,
+        text: t?.top,
+        textH: t?.height,
+        gutterH: g?.height,
+        bodyH: b?.height,
+        pad: getComputedStyle(li).padding,
+        y: window.scrollY,
+        anims: li.getAnimations().map((a) => (a as CSSAnimation).animationName),
+      });
+    };
+    rec('start');
+    new MutationObserver(() => {
+      rec('mut');
+    }).observe(document.querySelector('.messages') ?? document.body, {
+      childList: true,
+      subtree: true,
+      attributes: true,
+    });
+    addEventListener('scroll', () => {
+      rec('scroll');
+    });
+    const loop = () => {
+      rec('raf');
+      if (performance.now() - t0 < 3000) requestAnimationFrame(loop);
+    };
+    requestAnimationFrame(loop);
+  });
   release();
   await expect(say('Message 70')).toBeAttached();
   await page.unroute(reachBack);
-  expect(Math.abs((await topOf(page, 'Message 71')) - first)).toBeLessThan(1);
+  const after = await topOf(page, 'Message 71');
+  await page.waitForTimeout(800);
+  const dbg = await page.evaluate(
+    () => (window as unknown as { __dbg: unknown[] }).__dbg,
+  );
+  console.log('DEBUG first', first, 'after', after);
+  let last = '';
+  for (const d of dbg) {
+    const line = JSON.stringify(d);
+    const key = line.replace(/"t":\d+,"why":"\w+",/, '');
+    if (key !== last) console.log('DEBUG', line);
+    last = key;
+  }
+  expect(Math.abs(after - first)).toBeLessThan(1);
   // Read back, a new message arrives at the end and nothing moves.
   const base = `${hub.origin}/api/teams/${state.team.id}/channels/${state.channel.id}/messages`;
   const post = async (body: string) => {
