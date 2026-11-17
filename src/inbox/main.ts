@@ -94,5 +94,5 @@ try {
 } finally {
   await store?.close();
   clearTimeout(orphanDeadline);
-  if (supervised && process.connected) process.disconnect();
+  if (supervised && process.connected) process.disconnect?.();
 }

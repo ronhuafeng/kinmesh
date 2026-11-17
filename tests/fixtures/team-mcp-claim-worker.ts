@@ -32,18 +32,18 @@ try {
       } finally {
         await client.close();
         process.send?.({ outcome }, () => {
-          process.disconnect();
+          process.disconnect?.();
         });
       }
     })().catch(() => {
       process.send?.({ outcome: 'failed' }, () => {
-        process.disconnect();
+        process.disconnect?.();
       });
     });
   });
   process.send?.({ ready: true });
 } catch {
   process.send?.({ outcome: 'failed' }, () => {
-    process.disconnect();
+    process.disconnect?.();
   });
 }
