@@ -2419,18 +2419,22 @@ test('a phone channel: targets a finger can hit, fields that don’t zoom, a com
     await expect(send).toBeDisabled();
     await field.fill('Ship the release notes');
     await expect(send).toBeEnabled();
-    // Only "@" and Send sit beside it: the rest is the field's, but for the
-    // composer's padding and gaps. Widths are laid out, not drawn, so Send
-    // growing in doesn't count.
+    // Only the paperclip, "@" and Send sit beside it: the rest is the
+    // field's, but for the composer's padding and gaps. Widths are laid out,
+    // not drawn, so Send growing in doesn't count.
     const width = (target: typeof field) =>
       target.evaluate((el) => (el instanceof HTMLElement ? el.offsetWidth : 0));
-    const [fieldWidth, formWidth, atWidth, sendWidth] = await Promise.all([
-      width(field),
-      width(composer),
-      width(composer.getByRole('button', { name: '提及成员' })),
-      width(send),
-    ]);
-    expect(fieldWidth + atWidth + sendWidth).toBeGreaterThan(formWidth - 48);
+    const [fieldWidth, formWidth, attachWidth, atWidth, sendWidth] =
+      await Promise.all([
+        width(field),
+        width(composer),
+        width(composer.getByRole('button', { name: '添加文件' })),
+        width(composer.getByRole('button', { name: '提及成员' })),
+        width(send),
+      ]);
+    expect(fieldWidth + attachWidth + atWidth + sendWidth).toBeGreaterThan(
+      formWidth - 56,
+    );
     // Send grows in once there is something to send: measure it grown.
     await expect
       .poll(() => send.evaluate((el) => el.getAnimations().length))
