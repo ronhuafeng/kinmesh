@@ -52,7 +52,7 @@ export function agentRow(page: Page, name: string) {
 }
 /** Registered from a channel, an agent joins it, and its page opens. */
 export async function register(page: Page, name: string, role: string) {
-  await page.getByRole('tab', { name: '团队', exact: true }).click();
+  await page.getByRole('tab', { name: '成员', exact: true }).click();
   // The last tile adds an agent (the sidebar's own "添加智能体" is outside the
   // gallery).
   await page
@@ -74,7 +74,7 @@ export async function register(page: Page, name: string, role: string) {
 }
 /** An agent's own page, opened from its tile; any tab leaves it. */
 export async function openAgent(page: Page, name: string) {
-  await page.getByRole('tab', { name: '团队', exact: true }).click();
+  await page.getByRole('tab', { name: '成员', exact: true }).click();
   await agentRow(page, name).click();
   const agent = page.getByRole('region', { name, exact: true });
   await expect(agent).toBeVisible();
