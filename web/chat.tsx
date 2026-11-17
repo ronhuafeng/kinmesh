@@ -1,5 +1,5 @@
 import {
-  Fragment,
+  memo,
   useCallback,
   useContext,
   useEffect,
@@ -27,7 +27,7 @@ import {
 import { keep, kept } from './session.js';
 import { DeliveryLine } from './deliveries.js';
 import { Markdown } from './markdown.js';
-import { ReplyOrigin, answerOnly } from './replies.js';
+import { ReplyOrigin, answerOnly, type ReplyView } from './replies.js';
 import type { DeliveryView } from './deliveries.js';
 
 type ChatMessage = z.infer<typeof Message>;
@@ -674,6 +674,246 @@ function useEarlier(older: string | null, onEarlier: (cursor: string) => void) {
   }, [older]);
   return top;
 }
+/** What a message row can do; one object for all rows (`Chat`). */
+interface RowActions {
+  choose: (id: string) => void;
+  makeTask: (m: ChatMessage) => void;
+  openAgent: (id: string) => void;
+  done: () => void;
+  retry: (o: Outgoing) => void;
+  remove: (key: string) => void;
+}
+interface RowProps {
+  m: ChatMessage;
+  /** What was sent for it, while it is on its way. */
+  o: Outgoing | undefined;
+  newDay: boolean;
+  sameAuthor: boolean;
+  divider: boolean;
+  fresh: boolean;
+  chosen: boolean;
+  name: string;
+  /** The agent who wrote it, when it is one of the team's. */
+  agentId: string | null;
+  /** What it answers, when that is not right above it. */
+  quote: { id: string; text: string } | null;
+  reply: ReplyView | undefined;
+  topicTag: string | null;
+  /** Mentions not already written in the text, by name. */
+  mentions: { kind: 'human' | 'agent'; id: string; name: string }[];
+  lines: DeliveryView[];
+  /** For the delivery lines, which read the workspace. */
+  data: WorkspaceSnapshot;
+  permitted: boolean;
+  act: RowActions;
+}
+/** The text of a message, drawn again only when the text changes. */
+const MessageText = memo(function MessageText({ text }: { text: string }) {
+  return <Markdown text={text} />;
+});
+/**
+ * A row is drawn again only when what it shows changed: the same message
+ * (the workspace keeps unchanged ones as they were), the same lists by
+ * value, and the workspace itself only for the delivery lines that read it.
+ */
+const sameRow = (a: RowProps, b: RowProps) =>
+  a.m === b.m &&
+  a.o === b.o &&
+  a.newDay === b.newDay &&
+  a.sameAuthor === b.sameAuthor &&
+  a.divider === b.divider &&
+  a.fresh === b.fresh &&
+  a.chosen === b.chosen &&
+  a.name === b.name &&
+  a.agentId === b.agentId &&
+  a.topicTag === b.topicTag &&
+  a.permitted === b.permitted &&
+  a.act === b.act &&
+  JSON.stringify([a.quote, a.reply, a.mentions, a.lines]) ===
+    JSON.stringify([b.quote, b.reply, b.mentions, b.lines]) &&
+  ((a.lines.length === 0 && b.lines.length === 0) || a.data === b.data);
+const MessageRow = memo(function MessageRow({
+  m,
+  o,
+  newDay,
+  sameAuthor,
+  divider,
+  fresh,
+  chosen,
+  name,
+  agentId,
+  quote,
+  reply,
+  topicTag,
+  mentions,
+  lines,
+  data,
+  permitted,
+  act,
+}: RowProps) {
+  return (
+    <>
+      {newDay && (
+        <li className="day-divider" role="separator">
+          <span>{dayLabel(m.createdAt)}</span>
+        </li>
+      )}
+      <li
+        id={'message-' + m.id}
+        data-kind={m.author.kind}
+        data-continued={sameAuthor ? 'true' : undefined}
+        // What was sent arrived when it was shown: settling, it
+        // only comes to full strength.
+        data-new={fresh ? 'true' : undefined}
+        data-pending={
+          o === undefined ? undefined : o.failed ? 'failed' : 'sending'
+        }
+        // On touch, a tapped message shows what can be done with it.
+        data-chosen={chosen ? 'true' : undefined}
+        onClick={(event) => {
+          if (
+            event.target instanceof Element &&
+            event.target.closest('a, button')
+          )
+            return;
+          act.choose(m.id);
+        }}
+      >
+        {divider && (
+          <div className="new-divider" role="separator">
+            {shortTime(m.createdAt)} 以来的新消息
+          </div>
+        )}
+        {sameAuthor ? (
+          // Under the group's face: the time, shown on hover (and
+          // always read out), and the author for a screen reader.
+          <time className="gutter-time" dateTime={m.createdAt}>
+            <span className="visually-hidden">{name} </span>
+            {clockTime(m.createdAt)}
+          </time>
+        ) : (
+          <Avatar
+            kind={m.author.kind}
+            name={name}
+            id={m.author.kind === 'agent' ? m.author.agentId : m.author.humanId}
+          />
+        )}
+        <div className="message-body">
+          {!sameAuthor && (
+            <header>
+              {agentId !== null ? (
+                <button
+                  type="button"
+                  className="author-link"
+                  onClick={() => {
+                    act.openAgent(agentId);
+                  }}
+                >
+                  {name}
+                </button>
+              ) : (
+                <strong>{name}</strong>
+              )}
+              <time dateTime={m.createdAt} title={shortTime(m.createdAt)}>
+                {clockTime(m.createdAt)}
+              </time>
+              {/* Only the whole channel tags a message with its topic;
+              inside a topic it would say the place again. */}
+              {topicTag !== null && (
+                <small className="topic-tag">{topicTag}</small>
+              )}
+            </header>
+          )}
+          {quote && (
+            <button
+              type="button"
+              className="reply-to link-button"
+              onClick={() => {
+                showMessage(quote.id);
+              }}
+            >
+              <span aria-hidden="true">↩</span>{' '}
+              <span className="visually-hidden">回复 </span>
+              {quote.text}
+            </button>
+          )}
+          <div className="message-text">
+            <MessageText text={answerOnly(m.body, reply)} />
+          </div>
+          {reply && <ReplyOrigin reply={reply} />}
+          {mentions.length > 0 && (
+            <ul className="mentions" aria-label="已提及">
+              {mentions.map((member) => (
+                <li
+                  key={member.kind + member.id}
+                  className="mention-chip"
+                  data-kind={member.kind}
+                >
+                  @{member.name}
+                </li>
+              ))}
+            </ul>
+          )}
+          {lines.length > 0 && (
+            <ul className="deliveries" aria-label="智能体响应">
+              {lines.map((d) => (
+                <DeliveryLine
+                  key={d.id}
+                  delivery={d}
+                  data={data}
+                  channelId={data.channel?.id ?? ''}
+                  onReply={showMessage}
+                  openAgent={act.openAgent}
+                  onDone={act.done}
+                />
+              ))}
+            </ul>
+          )}
+          {o === undefined ? (
+            <div className="message-actions">
+              <button
+                type="button"
+                className="quiet"
+                onClick={() => {
+                  act.makeTask(m);
+                }}
+              >
+                转为任务
+              </button>
+            </div>
+          ) : (
+            o.failed && (
+              // It stays where it was written, to be sent again with
+              // the same key (posted once, whatever happened) or let go.
+              <p className="delivery message-failed" data-tone="problem">
+                没发出去
+                <button
+                  type="button"
+                  className="link-button"
+                  disabled={!permitted}
+                  onClick={() => {
+                    act.retry(o);
+                  }}
+                >
+                  重试
+                </button>
+                <button
+                  type="button"
+                  className="link-button"
+                  onClick={() => {
+                    act.remove(o.key);
+                  }}
+                >
+                  删除
+                </button>
+              </p>
+            )
+          )}
+        </div>
+      </li>
+    </>
+  );
+}, sameRow);
 export function Chat({
   data,
   channelPath,
@@ -711,6 +951,32 @@ export function Chat({
   const earlier = useEarlier(data.messages.nextCursor, onEarlier);
   const permitted = useContext(MutationPermission);
   const outbox = useOutbox(channelPath, onDone);
+  // What a row can do, the same object for every render, each doing what
+  // the latest render says: a row unchanged need not be drawn again.
+  const latest = useRef({ onMakeTask, openAgent, onDone, outbox });
+  useLayoutEffect(() => {
+    latest.current = { onMakeTask, openAgent, onDone, outbox };
+  });
+  const [act] = useState<RowActions>(() => ({
+    choose: (id) => {
+      setChosen((old) => (old === id ? null : id));
+    },
+    makeTask: (m) => {
+      latest.current.onMakeTask(m);
+    },
+    openAgent: (id) => {
+      latest.current.openAgent(id);
+    },
+    done: () => {
+      latest.current.onDone();
+    },
+    retry: (o) => {
+      latest.current.outbox.retry(o);
+    },
+    remove: (key) => {
+      latest.current.outbox.remove([key]);
+    },
+  }));
   // Which message each one sent became: the one the server named, or, when
   // its answer was lost, the same words of mine arriving after it. A
   // message keeps the place, and the element, of what was shown for it.
@@ -860,7 +1126,6 @@ export function Chat({
             Date.parse(m.createdAt) - Date.parse(previous.createdAt) <
               5 * 60_000 &&
             divider !== m.id;
-          const name = memberName(m.author, data);
           const agent =
             m.author.kind === 'agent'
               ? data.agents.find(
@@ -872,186 +1137,37 @@ export function Chat({
           const answers = replyTo.get(m.id);
           const quoted = answers !== undefined && answers !== previous?.id;
           const following = rows[index + 1]?.m.id;
-          const lines = (asked.get(m.id) ?? []).filter(
-            (d) => !(d.state === 'acked' && d.resultMessageId === following),
-          );
           return (
-            <Fragment key={o?.key ?? keyOf.get(m.id) ?? m.id}>
-              {newDay && (
-                <li className="day-divider" role="separator">
-                  <span>{dayLabel(m.createdAt)}</span>
-                </li>
+            <MessageRow
+              key={o?.key ?? keyOf.get(m.id) ?? m.id}
+              m={m}
+              o={o}
+              newDay={newDay}
+              sameAuthor={sameAuthor}
+              divider={divider === m.id}
+              fresh={o !== undefined || fresh.has(m.id) || keyOf.has(m.id)}
+              chosen={chosen === m.id}
+              name={memberName(m.author, data)}
+              agentId={agent?.id ?? null}
+              quote={
+                quoted ? { id: answers, text: replySource(answers) } : null
+              }
+              reply={origin.get(m.id)}
+              topicTag={
+                topic === '' && m.topicId ? topicTitle(m.topicId) : null
+              }
+              mentions={unwritten(m).map((member) => ({
+                ...member,
+                name: memberName(member, data),
+              }))}
+              lines={(asked.get(m.id) ?? []).filter(
+                (d) =>
+                  !(d.state === 'acked' && d.resultMessageId === following),
               )}
-              <li
-                id={'message-' + m.id}
-                data-kind={m.author.kind}
-                data-continued={sameAuthor ? 'true' : undefined}
-                // What was sent arrived when it was shown: settling, it
-                // only comes to full strength.
-                data-new={
-                  o !== undefined || fresh.has(m.id) || keyOf.has(m.id)
-                    ? 'true'
-                    : undefined
-                }
-                data-pending={
-                  o === undefined ? undefined : o.failed ? 'failed' : 'sending'
-                }
-                // On touch, a tapped message shows what can be done with it.
-                data-chosen={chosen === m.id ? 'true' : undefined}
-                onClick={(event) => {
-                  if (
-                    event.target instanceof Element &&
-                    event.target.closest('a, button')
-                  )
-                    return;
-                  setChosen((old) => (old === m.id ? null : m.id));
-                }}
-              >
-                {divider === m.id && (
-                  <div className="new-divider" role="separator">
-                    {shortTime(m.createdAt)} 以来的新消息
-                  </div>
-                )}
-                {sameAuthor ? (
-                  // Under the group's face: the time, shown on hover (and
-                  // always read out), and the author for a screen reader.
-                  <time className="gutter-time" dateTime={m.createdAt}>
-                    <span className="visually-hidden">{name} </span>
-                    {clockTime(m.createdAt)}
-                  </time>
-                ) : (
-                  <Avatar
-                    kind={m.author.kind}
-                    name={name}
-                    id={
-                      m.author.kind === 'agent'
-                        ? m.author.agentId
-                        : m.author.humanId
-                    }
-                  />
-                )}
-                <div className="message-body">
-                  {!sameAuthor && (
-                    <header>
-                      {agent ? (
-                        <button
-                          type="button"
-                          className="author-link"
-                          onClick={() => {
-                            openAgent(agent.id);
-                          }}
-                        >
-                          {name}
-                        </button>
-                      ) : (
-                        <strong>{name}</strong>
-                      )}
-                      <time
-                        dateTime={m.createdAt}
-                        title={shortTime(m.createdAt)}
-                      >
-                        {clockTime(m.createdAt)}
-                      </time>
-                      {/* Only the whole channel tags a message with its topic;
-                      inside a topic it would say the place again. */}
-                      {topic === '' && m.topicId && (
-                        <small className="topic-tag">
-                          {topicTitle(m.topicId)}
-                        </small>
-                      )}
-                    </header>
-                  )}
-                  {quoted && (
-                    <button
-                      type="button"
-                      className="reply-to link-button"
-                      onClick={() => {
-                        showMessage(answers);
-                      }}
-                    >
-                      <span aria-hidden="true">↩</span>{' '}
-                      <span className="visually-hidden">回复 </span>
-                      {replySource(answers)}
-                    </button>
-                  )}
-                  <div className="message-text">
-                    <Markdown text={answerOnly(m.body, origin.get(m.id))} />
-                  </div>
-                  {origin.get(m.id) && <ReplyOrigin reply={origin.get(m.id)} />}
-                  {unwritten(m).length > 0 && (
-                    <ul className="mentions" aria-label="已提及">
-                      {unwritten(m).map((member) => (
-                        <li
-                          key={member.kind + member.id}
-                          className="mention-chip"
-                          data-kind={member.kind}
-                        >
-                          @{memberName(member, data)}
-                        </li>
-                      ))}
-                    </ul>
-                  )}
-                  {lines.length > 0 && (
-                    <ul className="deliveries" aria-label="智能体响应">
-                      {lines.map((d) => (
-                        <DeliveryLine
-                          key={d.id}
-                          delivery={d}
-                          data={data}
-                          channelId={data.channel?.id ?? ''}
-                          onReply={showMessage}
-                          openAgent={openAgent}
-                          onDone={onDone}
-                        />
-                      ))}
-                    </ul>
-                  )}
-                  {o === undefined ? (
-                    <div className="message-actions">
-                      <button
-                        type="button"
-                        className="quiet"
-                        onClick={() => {
-                          onMakeTask(m);
-                        }}
-                      >
-                        转为任务
-                      </button>
-                    </div>
-                  ) : (
-                    o.failed && (
-                      // It stays where it was written, to be sent again with
-                      // the same key (posted once, whatever happened) or let go.
-                      <p
-                        className="delivery message-failed"
-                        data-tone="problem"
-                      >
-                        没发出去
-                        <button
-                          type="button"
-                          className="link-button"
-                          disabled={!permitted}
-                          onClick={() => {
-                            outbox.retry(o);
-                          }}
-                        >
-                          重试
-                        </button>
-                        <button
-                          type="button"
-                          className="link-button"
-                          onClick={() => {
-                            outbox.remove([o.key]);
-                          }}
-                        >
-                          删除
-                        </button>
-                      </p>
-                    )
-                  )}
-                </div>
-              </li>
-            </Fragment>
+              data={data}
+              permitted={permitted}
+              act={act}
+            />
           );
         })}
       </ol>
