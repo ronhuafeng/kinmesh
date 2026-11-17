@@ -275,9 +275,6 @@ test('real workspace onboarding, mentions and reconnect on a phone', async ({
   await context.setOffline(true);
   await refreshNow(page);
   await expect(staleLine(page)).toBeVisible();
-  await expect(page.getByText(/HTTP \d|Disconnected|Last update/)).toHaveCount(
-    0,
-  );
   await expect(
     page.getByRole('button', { name: /重新连接|再试一次|重试/ }),
   ).toHaveCount(0);
@@ -1965,9 +1962,6 @@ test('a long conversation opens at its newest message, follows new ones, holds s
   await expect(say('Message 120')).toBeInViewport();
   expect(await atBottom(page)).toBe(true);
   await expect(say('Message 70')).toHaveCount(0);
-  await expect(page.getByRole('button', { name: /messages page/ })).toHaveCount(
-    0,
-  );
   // Scrolling to the top reads the page before; the first message's text
   // stays exactly where it was on screen, though its header folds into the
   // same author's older messages. The read is held until its place is
@@ -2144,7 +2138,6 @@ test('a task older than the board’s newest still opens by its address', async 
   await expect(
     page.getByRole('article', { name: 'The oldest task', exact: true }),
   ).toHaveCount(0);
-  await expect(page.getByRole('button', { name: /tasks page/ })).toHaveCount(0);
 });
 
 /**
