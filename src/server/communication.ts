@@ -8,6 +8,7 @@ import {
   PageInput,
   ParticipantInput,
   PostInput,
+  ReadInput,
   TopicId,
   TopicInput,
 } from '../domain/communication.js';
@@ -164,6 +165,16 @@ export function registerCommunication(app: FastifyInstance, store: Store) {
           PostInput.parse(request.body),
         ),
       );
+  });
+  app.post(channel + '/read', async (request, reply) => {
+    const { teamId, channelId } = ChannelPath.parse(request.params);
+    await store.communication.read(
+      principal(request),
+      teamId,
+      channelId,
+      ReadInput.parse(request.body),
+    );
+    return reply.code(204).send();
   });
   app.get(channel + '/messages', async (request) => {
     const { teamId, channelId } = ChannelPath.parse(request.params);

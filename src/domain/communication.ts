@@ -42,6 +42,15 @@ export const PostInput = Mutation.extend({
   sourceEventId: z.uuid().nullable(),
 });
 export type PostInput = z.infer<typeof PostInput>;
+/**
+ * A person has seen the channel up to this message, reading the whole
+ * channel (`topicId` null) or one topic. It needs no operation key: reading
+ * again changes nothing.
+ */
+export const ReadInput = z.strictObject({
+  messageId: MessageId,
+  topicId: TopicId.nullable(),
+});
 export const ChannelView = Channel.extend({
   position: z.number().int().positive(),
 });
@@ -55,6 +64,8 @@ export const ChannelLatest = z.strictObject({
   author: Author,
   excerpt: z.string().min(1).max(200),
   createdAt: z.iso.datetime(),
+  /** Whether someone else wrote in it after the person's read position. */
+  unread: z.boolean(),
 });
 export const Topic = z.strictObject({
   id: TopicId,

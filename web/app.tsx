@@ -636,6 +636,15 @@ export function App() {
     setDraft(null);
     if (view === 'agent') setView('chat');
   };
+  // The app's badge (where the browser shows one) says whether anything is
+  // unread.
+  const anyUnread = data?.latest.some((l) => l.unread) ?? false;
+  useEffect(() => {
+    if (!('setAppBadge' in navigator)) return;
+    void (
+      anyUnread ? navigator.setAppBadge() : navigator.clearAppBadge()
+    ).catch(() => undefined);
+  }, [anyUnread]);
   if (status === 'signedout') return <Auth denied={denied} />;
   if (!data) {
     const failed = unreachable;
@@ -986,6 +995,11 @@ export function App() {
                               'aria-describedby': 'latest-' + c.id,
                             }
                           : {})}
+                        data-unread={
+                          data.latest.find((l) => l.channelId === c.id)?.unread
+                            ? 'true'
+                            : undefined
+                        }
                         aria-current={
                           // Only one place is current: a channel while you are
                           // in its chat or board.

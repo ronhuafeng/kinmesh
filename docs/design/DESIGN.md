@@ -295,7 +295,12 @@ fallback.
   ("输入 @ 提及成员" on a phone).
 - **Channels**: the sidebar lists joined channels; a channel you left can be rejoined
   by name. A name too long for its row fades out at the row's edge and is said in full
-  on hover. A channel where something waits on you ends in a decision-coloured dot, the
+  on hover. A channel someone else wrote in since you last read it has its name in
+  semibold (the others medium); it reads as read once its newest message has been
+  on screen in a visible tab, on any device (in a topic, as far as what is new is in
+  that topic). There are no unread counts. Where the browser shows an app badge, it
+  says whether anything is unread. A channel where something waits on you ends in a
+  decision-coloured dot, the
   size of a presence dot and on its edge; it fades out once nothing waits there. The current channel holds its topics under
   it like a tree on a hairline trunk: "全部", the ten most recently active, "更多话题"
   for the rest, and a `+` that starts one. The current place carries the
@@ -444,7 +449,9 @@ sidebar sits beside a content column of at least 360 px):
   list on the grey canvas, the most recently written in first (by name among the
   silent ones). A row is the channel's icon, its name and the time of its newest
   message (the time today, otherwise the day), then "author：text" on one line — the
-  text without its Markdown, cut with an ellipsis — and the waiting dot; hairlines
+  text without its Markdown, cut with an ellipsis — and the waiting dot. While the
+  channel is unread its name is semibold rather than medium, and the text and time
+  are in ink rather than muted. Hairlines
   between rows start at the text. No channel is current
   here, and the team is not here: it is a view of each channel.
 - **Opening**: an address with no place in it opens on 收件箱 when something waits on

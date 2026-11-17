@@ -57,6 +57,13 @@
       "when": 1794879252464,
       "tag": "0007_feishu_people",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1794907928461,
+      "tag": "0008_read_positions",
+      "breakpoints": true
     }
   ]
 }

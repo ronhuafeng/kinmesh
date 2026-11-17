@@ -47,6 +47,7 @@ import {
   Participant,
   ParticipantInput,
   PostInput,
+  ReadInput,
   Topic,
   TopicId,
   TopicInput,
@@ -54,6 +55,9 @@ import {
 } from '../domain/communication.js';
 type ChannelId = z.infer<typeof ChannelId>;
 const decode = (value: string): unknown => JSON.parse(value);
+/** A message someone other than this person wrote. */
+const notMine = (humanId: string) =>
+  sql`NOT (${s.messages.author}::jsonb @> ${JSON.stringify({ kind: 'human', humanId })}::jsonb)`;
 const now = () => new Date().toISOString();
 export function communicationRepository(
   d: Database,
@@ -563,6 +567,72 @@ export function communicationRepository(
         );
       });
     },
+    /**
+     * A person has seen the channel up to `messageId`. Reading the whole
+     * channel moves their read position there; reading a topic moves it only
+     * as far as everything unread before it is in that topic, so what they
+     * haven't seen elsewhere stays unread. It never moves back, and moving
+     * nowhere writes nothing (and so announces nothing).
+     */
+    read(
+      p: Principal,
+      teamId: TeamId,
+      channelId: ChannelId,
+      input: z.infer<typeof ReadInput>,
+    ) {
+      const { messageId, topicId } = ReadInput.parse(input);
+      return atomic(async () => {
+        if (p.kind !== 'human') throw new DomainError('forbidden');
+        const { participant } = await access(p, teamId, channelId);
+        const seen = (
+          await q()
+            .select({ position: s.messages.position })
+            .from(s.messages)
+            .where(
+              and(
+                eq(s.messages.channelId, channelId),
+                eq(s.messages.id, messageId),
+                topicId === null ? undefined : eq(s.messages.topicId, topicId),
+              ),
+            )
+            .limit(1)
+        )[0];
+        if (seen === undefined) throw new DomainError('not-found');
+        const from = participant.readPosition ?? 0;
+        let to = seen.position;
+        if (topicId !== null && to > from) {
+          // The first message after the position, up to this one, that
+          // someone else wrote outside the topic: reading stops before it.
+          const elsewhere = (
+            await q()
+              .select({ position: s.messages.position })
+              .from(s.messages)
+              .where(
+                and(
+                  eq(s.messages.channelId, channelId),
+                  gt(s.messages.position, from),
+                  lte(s.messages.position, to),
+                  sql`${s.messages.topicId} IS DISTINCT FROM ${topicId}`,
+                  notMine(p.humanId),
+                ),
+              )
+              .orderBy(asc(s.messages.position))
+              .limit(1)
+          )[0];
+          if (elsewhere !== undefined) to = elsewhere.position - 1;
+        }
+        if (to <= from) return;
+        await q()
+          .update(s.channelParticipants)
+          .set({ readPosition: to })
+          .where(
+            and(
+              eq(s.channelParticipants.channelId, channelId),
+              eq(s.channelParticipants.memberKey, memberKey(member(p))),
+            ),
+          );
+      });
+    },
     /** The newest message of each channel the person has joined. */
     latest(p: Principal, teamId: TeamId) {
       return atomic(async () => {
@@ -580,6 +650,15 @@ export function communicationRepository(
           .orderBy(desc(s.messages.position))
           .limit(1)
           .as('newest');
+        // Someone else wrote after the person's read position.
+        const unread =
+          p.kind === 'human'
+            ? sql<boolean>`EXISTS (SELECT 1 FROM ${s.messages} WHERE ${and(
+                eq(s.messages.channelId, s.channels.id),
+                sql`${s.messages.position} > COALESCE(${s.channelParticipants.readPosition}, 0)`,
+                notMine(p.humanId),
+              )})`
+            : sql<boolean>`false`;
         const rows = await q()
           .select({
             channelId: s.channels.id,
@@ -587,6 +666,7 @@ export function communicationRepository(
             author: newest.author,
             body: newest.body,
             createdAt: newest.createdAt,
+            unread,
           })
           .from(s.channels)
           .innerJoin(
@@ -609,6 +689,7 @@ export function communicationRepository(
             author: decode(r.author),
             excerpt: r.body.slice(0, 200),
             createdAt: r.createdAt,
+            unread: r.unread,
           }),
         );
       });
