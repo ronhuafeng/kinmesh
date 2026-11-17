@@ -154,13 +154,13 @@ function MemberOptions({
   return (
     <>
       {shown({ kind: 'human', id: data.human.id }) && (
-        <option value={'human:' + data.human.id}>{data.human.username}</option>
+        <option value={'human:' + data.human.id}>{data.human.name}</option>
       )}
       {otherPeople(data)
         .filter((person) => shown({ kind: 'human', id: person.id }))
         .map((person) => (
           <option value={'human:' + person.id} key={person.id}>
-            {person.username}
+            {person.name}
           </option>
         ))}
       {joinedAgents(data)

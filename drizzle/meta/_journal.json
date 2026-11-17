@@ -50,6 +50,13 @@
       "when": 1794866078364,
       "tag": "0006_steered_resend",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1794879252464,
+      "tag": "0007_feishu_people",
+      "breakpoints": true
     }
   ]
 }

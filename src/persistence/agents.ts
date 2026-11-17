@@ -30,7 +30,7 @@ const digest = (value: string) =>
   createHash('sha256').update(value).digest('hex');
 /** An avatar is a small raster image; SVG and anything else is refused. */
 export const AVATAR_LIMIT = 128 * 1024;
-function avatarType(bytes: Buffer) {
+export function avatarType(bytes: Buffer) {
   const starts = (...b: number[]) => b.every((v, i) => bytes[i] === v);
   if (starts(0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a))
     return 'image/png';

@@ -11,14 +11,14 @@ import type { ReactNode } from 'react';
 import type { Task } from '../src/domain/tasks.js';
 
 export type Status = Task['state']['status'];
-/** Picture URLs by agent ID, from the workspace snapshot. */
+/** Picture URLs by member ID, from the workspace snapshot. */
 export const AvatarImages = createContext<ReadonlyMap<string, string>>(
   new Map(),
 );
 /**
- * Everyone is round. An agent shows its picture when it has one, otherwise
- * its initial, drawn from a data attribute so it never pollutes the
- * accessible name or text.
+ * Everyone is round. A person or agent shows their picture when they have
+ * one, otherwise their initial, drawn from a data attribute so it never
+ * pollutes the accessible name or text.
  */
 export function Avatar({
   kind,
@@ -28,7 +28,7 @@ export function Avatar({
 }: {
   kind: 'human' | 'agent';
   name: string;
-  /** The member's ID, so an agent's picture can be found. */
+  /** The member's ID, so their picture can be found. */
   id?: string;
   size?: 'sm' | 'md' | 'xl';
 }) {

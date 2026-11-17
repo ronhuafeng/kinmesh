@@ -66,11 +66,13 @@ export function registerLogin(
     // No code: the person turned back at Feishu, and knows it.
     if (query.data.code === undefined) return reply.redirect('/');
     let member: ReturnType<typeof organizationMember>;
+    let picture: unknown;
     try {
       const profile = await feishu.profile(
         await feishu.exchange(query.data.code, redirectUri),
       );
       member = organizationMember(profile, config.feishu.emailDomain);
+      picture = profile.avatar;
     } catch (error) {
       request.log.warn(
         { route: '/login/callback', ...describeFailure(error) },
@@ -80,17 +82,26 @@ export function registerLogin(
     }
     if (member === null) return turnBack('denied');
     const human = await store.signIn(member);
-    // The team is the organization: its name follows Feishu's. Without it,
-    // the name stays as it was and the sign-in goes on.
-    try {
-      const name = (await feishu.organization()).trim().slice(0, 80);
-      if (name !== '') await store.renameTeam(human.id, name);
-    } catch (error) {
+    const failed = (error: unknown) => {
       request.log.warn(
         { route: '/login/callback', ...describeFailure(error) },
         'failed',
       );
-    }
+    };
+    await Promise.all([
+      // The team is the organization: its name follows Feishu's. Without it,
+      // the name stays as it was and the sign-in goes on.
+      (async () => {
+        const name = (await feishu.organization()).trim().slice(0, 80);
+        if (name !== '') await store.renameTeam(human.id, name);
+      })().catch(failed),
+      // Their picture is kept here, so browsers never fetch it from Feishu.
+      // Without one, the picture before (or the initial) stays.
+      (async () => {
+        if (typeof picture === 'string' && picture !== '')
+          await store.setPortrait(human.id, await feishu.picture(picture));
+      })().catch(failed),
+    ]);
     request.session.regenerate();
     request.session.set(
       'session',

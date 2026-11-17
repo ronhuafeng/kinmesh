@@ -601,8 +601,13 @@ export function Team({
       <ul className="roster" aria-label="Team">
         <li className="roster-tile" data-kind="human">
           <span className="roster-person">
-            <Avatar kind="human" name={data.human.username} size="xl" />
-            <span className="roster-name">{data.human.username}</span>
+            <Avatar
+              kind="human"
+              name={data.human.name}
+              id={data.human.id}
+              size="xl"
+            />
+            <span className="roster-name">{data.human.name}</span>
             {/* You are the one looking. */}
             <Presence online />
           </span>
@@ -612,18 +617,23 @@ export function Team({
           .map((person) => (
             <li key={person.id} className="roster-tile" data-kind="human">
               <span className="roster-person">
-                <Avatar kind="human" name={person.username} size="xl" />
-                <span className="roster-name">{person.username}</span>
+                <Avatar
+                  kind="human"
+                  name={person.name}
+                  id={person.id}
+                  size="xl"
+                />
+                <span className="roster-name">{person.name}</span>
                 <Presence online={person.online} />
               </span>
               {/* Like an agent: only a missing membership needs a fix. */}
               {channelPath && !data.joinedHumanIds.includes(person.id) && (
                 <ActionForm
-                  title={'Enroll ' + person.username}
+                  title={'Enroll ' + person.name}
                   path={channelPath + '/participants/invite'}
                   build={() => ({ member: { kind: 'human', id: person.id } })}
                   onDone={onDone}
-                  submit={'Add ' + person.username + ' to channel'}
+                  submit={'Add ' + person.name + ' to channel'}
                 />
               )}
             </li>

@@ -36,9 +36,40 @@ export const humans = pgTable(
      * mailbox can pass to someone new.
      */
     email: text('email'),
+    /**
+     * The name Feishu gives them, refreshed at each sign-in; null until a
+     * sign-in brings one, when the handle stands in.
+     */
+    name: text('name'),
   },
   (t) => [
     check('username_length', sql`length(${t.username}) BETWEEN 3 AND 64`),
+    check(
+      'human_name_length',
+      sql`${t.name} IS NULL OR length(${t.name}) BETWEEN 1 AND 80`,
+    ),
+  ],
+);
+/**
+ * A person's picture as Feishu last gave it, kept here so browsers never
+ * reach Feishu for it. The same small raster images as agents' pictures.
+ */
+export const humanAvatars = pgTable(
+  'human_avatars',
+  {
+    humanId: text('human_id')
+      .primaryKey()
+      .references(() => humans.id, { onDelete: 'cascade' }),
+    mime: text('mime').notNull(),
+    bytes: bytea('bytes').notNull(),
+    updatedAt: text('updated_at').notNull(),
+  },
+  (t) => [
+    check(
+      'human_avatar_mime',
+      sql`${t.mime} IN ('image/png','image/jpeg','image/webp')`,
+    ),
+    check('human_avatar_size', sql`length(${t.bytes}) BETWEEN 1 AND 131072`),
   ],
 );
 /**

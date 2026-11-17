@@ -7,11 +7,14 @@ import { fixture } from './helpers.js';
 import {
   feishuPerson,
   signInAs,
+  STAND_IN_NAMES,
   STAND_IN_ORGANIZATION,
+  STAND_IN_PICTURE,
   standInFeishu,
   startFeishuStandIn,
 } from './feishu.js';
 import { rawDatabase } from './raw.js';
+import { WorkspaceSnapshot } from '../src/workspace/contracts.js';
 import { FeishuFailure, feishuClient } from '../src/server/feishu.js';
 
 async function hub(feishu: Feishu = standInFeishu) {
@@ -147,6 +150,126 @@ await test('the team is named after the organization, and a sign-in goes on with
       payload: { name: 'Other' },
     });
     assert.equal(put.statusCode, 404);
+  } finally {
+    await h.dispose();
+  }
+});
+
+await test('a person is shown by their Feishu name and picture, refreshed at each sign-in, and a picture never stops a sign-in', async () => {
+  const png = Buffer.concat([
+    Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
+    Buffer.alloc(32, 7),
+  ]);
+  const webp = Buffer.concat([
+    Buffer.from('RIFF'),
+    Buffer.alloc(4),
+    Buffer.from('WEBP'),
+    Buffer.alloc(32, 1),
+  ]);
+  // What Feishu answers, made when asked.
+  let name: unknown = '张华枫';
+  let avatar: unknown = 'https://feishu.test/a.png';
+  let picture = (): Promise<Buffer> => Promise.resolve(png);
+  const asked: string[] = [];
+  const h = await hub({
+    ...standInFeishu,
+    async profile(token) {
+      return { ...(await standInFeishu.profile(token)), name, avatar };
+    },
+    picture(url) {
+      asked.push(url);
+      return picture();
+    },
+  });
+  try {
+    const me = async (cookies: Record<string, string>) =>
+      (await h.app.inject({ url: '/api/me', cookies })).json<{
+        human: {
+          id: string;
+          username: string;
+          name: string;
+          avatar: string | null;
+        };
+      }>().human;
+    const ada = await signInAs(h.app, 'ada@example.com');
+    const first = await me(ada);
+    assert.equal(first.username, 'ada');
+    assert.equal(first.name, '张华枫');
+    assert.ok(first.avatar);
+    assert.deepEqual(asked, ['https://feishu.test/a.png']);
+    const team = (await h.app.inject({ url: '/api/team', cookies: ada })).json<{
+      team: { id: string };
+    }>().team.id;
+    const url = `/api/teams/${team}/people/${first.id}/avatar`;
+    // Served from here, as itself, to the people of the team.
+    const got = await h.app.inject({ url, cookies: ada });
+    assert.equal(got.statusCode, 200);
+    assert.equal(got.headers['content-type'], 'image/png');
+    assert.equal(got.headers['x-content-type-options'], 'nosniff');
+    assert.deepEqual(got.rawPayload, png);
+    assert.equal((await h.app.inject({ url })).statusCode, 401);
+
+    // Someone without a name or picture in Feishu: the handle stands in.
+    name = undefined;
+    avatar = undefined;
+    const grace = await signInAs(h.app, 'grace@example.com');
+    const plain = await me(grace);
+    assert.equal(plain.name, 'grace');
+    assert.equal(plain.avatar, null);
+    assert.equal(
+      (
+        await h.app.inject({
+          url: `/api/teams/${team}/people/${plain.id}/avatar`,
+          cookies: ada,
+        })
+      ).statusCode,
+      404,
+    );
+    assert.equal(asked.length, 1);
+    // The workspace shows everyone by name, with their picture's time.
+    const people = WorkspaceSnapshot.parse(
+      (
+        await h.app.inject({ url: '/api/workspace', cookies: grace })
+      ).json<unknown>(),
+    ).people.map((p) => [p.name, p.avatar === null]);
+    assert.deepEqual(people, [
+      ['张华枫', false],
+      ['grace', true],
+    ]);
+
+    // Renamed and repictured in Feishu: so here, at the next sign-in.
+    name = '  Ada Lovelace ';
+    avatar = 'https://feishu.test/b.webp';
+    picture = () => Promise.resolve(webp);
+    await signInAs(h.app, 'ada@example.com');
+    const renamed = await me(ada);
+    assert.equal(renamed.name, 'Ada Lovelace');
+    assert.notEqual(renamed.avatar, first.avatar);
+    const changed = await h.app.inject({ url, cookies: ada });
+    assert.equal(changed.headers['content-type'], 'image/webp');
+    // The same picture again changes nothing.
+    await signInAs(h.app, 'ada@example.com');
+    assert.equal((await me(ada)).avatar, renamed.avatar);
+
+    // A picture Feishu can't give, or one that isn't a picture, leaves the
+    // one before; the sign-in goes on (signInAs asserts it).
+    for (const refused of [
+      () => Promise.reject(new Error('cdn down')),
+      () => Promise.resolve(Buffer.from('<svg/>')),
+      () => Promise.resolve(Buffer.concat([png, Buffer.alloc(130 * 1024)])),
+    ]) {
+      picture = refused;
+      await signInAs(h.app, 'ada@example.com');
+      assert.equal((await me(ada)).avatar, renamed.avatar);
+      assert.deepEqual(
+        (await h.app.inject({ url, cookies: ada })).rawPayload,
+        webp,
+      );
+    }
+    // Feishu leaves the name out: the name before stays.
+    name = undefined;
+    await signInAs(h.app, 'ada@example.com');
+    assert.equal((await me(ada)).name, 'Ada Lovelace');
   } finally {
     await h.dispose();
   }
@@ -425,7 +548,31 @@ await test('the Feishu client reads a profile that leaves fields out, and names 
       union: 'u-ada@example.com',
       enterprise: 'ada@example.com',
       tenant: 'stand-in',
+      name: undefined,
+      avatar: undefined,
     });
+    // A name and a picture, which is fetched from where Feishu says.
+    const named = await feishu.profile(
+      await feishu.exchange(
+        'grace@example.com',
+        'http://127.0.0.1:3000/login/callback',
+      ),
+    );
+    assert.equal(named.name, STAND_IN_NAMES['grace@example.com']);
+    assert.ok(typeof named.avatar === 'string');
+    assert.deepEqual(await feishu.picture(named.avatar), STAND_IN_PICTURE);
+    // Only over HTTPS (or from the stand-in), and never with credentials.
+    for (const address of [
+      'http://example.com/a.png',
+      'https://user:pass@example.com/a.png',
+      'file:///etc/passwd',
+    ])
+      await assert.rejects(
+        feishu.picture(address),
+        (error: unknown) =>
+          error instanceof FeishuFailure &&
+          error.message === 'feishu_picture_0',
+      );
     assert.equal(await feishu.organization(), STAND_IN_ORGANIZATION);
     // Feishu's own error envelope, with a 200, is still a refusal.
     await assert.rejects(

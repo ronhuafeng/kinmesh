@@ -4,7 +4,7 @@ import { inboxViews } from './inbox-views.js';
 import { taskRepository } from './tasks.js';
 import { communicationRepository } from './communication.js';
 import { asc } from 'drizzle-orm';
-import { agentRepository } from './agents.js';
+import { AVATAR_LIMIT, agentRepository, avatarType } from './agents.js';
 import type { Principal } from '../domain/agents.js';
 import { DomainError } from '../domain/errors.js';
 import { operationJournal } from './operations.js';
@@ -16,6 +16,7 @@ import { openDatabase } from './database.js';
 import {
   Human,
   HumanId,
+  Person,
   Team,
   Channel,
   Membership,
@@ -28,6 +29,20 @@ import {
   SESSION_TOUCH_MS,
 } from '../domain/contracts.js';
 
+/** What the workspace shows of a person, read with their picture's time. */
+const personColumns = {
+  id: tables.humans.id,
+  username: tables.humans.username,
+  name: tables.humans.name,
+  avatar: tables.humanAvatars.updatedAt,
+};
+/** The handle stands in until Feishu has given a name. */
+const personOf = (row: {
+  id: string;
+  username: string;
+  name: string | null;
+  avatar: string | null;
+}) => Person.parse({ ...row, name: row.name ?? row.username });
 const digest = (token: string) =>
   createHash('sha256').update(token).digest('base64url');
 /**
@@ -78,10 +93,19 @@ export async function openStore(url: string) {
       /**
        * The person a Feishu identity is. Their first sign-in makes them a
        * member; the very first one also makes the team and its #general. The
-       * mailbox is kept up to date, and finds a person linked to it before
-       * they ever signed in with Feishu.
+       * mailbox and name are kept up to date (a name Feishu doesn't give
+       * leaves the one before), and the mailbox finds a person linked to it
+       * before they ever signed in with Feishu.
        */
-      signIn({ feishuId, email }: { feishuId: string; email: string }) {
+      signIn({
+        feishuId,
+        email,
+        name = null,
+      }: {
+        feishuId: string;
+        email: string;
+        name?: string | null;
+      }) {
         return atomic(async () => {
           const person = {
             id: tables.humans.id,
@@ -110,7 +134,7 @@ export async function openStore(url: string) {
           if (known !== undefined) {
             await q()
               .update(tables.humans)
-              .set({ feishuId, email })
+              .set({ feishuId, email, ...(name === null ? {} : { name }) })
               .where(eq(tables.humans.id, known.id));
             return Human.parse(known);
           }
@@ -120,7 +144,7 @@ export async function openStore(url: string) {
           });
           await q()
             .insert(tables.humans)
-            .values({ ...human, feishuId, email });
+            .values({ ...human, feishuId, email, name });
           const existing = (await q().select().from(tables.teams).limit(1))[0];
           if (existing !== undefined) {
             const team = Team.parse(existing);
@@ -273,6 +297,59 @@ export async function openStore(url: string) {
             );
         },
       },
+      /**
+       * Keeps a person's picture as Feishu gave it: a small PNG, JPEG or
+       * WebP, like an agent's. The same picture again changes nothing.
+       */
+      async setPortrait(id: HumanId, bytes: Buffer) {
+        const mime = avatarType(bytes);
+        if (mime === null || bytes.length > AVATAR_LIMIT)
+          throw new DomainError('invalid');
+        await atomic(async () => {
+          const kept = (
+            await q()
+              .select({ bytes: tables.humanAvatars.bytes })
+              .from(tables.humanAvatars)
+              .where(eq(tables.humanAvatars.humanId, id))
+              .limit(1)
+          )[0];
+          if (kept?.bytes.equals(bytes)) return;
+          const updatedAt = new Date().toISOString();
+          await q()
+            .insert(tables.humanAvatars)
+            .values({ humanId: id, mime, bytes, updatedAt })
+            .onConflictDoUpdate({
+              target: tables.humanAvatars.humanId,
+              set: { mime, bytes, updatedAt },
+            });
+        });
+      },
+      /** A person's picture, for anyone of their team; null when none. */
+      portrait(p: Principal, teamId: TeamId, id: HumanId) {
+        return atomic(async () => {
+          await agentStore.person(p, teamId);
+          const row = (
+            await q()
+              .select({
+                mime: tables.humanAvatars.mime,
+                bytes: tables.humanAvatars.bytes,
+              })
+              .from(tables.humanAvatars)
+              .innerJoin(
+                tables.memberships,
+                eq(tables.memberships.humanId, tables.humanAvatars.humanId),
+              )
+              .where(
+                and(
+                  eq(tables.humanAvatars.humanId, id),
+                  eq(tables.memberships.teamId, teamId),
+                ),
+              )
+              .limit(1)
+          )[0];
+          return row ?? null;
+        });
+      },
       /** Names the team a person belongs to: the organization, as Feishu calls it. */
       async renameTeam(id: HumanId, name: string) {
         const membership = await this.teamFor(id);
@@ -287,8 +364,8 @@ export async function openStore(url: string) {
         });
       },
       /**
-       * The people of a team, by name, and whether each is online now: for
-       * anyone of the team.
+       * The people of a team, by name and picture, and whether each is
+       * online now: for anyone of the team.
        */
       people(p: Principal, teamId: TeamId, now: number) {
         return atomic(async () => {
@@ -296,20 +373,21 @@ export async function openStore(url: string) {
           const online = new Set(await this.online(now));
           return (
             await q()
-              .select({
-                id: tables.humans.id,
-                username: tables.humans.username,
-              })
+              .select(personColumns)
               .from(tables.humans)
               .innerJoin(
                 tables.memberships,
                 eq(tables.memberships.humanId, tables.humans.id),
               )
+              .leftJoin(
+                tables.humanAvatars,
+                eq(tables.humanAvatars.humanId, tables.humans.id),
+              )
               .where(eq(tables.memberships.teamId, teamId))
               .orderBy(asc(tables.humans.username))
               .limit(100)
           ).map((row) => ({
-            ...Human.parse(row),
+            ...personOf(row),
             online: online.has(row.id),
           }));
         });
@@ -333,12 +411,16 @@ export async function openStore(url: string) {
       async human(id: HumanId) {
         const row = (
           await q()
-            .select({ id: tables.humans.id, username: tables.humans.username })
+            .select(personColumns)
             .from(tables.humans)
+            .leftJoin(
+              tables.humanAvatars,
+              eq(tables.humanAvatars.humanId, tables.humans.id),
+            )
             .where(eq(tables.humans.id, id))
             .limit(1)
         )[0];
-        return row === undefined ? undefined : Human.parse(row);
+        return row === undefined ? undefined : personOf(row);
       },
       async teamFor(id: HumanId) {
         const membership = (
