@@ -341,7 +341,7 @@ for (const status of ['completed', 'failed'] as const)
           message.body.startsWith(
             status === 'completed'
               ? 'MOCK recovered assistant result'
-              : 'The run in T3 failed before writing a reply.',
+              : '还没回复就失败了。',
           ),
         );
         assert.deepEqual(

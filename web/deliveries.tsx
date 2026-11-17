@@ -10,44 +10,44 @@ import type {
 import { api, useAction } from './api.js';
 import { Notice } from './forms.js';
 import { memberName } from './names.js';
-import { ago, workerConnected } from './ui.js';
+import { ago, cjk, workerConnected } from './ui.js';
 
 export type DeliveryView = WorkspaceSnapshot['deliveries'][number];
 type Tone = 'queued' | 'active' | 'waiting' | 'done' | 'problem';
 /** How long an answer took, the way a person would say it. */
 export function took(from: string, to: string) {
   const seconds = (Date.parse(to) - Date.parse(from)) / 1000;
-  if (seconds < 60) return 'in under a minute';
+  if (seconds < 60) return '不到 1 分钟';
   const minutes = Math.round(seconds / 60);
-  if (minutes < 60) return `after ${String(minutes)} min`;
+  if (minutes < 60) return `${String(minutes)} 分钟`;
   const hours = Math.floor(minutes / 60);
   const rest = minutes % 60;
-  return `after ${String(hours)} h` + (rest ? ` ${String(rest)} min` : '');
+  return `${String(hours)} 小时` + (rest ? ` ${String(rest)} 分钟` : '');
 }
 /** A blocked delivery says what was lost, so the fix is obvious. */
 function blockedText(reason: string, name: string) {
   const cause = BlockedReason.safeParse(reason);
   switch (cause.success ? cause.data : null) {
     case 'agent-disabled':
-      return `${name} is disabled, so this is on hold`;
+      return `${name} 已停用，这条请求暂停了`;
     case 'credential-invalid':
-      return `${name}’s credential was revoked, expired or lacks a permission`;
+      return `${name} 的凭据已吊销、已过期或缺少权限`;
     case 'not-in-channel':
-      return `${name} was removed from the channel, so this is on hold`;
+      return `${name} 已被移出频道，这条请求暂停了`;
     case 'not-assigned':
-      return `The task is no longer assigned to ${name}, so this was stopped`;
+      return `任务已不再分配给 ${name}，所以停止了`;
     case 'native-access':
-      return `T3 refused ${name}’s access: reconnect T3`;
+      return `T3 拒绝了 ${name} 的访问：请重新连接 T3`;
     case 'native-incompatible':
-      return `${name}’s model isn’t available in T3: choose another one`;
+      return `${name} 的模型在 T3 中不可用：请换一个`;
     case 'native-unreadable':
-      return `Kinmesh can’t read what T3 returned for ${name}: update Kinmesh`;
+      return `${name} 的结果无法显示：请更新 Kinmesh`;
     case 'authority-changed':
-      return `${name}’s T3 access changed while this ran, so its answer can’t be posted: ask again`;
+      return `${name} 的 T3 权限在运行中变了，回复发不出来：请重新提问`;
     case 'environment-changed':
-      return `T3 is no longer the environment ${name} was connected to: connect ${name} again`;
+      return `T3 已不是 ${name} 当初连接的环境：请重新连接 ${name}`;
     default:
-      return `${name} is stuck: Kinmesh or T3 refused the request`;
+      return `${name} 卡住了：请求被 Kinmesh 或 T3 拒绝`;
   }
 }
 /**
@@ -59,40 +59,48 @@ export function deliveryText(
   name: string,
   connected: boolean,
 ): { text: string; tone: Tone } {
+  const line = sentence(d, name, connected);
+  return { ...line, text: cjk(line.text) };
+}
+function sentence(
+  d: DeliveryView,
+  name: string,
+  connected: boolean,
+): { text: string; tone: Tone } {
   const since = d.queuedAt ? ` · ${ago(d.queuedAt)}` : '';
   // Reasons come from one vocabulary, so a misspelt one fails to compile.
   const because = (reason: DeliveryReason | Cause) => d.reason === reason;
   if (unanswered(d) && d.stopRequested)
-    return { text: `${name} is stopping`, tone: 'waiting' };
+    return { text: `${name} 正在停止`, tone: 'waiting' };
   switch (d.state) {
     case 'ready':
       if (!connected)
         return {
-          text: `${name} isn’t connected, so nothing has picked this up yet`,
+          text: `${name} 离线，还没人接手`,
           tone: 'problem',
         };
       if (because('sign-in-expired'))
         return {
-          text: `${name} will go on once T3 is reconnected`,
+          text: `T3 重新连接后 ${name} 会继续`,
           tone: 'waiting',
         };
       return because('temporarily-unavailable')
-        ? { text: `${name} will retry when T3 is reachable`, tone: 'waiting' }
-        : { text: `${name} will pick this up${since}`, tone: 'queued' };
+        ? { text: `T3 可用时 ${name} 会重试`, tone: 'waiting' }
+        : { text: `${name} 会接手${since}`, tone: 'queued' };
     case 'waiting':
       return because('human-or-approval-wait')
-        ? { text: `${name} is waiting for an approval in T3`, tone: 'waiting' }
-        : { text: `${name} is working on it`, tone: 'active' };
+        ? { text: `${name} 正在等待 T3 中的批准`, tone: 'waiting' }
+        : { text: `${name} 正在处理`, tone: 'active' };
     case 'uncertain':
       return because('native-launch-pending')
-        ? { text: `${name} is working on it`, tone: 'active' }
-        : { text: `Checking whether ${name}’s run started…`, tone: 'waiting' };
+        ? { text: `${name} 正在处理`, tone: 'active' }
+        : { text: `正在确认 ${name} 是否已开始…`, tone: 'waiting' };
     case 'acked':
       return {
         text:
-          `${name} replied` +
+          `${name} 已回复` +
           (d.queuedAt && d.updatedAt
-            ? ' ' + took(d.queuedAt, d.updatedAt)
+            ? '（用时 ' + took(d.queuedAt, d.updatedAt) + '）'
             : ''),
         tone: 'done',
       };
@@ -100,15 +108,15 @@ export function deliveryText(
       return { text: blockedText(d.reason, name), tone: 'problem' };
     case 'expired':
       if (because('stopped'))
-        return { text: `Stopped before ${name} started`, tone: 'queued' };
+        return { text: `${name} 开始前已停止`, tone: 'queued' };
       if (because('authority-changed'))
         return {
-          text: `Stopped after ${name}’s T3 access changed`,
+          text: `${name} 的 T3 权限变了，已停止`,
           tone: 'queued',
         };
       return because('undispatched-expiry')
-        ? { text: `${name} never picked this up`, tone: 'problem' }
-        : { text: `${name}’s request expired`, tone: 'problem' };
+        ? { text: `${name} 一直没有接手`, tone: 'problem' }
+        : { text: `给 ${name} 的请求已过期`, tone: 'problem' };
   }
 }
 const unanswered = (d: DeliveryView) =>
@@ -155,7 +163,7 @@ export function Stop({
           ).then(done);
         }}
       >
-        {action.uncertain ? 'Retry the same action' : 'Stop'}
+        {action.uncertain ? '重试同一操作' : '停止'}
       </button>
       {action.error && <Notice>{action.error}</Notice>}
     </>
@@ -343,7 +351,7 @@ export function Recovery({
             );
           }}
         >
-          Re-enable {name} and retry
+          重新启用 {name} 并重试
         </button>
       )}
       {reason === 'not-in-channel' && (
@@ -358,7 +366,7 @@ export function Recovery({
             );
           }}
         >
-          Add {name} back and retry
+          把 {name} 加回频道并重试
         </button>
       )}
       {(reason === 'credential-invalid' ||
@@ -373,7 +381,7 @@ export function Recovery({
               openAgent(agentId);
             }}
           >
-            Fix {name}’s setup
+            修复 {name} 的配置
           </button>
         )}
       {reason !== 'not-assigned' &&
@@ -388,7 +396,7 @@ export function Recovery({
               void retry();
             }}
           >
-            {action.busy ? 'Retrying…' : 'Retry'}
+            {action.busy ? '正在重试…' : '重试'}
           </button>
         )}
       {action.uncertain && (
@@ -401,14 +409,14 @@ export function Recovery({
             });
           }}
         >
-          Retry the same action
+          重试同一操作
         </button>
       )}
       {action.error && <Notice>{action.error}</Notice>}
       {reason === null && (
         <p className="muted recovery-operator">
-          The cause wasn’t recorded. On the worker machine, resume it with{' '}
-          <code>npm run inbox:worker -- resume {delivery.id}</code>
+          没有记下原因。请在运行工作进程的机器上用{' '}
+          <code>npm run inbox:worker -- resume {delivery.id}</code> 恢复
         </p>
       )}
     </div>

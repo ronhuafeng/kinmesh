@@ -23,66 +23,51 @@ const delivery = (
 
 await test('every delivery state reads as a plain sentence about the agent', () => {
   const cases: [DeliveryView['state'], string, boolean, RegExp][] = [
-    ['ready', 'enqueued', true, /^Ada will pick this up · just now$/],
-    ['ready', 'enqueued', false, /^Ada isn’t connected/],
-    ['ready', 'temporarily-unavailable', true, /retry when T3 is reachable/],
-    ['ready', 'operator-resume', true, /will pick this up/],
-    [
-      'ready',
-      'sign-in-expired',
-      true,
-      /^Ada will go on once T3 is reconnected$/,
-    ],
-    ['waiting', 'execution-active', true, /^Ada is working on it$/],
-    ['waiting', 'human-or-approval-wait', true, /waiting for an approval/],
-    ['waiting', 'assistant-result-unavailable', true, /working on it/],
-    ['uncertain', 'native-launch-uncertain', true, /^Checking whether Ada/],
-    ['uncertain', 'native-launch-pending', true, /^Ada is working on it$/],
+    ['ready', 'enqueued', true, /^Ada 会接手 · 刚刚$/],
+    ['ready', 'enqueued', false, /^Ada 离线/],
+    ['ready', 'temporarily-unavailable', true, /^T3 可用时 Ada 会重试$/],
+    ['ready', 'operator-resume', true, /会接手/],
+    ['ready', 'sign-in-expired', true, /^T3 重新连接后 Ada 会继续$/],
+    ['waiting', 'execution-active', true, /^Ada 正在处理$/],
+    ['waiting', 'human-or-approval-wait', true, /等待 T3 中的批准/],
+    ['waiting', 'assistant-result-unavailable', true, /正在处理/],
+    ['uncertain', 'native-launch-uncertain', true, /^正在确认 Ada/],
+    ['uncertain', 'native-launch-pending', true, /^Ada 正在处理$/],
     [
       'acked',
       'assistant-result-published',
       true,
-      /^Ada replied in under a minute$/,
+      /^Ada 已回复（用时不到 1 分钟）$/,
     ],
-    ['blocked', 'authority-or-contract-blocked', true, /^Ada is stuck/],
-    ['blocked', 'agent-disabled', true, /^Ada is disabled/],
-    ['blocked', 'credential-invalid', true, /^Ada’s credential was revoked/],
-    ['blocked', 'not-in-channel', true, /^Ada was removed from the channel/],
-    ['blocked', 'not-assigned', true, /no longer assigned to Ada/],
-    [
-      'blocked',
-      'native-access',
-      true,
-      /^T3 refused Ada’s access: reconnect T3/,
-    ],
-    ['blocked', 'native-incompatible', true, /model isn’t available in T3/],
+    ['blocked', 'authority-or-contract-blocked', true, /^Ada 卡住了/],
+    ['blocked', 'agent-disabled', true, /^Ada 已停用/],
+    ['blocked', 'credential-invalid', true, /^Ada 的凭据已吊销/],
+    ['blocked', 'not-in-channel', true, /^Ada 已被移出频道/],
+    ['blocked', 'not-assigned', true, /不再分配给 Ada/],
+    ['blocked', 'native-access', true, /^T3 拒绝了 Ada 的访问：请重新连接 T3/],
+    ['blocked', 'native-incompatible', true, /模型在 T3 中不可用/],
     [
       'blocked',
       'native-unreadable',
       true,
-      /^Kinmesh can’t read what T3 returned for Ada: update Kinmesh$/,
+      /^Ada 的结果无法显示：请更新 Kinmesh$/,
     ],
     [
       'blocked',
       'authority-changed',
       true,
-      /^Ada’s T3 access changed while this ran.*ask again$/,
+      /^Ada 的 T3 权限在运行中变了.*请重新提问$/,
     ],
     [
       'blocked',
       'environment-changed',
       true,
-      /environment Ada was connected to: connect Ada again/,
+      /Ada 当初连接的环境：请重新连接 Ada/,
     ],
-    ['expired', 'undispatched-expiry', true, /never picked this up/],
-    ['expired', 'stopped', true, /^Stopped before Ada started$/],
-    [
-      'expired',
-      'authority-changed',
-      true,
-      /^Stopped after Ada’s T3 access changed$/,
-    ],
-    ['expired', 'something-new', true, /request expired/],
+    ['expired', 'undispatched-expiry', true, /一直没有接手/],
+    ['expired', 'stopped', true, /^Ada 开始前已停止$/],
+    ['expired', 'authority-changed', true, /^Ada 的 T3 权限变了，已停止$/],
+    ['expired', 'something-new', true, /请求已过期/],
   ];
   for (const [state, reason, connected, expected] of cases) {
     const { text } = deliveryText(delivery(state, reason), 'Ada', connected);
@@ -100,7 +85,7 @@ await test('a delivery a person asked to stop is stopping until it ends', () => 
         'Ada',
         true,
       ).text,
-      'Ada is stopping',
+      'Ada 正在停止',
     );
   // Once ended, it says how.
   assert.match(
@@ -112,7 +97,7 @@ await test('a delivery a person asked to stop is stopping until it ends', () => 
       'Ada',
       true,
     ).text,
-    /^Ada replied/,
+    /^Ada 已回复/,
   );
 });
 
@@ -138,25 +123,19 @@ await test('Stop is offered until a delivery ends or is stopping, and for one wh
   assert.equal(stoppable({ ...unreachable, stopRequested: true }), true);
   assert.match(
     deliveryText({ ...unreachable, stopRequested: true }, 'Ada', true).text,
-    /^Ada’s T3 access changed/,
+    /^Ada 的 T3 权限在运行中变了/,
   );
 });
 
 await test('a reply says how long it took', () => {
   assert.equal(
     took('2026-10-31T11:00:00Z', '2026-10-31T11:00:40Z'),
-    'in under a minute',
+    '不到 1 分钟',
   );
-  assert.equal(
-    took('2026-10-31T11:00:00Z', '2026-10-31T11:07:00Z'),
-    'after 7 min',
-  );
+  assert.equal(took('2026-10-31T11:00:00Z', '2026-10-31T11:07:00Z'), '7 分钟');
   assert.equal(
     took('2026-10-31T11:00:00Z', '2026-10-31T12:11:00Z'),
-    'after 1 h 11 min',
+    '1 小时 11 分钟',
   );
-  assert.equal(
-    took('2026-10-31T11:00:00Z', '2026-10-31T13:00:00Z'),
-    'after 2 h',
-  );
+  assert.equal(took('2026-10-31T11:00:00Z', '2026-10-31T13:00:00Z'), '2 小时');
 });

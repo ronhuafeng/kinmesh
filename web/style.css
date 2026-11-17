@@ -2328,7 +2328,8 @@ span.person {
 .request {
   --tone: var(--ink-subtle);
   display: grid;
-  grid-template-columns: 0.5rem minmax(0, auto) minmax(0, 1fr) auto auto;
+  /* The quote gives way (cut with an ellipsis) before the outcome wraps. */
+  grid-template-columns: 0.5rem minmax(0, 1fr) minmax(0, auto) auto auto;
   align-items: center;
   gap: 0.25rem 0.75rem;
   padding: 0.65rem 1rem;

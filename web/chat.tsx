@@ -108,9 +108,9 @@ function Composer({
   return (
     <div className="composer">
       <ActionForm
-        title="Message your team"
+        title="给团队发消息"
         path={channelPath + '/messages'}
-        submit="Send message"
+        submit="发送消息"
         icon={<ArrowIcon />}
         ready={ready}
         onDone={() => {
@@ -138,7 +138,7 @@ function Composer({
         }}
       >
         {chips.length > 0 && (
-          <ul className="mention-chips" aria-label="Mentions">
+          <ul className="mention-chips" aria-label="提及">
             {chips.map((member) => (
               <li key={member.id}>
                 <span className="mention-chip" data-kind={member.kind}>
@@ -147,7 +147,7 @@ function Composer({
                 <button
                   type="button"
                   className="quiet"
-                  aria-label={'Remove mention of ' + member.name}
+                  aria-label={'移除对 ' + member.name + ' 的提及'}
                   onClick={() => {
                     setChips((old) => old.filter((c) => c.id !== member.id));
                   }}
@@ -164,7 +164,7 @@ function Composer({
               className="mention-popover"
               id={listId}
               role="listbox"
-              aria-label="Mention suggestions"
+              aria-label="可提及的成员"
             >
               {candidates.map((member, index) => (
                 <li
@@ -189,7 +189,7 @@ function Composer({
               ))}
             </ul>
           )}
-          <Field label="Message">
+          <Field label="消息">
             <textarea
               ref={input}
               name="body"
@@ -208,7 +208,9 @@ function Composer({
               // The hints belong in the placeholder; the sidebar already
               // names the channel, and a phone has no shortcut keys.
               placeholder={
-                narrow ? '@ to mention' : '@ to mention, ⌘/Ctrl+Enter to send'
+                narrow
+                  ? '输入 @ 提及成员'
+                  : '输入 @ 提及成员，⌘/Ctrl+Enter 发送'
               }
               defaultValue={typeof unsent === 'string' ? unsent : ''}
               onInput={(e) => {
@@ -252,7 +254,7 @@ function Composer({
           <button
             type="button"
             className="quiet mention-trigger"
-            aria-label="Mention someone"
+            aria-label="提及成员"
             disabled={members.length === 0}
             onClick={() => {
               const el = input.current;
@@ -321,7 +323,7 @@ export function ChannelTopics({
   );
   return (
     <div className="channel-topics">
-      <ul aria-label="Topics">
+      <ul aria-label="话题">
         {/* "All" leads back to the whole channel, which its own row
             already marks as current; only a topic is pressed. */}
         {recent.length > 0 && (
@@ -332,7 +334,7 @@ export function ChannelTopics({
                 onTopic('');
               }}
             >
-              All
+              全部
             </button>
           </li>
         )}
@@ -349,7 +351,7 @@ export function ChannelTopics({
                   setAll(true);
                 }}
               >
-                More topics
+                更多话题
               </button>
             </li>
           ) : (
@@ -362,7 +364,7 @@ export function ChannelTopics({
                     next('topicsCursor', data.topics.nextCursor);
                   }}
                 >
-                  More topics
+                  更多话题
                 </button>
               </li>
             )
@@ -389,8 +391,8 @@ function NewTopic({
   return open ? (
     <InlineField
       name="title"
-      label="Topic title"
-      placeholder="New topic"
+      label="话题名称"
+      placeholder="新话题"
       maxLength={160}
       path={channelPath + '/topics'}
       className="pill"
@@ -401,7 +403,7 @@ function NewTopic({
     />
   ) : (
     <AddButton
-      label="Start a topic"
+      label="新建话题"
       className="topic-add"
       onClick={() => {
         setOpen(true);
@@ -610,17 +612,17 @@ export function Chat({
     });
   const replySource = (id: string) => {
     const source = messages.find((m) => m.id === id);
-    if (!source) return 'an earlier message';
+    if (!source) return '之前的一条消息';
     const flat = source.body.replace(/\s+/g, ' ').trim();
     const text = flat.length > 80 ? flat.slice(0, 77) + '…' : flat;
-    return `${memberName(source.author, data)}: ${text}`;
+    return `${memberName(source.author, data)}：${text}`;
   };
   const topicTitle = (id: string) =>
-    data.topics.items.find((t) => t.id === id)?.title ?? 'Topic';
+    data.topics.items.find((t) => t.id === id)?.title ?? '话题';
   return (
     <div className="conversation">
       <div className="topic-bar">
-        <div className="topic-pills" role="group" aria-label="Topics">
+        <div className="topic-pills" role="group" aria-label="话题">
           {/* "All" means something only once there is a topic to filter by. */}
           {data.topics.items.length > 0 && (
             <button
@@ -630,7 +632,7 @@ export function Chat({
                 onTopic('');
               }}
             >
-              All
+              全部
             </button>
           )}
           {data.topics.items.map((t) => (
@@ -653,7 +655,7 @@ export function Chat({
                 next('topicsCursor', data.topics.nextCursor);
               }}
             >
-              More topics
+              更多话题
             </button>
           )}
           <NewTopic channelPath={channelPath} onCreated={onTopic} />
@@ -666,15 +668,15 @@ export function Chat({
       {(data.messages.nextCursor === null || messages.length >= REACH) && (
         <div className="leave-channel channel-start">
           <ActionForm
-            title="Channel membership"
+            title="频道成员资格"
             path={channelPath + '/leave'}
             build={() => ({})}
-            submit="Leave channel"
+            submit="退出频道"
             onDone={onLeave}
           />
         </div>
       )}
-      <ol className="messages" aria-label="Channel messages">
+      <ol className="messages" aria-label="频道消息">
         {messages.map((m, index) => {
           const previous = messages[index - 1];
           const sameAuthor =
@@ -719,7 +721,7 @@ export function Chat({
             >
               {divider === m.id && (
                 <div className="new-divider" role="separator">
-                  New since {shortTime(m.createdAt)}
+                  {shortTime(m.createdAt)} 以来的新消息
                 </div>
               )}
               <Avatar
@@ -761,7 +763,7 @@ export function Chat({
                     }}
                   >
                     <span aria-hidden="true">↩</span>{' '}
-                    <span className="visually-hidden">In reply to </span>
+                    <span className="visually-hidden">回复 </span>
                     {replySource(answers)}
                   </button>
                 )}
@@ -770,7 +772,7 @@ export function Chat({
                 </div>
                 {origin.get(m.id) && <ReplyOrigin reply={origin.get(m.id)} />}
                 {unwritten(m).length > 0 && (
-                  <ul className="mentions" aria-label="Mentioned">
+                  <ul className="mentions" aria-label="已提及">
                     {unwritten(m).map((member) => (
                       <li
                         key={member.kind + member.id}
@@ -783,7 +785,7 @@ export function Chat({
                   </ul>
                 )}
                 {lines.length > 0 && (
-                  <ul className="deliveries" aria-label="Agent responses">
+                  <ul className="deliveries" aria-label="智能体响应">
                     {lines.map((d) => (
                       <DeliveryLine
                         key={d.id}
@@ -805,7 +807,7 @@ export function Chat({
                       onMakeTask(m);
                     }}
                   >
-                    Make task
+                    转为任务
                   </button>
                 </div>
               </div>
@@ -814,9 +816,7 @@ export function Chat({
         })}
       </ol>
       {messages.length === 0 && (
-        <p className="board-empty">
-          No messages yet. Type @ to bring an agent in.
-        </p>
+        <p className="board-empty">还没有消息。输入 @ 请智能体加入。</p>
       )}
       <Composer
         key={channel.id}

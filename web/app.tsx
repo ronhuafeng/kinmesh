@@ -479,7 +479,7 @@ export function App() {
           </span>
           <span>kinmesh</span>
         </a>
-        <h1>{failed ? 'Workspace unavailable' : 'Opening your workspace…'}</h1>
+        <h1>{failed ? '工作区打不开' : '正在打开工作区…'}</h1>
         {!failed && (
           <div className="skeleton-board" aria-hidden="true">
             {[3, 2, 1].map((cards, column) => (
@@ -492,7 +492,7 @@ export function App() {
           </div>
         )}
         {/* Only a failure offers anything to do. */}
-        {failed && <button onClick={refreshNow}>Try again</button>}
+        {failed && <button onClick={refreshNow}>再试一次</button>}
       </main>
     );
   }
@@ -587,7 +587,7 @@ export function App() {
         toSignedOut();
       })
       .catch(() => {
-        notify('Sign out didn’t go through. Try again.');
+        notify('没能退出登录，请再试一次。');
       });
   };
   const signOutEverywhere = () => {
@@ -597,7 +597,7 @@ export function App() {
         toSignedOut();
       })
       .catch(() => {
-        notify('Sign out didn’t go through. Try again.');
+        notify('没能退出登录，请再试一次。');
       });
   };
   /** Leaves the open channel, from the command palette. */
@@ -612,7 +612,7 @@ export function App() {
         selectChannel('');
       })
       .catch(() => {
-        notify('Leaving didn’t go through. Try again.');
+        notify('没能退出频道，请再试一次。');
       });
   };
   const goHome = () => {
@@ -660,17 +660,17 @@ export function App() {
   const commands: Command[] = [
     ...data.attention.decide.map(({ task, channelName }) => ({
       id: 'ask-' + task.id,
-      group: 'Inbox',
+      group: '收件箱',
       label: task.title,
-      hint: (humanAsk(task, data) ?? 'Your decision') + ' · #' + channelName,
+      hint: (humanAsk(task, data) ?? '等你决定') + ' · #' + channelName,
       run: () => {
         openTaskIn(task.channelId, task.id);
       },
     })),
     ...(['chat', 'board', 'team'] as const).map((v) => ({
       id: 'view-' + v,
-      group: 'Views',
-      label: v === 'chat' ? 'Chat' : v === 'board' ? 'Board' : 'Team',
+      group: '视图',
+      label: v === 'chat' ? '聊天' : v === 'board' ? '看板' : '团队',
       run: () => {
         setView(v);
       },
@@ -679,8 +679,8 @@ export function App() {
       ? [
           {
             id: 'action-new-task',
-            group: 'Actions',
-            label: 'New task',
+            group: '操作',
+            label: '新任务',
             hint: channel ? '#' + channel.name : undefined,
             run: startNewTask,
           },
@@ -692,21 +692,21 @@ export function App() {
       ? [
           {
             id: 'action-leave',
-            group: 'Actions',
-            label: 'Leave #' + channel.name,
+            group: '操作',
+            label: '退出 #' + channel.name,
             run: leaveChannel,
           },
         ]
       : []),
     {
       id: 'action-refresh',
-      group: 'Actions',
-      label: 'Refresh now',
+      group: '操作',
+      label: '立即刷新',
       run: refreshNow,
     },
     ...data.tasks.items.map((task) => ({
       id: 'task-' + task.id,
-      group: 'Tasks',
+      group: '任务',
       label: task.title,
       hint:
         '#' + String(task.position) + ' · ' + statusLabel(task.state.status),
@@ -716,7 +716,7 @@ export function App() {
     })),
     ...data.channels.items.map((c) => ({
       id: 'channel-' + c.id,
-      group: 'Channels',
+      group: '频道',
       label: '# ' + c.name,
       run: () => {
         selectChannel(c.id);
@@ -724,7 +724,7 @@ export function App() {
     })),
     ...data.agents.map((agent) => ({
       id: 'agent-' + agent.id,
-      group: 'People',
+      group: '成员',
       label: agent.name,
       run: () => {
         openAgent(agent.id);
@@ -750,11 +750,11 @@ export function App() {
                 <div className="sidebar-top">
                   <CommandPalette commands={commands} />
                 </div>
-                <nav aria-label="Channels">
+                <nav aria-label="频道">
                   <div className="nav-heading">
-                    <h2>Channels</h2>
+                    <h2>频道</h2>
                     <AddButton
-                      label="New channel"
+                      label="新建频道"
                       onClick={() => {
                         setAddingChannel(true);
                       }}
@@ -779,10 +779,8 @@ export function App() {
                         <span aria-hidden="true">#</span> {c.name}
                         {/* Something in this channel waits on you. */}
                         {waitingIn.has(c.id) && (
-                          <span className="waiting-dot" title="Waiting on you">
-                            <span className="visually-hidden">
-                              Waiting on you
-                            </span>
+                          <span className="waiting-dot" title="等你处理">
+                            <span className="visually-hidden">等你处理</span>
                           </span>
                         )}
                       </button>
@@ -806,12 +804,12 @@ export function App() {
                   {addingChannel && (
                     <InlineField
                       name="name"
-                      label="Channel name"
-                      placeholder="channel-name"
+                      label="频道名称"
+                      placeholder="频道名称"
                       maxLength={80}
                       path={`/api/teams/${data.team.id}/channels`}
                       className="channel-new"
-                      taken="That name is taken"
+                      taken="这个名称已被占用"
                       onClose={() => {
                         setAddingChannel(false);
                       }}
@@ -833,7 +831,7 @@ export function App() {
                       next('channelsCursor', data.channels.nextCursor);
                     }}
                   >
-                    More channels
+                    更多频道
                   </button>
                 )}
                 {/* On a phone, Home holds the team: the gallery of faces. */}
@@ -852,7 +850,7 @@ export function App() {
                 )}
                 <section
                   className="people"
-                  aria-label={channel ? 'People in this channel' : 'People'}
+                  aria-label={channel ? '本频道成员' : '成员'}
                 >
                   {/* A line, not a heading: what follows plainly belongs to
                       the channel above. */}
@@ -908,7 +906,7 @@ export function App() {
                         setView('team');
                       }}
                     >
-                      Add an agent
+                      添加智能体
                     </button>
                   )}
                 </section>
@@ -931,7 +929,7 @@ export function App() {
                       <button
                         type="button"
                         className="quiet icon-button header-back"
-                        aria-label="Back"
+                        aria-label="返回"
                         onClick={goHome}
                       >
                         <BackIcon />
@@ -943,29 +941,26 @@ export function App() {
                       {pageAgent
                         ? pageAgent.name
                         : view === 'team'
-                          ? 'Team'
+                          ? '团队'
                           : shownChannelName
                             ? '# ' + shownChannelName
                             : switching
-                              ? 'Opening channel…'
-                              : 'Welcome to your team'}
+                              ? '正在打开频道…'
+                              : '欢迎来到你的团队'}
                     </h1>
                     {/* Views stay in reach however far the conversation scrolls. */}
-                    <Tabs.List
-                      aria-label="Workspace views"
-                      className="view-switch"
-                    >
+                    <Tabs.List aria-label="工作区视图" className="view-switch">
                       <Tabs.Trigger value="chat" onClick={leavePage}>
-                        Chat
+                        聊天
                       </Tabs.Trigger>
                       <Tabs.Trigger value="board" onClick={leavePage}>
-                        Board
+                        看板
                       </Tabs.Trigger>
                       {/* On a phone the team is on Home and the Inbox is a
                         bottom tab. */}
                       {!phone && (
                         <Tabs.Trigger value="team" onClick={leavePage}>
-                          Team
+                          团队
                         </Tabs.Trigger>
                       )}
                       {/* What waits on you across the team; an empty inbox
@@ -978,7 +973,7 @@ export function App() {
                             setFocus({ kind: 'inbox' });
                           }}
                         >
-                          Inbox
+                          收件箱
                           {waiting > 0 && (
                             <span className="count">{waiting}</span>
                           )}
@@ -991,14 +986,14 @@ export function App() {
                       {refreshing && (
                         <div className="connection">
                           <span className="connection-dot" aria-hidden="true" />
-                          <span role="status">Refreshing…</span>
+                          <span role="status">正在刷新…</span>
                         </div>
                       )}
                       {!phone && (
                         <button
                           className="quiet icon-button"
-                          aria-label="Sign out"
-                          title="Sign out"
+                          aria-label="退出登录"
+                          title="退出登录"
                           disabled={!canAct}
                           onClick={signOut}
                         >
@@ -1010,8 +1005,7 @@ export function App() {
                   {/* One line, and nothing to press: it comes back by itself. */}
                   {stale && (
                     <p className="stale-line" role="status">
-                      Can’t reach Kinmesh. Showing what was here before; sending
-                      is paused until it’s back.
+                      连不上 Kinmesh。先显示之前的内容，恢复连接前暂停发送。
                     </p>
                   )}
                   <fieldset
@@ -1127,8 +1121,8 @@ export function App() {
                         />
                       ) : (
                         <div className="empty">
-                          <h3>No channel open</h3>
-                          <p>Choose a joined channel to read and post.</p>
+                          <h3>没有打开的频道</h3>
+                          <p>选一个已加入的频道来查看和发消息。</p>
                         </div>
                       )}
                     </Tabs.Content>
@@ -1142,7 +1136,7 @@ export function App() {
                         />
                       ) : (
                         <div className="empty">
-                          <p>Create a channel before creating tasks.</p>
+                          <p>先建一个频道，再创建任务。</p>
                         </div>
                       )}
                     </Tabs.Content>
@@ -1181,7 +1175,7 @@ export function App() {
                         />
                       ) : (
                         <div className="empty">
-                          <p>This agent isn’t in your team.</p>
+                          <p>这个智能体不在你的团队里。</p>
                         </div>
                       )}
                     </Tabs.Content>
@@ -1191,14 +1185,14 @@ export function App() {
               {/* A phone's three places at the bottom of Home and of the pages
                   they open; a channel or a pushed page has the screen. */}
               {phone && (
-                <nav className="phone-tabs" aria-label="Places">
+                <nav className="phone-tabs" aria-label="位置">
                   <button
                     type="button"
                     aria-current={screen === 'home' ? 'page' : undefined}
                     onClick={goHome}
                   >
                     <HomeIcon />
-                    <span>Home</span>
+                    <span>主页</span>
                   </button>
                   <button
                     type="button"
@@ -1209,7 +1203,7 @@ export function App() {
                     }}
                   >
                     <InboxIcon />
-                    <span>Inbox</span>
+                    <span>收件箱</span>
                     {waiting > 0 && <span className="count">{waiting}</span>}
                   </button>
                   <button
@@ -1228,7 +1222,7 @@ export function App() {
                       id={data.human.id}
                       size="sm"
                     />
-                    <span>You</span>
+                    <span>我</span>
                   </button>
                 </nav>
               )}
@@ -1256,17 +1250,17 @@ function LeftChannels({
 }) {
   if (channels.length === 0) return null;
   return (
-    <ul className="left-channels" aria-label="Channels you left">
+    <ul className="left-channels" aria-label="已退出的频道">
       {channels.map((c) => (
         <li key={c.id}>
           <span>
             <span aria-hidden="true">#</span> {c.name}
           </span>
           <ActionForm
-            title={'Rejoin ' + c.name}
+            title={'重新加入 ' + c.name}
             path={`/api/teams/${teamId}/channels/${c.id}/subscribe`}
             build={() => ({})}
-            submit="Rejoin"
+            submit="重新加入"
             onDone={() => {
               onDone(c.id);
             }}

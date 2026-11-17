@@ -5,7 +5,7 @@ import { InboxIcon } from './icons.js';
 import { memberName } from './names.js';
 import { MODE_NAMES, ReconnectT3 } from './setup.js';
 import { humanAsk } from './tasks.js';
-import { Avatar, Page, ago, plural, workerConnected } from './ui.js';
+import { Avatar, Page, ago, workerConnected } from './ui.js';
 
 /** How many things wait on you: the Inbox's one number. */
 export function attentionCount(attention: WorkspaceSnapshot['attention']) {
@@ -31,7 +31,7 @@ interface Item {
 }
 /** The day T3's sign-in ends, the way a person would say it. */
 function day(iso: string) {
-  return new Date(iso).toLocaleDateString(undefined, {
+  return new Date(iso).toLocaleDateString('zh-CN', {
     weekday: 'short',
     month: 'short',
     day: 'numeric',
@@ -73,7 +73,7 @@ export function InboxPage({
         agentId: agent,
         who: agent ? name(agent) : data.human.name,
         what: task.title,
-        where: (humanAsk(task, data) ?? 'Your decision') + ' · #' + channelName,
+        where: (humanAsk(task, data) ?? '等你决定') + ' · #' + channelName,
         at: task.updatedAt,
         open: () => {
           openTask(task.channelId, task.id);
@@ -111,7 +111,7 @@ export function InboxPage({
       tone: 'setup',
       agentId: c.agentId,
       who: name(c.agentId),
-      what: `${plural(c.queued, 'request')} waiting, but ${name(c.agentId)} can’t be woken yet`,
+      what: `${String(c.queued)} 条请求在等待，但还无法唤醒 ${name(c.agentId)}`,
       where: null,
       at: null,
       open: () => {
@@ -127,25 +127,25 @@ export function InboxPage({
       agentId: null,
       who: 'T3',
       what: !t3.expired
-        ? `T3’s sign-in ends ${day(t3.expiresAt)}`
+        ? `T3 的登录将于${day(t3.expiresAt)}到期`
         : t3.fallback === null
-          ? 'T3’s sign-in ended, so agents are waiting'
-          : `T3’s sign-in ended, so agents run ${MODE_NAMES[t3.fallback]}`,
+          ? 'T3 的登录已到期，智能体在等待'
+          : `T3 的登录已到期，智能体改为以${MODE_NAMES[t3.fallback]}模式运行`,
       where: new URL(t3.endpoint).host,
       at: null,
       fix: <ReconnectT3 teamId={data.team.id} renewal={t3} onDone={onDone} />,
     });
   return (
-    <Page label="Inbox" onClose={onClose} className="inbox" bar={false}>
+    <Page label="收件箱" onClose={onClose} className="inbox" bar={false}>
       {items.length === 0 ? (
         <div className="inbox-empty">
           <span className="inbox-empty-mark" aria-hidden="true">
             <InboxIcon />
           </span>
-          <p>You’re all caught up.</p>
+          <p>都处理完了。</p>
         </div>
       ) : (
-        <ul className="inbox-list" aria-label="Inbox">
+        <ul className="inbox-list" aria-label="收件箱">
           {items.map((item) => (
             <li key={item.key} className="inbox-row" data-tone={item.tone}>
               <span className="inbox-face">

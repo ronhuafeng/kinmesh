@@ -256,7 +256,7 @@ for (const status of ['completed', 'failed'] as const)
         assert.ok(
           message.body.startsWith(
             status === 'failed'
-              ? 'The run in T3 failed before writing a reply.'
+              ? '还没回复就失败了。'
               : 'MOCK exact-run recovered result',
           ),
         );
@@ -398,7 +398,7 @@ await test('MOCK native terminal failure without assistant posts truthful notice
       row.resultMessageId,
     );
     // Said plainly, never dressed up as the agent's answer.
-    assert.equal(notice.body, 'The run in T3 failed before writing a reply.');
+    assert.equal(notice.body, '还没回复就失败了。');
     const [status] = await f.store.inboxViews.repliesFor(
       f.principal,
       f.teamId,

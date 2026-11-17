@@ -48,21 +48,11 @@ export function shortTime(iso: string) {
   const date = new Date(iso);
   const today = new Date().toDateString() === date.toDateString();
   return date.toLocaleString(
-    undefined,
+    'zh-CN',
     today
       ? { hour: '2-digit', minute: '2-digit' }
       : { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' },
   );
-}
-/** Compact age for cards: "now", "5m", "3h", "2d". */
-function age(iso: string, now = Date.now()) {
-  const minutes = Math.max(0, Math.round((now - Date.parse(iso)) / 60_000));
-  if (minutes < 1) return 'now';
-  if (minutes < 60) return `${String(minutes)}m`;
-  const hours = Math.round(minutes / 60);
-  return hours < 24
-    ? `${String(hours)}h`
-    : `${String(Math.round(hours / 24))}d`;
 }
 /** Whether an Inbox worker would wake this agent now. */
 export function workerConnected(
@@ -71,13 +61,25 @@ export function workerConnected(
 ) {
   return wake.find((w) => w.agentId === agentId)?.connected ?? false;
 }
-/** "just now" or "5m ago", for sentences. */
-export function ago(iso: string) {
-  const value = age(iso);
-  return value === 'now' ? 'just now' : `${value} ago`;
+/**
+ * Chinese runs on without spaces: a sentence built from names and words
+ * keeps a space only beside Latin text ("Ada 正在处理", "小助手正在处理").
+ */
+export function cjk(text: string) {
+  return text.replace(
+    /(?<=[\p{Script=Han}，。：；）”])[ ]+(?=[\p{Script=Han}（“])/gu,
+    '',
+  );
 }
-export function plural(count: number, noun: string) {
-  return `${String(count)} ${noun}${count === 1 ? '' : 's'}`;
+/** "刚刚" or "5 分钟前", for sentences. */
+export function ago(iso: string, now = Date.now()) {
+  const minutes = Math.max(0, Math.round((now - Date.parse(iso)) / 60_000));
+  if (minutes < 1) return '刚刚';
+  if (minutes < 60) return `${String(minutes)} 分钟前`;
+  const hours = Math.round(minutes / 60);
+  return hours < 24
+    ? `${String(hours)} 小时前`
+    : `${String(Math.round(hours / 24))} 天前`;
 }
 /**
  * A page in the main area, in place of the view it was opened from: no
@@ -156,7 +158,7 @@ export function Page({
           <button
             type="button"
             className="quiet icon-button"
-            aria-label="Back"
+            aria-label="返回"
             onClick={() => {
               close.current();
             }}
@@ -182,7 +184,7 @@ export function Presence({
   online: boolean;
   dot?: boolean;
 }) {
-  const word = online ? 'Online' : 'Offline';
+  const word = online ? '在线' : '离线';
   return (
     <span
       className={dot ? 'presence dot' : 'presence'}

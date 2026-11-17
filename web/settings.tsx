@@ -18,13 +18,13 @@ export function SettingsPage({
   onSignOutEverywhere: () => void;
 }) {
   return (
-    <Page label="Settings" onClose={onClose} bar={false}>
+    <Page label="设置" onClose={onClose} bar={false}>
       <div className="page-body you">
         <div className="you-sign-outs">
           {onSignOut && (
             <button type="button" className="you-sign-out" onClick={onSignOut}>
               <PowerIcon />
-              Sign out
+              退出登录
             </button>
           )}
           <button
@@ -33,7 +33,7 @@ export function SettingsPage({
             onClick={onSignOutEverywhere}
           >
             <PowerIcon />
-            Sign out everywhere
+            在所有设备上退出登录
           </button>
         </div>
       </div>
