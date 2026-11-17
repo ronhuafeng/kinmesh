@@ -1,5 +1,6 @@
 import type { Database } from './database.js';
 import { enqueueFact } from './inbox-enqueue.js';
+import { messageText } from './attachments.js';
 import { notifyFact } from './notify.js';
 import { ChannelLevel } from '../domain/notify.js';
 import { transactional, snapshotPage, latestPage } from './transactional.js';
@@ -14,6 +15,8 @@ import {
   gte,
   inArray,
   isNotNull,
+  isNull,
+  sum,
   lt,
   lte,
   max,
@@ -30,6 +33,11 @@ import {
 } from '../domain/contracts.js';
 import type { Principal } from '../domain/agents.js';
 import { DomainError } from '../domain/errors.js';
+import {
+  Attachment,
+  AttachmentId,
+  UNBOUND_KEEP_MS,
+} from '../domain/attachments.js';
 import {
   principalAuthor as author,
   principalMember as member,
@@ -278,14 +286,47 @@ export function communicationRepository(
           ...(mentions.get(r.messageId) ?? []),
           Member.parse(decode(r.target)),
         ]);
+    const files = await attachmentsOf(rows.map((row) => row.id));
     return rows.map((row) =>
       Message.parse({
         ...row,
         author: decode(row.author),
         mentions: mentions.get(row.id) ?? [],
+        attachments: files.get(row.id) ?? [],
       }),
     );
   }
+  const attachmentOf = (row: typeof s.attachments.$inferSelect) =>
+    Attachment.parse({
+      id: row.id,
+      name: row.name,
+      type: row.type,
+      size: row.size,
+      width: row.width,
+      height: row.height,
+    });
+  /** Messages' files, each message's in the order they were uploaded. */
+  async function attachmentsOf(messageIds: string[]) {
+    const found = new Map<string, Attachment[]>();
+    if (messageIds.length === 0) return found;
+    for (const row of await q()
+      .select()
+      .from(s.attachments)
+      .where(inArray(s.attachments.messageId, messageIds))
+      .orderBy(asc(s.attachments.createdAt), asc(s.attachments.id))) {
+      if (row.messageId === null) continue;
+      found.set(row.messageId, [
+        ...(found.get(row.messageId) ?? []),
+        attachmentOf(row),
+      ]);
+    }
+    return found;
+  }
+  /** Only one transaction at a time keeps or lets go of the same bytes. */
+  const holdBytes = (sha256: string) =>
+    q().execute(
+      sql`select pg_advisory_xact_lock(hashtextextended(${sha256}, 0))`,
+    );
   async function message(channelId: ChannelId, id: MessageId) {
     const row = (
       await q()
@@ -707,16 +748,19 @@ export function communicationRepository(
             ),
           )
           .orderBy(s.channels.id);
-        return rows.map((r) =>
-          ChannelLatest.parse({
-            channelId: r.channelId,
-            messageId: r.id,
-            author: decode(r.author),
-            excerpt: r.body.slice(0, 200),
-            createdAt: r.createdAt,
-            unread: r.unread,
-          }),
-        );
+        const latest = [];
+        for (const r of rows)
+          latest.push(
+            ChannelLatest.parse({
+              channelId: r.channelId,
+              messageId: r.id,
+              author: decode(r.author),
+              excerpt: (await messageText(q(), r.id, r.body)).slice(0, 200),
+              createdAt: r.createdAt,
+              unread: r.unread,
+            }),
+          );
+        return latest;
       });
     },
     channel(p: Principal, teamId: TeamId, channelId: ChannelId) {
@@ -956,7 +1000,12 @@ export function communicationRepository(
         };
       });
     },
-    post(p: Principal, teamId: TeamId, channelId: ChannelId, input: PostInput) {
+    post(
+      p: Principal,
+      teamId: TeamId,
+      channelId: ChannelId,
+      input: z.input<typeof PostInput>,
+    ) {
       return atomic(async () => {
         await access(p, teamId, channelId, true);
         const data = PostInput.parse(input);
@@ -968,6 +1017,11 @@ export function communicationRepository(
           data,
           Message,
           async () => {
+            // Text, files, or both; only a person attaches files.
+            if (data.body === '' && data.attachments.length === 0)
+              throw new DomainError('invalid');
+            if (data.attachments.length > 0 && p.kind !== 'human')
+              throw new DomainError('invalid');
             if (data.topicId !== null) await topic(channelId, data.topicId);
             for (const target of data.mentions)
               await validTarget(teamId, channelId, target, true);
@@ -997,6 +1051,25 @@ export function communicationRepository(
                   memberKey: memberKey(target),
                   target: JSON.stringify(target),
                 });
+            // Their own uploads to this channel that no message took yet.
+            for (const attachmentId of data.attachments) {
+              const bound =
+                p.kind === 'human'
+                  ? await q()
+                      .update(s.attachments)
+                      .set({ messageId: id })
+                      .where(
+                        and(
+                          eq(s.attachments.id, attachmentId),
+                          eq(s.attachments.channelId, channelId),
+                          eq(s.attachments.uploader, p.humanId),
+                          isNull(s.attachments.messageId),
+                        ),
+                      )
+                      .returning({ id: s.attachments.id })
+                  : [];
+              if (bound.length === 0) throw new DomainError('invalid');
+            }
             await fact(
               p,
               teamId,
@@ -1014,6 +1087,171 @@ export function communicationRepository(
             return message(channelId, id);
           },
         );
+      });
+    },
+    /**
+     * A person's upload to a joined channel: its description, kept once per
+     * operation key (a retry gives the same one). `place` keeps the bytes
+     * while no other transaction may let go of the same ones; `room` is the
+     * team's total, refused when the file would pass it.
+     */
+    upload(
+      p: Principal,
+      teamId: TeamId,
+      channelId: ChannelId,
+      file: {
+        operationKey: string;
+        name: string;
+        type: string;
+        size: number;
+        sha256: string;
+        width: number | null;
+        height: number | null;
+      },
+      room: number,
+      place: () => Promise<void>,
+    ) {
+      return atomic(async () => {
+        await access(p, teamId, channelId, true);
+        if (p.kind !== 'human') throw new DomainError('forbidden');
+        const { operationKey } = Mutation.parse({
+          operationKey: file.operationKey,
+        });
+        const kept = (
+          await q()
+            .select()
+            .from(s.attachments)
+            .where(
+              and(
+                eq(s.attachments.uploader, p.humanId),
+                eq(s.attachments.channelId, channelId),
+                eq(s.attachments.operationKey, operationKey),
+              ),
+            )
+            .limit(1)
+        )[0];
+        if (kept !== undefined) {
+          if (kept.sha256 !== file.sha256) throw new DomainError('conflict');
+          return attachmentOf(kept);
+        }
+        // The team's room counts bytes kept, each once: the same bytes
+        // again take none.
+        const [known] = await q()
+          .select({ id: s.attachments.id })
+          .from(s.attachments)
+          .where(
+            and(
+              eq(s.attachments.teamId, teamId),
+              eq(s.attachments.sha256, file.sha256),
+            ),
+          )
+          .limit(1);
+        if (known === undefined) {
+          const distinct = q()
+            .selectDistinct({
+              sha256: s.attachments.sha256,
+              size: s.attachments.size,
+            })
+            .from(s.attachments)
+            .where(eq(s.attachments.teamId, teamId))
+            .as('kept');
+          const used = Number(
+            (
+              await q()
+                .select({ total: sum(distinct.size) })
+                .from(distinct)
+            )[0]?.total ?? 0,
+          );
+          if (used + file.size > room) throw new DomainError('too-large');
+        }
+        await holdBytes(file.sha256);
+        const id = AttachmentId.parse(randomUUID());
+        await q()
+          .insert(s.attachments)
+          .values({
+            ...file,
+            id,
+            teamId,
+            channelId,
+            messageId: null,
+            uploader: p.humanId,
+            operationKey,
+            createdAt: Date.now(),
+          });
+        await place();
+        const row = (
+          await q()
+            .select()
+            .from(s.attachments)
+            .where(eq(s.attachments.id, id))
+            .limit(1)
+        )[0];
+        if (row === undefined) throw new DomainError('not-found');
+        return attachmentOf(row);
+      });
+    },
+    /**
+     * A file to read, and where its bytes are: one of a message in a channel
+     * the reader is joined to, or the reader's own upload not yet sent.
+     * Anything else is not found, the same as unknown.
+     */
+    attachment(
+      p: Principal,
+      teamId: TeamId,
+      channelId: ChannelId,
+      id: AttachmentId,
+    ) {
+      return atomic(async () => {
+        await access(p, teamId, channelId);
+        const row = (
+          await q()
+            .select()
+            .from(s.attachments)
+            .where(
+              and(
+                eq(s.attachments.id, id),
+                eq(s.attachments.channelId, channelId),
+              ),
+            )
+            .limit(1)
+        )[0];
+        if (
+          row === undefined ||
+          (row.messageId === null &&
+            !(p.kind === 'human' && p.humanId === row.uploader))
+        )
+          throw new DomainError('not-found');
+        return { attachment: attachmentOf(row), sha256: row.sha256 };
+      });
+    },
+    /**
+     * Uploads no message took within a day go. Returns the bytes no
+     * attachment refers to any more, to let go of with `release`.
+     */
+    sweepUnbound(now: number) {
+      return atomic(async () => {
+        const gone = await q()
+          .delete(s.attachments)
+          .where(
+            and(
+              isNull(s.attachments.messageId),
+              lt(s.attachments.createdAt, now - UNBOUND_KEEP_MS),
+            ),
+          )
+          .returning({ sha256: s.attachments.sha256 });
+        return [...new Set(gone.map((row) => row.sha256))];
+      });
+    },
+    /** Lets go of bytes (`remove`) once no attachment refers to them. */
+    release(sha256: string, remove: () => Promise<void>) {
+      return atomic(async () => {
+        await holdBytes(sha256);
+        const [still] = await q()
+          .select({ id: s.attachments.id })
+          .from(s.attachments)
+          .where(eq(s.attachments.sha256, sha256))
+          .limit(1);
+        if (still === undefined) await remove();
       });
     },
     message(p: Principal, teamId: TeamId, channelId: ChannelId, id: MessageId) {

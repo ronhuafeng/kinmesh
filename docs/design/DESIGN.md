@@ -308,6 +308,18 @@ fallback.
   unconfirmed survives a reload or a change of channel, offering **重试**, unless
   it arrives on its own. While sending is paused (see **Out of reach**) nothing
   is sent and the text stays in the field.
+- **Attaching**: a file pasted into the composer, dropped on it (the field draws a
+  2 px green ring while one is held over it) or chosen with the paperclip beside "@"
+  uploads at once and shows above the text: an image as a 56 px square of itself, any
+  other file as a tile of its name and size. Each has a small round × at its corner
+  to take it off. A file still uploading reads at half strength; one that can't be
+  attached has a red outline and says why in its tile ("超过 25 MB",
+  "团队的文件空间已满"). Send waits for every file to be there, and files alone are
+  enough to send. At most ten go with one message; more are left out.
+- **Files in a message**: under its text (or alone), images as they are, at most 240
+  px tall and 360 px wide, rounded with a hairline, each holding its place before it
+  loads and opening on its own when clicked; other files as a 360 px row of a file
+  icon, the name and its size (2.4 MB) that downloads it.
   The placeholder never repeats the channel: "输入 @ 提及成员，⌘/Ctrl+Enter 发送"
   ("输入 @ 提及成员" on a phone).
 - **Channels**: the sidebar lists joined channels; a channel you left can be rejoined

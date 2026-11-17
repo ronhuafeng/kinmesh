@@ -15,6 +15,7 @@ The hub writes JSON lines to standard output: one record per failure, with its r
 | `KINMESH_EMAIL_DOMAIN`                               | Required; only mailboxes in this domain may sign in                                                                                                                                                                                                                                               |
 | `KINMESH_DATABASE_URL`                               | Required; the PostgreSQL database, as a `postgres://` URL; `npm run setup` writes one for compose's database                                                                                                                                                                                      |
 | `KINMESH_STATE`                                      | The hub's own files, such as the [managed directory](security.md#hub-held-worker-secrets) (default `.store`)                                                                                                                                                                                      |
+| `KINMESH_ATTACHMENTS_ROOM`                           | The most the team's attached files may hold together, in bytes (default 10 GiB); [attachments](security.md#attachments)                                                                                                                                                                           |
 | `KINMESH_ORIGIN`, `KINMESH_PORT`                     | Public origin (an HTTPS origin, or exactly `http://127.0.0.1:<port>`) and listener port                                                                                                                                                                                                           |
 | `KINMESH_HOST`                                       | Listener address (default `127.0.0.1`); `0.0.0.0` only inside a container network behind the reverse proxy                                                                                                                                                                                        |
 | `KINMESH_INBOX_CONFIG`                               | Optional operator worker configuration (below)                                                                                                                                                                                                                                                    |
@@ -86,7 +87,7 @@ No label carries anything a person wrote, a mailbox, a name or an ID.
 
 ### Backup and restore
 
-Back up before every upgrade. A backup is the database and the state directory together; both hold team content and credentials. `pg_dump` takes a consistent copy of a running database:
+Back up before every upgrade. A backup is the database and the state directory together; both hold team content and credentials, and the state directory's `attachments/` holds the bytes of the files people attached, which the database only describes. `pg_dump` takes a consistent copy of a running database:
 
 ```sh
 docker compose exec -T postgres pg_dump -U kinmesh -Fc kinmesh > kinmesh.dump

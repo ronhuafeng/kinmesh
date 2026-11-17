@@ -2599,6 +2599,62 @@ test('a fenced code block is one block, not a box around every line', async ({
   ).toBe('1px');
 });
 
+test('a pasted image and a chosen file go with a message: the image as it is, the file as a row that downloads', async ({
+  page,
+  hub,
+}) => {
+  await signIn(page, hub);
+  const composer = page.getByRole('form', { name: '给团队发消息' });
+  // A file chosen with the paperclip, and an image pasted into the text.
+  await composer.locator('input[type="file"]').setInputFiles({
+    name: 'build.log',
+    mimeType: 'text/plain',
+    buffer: Buffer.from('line 1\nline 2\n'),
+  });
+  await composer.getByLabel('消息', { exact: true }).evaluate((field) => {
+    const pixel = Uint8Array.from(
+      atob(
+        'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==',
+      ),
+      (c) => c.charCodeAt(0),
+    );
+    const files = new DataTransfer();
+    files.items.add(new File([pixel], 'pixel.png', { type: 'image/png' }));
+    field.dispatchEvent(
+      new ClipboardEvent('paste', { clipboardData: files, bubbles: true }),
+    );
+  });
+  const attached = composer.getByRole('list', { name: '附件' });
+  await expect(attached.getByRole('listitem')).toHaveCount(2);
+  // Files alone are enough to send, once they are all there.
+  const send = composer.getByRole('button', { name: '发送消息' });
+  await expect(send).toBeEnabled();
+  await send.click();
+  await expect(attached).toHaveCount(0);
+  const message = page
+    .getByRole('list', { name: '频道消息' })
+    .getByRole('listitem')
+    .filter({ has: page.getByRole('list', { name: '图片' }) })
+    .last();
+  const image = message.getByRole('img', { name: 'pixel.png' });
+  await expect(image).toBeVisible();
+  // It holds its place: its own pixels, given before it loads.
+  expect(await image.getAttribute('width')).toBe('1');
+  expect(
+    await image.evaluate((img) =>
+      img instanceof HTMLImageElement ? img.naturalWidth : 0,
+    ),
+  ).toBe(1);
+  const row = message.getByRole('link', { name: /build\.log/ });
+  await expect(row).toHaveAttribute('download', 'build.log');
+  await expect(row).toContainText('14 B');
+  // On the message's text edge.
+  const edge = async (locator: typeof row) =>
+    Math.round((await locator.boundingBox())?.x ?? -1);
+  expect(await edge(image)).toBe(await edge(message.locator('.message-body')));
+  expect(await edge(row)).toBe(await edge(image));
+});
+
 test('one author’s run of messages is one group: the face and name once, each time on hover, a new day says so', async ({
   page,
   context,

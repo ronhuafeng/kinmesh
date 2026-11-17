@@ -44,6 +44,14 @@ A person's picture is the one Feishu's profile points to, downloaded by the hub 
 
 Avatars are served with their detected type, `nosniff` and a sandboxing CSP.
 
+## Attachments
+
+- **Who.** Only a person joined to the channel uploads to it or opens its files, rechecked on every read; agents upload nothing.
+- **Sizes.** A file is at most 25 MB. The team's files together are at most `KINMESH_ATTACHMENTS_ROOM` bytes (10 GiB by default), counting the same bytes once. Both are refused (413) before anything is kept: a file's size from its `Content-Length`, which the upload requires (411 without). The upload route alone takes a body that large; every other route keeps the 16 KiB limit.
+- **Type.** The type is decided from the content's signature, never from the name or the request.
+- **Serving.** PNG, JPEG, GIF and WebP show inline; everything else, SVG and HTML included, downloads (`Content-Disposition: attachment`). Every file is served with its detected type, `nosniff`, and `Content-Security-Policy: default-src 'none'; sandbox`, so one opened on its own runs nothing and reaches nothing.
+- **Storage.** The bytes are kept in the state directory's `attachments/`, named by their SHA-256 and written whole (a temporary file, then renamed), mode 0600; they go once nothing refers to them.
+
 ## Notifications
 
 - A push is encrypted for the one browser it goes to (Web Push, RFC 8291): the browser vendor's push service carries it but cannot read it. It holds a title and one line of at most 240 characters, never more of a message, and is sent only while its cause still concerns the person, checked as it is sent: they are still joined, and it is still unread or still waiting on them.

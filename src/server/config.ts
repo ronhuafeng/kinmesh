@@ -65,6 +65,12 @@ const Environment = z.object({
    */
   KINMESH_SPACE_ENDPOINT: z.url({ protocol: /^https?$/ }).optional(),
   KINMESH_SPACE_TOKEN_FILE: z.string().min(1).optional(),
+  /** The most the team's files may hold together, in bytes; 10 GiB. */
+  KINMESH_ATTACHMENTS_ROOM: z.coerce
+    .number()
+    .int()
+    .positive()
+    .default(10 * 1024 ** 3),
   /** Lets a scraper elsewhere read /metrics; this machine needs none. */
   KINMESH_METRICS_TOKEN: z.string().min(32).optional(),
   /**
@@ -127,6 +133,7 @@ export function loadConfig(env: NodeJS.ProcessEnv) {
   return {
     database: value.KINMESH_DATABASE_URL,
     state: value.KINMESH_STATE,
+    attachmentsRoom: value.KINMESH_ATTACHMENTS_ROOM,
     sessionKey: Buffer.from(value.KINMESH_SESSION_KEY, 'hex'),
     origin: origin.origin,
     secureCookie: origin.protocol === 'https:',
