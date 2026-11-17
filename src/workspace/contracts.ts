@@ -83,7 +83,7 @@ export const WorkspaceSnapshot = z.strictObject({
     .max(5),
   pausedUntil: z.iso.datetime().nullable(),
   /** Minutes unread before a notification also goes to Feishu; null: never. */
-  forwardAfter: z.number().int().positive().nullable(),
+  forwardAfter: z.number().int().nonnegative().nullable(),
   /** The hours notifications may reach you; null: any time. */
   hours: NotifyHours.nullable(),
   team: Team,
