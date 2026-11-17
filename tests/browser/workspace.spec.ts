@@ -421,8 +421,14 @@ test('two independent task cards: real agent handoff, human review, acceptance a
     await expect(inStage(page, '已完成', 'Ship alpha')).toBeVisible();
     await beta.getByRole('button', { name: 'Ship beta' }).click();
     await expect(alphaPage).toHaveCount(0);
-    await betaPage.getByLabel('决定备注').fill('Beta needs more work');
+    // Sending back is in the quiet row after the review decision; chosen,
+    // it is a form of its own with its own note.
     await betaPage
+      .getByRole('button', { name: '退回修改', exact: true })
+      .click();
+    const sendBack = betaPage.getByRole('form', { name: '退回修改' });
+    await sendBack.getByLabel('决定备注').fill('Beta needs more work');
+    await sendBack
       .getByRole('button', { name: '退回修改', exact: true })
       .click();
     // Sent back, the task's progress returns to Working. The acceptor can
@@ -602,7 +608,8 @@ test('keyboard mention, and a message becomes a task in its topic', async ({
   await expect(search).toBeHidden();
   const task = taskPage(page, 'Validate postal codes per country @Ada');
   await expect(task).toBeVisible();
-  await task.getByRole('button', { name: '取消任务…', exact: true }).click();
+  // Cancelling is the last of the quiet row; chosen, its note opens in place.
+  await task.getByRole('button', { name: '取消任务', exact: true }).click();
   await expect(task.getByText(/不经验收直接关闭任务/)).toBeVisible();
   await task.getByLabel('决定备注').fill('Superseded by the new form');
   await task.getByRole('button', { name: '取消任务', exact: true }).click();
@@ -1345,28 +1352,36 @@ test('lost message response retries the same committed operation; real conflict 
       await route.abort('failed');
     } else await route.continue();
   });
+  // The workspace isn't read again until the retry has gone, so the
+  // committed message can't arrive on its own first.
+  let release: () => void = () => {
+    throw new Error('Workspace read not held');
+  };
+  const held = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  await page.route('**/api/workspace?*', async (route) => {
+    await held;
+    await route.continue();
+  });
   const composer = page.getByRole('form', { name: '给团队发消息' });
-  await composer
-    .getByLabel('消息', { exact: true })
-    .fill('One committed message, even after a lost response');
+  const text = 'One committed message, even after a lost response';
+  await composer.getByLabel('消息', { exact: true }).fill(text);
   await composer.getByRole('button', { name: '发送消息' }).click();
-  await expect(
-    composer.getByRole('button', { name: '重试同一操作' }),
-  ).toBeVisible();
-  await expect(composer.getByLabel('消息', { exact: true })).toBeDisabled();
-  await composer.getByRole('button', { name: '重试同一操作' }).click();
-  await expect(
-    page
-      .getByRole('list', { name: '频道消息' })
-      .getByText('One committed message, even after a lost response', {
-        exact: true,
-      }),
-  ).toBeVisible();
-  await expect(composer.getByLabel('消息', { exact: true })).toHaveValue('');
+  const sent = page
+    .getByRole('list', { name: '频道消息' })
+    .getByRole('listitem')
+    .filter({ hasText: text });
+  await expect(sent).toHaveAttribute('data-pending', 'failed');
+  await sent.getByRole('button', { name: '重试', exact: true }).click();
+  release();
+  await expect(sent).not.toHaveAttribute('data-pending');
+  await expect(sent).toHaveCount(1);
   expect(keys).toHaveLength(2);
   expect(keys[0]).toBe(keys[1]);
   const after = await snapshot(context.request, hub.origin);
   expect(after.messages.items).toHaveLength(1);
+  await page.unroute('**/api/workspace?*');
   await register(page, 'Duplicate check', 'assistant');
   // Real server uniqueness conflict, not an intercepted/fabricated error response.
   await page.getByRole('tab', { name: '团队', exact: true }).click();
@@ -1378,6 +1393,86 @@ test('lost message response retries the same committed operation; real conflict 
   await form.getByLabel('智能体名称').fill('Duplicate check');
   await form.getByRole('button', { name: '添加智能体', exact: true }).click();
   await expect(form.getByRole('alert')).toContainText('已有同名的智能体');
+});
+
+test('a message shows at once and settles in place; one that didn’t go is sent again once', async ({
+  page,
+  context,
+  hub,
+}) => {
+  // Sending never waits on the server: the field is free at once, the
+  // message shows faded where it will stay and comes to full strength in
+  // the same place; one that didn't go stays, and its retry posts it once.
+  await signIn(page, hub);
+  const keys: string[] = [];
+  let release: () => void = () => {
+    throw new Error('First message not held');
+  };
+  const held = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  await page.route('**/api/teams/*/channels/*/messages', async (route) => {
+    if (route.request().method() !== 'POST') {
+      await route.fallback();
+      return;
+    }
+    const body: unknown = route.request().postDataJSON();
+    keys.push(z.object({ operationKey: z.string() }).parse(body).operationKey);
+    if (keys.length === 1) {
+      // The first is held until the test has seen it on its way.
+      await held;
+      await route.continue();
+    } else if (keys.length === 2) await route.abort('failed');
+    else await route.continue();
+  });
+  const composer = page.getByRole('form', { name: '给团队发消息' });
+  const field = composer.getByLabel('消息', { exact: true });
+  const messages = page.getByRole('list', { name: '频道消息' });
+  const item = (text: string) =>
+    messages.getByRole('listitem').filter({ hasText: text });
+  const strength = (text: string) =>
+    item(text)
+      .locator('.message-text')
+      .evaluate((el) => getComputedStyle(el).opacity);
+  await field.fill('On its way');
+  await composer.getByRole('button', { name: '发送消息' }).click();
+  // The field is empty and still has the focus; the message is there, faded.
+  await expect(field).toHaveValue('');
+  await expect(field).toBeFocused();
+  const first = item('On its way');
+  await expect(first).toHaveAttribute('data-pending', 'sending');
+  expect(await strength('On its way')).toBe('0.5');
+  const box = await first.boundingBox();
+  await first.evaluate((el) => {
+    el.dataset.probe = 'shown';
+  });
+  // What is typed meanwhile stays.
+  await field.fill('Written while it goes');
+  release();
+  await expect(first).not.toHaveAttribute('data-pending');
+  // The same element, in the same place, at full strength.
+  await expect(first).toHaveAttribute('data-probe', 'shown');
+  expect(await first.boundingBox()).toEqual(box);
+  await expect.poll(() => strength('On its way')).toBe('1');
+  await expect(field).toHaveValue('Written while it goes');
+  // The next one doesn't go: it stays where it was written and says so.
+  await composer.getByRole('button', { name: '发送消息' }).click();
+  const second = item('Written while it goes');
+  await expect(second).toHaveAttribute('data-pending', 'failed');
+  await expect(second).toContainText('没发出去');
+  await expect(field).toHaveValue('');
+  await second.getByRole('button', { name: '重试', exact: true }).click();
+  await expect(second).not.toHaveAttribute('data-pending');
+  await expect(second).toHaveCount(1);
+  // Retried under its own key, it was posted exactly once.
+  expect(keys).toHaveLength(3);
+  expect(keys[2]).toBe(keys[1]);
+  expect(keys[1]).not.toBe(keys[0]);
+  const after = await snapshot(context.request, hub.origin);
+  expect(after.messages.items.map((m) => m.body)).toEqual([
+    'On its way',
+    'Written while it goes',
+  ]);
 });
 
 test('human claim and request-review controls, plus leave/rejoin of known membership', async ({
@@ -1396,7 +1491,7 @@ test('human claim and request-review controls, plus leave/rejoin of known member
     criteria: ['Review requested with a recorded note'],
   });
   await task.getByRole('button', { name: '认领任务', exact: true }).click();
-  await task.getByRole('button', { name: '请求审核…', exact: true }).click();
+  await task.getByRole('button', { name: '请求审核', exact: true }).click();
   await task
     .getByLabel('接收人', { exact: true })
     .selectOption('agent:' + state.agents[0].id);
@@ -1493,9 +1588,6 @@ test('a heartbeat refresh never interrupts work; after a failure nothing submits
         ),
       );
     }
-    await expect(
-      page.getByRole('button', { name: '退出登录', exact: true }),
-    ).toBeDisabled();
     expect(posts).toBe(0);
   }
   // A: refreshing a confirmed snapshot changes nothing the person can do.
@@ -2105,7 +2197,9 @@ test('“New since” marks only what others wrote while this channel or topic w
     const composer = page.getByRole('form', { name: '给团队发消息' });
     await composer.getByLabel('消息', { exact: true }).fill('In the topic');
     await composer.getByRole('button', { name: '发送消息' }).click();
-    await expect(messages.getByText('In the topic')).toBeVisible();
+    await expect(
+      messages.getByRole('listitem').filter({ hasText: 'In the topic' }),
+    ).not.toHaveAttribute('data-pending');
     // Reloaded inside the topic, then widened to All: what Grace wrote
     // before is not new, only out of the topic.
     await page.reload();
@@ -2475,6 +2569,7 @@ test('one author’s run of messages is one group: the face and name once, each 
     await composer.getByLabel('消息', { exact: true }).fill(body);
     await composer.getByRole('button', { name: '发送消息' }).click();
     await expect(item(body)).toBeVisible();
+    await expect(item(body)).not.toHaveAttribute('data-pending');
   }
   // The days are separators, in order; yesterday's message is not grouped
   // with today's.

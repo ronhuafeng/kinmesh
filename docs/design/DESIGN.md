@@ -62,7 +62,7 @@ that isn't needed. Check a change against these before it ships.
 
 **Faces and presence**
 
-13. Icons over labels where the meaning is plain (`+`, inbox, sign out). Every avatar
+13. Icons over labels where the meaning is plain (`+`, inbox, search). Every avatar
     is round, people and agents alike; a person shows their Feishu picture, and an
     agent may have one.
 14. Presence reads the same for everyone: "● 在线 / ○ 离线" under a face, a dot
@@ -162,8 +162,8 @@ button text.
   below it; an agent's page, which has a side column, is at most 72rem. The board
   takes the whole width.
 - **Top bar**: the views' segmented control on the content's left edge (after the
-  sidebar icon when the sidebar is closed) and sign out at the right, both 38 px tall
-  and centred on one line, 12 px above and below.
+  sidebar icon when the sidebar is closed), 38 px tall, 12 px above and below; its
+  right end holds only "正在刷新…" when a refresh is slow.
 
 ## Elevation and material
 
@@ -212,7 +212,10 @@ fallback.
   stages: a grey track, the chosen segment a raised white (dark: grey) thumb that
   eases in. In the top bar it is the page's primary control: 38 px tall, 15 px labels.
 - **Buttons**: primary is filled green; secondary a grey fill; destructive red text
-  on the grey fill; a quiet one has no fill until hovered.
+  on the grey fill; a quiet one has no fill until hovered. Pressed, a control darkens
+  its fill (lighter in dark mode; a quiet one takes the hover fill) and gives to 0.97
+  of its size, a card as a whole; a row, a tab and a link in a sentence only darken.
+  iOS's grey tap box is never drawn. A disabled control fades; the pointer stays.
 - **Names**: a person is their Feishu name everywhere they appear (messages, the
   sidebar, Team, tasks, the Inbox, mentions, delivery lines), said once and never
   beside their handle. Until their next sign-in brings a name, the handle stands in.
@@ -254,7 +257,9 @@ fallback.
   you. Scrolling up reads older messages in place; there are no page buttons. A "_time_ 以来的新消息"
   line marks what others wrote while the channel or topic was open.
 - **Delivery line**: under a message that mentions an agent, and on a task handed to
-  one, one line per agent in plain words, the agent's name first: 会接手 (will pick this up),
+  one, one line per agent in plain words, the agent's name first. A new state
+  cross-fades over the old words; while the agent works a slow light passes over
+  them (no spinner): 会接手 (will pick this up),
   离线，还没人接手 (offline), 正在处理 (working on it), 正在等待 T3 中的批准 (linking the run in
   T3, where it is approved), "T3 重新连接后 _Ada_ 会继续", 已回复（用时 3 分钟） (linking the
   reply; no line when the reply is the very next message), 卡住了 (what was lost and the
@@ -276,11 +281,21 @@ fallback.
   confirm button with an upward arrow, drawn larger here, growing in once there is
   something to send. A channel or topic that opens is ready to
   type in (a touch keyboard waits to be asked for), and sending keeps the keyboard.
+  Sending never waits: the field empties at once, ready for the next message, and
+  the message appears at the end of the conversation, grouped as it will be and
+  faded until the server has it; then it comes to full strength in the same place.
+  Messages go in the order written. One that didn't go stays where it is, faded,
+  with a line like a delivery line: "没发出去", **重试** (sent again as the same
+  operation, so it is posted once whatever happened) and **删除**. One still
+  unconfirmed survives a reload or a change of channel, offering **重试**, unless
+  it arrives on its own. While sending is paused (see **Out of reach**) nothing
+  is sent and the text stays in the field.
   The placeholder never repeats the channel: "输入 @ 提及成员，⌘/Ctrl+Enter 发送"
   ("输入 @ 提及成员" on a phone).
 - **Channels**: the sidebar lists joined channels; a channel you left can be rejoined
-  by name. A channel where something waits on you ends in a decision-coloured dot, the
-  size of a presence dot and on its edge. The current channel holds its topics under
+  by name. A name too long for its row fades out at the row's edge and is said in full
+  on hover. A channel where something waits on you ends in a decision-coloured dot, the
+  size of a presence dot and on its edge; it fades out once nothing waits there. The current channel holds its topics under
   it like a tree on a hairline trunk: "全部", the ten most recently active, "更多话题"
   for the rest, and a `+` that starts one. The current place carries the
   quiet hover fill, never a card: the channel, or the topic when one is open (its
@@ -292,20 +307,34 @@ fallback.
 - **Board**: five stage columns, the stages of the lifecycle: 待开始 (proposed) →
   进行中 (working) → 审核中 (review) → 待验收 (human sign-off) → 已完成 (done). Rework
   stays in 进行中 (marked "已退回"); cancelled work goes to 已完成 (marked "已取消",
-  hidden until asked for). Columns are rounded panels of the grey canvas, one
-  equal height to the bottom of the view, each headed by a coloured dot and its name
+  hidden until asked for). Columns are rounded panels of the grey canvas sharing the width (the
+  board never scrolls sideways), one equal height down to the view's bottom gutter, each headed by a coloured dot and its name
   (the dot on the cards' text edge), no counts; 待验收 stands out with an orange edge
-  and a warm tint. A card's column is its status. A card is white and rounded: its
+  and a warm tint while it holds a card. A card's column is its status. A card is white and rounded: its
   title, then one line — what it asks of you — beside its owner/reviewer faces; a
   decision or rework is marked by an orange or red rule on its left. A new task
   starts from the dashed `+` card at the end of 待开始. Below 1024 px the stages are a
   segmented control.
-- **Task page** (new or existing, one layout): lifecycle bar; large title;
-  description; on the left the decision waiting on you (orange rule), "完成标准" as a
-  checklist, then history as one timeline with faces and run references inline; on the
-  right owner, reviewer, acceptor and the topic. A new task's acceptor is a picker of
-  the channel's people, starting at you; whoever it names decides.
-- **Decision**: the latest note that led here, one note field ("写下备注"), the actions as buttons; disabled with a reason only when offline.
+- **Task page** (new or existing, one layout): lifecycle bar — passed steps neutral
+  grey, the current one in its board column's colour, what is ahead a hairline; large
+  title; the description, unless it only repeats the title; on the left, in order of
+  importance, the decision waiting on you (orange rule) only when one does, then where
+  the task is now (its delivery lines, a reply linking to it in the chat, or
+  "任务已关闭。"), "完成标准" as a checklist, history as one timeline with faces, and
+  last one quiet row of what else you may do; on the right owner, reviewer, acceptor
+  and the topic. A new task's acceptor is a picker of the channel's people, starting at
+  you; whoever it names decides.
+- **Decision**: waits on you when you accept, review, claim, or own work sent back:
+  the latest note that led here, the note typed in place ("写下备注", one underline that
+  turns green) and the actions as buttons, the way forward green. The rest — 发布进展,
+  请求审核, 转交工作, 退回修改, then 取消任务, the only red — are quiet buttons with no
+  ellipsis; choosing one opens its note (and, to hand on, who to) in place of the row,
+  with **返回**. Disabled with a reason only when offline.
+- **History**: one sentence per event, each person by name, you included
+  ("_Ada_ 验收通过：“…”"). A linked T3 run is said once, its sentence the link to the
+  thread on the team's T3 (plain when there is none); its IDs never show. A read that
+  fails retries by itself, a little later each time, and says "暂时读不到记录。" only
+  once it keeps failing; it reads again whenever the task changes.
 - **Agent page**: status card with its actions, requests in this channel, About
   (every fact visible, picture to change, Team MCP credential), runs as a table at the
   bottom, one T3 reference per run (its thread; the run on hover). A run shows what the agent last reported apart from what T3 confirms on
@@ -352,9 +381,8 @@ fallback.
   A row leaves when its cause is resolved; there is nothing to dismiss. Expired
   deliveries are not listed; they stay on their message's delivery line.
 - **Settings**: your own tile on Team (on a phone, the 我 tab) opens your page; the
-  page has no face or name of its own. It holds
-  only **在所有设备上退出登录**, a quiet row in the danger colour (and **退出登录** on
-  a phone).
+  page has no face or name of its own. It holds only **退出登录** and
+  **在所有设备上退出登录**, quiet rows in the danger colour, on every device.
 - **Team name**: the organization's name as Feishu gives it, never typed here, heads
   the sidebar in bold — no logo or avatar — sharing its row with search
   and, beside the content, the control that closes the sidebar. One line; a name of more
@@ -367,8 +395,7 @@ fallback.
   this organization, took too long, or Feishu couldn't be reached — and the reason
   leaves the address, so a reload starts clean. Turning back at Feishu returns here
   silently.
-- **Sign out**: the power icon at the right of the top bar, a round button on the
-  segmented control's grey track and at its height, so the two read as one bar.
+- **Sign out**: on your own page (see **Settings**); nothing in the top bar.
 - **Opening the workspace**: quiet. A load that is quick shows nothing; one that takes
   more than 0.6 s fades in the brand, "正在打开工作区…" and a skeleton board
   (at once without motion). Only a failure says "工作区打不开" and offers
@@ -403,7 +430,8 @@ fallback.
   — with nothing to press:
   it comes back by itself.
 - **Uncertain send**: when a request's outcome is unknown, the form keeps exactly what
-  was sent and offers **重试同一操作**; nothing is resent on its own.
+  was sent and offers **重试同一操作**; nothing is resent on its own. A message
+  instead stays in the conversation with **重试** (see **Composer**).
 
 ## Phone
 
@@ -437,8 +465,7 @@ sidebar sits beside a content column of at least 360 px):
   is; fields are 16 px, so nothing zooms.
 - **A page** (agent, task, a worker you run) opens under its own bar: back, then what it
   is — the agent's name, or a task's channel since its title leads the page.
-- **我** ends with 退出登录, in the danger colour; the header's power icon is for wider
-  screens.
+- **我** is your page (see **Settings**), ending with 退出登录 in the danger colour.
 
 ## Tablet
 
@@ -447,16 +474,18 @@ open from there). On a touch screen (a coarse pointer, whatever the width) every
 finger: sidebar rows, topics and the board's stage pills grow to 44 px; the header's
 tabs and icons, the new-channel `+`, the sidebar icon and the magnifier keep their drawn
 size and take 44 px of taps around it. A mouse keeps the compact sizes. The edges are
-narrow so the content has the screen: 0.75 rem gutters beside the content, 0.5 rem inside
+narrow so the content has the screen: 0.75 rem gutters beside and below the content, 0.5 rem inside
 the sidebar, a header no taller than its tabs need. Touch has no Esc, so a page leads back
 from a bar at its top-left; the sidebar already says where you are, so the bar holds
-only the way back. Held upright (below 1024 px) the board shows one stage at a time
+only the way back. A task has no bar: it sits on the board, and the 看板 tab lit above
+it leads back. Held upright (below 1024 px) the board shows one stage at a time
 and a page replaces the view. Held wide, an open task sits beside the board — one
 stage, its card marked by a green edge — instead of replacing it.
 
 ## Motion
 
-Short and purposeful: 150 ms (`--dur-fast`) for hover, press and selection; 200 ms
+Short and purposeful: 100 ms (`--dur-press`) for a press; 150 ms (`--dur-fast`) for
+hover and selection; 200 ms
 (`--dur`) for what moves or appears — the segmented thumb, the composer's focus,
 popovers, a new message, a card lifting, a page fading in where the view was — up to
 320 ms for cards travelling between status columns and checklists drawing their ticks
@@ -487,7 +516,7 @@ guarantee stays; only its wording changes:
   agent's runs, a history line), small and in mono, after the sentence.
 - The machinery is silent when healthy: no heartbeat, no "connected" badge, no polling
   interval. Show state only when it needs the person.
-- History and status are sentences ("你验收通过：“…”"), never API verbs.
+- History and status are sentences ("_Ada_ 验收通过：“…”"), never API verbs.
 - An error never shows a status code. A refusal is one sentence where the person can
   act on it ("这个名称已被占用" under the field); what they can't act on isn't
   said.

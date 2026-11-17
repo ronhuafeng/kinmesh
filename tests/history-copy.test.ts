@@ -84,25 +84,29 @@ await test('every task action reads as a plain sentence in history', async () =>
         (e) => historySentence(e, data),
       );
     const sentences = [...(await lines(a.id)), ...(await lines(b.id))];
+    // You are your name in the record too, as everyone else reads it.
+    const myName = data.human.name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const mine = (rest: string) => new RegExp(`^${myName} ?${rest}$`);
     const expected = [
-      /^你创建了任务$/,
+      mine('创建了任务'),
       /^Developer 认领了任务$/,
       /^Developer 发布了进展：“Halfway”$/,
       /^Developer 关联了一次 T3 运行$/,
       /^Developer 请 Reviewer 审核：“Ready”$/,
       /^Reviewer 审核通过：“Looks right”$/,
-      /^你验收通过：“Ship it”$/,
-      /^你创建了任务$/,
-      /^你接手了工作：“I will take this”$/,
-      /^你请 Reviewer 审核：“Please check”$/,
+      mine('验收通过：“Ship it”'),
+      mine('创建了任务'),
+      mine('接手了工作：“I will take this”'),
+      mine('请 Reviewer 审核：“Please check”'),
       /^Reviewer 要求修改：“Missing tests”$/,
-      /^你退回了任务：“Add tests”$/,
-      /^你取消了任务：“Superseded”$/,
+      mine('退回了任务：“Add tests”'),
+      mine('取消了任务：“Superseded”'),
     ];
     assert.equal(sentences.length, expected.length, sentences.join('\n'));
     sentences.forEach((line, i) => {
       assert.match(line, expected[i] ?? /^$/);
       assert.doesNotMatch(line, /request-review|link-execution|version|v\d/);
+      assert.doesNotMatch(line, /^你/);
     });
   } finally {
     await f.dispose();
