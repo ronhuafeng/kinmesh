@@ -592,28 +592,36 @@ export function notificationRepository(d: Database) {
       }
       return null;
     },
-    /** The browsers a person turned notifications on in, whose session is still within its lifetime. */
-    async browsers(humanId: string) {
-      return await q()
-        .select({
-          endpoint: s.pushSubscriptions.endpoint,
-          p256dh: s.pushSubscriptions.p256dh,
-          auth: s.pushSubscriptions.auth,
-        })
-        .from(s.pushSubscriptions)
-        .innerJoin(
-          s.sessions,
-          eq(s.sessions.tokenHash, s.pushSubscriptions.sessionHash),
-        )
-        .where(
-          and(
-            eq(s.pushSubscriptions.humanId, humanId),
-            isNull(s.sessions.revokedAt),
-            gt(s.sessions.createdAt, sql`${dbNow} - ${SESSION_LIFETIME_MS}`),
-          ),
-        );
+    /** One of a person's browsers that receives notifications now, if it is. */
+    async browser(humanId: HumanId, endpoint: string) {
+      return (
+        (await browsersOf(humanId)).find((b) => b.endpoint === endpoint) ?? null
+      );
     },
+    /** The browsers a person turned notifications on in, whose session is still within its lifetime. */
+    browsers: (humanId: string) => browsersOf(humanId),
   };
+  /** The browsers a person turned notifications on in, whose session is still within its lifetime. */
+  async function browsersOf(humanId: string) {
+    return await q()
+      .select({
+        endpoint: s.pushSubscriptions.endpoint,
+        p256dh: s.pushSubscriptions.p256dh,
+        auth: s.pushSubscriptions.auth,
+      })
+      .from(s.pushSubscriptions)
+      .innerJoin(
+        s.sessions,
+        eq(s.sessions.tokenHash, s.pushSubscriptions.sessionHash),
+      )
+      .where(
+        and(
+          eq(s.pushSubscriptions.humanId, humanId),
+          isNull(s.sessions.revokedAt),
+          gt(s.sessions.createdAt, sql`${dbNow} - ${SESSION_LIFETIME_MS}`),
+        ),
+      );
+  }
   /** A person or agent by the name the workspace shows. */
   async function nameOf(kind: 'human' | 'agent', id: string) {
     if (kind === 'human') {

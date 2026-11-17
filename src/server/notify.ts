@@ -10,7 +10,7 @@ import {
   PauseInput,
   PushPayload,
   PushSubscriptionInput,
-  Unsubscribe,
+  PushEndpoint,
 } from '../domain/notify.js';
 import type { Store } from '../persistence/store.js';
 import { pushKeys } from '../inbox/managed.js';
@@ -118,14 +118,14 @@ export function registerNotifications(
     await store.notifications.renew(
       humanId,
       session,
-      Unsubscribe.parse(request.body).endpoint,
+      PushEndpoint.parse(request.body).endpoint,
     );
     return reply.code(204).send();
   });
   app.post('/api/push/unsubscribe', async (request, reply) => {
     await store.notifications.unsubscribe(
       human(request),
-      Unsubscribe.parse(request.body).endpoint,
+      PushEndpoint.parse(request.body).endpoint,
     );
     return reply.code(204).send();
   });
@@ -169,40 +169,79 @@ export function registerNotifications(
     return reply.code(204).send();
   });
 
+  /**
+   * Pushes to one browser: `sent`, `gone` (its push service no longer knows
+   * it, so it is forgotten) or `failed` (the push service could not be
+   * reached or refused; only its status is logged, the endpoint being a
+   * credential).
+   */
+  async function push(
+    browser: { endpoint: string; p256dh: string; auth: string },
+    payload: string,
+  ) {
+    try {
+      await webpush.sendNotification(
+        {
+          endpoint: browser.endpoint,
+          keys: { p256dh: browser.p256dh, auth: browser.auth },
+        },
+        payload,
+        { vapidDetails, TTL: 86_400, urgency: 'high', timeout: 10_000 },
+      );
+      return 'sent';
+    } catch (error) {
+      if (
+        error instanceof webpush.WebPushError &&
+        (error.statusCode === 404 || error.statusCode === 410)
+      ) {
+        await store.notifications.gone(browser.endpoint);
+        return 'gone';
+      }
+      app.log.error(
+        {
+          status:
+            error instanceof webpush.WebPushError ? error.statusCode : null,
+        },
+        'push_failed',
+      );
+      return 'failed';
+    }
+  }
   async function deliver(n: Due) {
     const about = await store.notifications.describe(n);
     if (about === null) return;
     const browsers = await store.notifications.browsers(n.humanId);
     if (browsers.length === 0) return;
     const payload = JSON.stringify(payloadOf(n, about));
-    for (const browser of browsers)
-      try {
-        await webpush.sendNotification(
-          {
-            endpoint: browser.endpoint,
-            keys: { p256dh: browser.p256dh, auth: browser.auth },
-          },
-          payload,
-          { vapidDetails, TTL: 86_400, urgency: 'high', timeout: 10_000 },
-        );
-      } catch (error) {
-        // A browser its push service no longer knows is forgotten.
-        if (
-          error instanceof webpush.WebPushError &&
-          (error.statusCode === 404 || error.statusCode === 410)
-        )
-          await store.notifications.gone(browser.endpoint);
-        // The endpoint is a credential: only the status is recorded.
-        else
-          app.log.error(
-            {
-              status:
-                error instanceof webpush.WebPushError ? error.statusCode : null,
-            },
-            'push_failed',
-          );
-      }
+    for (const browser of browsers) await push(browser, payload);
   }
+  // A person sends this browser a notification, to see that it gets them:
+  // 410 when this browser no longer does, 502 when its push service
+  // can't be reached.
+  app.post('/api/push/test', async (request, reply) => {
+    const humanId = human(request);
+    const { endpoint } = PushEndpoint.parse(request.body);
+    const browser = await store.notifications.browser(humanId, endpoint);
+    if (browser === null) return reply.code(410).send();
+    const outcome = await push(
+      browser,
+      JSON.stringify(
+        PushPayload.parse({
+          title: 'Kinmesh',
+          body: '这台设备能收到通知。',
+          url: '/?settings',
+          tag: 'test',
+          kind: 'test',
+          channelId: null,
+          taskId: null,
+          deliveryId: null,
+        }),
+      ),
+    );
+    return reply
+      .code(outcome === 'sent' ? 204 : outcome === 'gone' ? 410 : 502)
+      .send();
+  });
   // What is due goes out within a second, each notification once.
   let sending = false;
   const send = async () => {

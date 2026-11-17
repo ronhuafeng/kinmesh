@@ -227,13 +227,14 @@ Each person chooses a level for themselves: `all`, `mine` (the default) or `off`
 
 A browser is notified once a person turns notifications on in it, held by the session they did that in: signing out of that session, or everywhere, ends it, and it lasts no longer than that session could (seven days from its sign-in, [security](security.md#sign-in-and-sessions)). Opening the workspace hands a browser already notifying that person to the session in use. A push carries a title and one line (who wrote or what changed, and where), the address of the place, and what it is about.
 
-| Method/path                  | Input / policy                                                                                       |
-| ---------------------------- | ---------------------------------------------------------------------------------------------------- |
-| `PUT /api/me/notify`         | `{level}`; the person's own; 204                                                                     |
-| `GET /api/push/key`          | The hub's Web Push (VAPID) public key                                                                |
-| `PUT /api/push/subscription` | The browser's `PushSubscription.toJSON()`, an `https` endpoint; this browser now notifies the caller |
-| `POST /api/push/renew`       | `{endpoint}`; held by this session from now, only if it already notifies the caller; 204             |
-| `POST /api/push/unsubscribe` | `{endpoint}`; this browser no longer notifies the caller; 204                                        |
+| Method/path                  | Input / policy                                                                                                                                 |
+| ---------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------- |
+| `PUT /api/me/notify`         | `{level}`; the person's own; 204                                                                                                               |
+| `GET /api/push/key`          | The hub's Web Push (VAPID) public key                                                                                                          |
+| `PUT /api/push/subscription` | The browser's `PushSubscription.toJSON()`, an `https` endpoint; this browser now notifies the caller                                           |
+| `POST /api/push/renew`       | `{endpoint}`; held by this session from now, only if it already notifies the caller; 204                                                       |
+| `POST /api/push/unsubscribe` | `{endpoint}`; this browser no longer notifies the caller; 204                                                                                  |
+| `POST /api/push/test`        | `{endpoint}`; one notification to that browser, if it notifies the caller now (410 otherwise); 502 when its push service can't be reached; 204 |
 
 A person may also **mute** a channel they are joined to, or an agent of the team: a muted channel's activity, or a muted agent's messages, then neither notify them nor make channels unread for them. Muting never silences what waits on them (`decide`, `task`, `blocked`); only level `off` or a **pause** does. A pause lasts until a time at most a week ahead, and ends by itself; what falls due while it lasts is dropped, not sent later. The snapshot carries what the person muted (`muted.channels`, `muted.agents`) and `pausedUntil` (null when not paused).
 
