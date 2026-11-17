@@ -151,13 +151,21 @@ await test('MOCK: concurrent pending calls and explicit permission denial cannot
   const f = await backendFixture();
   try {
     let release: ((value: unknown) => void) | undefined;
+    let dispatched: () => void = () => undefined;
+    const onTheWire = new Promise<void>((resolve) => {
+      dispatched = resolve;
+    });
     f.wire.handler = (name) =>
       name === 't3_thread_launch'
         ? new Promise((resolve) => {
             release = resolve;
+            dispatched();
           })
         : Promise.resolve(envelope(f.wire.values[name]));
     const first = f.backend.launch(launch, intent);
+    // The second launch comes while the first is on the wire, not before it
+    // got there (which would leave nothing to release).
+    await onTheWire;
     const second = await f.backend.launch(launch, intent);
     assert.equal(second.kind, 'uncertain');
     release?.(envelope(f.wire.values.t3_thread_launch));
