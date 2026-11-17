@@ -27,6 +27,9 @@ USER node
 ENV KINMESH_HOST=0.0.0.0 \
     KINMESH_PORT=3000 \
     KINMESH_STATE=/data
+# The commit it was built from, reported by /health; CI sets it.
+ARG KINMESH_VERSION=
+ENV KINMESH_VERSION=$KINMESH_VERSION
 VOLUME ["/data"]
 EXPOSE 3000
 # Ready, not merely alive: the database answers and any worker is connected.

@@ -178,8 +178,10 @@ export async function createApp(
     }
   });
   // Liveness: the process answers. Readiness (below): it can do its work.
+  // Both name the commit the hub runs, so a deployment can be checked.
+  const version = config.version;
   app.get('/health/live', (_request, reply) =>
-    reply.send({ status: 'ok', component: 'kinmesh-team-hub' }),
+    reply.send({ status: 'ok', component: 'kinmesh-team-hub', version }),
   );
   // Ready: the database answers (it opens only fully migrated) and the
   // supervised Inbox worker, when there is one, is connected.
@@ -188,6 +190,7 @@ export async function createApp(
     return reply.code(ready ? 200 : 503).send({
       status: ready ? 'ok' : 'unavailable',
       component: 'kinmesh-team-hub',
+      version,
     });
   });
   registerLogin(

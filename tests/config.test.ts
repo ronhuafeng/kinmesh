@@ -30,6 +30,13 @@ await test('configuration rejects absent secrets, invalid ports and non-loopback
     'example.com',
   );
   assert.equal(loadConfig(env).feishu.standIn, null);
+  // The commit the hub was built from: a full commit id, or unknown.
+  const commit = 'a'.repeat(40);
+  assert.equal(loadConfig(env).version, null);
+  assert.equal(loadConfig({ ...env, KINMESH_VERSION: '' }).version, null);
+  assert.equal(loadConfig({ ...env, KINMESH_VERSION: commit }).version, commit);
+  for (const version of ['abc1234', 'latest', 'A'.repeat(40)])
+    assert.throws(() => loadConfig({ ...env, KINMESH_VERSION: version }));
   // The space's provisioner and its token come together, or not at all.
   assert.equal(loadConfig(env).space, null);
   const space = {

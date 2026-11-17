@@ -35,9 +35,13 @@ jobs:
         env:
           TOKEN: ${{ secrets.GITHUB_TOKEN }}
           IMAGE: ghcr.io/${{ github.repository_owner }}/${{ matrix.image.name }}:${{ github.sha }}-${{ matrix.arch }}
+          NAME: ${{ matrix.image.name }}
         run: |
           echo "$TOKEN" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
-          docker build \
+          # The hub reports the commit it was built from on /health.
+          args=()
+          if [ "$NAME" = kinmesh ]; then args=(--build-arg "KINMESH_VERSION=$GITHUB_SHA"); fi
+          docker build "${args[@]}" \
             --label org.opencontainers.image.source=https://github.com/${{ github.repository }} \
             --label org.opencontainers.image.revision=${{ github.sha }} \
             -t "$IMAGE" "${{ matrix.image.context }}"

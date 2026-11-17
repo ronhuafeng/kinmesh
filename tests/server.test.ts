@@ -194,6 +194,22 @@ await test('service restart preserves the person, the team and the session with 
     await f.cleanup();
   }
 });
+await test('health names the commit the hub runs and nothing else', async () => {
+  const f = await fixture();
+  const version = 'c'.repeat(40);
+  const app = await hub(f, { ...f.config, version });
+  try {
+    for (const url of ['/health', '/health/live'])
+      assert.deepEqual((await app.inject({ url })).json(), {
+        status: 'ok',
+        component: 'kinmesh-team-hub',
+        version,
+      });
+  } finally {
+    await app.close();
+    await f.cleanup();
+  }
+});
 await test('health becomes unavailable when persistence cannot be queried', async () => {
   const f = await fixture();
   const store = await f.open();
