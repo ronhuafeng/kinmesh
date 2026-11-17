@@ -642,19 +642,19 @@ test('a mention says what happened to it and leads to the agent’s reply, said 
   if (!ada || !state.channel) throw new Error('Local fixture unavailable');
   await page.getByRole('tab', { name: '聊天', exact: true }).click();
   const composer = page.getByRole('form', { name: '给团队发消息' });
-  const say = async (text: string) => {
-    await composer.getByLabel('消息', { exact: true }).fill(text);
-    await composer.getByRole('button', { name: '发送消息' }).click();
-    await expect(
-      page.getByRole('list', { name: '频道消息' }).getByText(text),
-    ).toBeVisible();
-  };
   const item = (text: string) =>
     page
       .getByRole('list', { name: '频道消息' })
       .getByRole('listitem')
       .filter({ hasText: text })
       .first();
+  // Said once the hub has it: it is in the workspace, no longer on its way.
+  const say = async (text: string) => {
+    await composer.getByLabel('消息', { exact: true }).fill(text);
+    await composer.getByRole('button', { name: '发送消息' }).click();
+    await expect(item(text)).toBeVisible();
+    await expect(item(text)).not.toHaveAttribute('data-pending');
+  };
   await say('@Ada please check the release notes');
   const asked = item('please check the release notes');
   const responses = asked.getByRole('list', { name: '智能体响应' });
