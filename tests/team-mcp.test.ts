@@ -42,6 +42,7 @@ import {
 } from '../src/domain/communication.js';
 import { teamConfig } from '../src/team-mcp/config.js';
 import { TeamId } from '../src/domain/contracts.js';
+import { Attachment } from '../src/domain/attachments.js';
 import { outcome } from '../src/team-mcp/tools.js';
 import { forkWorker, race } from './process-helpers.js';
 
@@ -54,7 +55,7 @@ async function fixture() {
   });
   const port = await freePort();
   const endpoint = `http://127.0.0.1:${String(port)}/mcp`;
-  let process = await startTeam(f.dbPath, port);
+  let process = await startTeam(f.dbPath, port, f.directory);
   const connections: Awaited<ReturnType<typeof connectTeam>>[] = [];
   return {
     ...f,
@@ -68,7 +69,7 @@ async function fixture() {
     },
     async restart() {
       await stop(process);
-      process = await startTeam(f.dbPath, port);
+      process = await startTeam(f.dbPath, port, f.directory);
     },
     async cleanup() {
       for (const c of connections) await c.client.close();
@@ -922,4 +923,60 @@ await test('Team endpoint plaintext allowlist matches IPv4 listener while HTTPS 
     TeamEndpoint.safeParse('https://team.example.com/mcp').success,
     true,
   );
+});
+
+await test('an agent without a space reads a joined channel’s attached file through team_attachment_read, and nothing else', async () => {
+  const f = await fixture();
+  try {
+    const upload = async (body: string, name: string) => {
+      const uploaded = await f.app.inject({
+        method: 'POST',
+        url: `${f.channelPath}/attachments?operationKey=${key()}&name=${name}`,
+        cookies: f.cookies,
+        headers: { 'content-type': 'text/plain' },
+        payload: body,
+      });
+      assert.equal(uploaded.statusCode, 201);
+      return Attachment.parse(uploaded.json<unknown>());
+    };
+    const notes = await upload('第一行\nsecond line\n', 'notes.txt');
+    const unsent = await upload('not sent yet', 'draft.txt');
+    const posted = await f.app.inject({
+      method: 'POST',
+      url: f.channelPath + '/messages',
+      cookies: f.cookies,
+      payload: {
+        ...postInput({ body: 'See the notes' }),
+        attachments: [notes.id],
+      },
+    });
+    assert.equal(posted.statusCode, 201);
+    const { client } = await f.connect();
+    const Read = z.strictObject({
+      attachment: Attachment,
+      encoding: z.enum(['utf8', 'base64']),
+      content: z.string(),
+    });
+    const read = await call(
+      client,
+      'team_attachment_read',
+      { channelId: f.channelId, attachmentId: notes.id },
+      Read,
+    );
+    assert.ok(read.ok);
+    assert.deepEqual(
+      { encoding: read.data.encoding, content: read.data.content },
+      { encoding: 'utf8', content: '第一行\nsecond line\n' },
+    );
+    // Someone's upload no message took is theirs alone.
+    const hidden = await call(
+      client,
+      'team_attachment_read',
+      { channelId: f.channelId, attachmentId: unsent.id },
+      Read,
+    );
+    assert.ok(!hidden.ok && hidden.error.code === 'not_found');
+  } finally {
+    await f.cleanup();
+  }
 });

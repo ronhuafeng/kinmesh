@@ -78,7 +78,7 @@ The hub's worker grant ends 90 days after the hub last renewed it, and the hub r
 
 ## The space
 
-- The provisioner's token (`KINMESH_SPACE_TOKEN_FILE`) is a bearer credential: the deployment keeps it secret, readable only by the hub, and the provisioner compares it in constant time. It allows only making a folder in the space a T3 project, never reading, writing or removing files or projects.
+- The provisioner's token (`KINMESH_SPACE_TOKEN_FILE`) is a bearer credential: the deployment keeps it secret, readable only by the hub, and the provisioner compares it in constant time. It allows only making a folder in the space a T3 project and placing or removing a message's files in that folder's `attachments/`, never reading files, or writing or removing anything else.
 - The worker reads it for each request and sends it only to `KINMESH_SPACE_ENDPOINT`, refusing redirects. Plain HTTP is for a private network the deployment controls, such as a cluster network whose policy admits only the hub to the provisioner.
 - The provisioner takes a folder name, never a path: lowercase letters, digits and `-`, inside the space.
 

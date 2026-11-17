@@ -51,3 +51,60 @@ export function spaceProvisioner(space: SpaceProvisioner): Provisioner {
     return provisioned.data.workspaceRoot;
   };
 }
+/**
+ * Places a message's file in a channel's folder (its `attachments/`) and
+ * answers where, on the T3 machine. Placing the same file again is safe.
+ */
+export type FilePlacer = (
+  directory: string,
+  file: { id: string; name: string },
+  bytes: Buffer,
+  sha256: string,
+  signal: AbortSignal,
+) => Promise<string>;
+const Placed = z.object({ path: z.string().min(1).max(4096) });
+/** The provisioner's `PUT /projects/:directory/attachments/:id`. */
+export function spacePlacer(space: SpaceProvisioner): FilePlacer {
+  return async (directory, file, bytes, sha256, signal) => {
+    let token = '';
+    try {
+      token = readFileSync(space.tokenFile, 'utf8').trim();
+    } catch {
+      // Not there yet: the deployment writes it.
+    }
+    if (token === '') throw new ExecutionFailure('unavailable');
+    let response: Response;
+    try {
+      response = await fetch(
+        new URL(
+          `/projects/${encodeURIComponent(directory)}/attachments/${encodeURIComponent(file.id)}`,
+          space.endpoint,
+        ),
+        {
+          method: 'PUT',
+          headers: {
+            authorization: `Bearer ${token}`,
+            'content-type': 'application/octet-stream',
+            'x-kinmesh-name': encodeURIComponent(file.name),
+            'x-kinmesh-sha256': sha256,
+          },
+          body: new Uint8Array(bytes),
+          redirect: 'error',
+          signal: AbortSignal.any([signal, AbortSignal.timeout(60_000)]),
+        },
+      );
+    } catch {
+      throw new ExecutionFailure(signal.aborted ? 'cancelled' : 'unavailable');
+    }
+    if (response.status === 401 || response.status === 403)
+      throw new ExecutionFailure('permission');
+    // Refused (another file under its ID, a name or folder it won't take):
+    // placing again won't change it.
+    if (response.status >= 400 && response.status < 500)
+      throw new ExecutionFailure('incompatible');
+    if (!response.ok) throw new ExecutionFailure('unavailable');
+    const placed = Placed.safeParse(await response.json().catch(() => null));
+    if (!placed.success) throw new ExecutionFailure('incompatible');
+    return placed.data.path;
+  };
+}

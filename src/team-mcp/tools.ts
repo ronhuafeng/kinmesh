@@ -24,7 +24,25 @@ import {
 } from '../domain/tasks.js';
 import { resolvePrincipal } from '../server/principals.js';
 import type { Store } from '../persistence/store.js';
+import type { AttachmentBytes } from '../persistence/attachment-bytes.js';
+import { Attachment, AttachmentId } from '../domain/attachments.js';
 
+/** The most `team_attachment_read` returns of a file. */
+const ATTACHMENT_READ_MOST = 1024 * 1024;
+const AttachmentContent = z.strictObject({
+  attachment: Attachment,
+  encoding: z.enum(['utf8', 'base64']),
+  content: z.string(),
+});
+/** The bytes as text, when they are UTF-8 without NUL; else null. */
+function asText(bytes: Buffer) {
+  try {
+    const text = new TextDecoder('utf-8', { fatal: true }).decode(bytes);
+    return text.includes('\u0000') ? null : text;
+  } catch {
+    return null;
+  }
+}
 export const Failure = z.strictObject({
   code: z.enum([
     'invalid_input',
@@ -77,7 +95,11 @@ export async function agentPrincipal(
   return principal;
 }
 /** One stateless SDK instance per HTTP request. Credentials never come from tool arguments. */
-export function teamServer(store: Store, authorization: string) {
+export function teamServer(
+  store: Store,
+  authorization: string,
+  bytes: AttachmentBytes,
+) {
   const server = new McpServer({ name: 'kinmesh-team', version: '0.1.0' });
   const channel = z.strictObject({ channelId: ChannelId });
   const task = channel.extend({ taskId: TaskId });
@@ -186,6 +208,30 @@ export function teamServer(store: Store, authorization: string) {
     Message,
     true,
     (p, a) => c.message(p, p.teamId, a.channelId, a.messageId),
+  );
+  register(
+    'team_attachment_read',
+    `Read a file attached to a message in a joined channel, up to ${String(ATTACHMENT_READ_MOST / 1024 / 1024)} MB: text as UTF-8, anything else as base64.`,
+    channel.extend({ attachmentId: AttachmentId }),
+    AttachmentContent,
+    true,
+    async (p, a) => {
+      const { attachment, sha256 } = await c.attachment(
+        p,
+        p.teamId,
+        a.channelId,
+        a.attachmentId,
+      );
+      if (attachment.size > ATTACHMENT_READ_MOST)
+        throw new DomainError('too-large');
+      const content = await bytes.get(sha256);
+      const text = asText(content);
+      return {
+        attachment,
+        encoding: text === null ? 'base64' : 'utf8',
+        content: text ?? content.toString('base64'),
+      };
+    },
   );
   register(
     'team_messages_send',

@@ -2,6 +2,8 @@ import { z } from 'zod';
 import { DatabaseUrl } from '../persistence/database.js';
 const Environment = z.object({
   KINMESH_DATABASE_URL: DatabaseUrl,
+  /** The hub's state directory, where the bytes of attached files are. */
+  KINMESH_STATE: z.string().min(1).default('.store'),
   KINMESH_TEAM_MCP_PORT: z.coerce
     .number()
     .int()
@@ -27,6 +29,7 @@ export function teamConfig(env: NodeJS.ProcessEnv) {
     throw new Error('Invalid Team MCP origin');
   return {
     database: data.KINMESH_DATABASE_URL,
+    state: data.KINMESH_STATE,
     port: data.KINMESH_TEAM_MCP_PORT,
     origin: origin.origin,
     hosts: [new URL(local).host, origin.host],

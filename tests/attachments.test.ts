@@ -10,7 +10,7 @@ import {
   postInput,
 } from './communication-helpers.js';
 import { signInAs } from './feishu.js';
-import { directoryBytes } from '../src/server/attachments.js';
+import { directoryBytes } from '../src/persistence/attachment-bytes.js';
 import { rawDatabase } from './raw.js';
 
 /** A 3 × 2 PNG: the signature and the header chunk are all sniffing reads. */

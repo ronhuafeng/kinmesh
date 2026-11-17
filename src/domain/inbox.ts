@@ -3,6 +3,11 @@ import { AgentId, ChannelId, TeamId, TaskId } from './contracts.js';
 import type { Scope } from './agents.js';
 import { MessageId, TopicId, type OutboxFact } from './communication.js';
 import { Launch, Reference, type Intent } from './execution.js';
+import {
+  ATTACHMENTS_PER_MESSAGE,
+  Attachment,
+  fileSize,
+} from './attachments.js';
 import { actingMember } from './tasks.js';
 
 export const INBOX_LEASE_MS = 180_000;
@@ -150,7 +155,17 @@ export const SourceContext = z.strictObject({
   author: z.string().min(1).max(160),
   topic: z.string().max(160).nullable(),
   message: z
-    .strictObject({ body: z.string().max(4000), truncated: z.boolean() })
+    .strictObject({
+      body: z.string().max(4000),
+      truncated: z.boolean(),
+      /** The message's files; their content never goes in a turn. */
+      attachments: z
+        .array(
+          Attachment.pick({ id: true, name: true, type: true, size: true }),
+        )
+        .max(ATTACHMENTS_PER_MESSAGE)
+        .default([]),
+    })
     .nullable(),
   task: z
     .strictObject({
@@ -224,6 +239,28 @@ const text = (value: string) =>
     .replaceAll('>', '&gt;');
 const attribute = (value: string) => text(value).replaceAll('"', '&quot;');
 /**
+ * A message's files, never their content: where each is in the working
+ * directory, or, without one Kinmesh reaches, how to read it.
+ */
+function files(
+  attached: { id: string; name: string; type: string; size: number }[],
+  channelId: string,
+  placed: Record<string, string> | null,
+) {
+  if (attached.length === 0) return '';
+  const about = (f: (typeof attached)[number]) =>
+    `${f.type}, ${fileSize(f.size)}`;
+  return placed === null
+    ? `\nAttached files (read one with team_attachment_read, channelId ${channelId}):\n` +
+        attached
+          .map((f) => `- ${text(f.name)} (${about(f)}, attachmentId ${f.id})`)
+          .join('\n')
+    : '\nAttached files, in your working directory:\n' +
+        attached
+          .map((f) => `- ${text(placed[f.id] ?? f.name)} (${about(f)})`)
+          .join('\n');
+}
+/**
  * What the agent is told, as plain marked-up text. The first turn of a
  * conversation says who the agent is, where (the channel, and the topic the
  * conversation belongs to) and the rules; every turn carries the event
@@ -234,6 +271,11 @@ export function wakePrompt(
   context: SourceContext,
   agentName: string,
   first: boolean,
+  /**
+   * Where each file was placed, relative to the working directory; null
+   * when the thread has no folder Kinmesh reaches (no space).
+   */
+  placed: Record<string, string> | null = null,
 ) {
   const shortened = (truncated: boolean) => (truncated ? '\n(shortened)' : '');
   const task = context.task;
@@ -254,6 +296,7 @@ export function wakePrompt(
       `<message from="${attribute(context.author)}">\n` +
         text(context.message.body) +
         shortened(context.message.truncated) +
+        files(context.message.attachments, context.channelId, placed) +
         '\n</message>',
   ].filter((b) => typeof b === 'string');
   if (!first) return blocks.join('\n');

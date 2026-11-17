@@ -116,3 +116,16 @@ export function sniff(b: Uint8Array): {
 }
 /** What stands for a message with no text: its files' names. */
 export const filesText = (names: string[]) => names.join('、');
+/** 2.4 MB, 380 KB, 12 B: one decimal under ten, none above. */
+export function fileSize(bytes: number) {
+  const units = ['B', 'KB', 'MB', 'GB'];
+  let value = bytes;
+  let unit = 0;
+  while (value >= 1024 && unit < units.length - 1) {
+    value /= 1024;
+    unit += 1;
+  }
+  const shown =
+    unit === 0 || value >= 10 ? Math.round(value) : value.toFixed(1);
+  return `${String(shown)} ${units[unit] ?? 'B'}`;
+}
