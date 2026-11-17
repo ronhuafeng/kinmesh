@@ -38,7 +38,7 @@ const Environment = z.object({
    * Requests per minute for each signed-in session, and for each address
    * among everyone else: a guard against floods, at human pace.
    */
-  KINMESH_RATE_LIMIT: z.coerce.number().int().min(1).max(100_000).default(60),
+  KINMESH_RATE_LIMIT: z.coerce.number().int().min(1).max(100_000).default(300),
   /** The Feishu app people sign in through. */
   FEISHU_APP_ID: z.string().trim().min(1),
   FEISHU_APP_SECRET: z.string().trim().min(1),
