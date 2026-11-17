@@ -116,15 +116,28 @@ export const memberships = pgTable(
     teamId: text('team_id')
       .notNull()
       .references(() => teams.id, { onDelete: 'cascade' }),
-    /** What notifies this person: everything, what concerns them, or nothing. */
-    notify: text('notify').notNull().default('mine'),
+    /** The kinds of notification this person wants; none: off. */
+    notifyKinds: text('notify_kinds')
+      .array()
+      .notNull()
+      .default(sql`'{reply,blocked,decide,task,mention}'::text[]`),
     /** Nothing notifies this person until then. */
     pausedUntil: millis('paused_until'),
+    /**
+     * How long a notification may stay unread before it is also sent to the
+     * person in Feishu; null: never.
+     */
+    forwardAfterMs: millis('forward_after_ms'),
+    /** The hours notifications may reach them (NotifyHours, JSON); null: any. */
+    notifyHours: text('notify_hours'),
   },
   // Everyone in the organization is an equal member: there are no roles.
   (t) => [
     primaryKey({ columns: [t.humanId, t.teamId] }),
-    check('membership_notify', sql`${t.notify} IN ('all','mine','off')`),
+    check(
+      'membership_notify_kinds',
+      sql`${t.notifyKinds} <@ ARRAY['reply','blocked','decide','task','mention','message']::text[]`,
+    ),
   ],
 );
 export const channels = pgTable(
@@ -839,11 +852,14 @@ export const notifications = pgTable(
     deliveryId: text('delivery_id'),
     state: text('state').notNull(),
     dueAt: millis('due_at').notNull(),
+    /** When it goes to Feishu if it still concerns them; null once taken. */
+    forwardAt: millis('forward_at'),
     createdAt: millis('created_at').notNull(),
   },
   (t) => [
     unique('notification_once').on(t.humanId, t.source),
     index('notification_due').on(t.state, t.dueAt),
+    index('notification_forward').on(t.forwardAt),
     check(
       'notification_kind',
       sql`${t.kind} IN ('reply','blocked','decide','task','mention','message')`,

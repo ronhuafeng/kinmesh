@@ -216,7 +216,7 @@ export function registerWorkspace(
     const [human, membership, notify] = await together([
       store.human(principal.humanId),
       store.teamFor(principal.humanId),
-      store.notifications.levelOf(principal.humanId),
+      store.notifications.kindsOf(principal.humanId),
     ]);
     if (!human || !membership) throw new DomainError('forbidden');
     const teamId = membership.team.id;
@@ -400,6 +400,8 @@ export function registerWorkspace(
         notify,
         muted: { channels: quiet.channels, agents: quiet.agents },
         pausedUntil: quiet.pausedUntil,
+        forwardAfter: quiet.forwardAfter,
+        hours: quiet.hours,
         team: membership.team,
         people,
         joinedHumanIds,

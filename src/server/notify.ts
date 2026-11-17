@@ -4,8 +4,12 @@ import { z } from 'zod';
 import { DomainError } from '../domain/errors.js';
 import { AgentId, TeamId } from '../domain/contracts.js';
 import {
+  ForwardInput,
+  HoursInput,
+  nextOpening,
+  withinHours,
   MuteInput,
-  NotifyLevel,
+  NotifyKinds,
   PAUSE_MOST_MS,
   PauseInput,
   PushPayload,
@@ -15,6 +19,7 @@ import {
 import type { Store } from '../persistence/store.js';
 import { pushKeys } from '../inbox/managed.js';
 import { describeFailure } from '../diagnostics.js';
+import { FeishuFailure, type Feishu } from './feishu.js';
 import { principal } from './principals.js';
 
 type Due = Awaited<ReturnType<Store['notifications']['take']>>[number];
@@ -80,6 +85,8 @@ export function registerNotifications(
   origin: string,
   /** The hub's private directory, where its push keys are kept. */
   directory: string,
+  /** Feishu, whose bot forwards what stays unread. */
+  feishu: Feishu,
 ) {
   const keys = pushKeys(directory, () => webpush.generateVAPIDKeys());
   const vapidDetails = {
@@ -158,14 +165,30 @@ export function registerNotifications(
       return reply.code(204).send();
     },
   );
+  app.put('/api/me/hours', async (request, reply) => {
+    const humanId = human(request);
+    const { hours } = HoursInput.parse(request.body);
+    const team = await store.teamFor(humanId);
+    if (!team) throw new DomainError('forbidden');
+    await store.notifications.hours(humanId, team.team.id, hours);
+    return reply.code(204).send();
+  });
+  app.put('/api/me/forward', async (request, reply) => {
+    const humanId = human(request);
+    const { minutes } = ForwardInput.parse(request.body);
+    const team = await store.teamFor(humanId);
+    if (!team) throw new DomainError('forbidden');
+    await store.notifications.forwardAfter(humanId, team.team.id, minutes);
+    return reply.code(204).send();
+  });
   app.put('/api/me/notify', async (request, reply) => {
     const humanId = human(request);
-    const { level } = z
-      .strictObject({ level: NotifyLevel })
+    const { kinds } = z
+      .strictObject({ kinds: NotifyKinds })
       .parse(request.body);
     const team = await store.teamFor(humanId);
     if (!team) throw new DomainError('forbidden');
-    await store.notifications.level(humanId, team.team.id, level);
+    await store.notifications.kinds(humanId, team.team.id, kinds);
     return reply.code(204).send();
   });
 
@@ -207,9 +230,22 @@ export function registerNotifications(
       return 'failed';
     }
   }
+  /** Outside the person's hours: kept for when they open. */
+  async function held(n: Due, what: 'push' | 'forward') {
+    const hours = await store.notifications.hoursOf(n.humanId);
+    const now = new Date();
+    if (withinHours(now, hours)) return false;
+    await store.notifications.hold(
+      n.id,
+      nextOpening(now, hours).getTime(),
+      what,
+    );
+    return true;
+  }
   async function deliver(n: Due) {
     const about = await store.notifications.describe(n);
     if (about === null) return;
+    if (await held(n, 'push')) return;
     const browsers = await store.notifications.browsers(n.humanId);
     if (browsers.length === 0) return;
     const payload = JSON.stringify(payloadOf(n, about));
@@ -242,6 +278,30 @@ export function registerNotifications(
       .code(outcome === 'sent' ? 204 : outcome === 'gone' ? 410 : 502)
       .send();
   });
+  /**
+   * What stayed unread goes to the person in Feishu, from the app's bot, if
+   * it still concerns them; once, and never retried as another message.
+   */
+  async function forward(n: Due, union: string | null) {
+    if (union === null) return;
+    const about = await store.notifications.describe(n);
+    if (about === null) return;
+    if (await held(n, 'forward')) return;
+    const payload = payloadOf(n, about);
+    try {
+      await feishu.message(union, {
+        title: payload.title,
+        text: payload.body,
+        url: new URL(payload.url, origin).href,
+      });
+    } catch (error) {
+      // Only the stage and status: nothing of the message or the person.
+      app.log.error(
+        { error: error instanceof FeishuFailure ? error.message : 'Error' },
+        'feishu_forward_failed',
+      );
+    }
+  }
   // What is due goes out within a second, each notification once.
   let sending = false;
   const send = async () => {
@@ -252,6 +312,12 @@ export function registerNotifications(
         const due = await store.notifications.take(20);
         if (due.length === 0) break;
         for (const n of due) await deliver(n);
+      }
+      for (;;) {
+        const due = await store.notifications.takeForwards(20);
+        if (due.length === 0) break;
+        for (const { notification, union, forwarding } of due)
+          if (forwarding) await forward(notification, union);
       }
     } catch (error) {
       app.log.error(describeFailure(error), 'notification_send_failed');

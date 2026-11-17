@@ -211,6 +211,13 @@ fallback.
 - **Segmented control**: the views (聊天 | 看板 | 团队 | 收件箱) and a narrow board's
   stages: a grey track, the chosen segment a raised white (dark: grey) thumb that
   eases in. In the top bar it is the page's primary control: 38 px tall, 15 px labels.
+- **Switch**: on or off, iOS's: a 51 × 31 px track, grey off and the primary colour
+  on, and a white raised thumb that slides across (at once without motion). It
+  ends its row, which names it; a click anywhere on the row flips it, and what
+  it turns on takes effect at once.
+- **Hour picker**: an hour of the day chosen in place, written as the time
+  ("09:00") in tabular figures on one hairline underline that turns the primary
+  colour under the pointer or focus, no box; the list is the browser's own.
 - **Buttons**: primary is filled green; secondary a grey fill; destructive red text
   on the grey fill; a quiet one has no fill until hovered. Pressed, a control darkens
   its fill (lighter in dark mode; a quiet one takes the hover fill) and gives to 0.97
@@ -390,19 +397,22 @@ fallback.
   deliveries are not listed; they stay on their message's delivery line.
 - **Settings**: your own tile on Team (on a phone, the 我 tab) opens your page; the
   page has no face or name of its own. It holds what notifies you and signing out.
-  "通知" is a row with the segmented control at its end: 全部 | 与我有关 | 关闭.
-  Unless notifications are off, two more rows in the same form follow. "此设备"
-  says where this browser stands: **开启**; or **发送测试通知** (which reads
-  "已发送" for a moment) and **停止接收** once it is on; or, in the muted ink, why
-  it can't be ("浏览器拦截了通知，可在网站设置中允许", "添加到主屏幕后可以接收通知" on an
-  iPhone not opened from its Home Screen, "这个浏览器收不到通知"). Choosing 全部 or
-  与我有关 in a browser that can be notified also turns them on there (the
-  browser asks once). "暂停通知": 不暂停 | 1 小时 | 到明早 (the next 8:00), the
-  pause in force chosen and its end on hover; it ends by itself. Then what you
-  muted, a channel's icon or an agent's face and its name, **取消静音** at the end.
-  These are one group of 44 px rows, each ending on the column's edge, set apart
-  from **退出登录** and **在所有设备上退出登录**, quiet rows in the danger colour,
-  on every device.
+  What notifies you is one group of 44 px rows, each a label and, at the end on
+  the column's edge, its control, in runs a little apart. First what can notify
+  you, most pressing first, a **Switch** each: 等我验收, 交给我的任务, 我的请求卡住了,
+  智能体回复我, @我, 频道里的其他消息 (all on but the last); a click anywhere on a row
+  flips it. With none on, the rest of the group is left out. Then where they
+  reach you: "此设备" says where this browser stands — **开启**; or **发送测试通知**
+  (which reads "已发送" for a moment) and **停止接收** once on; or, in the muted
+  ink, why it can't be ("浏览器拦截了通知，可在网站设置中允许", "添加到主屏幕后可以接收通知"
+  on an iPhone not opened from its Home Screen, "这个浏览器收不到通知"). "转发到飞书":
+  不转发 | 5 分钟 | 15 分钟 | 1 小时, what it does on hover. Then when: "通知时段": 全天 |
+  自定; 自定 adds a row under it, the two hours chosen in place ("09:00 – 21:00",
+  this browser's time zone) and 每天 | 工作日 at its end. "暂停通知": 不暂停 | 1 小时 |
+  到明早 (the next 8:00), the pause in force chosen and its end on hover; it ends
+  by itself. Then what you muted, a channel's icon or an agent's face and its
+  name, **取消静音** at the end. Apart from the group, **退出登录** and
+  **在所有设备上退出登录**, quiet rows in the danger colour, on every device.
 - **Notifications**: one per place, the latest replacing the one before. The title
   is who wrote and where ("小助手 · #general · 话题"), or what waits on you and
   where ("等你验收", "请你评审", "退回给你", "交给你了", "_Ada_ 卡住了"); the line is the

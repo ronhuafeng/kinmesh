@@ -34,6 +34,13 @@ export const feishuPerson = (mailbox: string) => ({
   email: mailbox.trim().toLowerCase(),
 });
 
+/** What the stand-in's bot sent, in order, for a test to read. */
+export const standInMessages: {
+  union: string;
+  title: string;
+  text: string;
+  url: string;
+}[] = [];
 /**
  * Feishu for tests: the person chooses who to be at "Feishu" (see `who`),
  * the code says so, and the profile vouches for it. Codes starting with
@@ -52,6 +59,10 @@ export const standInFeishu: Feishu = {
   },
   organization: () => Promise.resolve(STAND_IN_ORGANIZATION),
   picture: () => Promise.reject(new Error('no picture')),
+  message(union, post) {
+    standInMessages.push({ union, ...post });
+    return Promise.resolve();
+  },
   profile(token) {
     const { union, mailbox } = who(token.slice('token:'.length));
     return Promise.resolve({

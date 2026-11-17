@@ -6,7 +6,7 @@ import { MessageId } from '../src/domain/communication.js';
 import { payloadOf } from '../src/server/notify.js';
 import { WorkspaceSnapshot } from '../src/workspace/contracts.js';
 import { communicationFixture, postInput } from './communication-helpers.js';
-import { feishuPerson, signInAs } from './feishu.js';
+import { feishuPerson, signInAs, standInMessages } from './feishu.js';
 import { rawDatabase } from './raw.js';
 import { taskInput } from './task-helpers.js';
 
@@ -20,19 +20,21 @@ const browser = () => ({
   },
 });
 
-await test('what concerns a person notifies them, at their level, and never their own act', async () => {
+await test('what concerns a person notifies them, kind by kind, and never their own act', async () => {
   const f = await communicationFixture();
   const raw = rawDatabase(f.dbPath);
   try {
     await f.invite();
     const graceCookies = await signInAs(f.app, 'grace@example.com');
     const grace = await f.store.signIn(feishuPerson('grace@example.com'));
-    const level = (cookies: typeof f.cookies, value: string) =>
+    const MINE = ['reply', 'blocked', 'decide', 'task', 'mention'];
+    const ALL = [...MINE, 'message'];
+    const level = (cookies: typeof f.cookies, value: string[]) =>
       f.app.inject({
         method: 'PUT',
         url: '/api/me/notify',
         cookies,
-        payload: { level: value },
+        payload: { kinds: value },
       });
     const kinds = async (humanId: string) =>
       (
@@ -57,7 +59,7 @@ await test('what concerns a person notifies them, at their level, and never thei
       return posted.json<{ id: string }>().id;
     };
 
-    // At the default level an ordinary message notifies no one, and its
+    // By default an ordinary message notifies no one, and its
     // author never.
     await post('owner');
     assert.deepEqual(await kinds(grace.id), []);
@@ -67,17 +69,17 @@ await test('what concerns a person notifies them, at their level, and never thei
     await post('owner', { mentions: [{ kind: 'human', id: grace.id }] });
     assert.deepEqual(await kinds(grace.id), ['mention']);
 
-    // Asking everything adds every message; nothing adds none.
-    assert.equal((await level(graceCookies, 'all')).statusCode, 204);
+    // Asking for every message adds them; asking for nothing adds none.
+    assert.equal((await level(graceCookies, ALL)).statusCode, 204);
     await post('owner');
     assert.deepEqual(await kinds(grace.id), ['mention', 'message']);
-    assert.equal((await level(graceCookies, 'off')).statusCode, 204);
+    assert.equal((await level(graceCookies, [])).statusCode, 204);
     await post('owner', { mentions: [{ kind: 'human', id: grace.id }] });
     assert.deepEqual(await kinds(grace.id), ['mention', 'message']);
     assert.equal(
-      (await level(graceCookies, 'loud')).statusCode,
+      (await level(graceCookies, ['loud'])).statusCode,
       400,
-      'an unknown level is refused',
+      'an unknown kind is refused',
     );
 
     // An agent answering what the owner asked notifies the owner.
@@ -99,7 +101,7 @@ await test('what concerns a person notifies them, at their level, and never thei
     assert.deepEqual(await kinds(f.owner.id), ['reply']);
 
     // A task handed to a person notifies them.
-    assert.equal((await level(graceCookies, 'mine')).statusCode, 204);
+    assert.equal((await level(graceCookies, MINE)).statusCode, 204);
     const created = await f.app.inject({
       method: 'POST',
       url: f.channelPath + '/tasks',
@@ -117,13 +119,13 @@ await test('what concerns a person notifies them, at their level, and never thei
       .get();
     assert.equal(Number(due?.wait), 5000);
 
-    // The level is the person's own, shown in their snapshot.
+    // The kinds are the person's own, shown in their snapshot.
     const snapshot = WorkspaceSnapshot.parse(
       (
         await f.app.inject({ url: '/api/workspace', cookies: graceCookies })
       ).json<unknown>(),
     );
-    assert.equal(snapshot.notify, 'mine');
+    assert.deepEqual([...snapshot.notify].sort(), [...MINE].sort());
   } finally {
     await raw.close();
     await f.dispose();
@@ -430,6 +432,172 @@ await test('muting silences a channel or an agent, never what waits on you; a pa
       payload: { muted: false },
     });
     assert.equal(await unread(), true);
+  } finally {
+    await raw.close();
+    await f.dispose();
+  }
+});
+
+/** Until `check` holds, looking again as soon as the hub's sender may have run. */
+async function until(check: () => Promise<boolean>) {
+  const deadline = Date.now() + 10_000;
+  while (!(await check())) {
+    if (Date.now() > deadline) throw new Error('never happened');
+    await new Promise((resolve) => setTimeout(resolve, 100));
+  }
+}
+
+await test('what stays unread goes to Feishu after the delay; nothing goes once read or turned off', async () => {
+  standInMessages.length = 0;
+  const f = await communicationFixture();
+  const raw = rawDatabase(f.dbPath);
+  try {
+    const graceCookies = await signInAs(f.app, 'grace@example.com');
+    const grace = await f.store.signIn(feishuPerson('grace@example.com'));
+    const forward = (minutes: number | null) =>
+      f.app.inject({
+        method: 'PUT',
+        url: '/api/me/forward',
+        cookies: graceCookies,
+        payload: { minutes },
+      });
+    assert.equal((await forward(7)).statusCode, 400, 'only 5, 15 or 60');
+    assert.equal((await forward(5)).statusCode, 204);
+    const mention = async (body: string) => {
+      const posted = await f.app.inject({
+        method: 'POST',
+        url: f.channelPath + '/messages',
+        cookies: f.cookies,
+        payload: postInput({
+          body,
+          mentions: [{ kind: 'human', id: grace.id }],
+        }),
+      });
+      assert.equal(posted.statusCode, 201);
+      return posted.json<{ id: string }>().id;
+    };
+    await mention('Can you look?');
+    const wait = await raw
+      .prepare('SELECT forward_at - created_at AS wait FROM notifications')
+      .get();
+    assert.equal(Number(wait?.wait), 5000 + 5 * 60_000);
+    // Its time come, it goes to her in Feishu, once, with a link to it.
+    await raw.prepare('UPDATE notifications SET forward_at = 0').run();
+    await until(() => Promise.resolve(standInMessages.length > 0));
+    assert.equal(standInMessages.length, 1);
+    const sent = standInMessages[0];
+    assert.ok(sent);
+    assert.equal(sent.union, feishuPerson('grace@example.com').feishuId);
+    assert.equal(sent.text, 'Can you look?');
+    assert.match(sent.url, /\/\?channel=/);
+
+    // Read first, nothing goes.
+    const read = await mention('Already seen');
+    await f.app.inject({
+      method: 'POST',
+      url: f.channelPath + '/read',
+      cookies: graceCookies,
+      payload: { messageId: read, topicId: null },
+    });
+    // Turned off after it was recorded, nothing goes either.
+    await mention('Turned off since');
+    assert.equal((await forward(null)).statusCode, 204);
+    await raw
+      .prepare(
+        'UPDATE notifications SET forward_at = 0 WHERE forward_at IS NOT NULL',
+      )
+      .run();
+    await until(
+      async () =>
+        Number(
+          await raw
+            .prepare(
+              'SELECT count(*) FROM notifications WHERE forward_at IS NOT NULL',
+            )
+            .pluck()
+            .get(),
+        ) === 0,
+    );
+    assert.equal(standInMessages.length, 1);
+    assert.equal((await forward(15)).statusCode, 204);
+    const snapshot = WorkspaceSnapshot.parse(
+      (
+        await f.app.inject({ url: '/api/workspace', cookies: graceCookies })
+      ).json<unknown>(),
+    );
+    assert.equal(snapshot.forwardAfter, 15);
+  } finally {
+    await raw.close();
+    await f.dispose();
+  }
+});
+
+await test("outside a person's hours a notification waits for them to open; a bad window is refused", async () => {
+  const f = await communicationFixture();
+  const raw = rawDatabase(f.dbPath);
+  try {
+    const graceCookies = await signInAs(f.app, 'grace@example.com');
+    const grace = await f.store.signIn(feishuPerson('grace@example.com'));
+    const hours = (value: unknown) =>
+      f.app.inject({
+        method: 'PUT',
+        url: '/api/me/hours',
+        cookies: graceCookies,
+        payload: { hours: value },
+      });
+    // A window that opens two hours from now, in UTC.
+    const now = new Date();
+    const from = ((now.getUTCHours() + 2) % 24) * 60;
+    const to = ((now.getUTCHours() + 3) % 24) * 60;
+    assert.equal(
+      (await hours({ from, to: from, weekdays: false, timeZone: 'UTC' }))
+        .statusCode,
+      400,
+      'an empty window is refused',
+    );
+    assert.equal(
+      (await hours({ from, to, weekdays: false, timeZone: 'Mars/Base' }))
+        .statusCode,
+      400,
+      'an unknown time zone is refused',
+    );
+    assert.equal(
+      (await hours({ from, to, weekdays: false, timeZone: 'UTC' })).statusCode,
+      204,
+    );
+    const posted = await f.app.inject({
+      method: 'POST',
+      url: f.channelPath + '/messages',
+      cookies: f.cookies,
+      payload: postInput({ mentions: [{ kind: 'human', id: grace.id }] }),
+    });
+    assert.equal(posted.statusCode, 201);
+    await raw.prepare('UPDATE notifications SET due_at = 0').run();
+    // The sender takes it, finds her hours closed, and keeps it for when
+    // they open: still pending, due at the window's first minute.
+    await until(async () => {
+      const row = await raw
+        .prepare('SELECT state, due_at FROM notifications')
+        .get();
+      return row?.state === 'pending' && Number(row.due_at) > 0;
+    });
+    const due = Number(
+      await raw.prepare('SELECT due_at FROM notifications').pluck().get(),
+    );
+    const opens = new Date(due);
+    assert.equal(opens.getUTCHours() * 60 + opens.getUTCMinutes(), from);
+    assert.equal(opens.getUTCSeconds(), 0);
+    const snapshot = WorkspaceSnapshot.parse(
+      (
+        await f.app.inject({ url: '/api/workspace', cookies: graceCookies })
+      ).json<unknown>(),
+    );
+    assert.deepEqual(snapshot.hours, {
+      from,
+      to,
+      weekdays: false,
+      timeZone: 'UTC',
+    });
   } finally {
     await raw.close();
     await f.dispose();
