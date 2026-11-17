@@ -839,6 +839,11 @@ textarea {
   ):not(:hover) {
   background: transparent;
 }
+/* Someone wrote in a channel since you last read it: its name is set in
+ * semibold, as heavy as PingFang goes. */
+.sidebar nav > button[data-unread] .channel-name {
+  font-weight: 600;
+}
 /* Something in a channel waits on you: a dot in the decision colour at the
  * end of its row. */
 .sidebar nav > button {
@@ -4237,7 +4242,7 @@ button.new-agent-go {
   }
   .channel-row-name {
     font-size: 16px;
-    font-weight: 600;
+    font-weight: 500;
   }
   .channel-row-time {
     font-size: 13px;
@@ -4249,6 +4254,14 @@ button.new-agent-go {
     font-size: 15px;
     font-weight: 400;
     color: var(--ink-muted);
+  }
+  /* Unread, a row's name is semibold, its newest message and time in ink. */
+  .sidebar nav button[data-unread] .channel-row .channel-row-name {
+    font-weight: 600;
+  }
+  .sidebar nav button[data-unread] .channel-row .channel-row-last,
+  .sidebar nav button[data-unread] .channel-row .channel-row-time {
+    color: var(--ink);
   }
   /* What is read all day is set larger on a phone. */
   :root {

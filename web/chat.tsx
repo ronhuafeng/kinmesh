@@ -11,7 +11,7 @@ import {
 import { z } from 'zod';
 import { Message, REACH } from '../src/domain/communication.js';
 import type { WorkspaceSnapshot } from '../src/workspace/contracts.js';
-import { MutationPermission, api, value } from './api.js';
+import { MutationPermission, api, request, value } from './api.js';
 import { ActionForm, AddButton, Field, InlineField } from './forms.js';
 import { SendIcon } from './icons.js';
 import { joinedAgents, memberName, otherPeople } from './names.js';
@@ -654,6 +654,43 @@ function useReadingPosition(place: string, messages: ChatMessage[]) {
   };
 }
 /**
+ * Tells the hub what you have read: while the channel has something unread,
+ * once its newest message on screen is in view in a visible tab, you have
+ * read up to it, in the topic you are reading or in the whole channel. Each
+ * message is told once; one that didn't go is told again at the next look.
+ */
+function useMarkRead(
+  channelPath: string,
+  topicId: string,
+  newest: string | undefined,
+  unread: boolean,
+  permitted: boolean,
+) {
+  const told = useRef('');
+  useEffect(() => {
+    if (!unread || !permitted || newest === undefined) return;
+    const key = channelPath + ' ' + topicId + ' ' + newest;
+    const look = () => {
+      if (told.current === key) return;
+      if (document.visibilityState !== 'visible' || !atBottom()) return;
+      told.current = key;
+      request(channelPath + '/read', {
+        messageId: newest,
+        topicId: topicId === '' ? null : topicId,
+      }).catch(() => {
+        if (told.current === key) told.current = '';
+      });
+    };
+    look();
+    window.addEventListener('scroll', look, { passive: true });
+    document.addEventListener('visibilitychange', look);
+    return () => {
+      window.removeEventListener('scroll', look);
+      document.removeEventListener('visibilitychange', look);
+    };
+  }, [channelPath, topicId, newest, unread, permitted]);
+}
+/**
  * Asks for older messages once the top of the conversation comes near:
  * scrolling up reads further back, until there is nothing older.
  */
@@ -955,6 +992,13 @@ export function Chat({
   const reading = useReadingPosition(shown, messages);
   const earlier = useEarlier(data.messages.nextCursor, onEarlier);
   const permitted = useContext(MutationPermission);
+  useMarkRead(
+    channelPath,
+    shownTopic,
+    messages.at(-1)?.id,
+    data.latest.find((l) => l.channelId === channel?.id)?.unread ?? false,
+    permitted,
+  );
   const outbox = useOutbox(channelPath, onDone);
   // What a row can do, the same object for every render, each doing what
   // the latest render says: a row unchanged need not be drawn again.

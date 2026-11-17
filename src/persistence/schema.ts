@@ -328,6 +328,12 @@ export const channelParticipants = pgTable(
     humanId: text('human_id'),
     agentId: text('agent_id'),
     state: text('state').notNull(),
+    /**
+     * A person's read position: the newest message of the channel's
+     * timeline they have seen (null before they have seen any). It only
+     * moves forward.
+     */
+    readPosition: integer('read_position'),
   },
   (t) => [
     primaryKey({ columns: [t.channelId, t.memberKey] }),
