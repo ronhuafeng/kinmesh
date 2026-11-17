@@ -140,7 +140,8 @@ it is the authority. Use the custom property for its role, never a raw colour.
 - **Message**: avatar, name, time, topic pill (none while the view is that topic);
   consecutive messages from the same author are grouped. Bodies render a safe
   Markdown subset (paragraphs, lists, quotes, headings, code, emphasis, http(s) links
-  opening in a new tab). A mention already written as `@Name` gets no second chip. An
+  opening in a new tab); a fenced code block is one sunken block, never boxed line by
+  line. A mention already written as `@Name` gets no second chip. An
   agent's reply shows the message it answers, unless it is the very next message,
   and carries a line only for an exception (failed, stopped, shortened); what ran it
   lives with the run on the agent's page. **Make task** shows on hover, and on touch
@@ -168,14 +169,18 @@ it is the authority. Use the custom property for its role, never a raw colour.
   hints in the placeholder. Send is the round confirm button, shown once there is
   something to send. A channel or topic that opens is ready to
   type in (a touch keyboard waits to be asked for), and sending keeps the keyboard.
+  The placeholder never repeats the channel: "@ to mention, ⌘/Ctrl+Enter to send"
+  ("@ to mention" on a phone).
 - **Channels**: the sidebar lists joined channels; a channel you left can be rejoined
   by name. A channel where something waits on you ends in a decision-coloured dot, the
   size of a presence dot and on its edge. The current channel holds its topics under
   it like a tree on a hairline trunk: "All", the ten most recently active, "More
-  topics" for the rest, a `+` that starts one, and "Leave channel". A topic is
-  highlighted only while its channel's chat or board is the current place. On a
-  phone the topics are pills above the conversation, and "Leave channel" waits where
-  the conversation begins. A channel or topic just created is opened.
+  topics" for the rest, and a `+` that starts one. The current place carries the
+  quiet hover fill, never a card: the channel, or the topic when one is open (its
+  channel then keeps only ink); "All" is never highlighted. A topic is highlighted
+  only while its channel's chat or board is the current place. Leaving is **Leave #_name_** in the command palette; on a phone the topics are pills above the
+  conversation, and "Leave channel" waits where the conversation begins. A channel
+  or topic just created is opened.
 - **Board**: five stage columns, the stages of the lifecycle: Proposed → Working →
   Review → Human sign-off → Done. Rework stays in Working (marked "Sent back");
   cancelled work goes to Done (marked "Cancelled", hidden until asked for). Columns sit
@@ -213,11 +218,11 @@ it is the authority. Use the custom property for its role, never a raw colour.
   the `npm run t3:auth` step and an `inbox.json` binding without secrets.
 - **Credential once**: a newly issued token appears once, with copy and download,
   and is gone when dismissed.
-- **Team**: a gallery of faces with names and presence — you, the other people,
-  then the agents; the last tile adds an agent. Someone who isn't in the open
+- **Team**: a gallery of faces with names and presence — you (your tile opens your
+  page), the other people, then the agents; the last tile adds an agent. Someone who isn't in the open
   channel, person or agent, carries **Add _name_ to channel** on their tile.
-- **People in the sidebar**: you (your row opens Settings), the other people in the
-  channel, then its agents. Someone else has no page: their row is their face, name
+- **People in the sidebar**: the other people in the channel, then its agents; you
+  are not listed, since you know you are here. Someone else has no page: their row is their face, name
   and presence, sized and aligned exactly like a row that opens. Owner and reviewer
   pickers list the people in the channel as well as its agents, and a message shows
   its author's name.
@@ -233,8 +238,8 @@ it is the authority. Use the custom property for its role, never a raw colour.
   or holds the fix under it.
   A row leaves when its cause is resolved; there is nothing to dismiss. Expired
   deliveries are not listed; they stay on their message's delivery line.
-- **Settings**: your own row among the sidebar's people opens your page; the account
-  is not shown anywhere else, so the page has no face or name of its own. It holds
+- **Settings**: your own tile on Team (on a phone, the You tab) opens your page; the
+  page has no face or name of its own. It holds
   only **Sign out everywhere**, a quiet row in the danger colour (and **Sign out** on
   a phone).
 - **Team name**: the organization's name as Feishu gives it, never typed here, heads
@@ -254,8 +259,12 @@ it is the authority. Use the custom property for its role, never a raw colour.
   **Try again**. An address that can't be opened is not a failure: a channel you are
   not in opens the default channel, a topic that isn't there opens its channel, a task
   that isn't there opens the board, each without a word.
+- **Command palette**: ⌘K / Ctrl+K, opened from **Jump to…** at the top of the
+  sidebar, which shows no shortcut badge. It jumps to views, channels, tasks and
+  agents, and holds the actions that have no place on screen: **New task**,
+  **Leave #_name_** and **Refresh now**.
 - **Refreshing**: absent while healthy. A refresh asked for (**Refresh now** in the
-  command palette, ⌘K / Ctrl+K) or a slow one shows a dot and "Refreshing…".
+  command palette) or a slow one shows a dot and "Refreshing…".
 - **Out of reach**: one quiet line under the views — "Can't reach Kinmesh. Showing
   what was here before; sending is paused until it's back." — with nothing to press:
   it comes back by itself.

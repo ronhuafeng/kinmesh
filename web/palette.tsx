@@ -20,7 +20,10 @@ function matches(command: Command, query: string) {
     .filter(Boolean)
     .every((word) => text.includes(word));
 }
-/** ⌘K / Ctrl+K: jump to any view, channel, task or teammate. Navigation only. */
+/**
+ * ⌘K / Ctrl+K: jump to any view, channel, task or teammate, or do one of the
+ * few actions that have no place on screen (leaving the open channel).
+ */
 export function CommandPalette({ commands }: { commands: Command[] }) {
   const dialog = useRef<HTMLDialogElement>(null);
   const input = useRef<HTMLInputElement>(null);
@@ -69,7 +72,6 @@ export function CommandPalette({ commands }: { commands: Command[] }) {
           <SearchIcon />
           Jump to…
         </span>
-        <kbd>⌘K</kbd>
       </button>
       <dialog
         ref={dialog}

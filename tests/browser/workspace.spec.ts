@@ -1408,10 +1408,21 @@ test('human claim and request-review controls, plus leave/rejoin of known member
   // Esc returns from the task's page to the board, where it moved on.
   await backToBoard(page);
   await expect(inStage(page, 'Review', 'Human owned task')).toBeVisible();
+  // Leaving has no place in the sidebar: it is an action in the palette.
   await page.getByRole('tab', { name: 'Chat', exact: true }).click();
-  await page
-    .getByRole('button', { name: 'Leave channel', exact: true })
-    .click();
+  await expect(
+    page
+      .locator('aside.sidebar')
+      .getByRole('button', { name: 'Leave channel' }),
+  ).toHaveCount(0);
+  await page.keyboard.press('ControlOrMeta+k');
+  const palette = page.getByRole('dialog', { name: 'Command palette' });
+  await palette.getByRole('combobox', { name: /Search/ }).fill('leave');
+  await expect(
+    palette.getByRole('option', { name: 'Leave #general' }),
+  ).toHaveAttribute('aria-selected', 'true');
+  await page.keyboard.press('Enter');
+  await expect(palette).toBeHidden();
   await expect(
     page.getByText('Welcome to your team', { exact: true }),
   ).toBeVisible();
@@ -1579,14 +1590,15 @@ test('quiet text is readable where it sits, in light and dark', async ({
   await expect(
     page.getByRole('list', { name: 'Channel messages' }).getByText('Hello'),
   ).toBeVisible();
-  // A message's time, and a topic you are not in ("All", here). A switched
+  // A message's time, and a row of the tree that isn't the current place
+  // ("All", here). A switched
   // scheme reaches a button through its colour transition, so the reading
   // is taken once it settles.
   for (const colorScheme of ['light', 'dark'] as const) {
     await page.emulateMedia({ colorScheme });
     for (const quiet of [
       '.message-body time',
-      '.channel-topics button[aria-pressed="false"]',
+      '.channel-topics button:not([aria-pressed="true"])',
     ])
       await expect
         .poll(() => contrast(page, quiet))
@@ -1601,9 +1613,17 @@ test('the organization names the team at the top of the sidebar; nobody renames 
   await signIn(page, hub);
   const sidebar = page.locator('aside.sidebar');
   await expect(sidebar.getByText('Stand-in Co', { exact: true })).toBeVisible();
-  // Your page has nothing to type: only signing out.
+  // You are not among the sidebar's people: you know you are here.
+  await expect(
+    page
+      .getByRole('region', { name: 'People in this channel' })
+      .getByText('browser_owner'),
+  ).toHaveCount(0);
+  // Your tile on Team opens your page, which has nothing to type: only
+  // signing out.
+  await page.getByRole('tab', { name: 'Team', exact: true }).click();
   await page
-    .getByRole('region', { name: 'People in this channel' })
+    .getByRole('list', { name: 'Team' })
     .getByRole('button', { name: /^browser_owner/ })
     .click();
   const settings = page.getByRole('region', { name: 'Settings' });
@@ -2331,7 +2351,7 @@ test('a phone channel: targets a finger can hit, fields that don’t zoom, a com
   }
 });
 
-test('said once: a topic’s messages carry no tag for it, and a topic is pressed only in its chat or board', async ({
+test('said once: a topic’s messages carry no tag for it, and one place is current at a time', async ({
   page,
   hub,
 }) => {
@@ -2349,18 +2369,94 @@ test('said once: a topic’s messages carry no tag for it, and a topic is presse
   await expect(posted).toBeVisible();
   await expect(posted.getByText('Billing', { exact: true })).toHaveCount(0);
   const topics = page.getByRole('list', { name: 'Topics' });
+  const billing = topics.getByRole('button', { name: 'Billing', exact: true });
+  const channelRow = page
+    .getByRole('navigation', { name: 'Channels' })
+    .getByRole('button', { name: 'general', exact: true });
+  const fill = (row: typeof billing) =>
+    row.evaluate((el) => getComputedStyle(el).backgroundColor);
+  const clear = 'rgba(0, 0, 0, 0)';
+  // In a topic, the topic carries the fill and its channel only its ink.
+  await expect(billing).toHaveAttribute('aria-pressed', 'true');
+  await page.mouse.move(0, 0);
+  await expect.poll(() => fill(billing)).not.toBe(clear);
+  await expect.poll(() => fill(channelRow)).toBe(clear);
+  // "All" is the whole channel: the channel row is the place, never "All".
   const all = topics.getByRole('button', { name: 'All', exact: true });
   await all.click();
   await expect(posted.getByText('Billing', { exact: true })).toBeVisible();
-  await expect(all).toHaveAttribute('aria-pressed', 'true');
-  // On Team the place is Team: neither the channel nor a topic is current.
+  await expect(all).not.toHaveAttribute('aria-pressed');
+  await expect(billing).toHaveAttribute('aria-pressed', 'false');
+  await expect(channelRow).toHaveAttribute('aria-current', 'page');
+  await page.mouse.move(0, 0);
+  await expect.poll(() => fill(channelRow)).not.toBe(clear);
+  await expect.poll(() => fill(all)).toBe(clear);
+  // The fill is a row's, not a card's: same height, no border.
+  const box = await channelRow.evaluate((el) => ({
+    border: getComputedStyle(el).borderTopColor,
+    height: el.getBoundingClientRect().height,
+  }));
+  expect(box.border).toBe(clear);
+  // On Team the place is Team: neither the channel nor a topic is current,
+  // and the row keeps its height.
+  await billing.click();
   await page.getByRole('tab', { name: 'Team', exact: true }).click();
-  await expect(all).toHaveAttribute('aria-pressed', 'false');
+  await expect(billing).toHaveAttribute('aria-pressed', 'false');
   await expect(
     page.locator('nav[aria-label="Channels"] [aria-current="page"]'),
   ).toHaveCount(0);
+  expect(
+    await channelRow.evaluate((el) => el.getBoundingClientRect().height),
+  ).toBe(box.height);
   await page.getByRole('tab', { name: 'Board', exact: true }).click();
-  await expect(all).toHaveAttribute('aria-pressed', 'true');
+  await expect(billing).toHaveAttribute('aria-pressed', 'true');
+});
+
+test('a fenced code block is one block, not a box around every line', async ({
+  page,
+  hub,
+}) => {
+  await signIn(page, hub);
+  const composer = page.getByRole('form', { name: 'Message your team' });
+  await composer
+    .getByLabel('Message', { exact: true })
+    .fill(
+      'Run this:\n```\nnpm ci\nnpm run build\nnpm start\n```\nthen `npm test`',
+    );
+  await composer.getByRole('button', { name: 'Send message' }).click();
+  const message = page
+    .getByRole('list', { name: 'Channel messages' })
+    .getByRole('listitem')
+    .filter({ hasText: 'Run this:' });
+  const block = message.locator('pre');
+  await expect(block).toHaveText('npm ci\nnpm run build\nnpm start');
+  // The block has the one sunken background; the code in it is a single
+  // box with no border, background or padding of its own.
+  const shape = await block.evaluate((pre) => {
+    const code = pre.querySelector('code');
+    if (!code) throw new Error('no code in the block');
+    const style = getComputedStyle(code);
+    return {
+      pre: getComputedStyle(pre).backgroundColor,
+      boxes: code.getClientRects().length,
+      border: style.borderTopWidth,
+      background: style.backgroundColor,
+      padding: style.paddingLeft,
+    };
+  });
+  expect(shape.pre).not.toBe('rgba(0, 0, 0, 0)');
+  expect(shape).toMatchObject({
+    boxes: 1,
+    border: '0px',
+    background: 'rgba(0, 0, 0, 0)',
+    padding: '0px',
+  });
+  // Inline code outside a block keeps its own box.
+  const inline = message.locator('p code', { hasText: 'npm test' });
+  await expect(inline).toBeVisible();
+  expect(
+    await inline.evaluate((el) => getComputedStyle(el).borderTopWidth),
+  ).toBe('1px');
 });
 
 test('a reload keeps the place and unsent work; Back returns to where you were', async ({

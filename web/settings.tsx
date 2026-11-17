@@ -2,9 +2,9 @@ import { PowerIcon } from './icons.js';
 import { Page } from './ui.js';
 
 /**
- * Your own page: signing out. Whose page it is shows in the sidebar, where
- * your row is highlighted; the team's name is the organization's, shown at
- * the top of the sidebar.
+ * Your own page, opened from your tile on Team (a phone's You tab): signing
+ * out. The team's name is the organization's, shown at the top of the
+ * sidebar.
  */
 export function SettingsPage({
   onClose,

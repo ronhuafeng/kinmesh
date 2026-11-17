@@ -586,10 +586,19 @@ textarea {
   border-color: transparent;
   color: var(--ink);
 }
+/* The one current place: the quiet fill of a hovered row, never a card. */
 .sidebar nav button[aria-current='page'] {
-  background: var(--surface);
-  border-color: var(--hairline);
+  background: var(--hover);
+  border-color: transparent;
   color: var(--ink);
+}
+/* In one of its topics, the topic is the place; its channel keeps only ink. */
+.sidebar
+  nav
+  > button[aria-current='page']:has(
+    + .channel-topics button[aria-pressed='true']
+  ):not(:hover) {
+  background: transparent;
 }
 .sidebar nav button span {
   color: var(--ink-subtle);
@@ -643,8 +652,8 @@ textarea {
   font-weight: 500;
 }
 .sidebar nav .channel-topics button[aria-pressed='true'] {
+  background: var(--hover);
   color: var(--ink);
-  font-weight: 600;
 }
 .sidebar nav .channel-topics .add-button {
   display: inline-grid;
@@ -653,13 +662,6 @@ textarea {
 }
 .channel-topics .inline-field.pill input {
   width: 100%;
-}
-/* Leaving keeps the danger colour and starts where the topics start. */
-.sidebar nav .channel-topics .leave-channel button {
-  border: 1px solid transparent;
-  color: var(--danger);
-  font-size: 0.8rem;
-  font-weight: 600;
 }
 /* On a wide screen the topics live in the sidebar; on a phone, above the
  * conversation. */
@@ -689,8 +691,8 @@ button.person {
 }
 button.person:hover:not(:disabled),
 button.person[aria-pressed='true'] {
-  background: var(--surface);
-  border-color: var(--hairline);
+  background: var(--hover);
+  border-color: transparent;
 }
 .person-name {
   flex: 1;
@@ -1473,7 +1475,6 @@ button.palette-trigger {
   font-weight: 500;
   padding: 0.45rem 0.6rem 0.45rem 0.8rem;
 }
-.palette-trigger kbd,
 .palette footer kbd {
   font-size: 0.68rem;
   padding: 0.05rem 0.35rem;
@@ -1965,13 +1966,21 @@ a.button-link {
 .message-text pre {
   margin: 0 0 0.55em;
   padding: 0.6rem 0.75rem;
+  font-family: var(--mono);
+  font-size: 0.85em;
   overflow-x: auto;
   border-radius: var(--radius-sm);
   background: var(--sunken);
 }
+/* A fenced block is one block: the code inside takes none of inline
+ * code's box, which would otherwise be drawn around every line. */
 .message-text pre code {
+  display: block;
   padding: 0;
+  border: 0;
+  border-radius: 0;
   background: none;
+  font-size: inherit;
 }
 .message-text blockquote {
   margin: 0 0 0.55em;
@@ -2013,15 +2022,14 @@ button.reply-to {
 .you {
   gap: 0;
 }
-/* Compact sidebar: search first; your own row among the people opens your
-   page. */
+/* Compact sidebar: search first. */
 .sidebar-top {
   display: grid;
   gap: 0.6rem;
 }
 .sidebar button.palette-trigger {
   width: 100%;
-  justify-content: space-between;
+  justify-content: flex-start;
   background: var(--surface);
 }
 /* Icons: drawn in the text colour, aligned with the label beside them. */
@@ -2853,9 +2861,11 @@ button.roster-person:hover:not(:disabled) {
   background: transparent;
   color: var(--ink);
 }
-/* The people in a channel follow it after a line, not a heading. */
+/* The people in a channel follow it after a line, not a heading, spaced as
+ * the channels' heading is: the sidebar's gap above; below, the heading's
+ * margin and the 1px gap of the channel list. */
 .nav-separator {
-  margin: 0.75rem 0.5rem 0.5rem;
+  margin: 0 0.5rem calc(0.3rem + 1px);
   border: 0;
   border-top: 1px solid var(--hairline-strong);
 }
@@ -3482,10 +3492,6 @@ button.new-agent-go {
   .sidebar nav > button {
     min-height: 3rem;
     font-size: 1rem;
-  }
-  /* A phone has no shortcut keys to hint at. */
-  .sidebar button.palette-trigger kbd {
-    display: none;
   }
   /* Home's team is the gallery, so the channel's people list is not shown. */
   .sidebar .people {
