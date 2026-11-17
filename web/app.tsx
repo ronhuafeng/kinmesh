@@ -8,6 +8,7 @@ import {
   useState,
 } from 'react';
 import { flushSync } from 'react-dom';
+import { z } from 'zod';
 import * as Tabs from '@radix-ui/react-tabs';
 import { ChannelId, TaskId } from '../src/domain/contracts.js';
 import { PageRef, Revisions, pageParam } from '../src/workspace/events.js';
@@ -49,6 +50,7 @@ import { SearchPage, SidebarSearch } from './palette.js';
 import { useSidebar } from './sidebar.js';
 import { InboxPage, attentionCount } from './inbox.js';
 import { SettingsPage } from './settings.js';
+import { closeSettled, pushSupported, renew, unsubscribe } from './push.js';
 import {
   BackIcon,
   HashIcon,
@@ -194,6 +196,11 @@ function readRoute() {
   if (agent && !worker) view = 'agent';
   return { channel, topic, view, agent, focus, draft };
 }
+/** A notification clicked while the workspace is open (`sw.js`). */
+const Opened = z.strictObject({
+  kind: z.literal('open'),
+  url: z.string().startsWith('/'),
+});
 /** The address for a place; the inverse of readRoute. */
 function routeUrl(place: {
   channel: string;
@@ -636,6 +643,27 @@ export function App() {
     setDraft(null);
     if (view === 'agent') setView('chat');
   };
+  // A browser where notifications are on for you stays on for this session;
+  // a notification clicked opens its place here.
+  const signedIn = data !== null;
+  useEffect(() => {
+    if (!signedIn || !pushSupported()) return;
+    void renew().catch(() => undefined);
+    const onMessage = (event: MessageEvent) => {
+      const message = Opened.safeParse(event.data);
+      if (!message.success) return;
+      window.history.pushState(null, '', message.data.url);
+      window.dispatchEvent(new PopStateEvent('popstate'));
+    };
+    navigator.serviceWorker.addEventListener('message', onMessage);
+    return () => {
+      navigator.serviceWorker.removeEventListener('message', onMessage);
+    };
+  }, [signedIn]);
+  // Notifications here about what has since been read or settled close.
+  useEffect(() => {
+    if (data) void closeSettled(data).catch(() => undefined);
+  }, [data]);
   // The app's badge (where the browser shows one) says whether anything is
   // unread.
   const anyUnread = data?.latest.some((l) => l.unread) ?? false;
@@ -762,7 +790,10 @@ export function App() {
           : 'channel';
   const signOut = () => {
     if (!canAct) return;
-    void api('/api/logout', { method: 'POST' })
+    // This browser stops being notified for you before you leave it.
+    void unsubscribe()
+      .catch(() => undefined)
+      .then(() => api('/api/logout', { method: 'POST' }))
       .then(() => {
         toSignedOut();
       })
@@ -772,7 +803,10 @@ export function App() {
   };
   const signOutEverywhere = () => {
     if (!canAct) return;
-    void api('/api/me/sessions/end', { method: 'POST' })
+    // This browser stops being notified for you before you leave it.
+    void unsubscribe()
+      .catch(() => undefined)
+      .then(() => api('/api/me/sessions/end', { method: 'POST' }))
       .then(() => {
         toSignedOut();
       })
@@ -1340,6 +1374,7 @@ export function App() {
                     )}
                     {focus?.kind === 'settings' && (
                       <SettingsPage
+                        notify={data.notify}
                         onClose={closeFocus}
                         onSignOut={signOut}
                         onSignOutEverywhere={signOutEverywhere}

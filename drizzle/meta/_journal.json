@@ -64,6 +64,13 @@
       "when": 1794907928461,
       "tag": "0008_read_positions",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1794908993076,
+      "tag": "0009_notifications",
+      "breakpoints": true
     }
   ]
 }

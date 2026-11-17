@@ -1,5 +1,6 @@
 import type { Database } from './database.js';
 import { enqueueFact } from './inbox-enqueue.js';
+import { notifyFact } from './notify.js';
 import { transactional, snapshotPage, latestPage } from './transactional.js';
 import { randomUUID } from 'node:crypto';
 import {
@@ -239,6 +240,7 @@ export function communicationRepository(
       .insert(s.communicationOutbox)
       .values({ id: value.id, channelId, fact: JSON.stringify(value) });
     await enqueueFact(q(), value);
+    await notifyFact(q(), value);
   }
   async function topic(channelId: ChannelId, id: TopicId) {
     const row = (

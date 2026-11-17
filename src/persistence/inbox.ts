@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto';
+import { notifyBlocked } from './notify.js';
 import {
   and,
   asc,
@@ -114,6 +115,9 @@ export function inboxRepository(
   async function history(row: Delivery, reason: string) {
     const last = await recorded(row.id);
     if (last?.state === row.state && last.reason === reason) return;
+    // Stuck just now: the person who asked is told.
+    if (row.state === 'blocked' && last?.state !== 'blocked')
+      await notifyBlocked(q(), row);
     const count =
       (
         await q()

@@ -67,6 +67,12 @@ export default defineConfig({
       input: {
         index: fileURLToPath(new URL('web/index.html', import.meta.url)),
         boot: fileURLToPath(new URL('web/boot.ts', import.meta.url)),
+        // The service worker, at the site's root where its scope must be.
+        sw: fileURLToPath(new URL('web/sw.ts', import.meta.url)),
+      },
+      output: {
+        entryFileNames: (chunk) =>
+          chunk.name === 'sw' ? 'sw.js' : 'assets/[name]-[hash].js',
       },
     },
   },

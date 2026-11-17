@@ -44,6 +44,13 @@ A person's picture is the one Feishu's profile points to, downloaded by the hub 
 
 Avatars are served with their detected type, `nosniff` and a sandboxing CSP.
 
+## Notifications
+
+- A push is encrypted for the one browser it goes to (Web Push, RFC 8291): the browser vendor's push service carries it but cannot read it. It holds a title and one line of at most 240 characters, never more of a message, and is sent only while its cause still concerns the person, checked as it is sent: they are still joined, and it is still unread or still waiting on them.
+- The hub signs pushes with its own VAPID key pair, made once and kept as `push-keys.json` in `managed/` (below). Losing it ends every browser's notifications until each is turned on again.
+- A browser's endpoint and keys are kept with the session that turned it on, and deleted when that session signs out or the person signs out everywhere; one whose session was revoked or is past its lifetime receives nothing. An endpoint is a credential: it is never logged, only a push service's status code is.
+- The service worker (`/sw.js`) shows what is pushed and opens its place; it caches nothing and handles no other request.
+
 ## Hub-held worker secrets
 
 For agents connected from the workspace, the hub holds the worker's Kinmesh tokens, the team's T3 OAuth credential from a person's sign-in (`t3-oauth.json`) and the session the deployment issued, if any (`t3-deployment.json`), as files in `managed/` in the state directory (`KINMESH_STATE`). The directory is 0700 and must be owned by the hub's user and not a symlink; each file is 0600 and written atomically. They are never put in the database, logs, responses or the browser. Back up and protect the directory like the database. Every connect, disconnect and T3 route requires a person's session; agent bearers are refused. Revoking the hub's worker grant disconnects the agent; that grant cannot be rotated from the browser.

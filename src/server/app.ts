@@ -4,6 +4,7 @@ import { watchChanges } from './changes.js';
 import { registerWeb } from './web.js';
 import { registerTasks } from './tasks.js';
 import { registerCommunication } from './communication.js';
+import { registerNotifications } from './notify.js';
 import { registerAgents } from './agents.js';
 import {
   WORKER_GRANT,
@@ -210,6 +211,7 @@ export async function createApp(
     options.feishu ?? feishuClient(config.feishu),
   );
   app.post('/api/logout', async (request, reply) => {
+    await store.notifications.signedOut(request.session.get('session'));
     await store.sessions.revoke(request.session.get('session'), Date.now());
     request.session.delete();
     return reply.code(204).send();
@@ -218,6 +220,7 @@ export async function createApp(
   app.post('/api/me/sessions/end', async (request, reply) => {
     const principal = request.principal;
     if (principal?.kind !== 'human') throw new DomainError('forbidden');
+    await store.notifications.signedOutEverywhere(principal.humanId);
     await store.sessions.revokeAll(principal.humanId, Date.now());
     request.session.delete();
     return reply.code(204).send();
@@ -303,6 +306,7 @@ export async function createApp(
   expiring.unref();
   registerCommunication(app, store);
   registerTasks(app, store);
+  registerNotifications(app, store, config.origin, hub.directory);
   const { snapshot, runs } = registerWorkspace(
     app,
     store,

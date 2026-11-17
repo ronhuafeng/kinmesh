@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { NotifyLevel } from '../domain/notify.js';
 import { EventType, PROTOCOL_VERSION } from '@ag-ui/core';
 import { StateSnapshotEventSchema } from '@ag-ui/core/schemas';
 import { Agent, Correlation, RuntimeEvent } from '../domain/agents.js';
@@ -62,6 +63,8 @@ export const WorkspaceSnapshot = z.strictObject({
     .refine((origin) => new URL(origin).origin === origin)
     .nullable(),
   human: Person,
+  /** What notifies you, on every browser you turned notifications on in. */
+  notify: NotifyLevel,
   team: Team,
   /**
    * Everyone of the team, you included, and who is online now. A picture is

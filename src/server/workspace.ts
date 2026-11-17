@@ -213,9 +213,10 @@ export function registerWorkspace(
     return entry.snapshot;
   };
   const build = async (principal: Person, query: WorkspaceQuery) => {
-    const [human, membership] = await together([
+    const [human, membership, notify] = await together([
       store.human(principal.humanId),
       store.teamFor(principal.humanId),
+      store.notifications.levelOf(principal.humanId),
     ]);
     if (!human || !membership) throw new DomainError('forbidden');
     const teamId = membership.team.id;
@@ -394,6 +395,7 @@ export function registerWorkspace(
         observedAt: new Date(now).toISOString(),
         nativeT3Origin: t3Origin,
         human,
+        notify,
         team: membership.team,
         people,
         joinedHumanIds,

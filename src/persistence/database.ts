@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import { AsyncLocalStorage } from 'node:async_hooks';
 import { fileURLToPath } from 'node:url';
 import postgres from 'postgres';
@@ -20,6 +21,9 @@ type Tx = Parameters<Parameters<Db['transaction']>[0]>[0];
 /** What a query runs on: the transaction under way, or the pool. */
 export type Query = Db | Tx;
 
+/** How a secret token is kept: never itself, only its SHA-256. */
+export const digest = (token: string) =>
+  createHash('sha256').update(token).digest('base64url');
 /** Time as the database keeps it, in milliseconds, even mid-transaction. */
 export const dbNow = sql<number>`(extract(epoch from clock_timestamp()) * 1000)::bigint`;
 
