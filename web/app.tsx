@@ -32,25 +32,36 @@ import {
   TaskPage,
 } from './tasks.js';
 import type { TaskDraft } from './tasks.js';
-import { joinedAgents, otherPeople } from './names.js';
+import { joinedAgents, memberName, otherPeople } from './names.js';
+import { plainText } from './markdown.js';
 import {
   Avatar,
   AvatarImages,
+  Page,
   Presence,
+  listTime,
   usePhone,
   workerConnected,
 } from './ui.js';
-import { CommandPalette } from './palette.js';
+import { SearchPage, SidebarSearch } from './palette.js';
+import { useSidebar } from './sidebar.js';
 import { InboxPage, attentionCount } from './inbox.js';
 import { SettingsPage } from './settings.js';
-import { BackIcon, HomeIcon, InboxIcon, PowerIcon } from './icons.js';
+import {
+  BackIcon,
+  HashIcon,
+  InboxIcon,
+  PowerIcon,
+  SearchIcon,
+  SidebarIcon,
+} from './icons.js';
 import type { Command } from './palette.js';
 /** Tabs, plus one agent's own page reached from them. */
 type View = 'chat' | 'board' | 'team' | 'agent';
 type Tab = Exclude<View, 'agent'>;
 type Focus =
   | { kind: 'task' | 'worker'; id: string }
-  | { kind: 'inbox' | 'settings' }
+  | { kind: 'inbox' | 'settings' | 'search' }
   | null;
 /** True when a refresh moved at least one visible task to another status. */
 function statusesMoved(
@@ -115,6 +126,7 @@ function readRoute() {
     focus = { kind: 'worker', id: worker };
   } else if (query.has('inbox')) focus = { kind: 'inbox' };
   else if (query.has('settings')) focus = { kind: 'settings' };
+  else if (query.has('search')) focus = { kind: 'search' };
   if (agent && !worker) view = 'agent';
   return { channel, topic, view, agent, focus, draft };
 }
@@ -135,6 +147,7 @@ function routeUrl(place: {
   else if (place.focus?.kind === 'worker') query.set('worker', place.focus.id);
   else if (place.focus?.kind === 'inbox') query.set('inbox', '');
   else if (place.focus?.kind === 'settings') query.set('settings', '');
+  else if (place.focus?.kind === 'search') query.set('search', '');
   else if (place.view === 'agent' && place.agent)
     query.set('agent', place.agent);
   else if (place.view === 'board' || place.view === 'team')
@@ -189,6 +202,34 @@ export function App() {
   const [cursors, setCursors] = useState<Record<string, string>>({});
   const [focus, setFocus] = useState<Focus>(initial.focus);
   const [draft, setDraft] = useState<TaskDraft | null>(initial.draft);
+  // A phone opened with no place in its address starts where something
+  // waits on you, if anything does; an address always wins.
+  const [addressed] = useState(() => window.location.search !== '');
+  const landed = useRef(false);
+  useEffect(() => {
+    if (landed.current || !data) return;
+    landed.current = true;
+    if (phone && !addressed && attentionCount(data.attention) > 0)
+      setFocus({ kind: 'inbox' });
+  }, [data, phone, addressed]);
+  // A phone's search is a tab, which ⌘K opens (and closes again); a wider
+  // screen searches from the sidebar.
+  useEffect(() => {
+    if (!phone) {
+      setFocus((old) => (old?.kind === 'search' ? null : old));
+      return;
+    }
+    const onKey = (e: globalThis.KeyboardEvent) => {
+      if (!(e.metaKey || e.ctrlKey) || e.key.toLowerCase() !== 'k') return;
+      e.preventDefault();
+      setDraft(null);
+      setFocus((old) => (old?.kind === 'search' ? null : { kind: 'search' }));
+    };
+    window.addEventListener('keydown', onKey);
+    return () => {
+      window.removeEventListener('keydown', onKey);
+    };
+  }, [phone]);
   // A new task in progress is kept in this tab until created or dropped.
   useEffect(() => {
     keepDraft(draft);
@@ -359,6 +400,17 @@ export function App() {
   const routed = useRef(false);
   // A new task shares the page slot; any other page replaces it.
   const newTask = focus === null ? draft : null;
+  // On a tablet the sidebar folds away or slides in; a new place closes it.
+  const sidebar = useSidebar(
+    routeUrl({
+      channel: selection.channel,
+      topic: selection.topic,
+      view,
+      agent: agentId,
+      focus,
+      newTask: newTask !== null,
+    }),
+  );
   useEffect(() => {
     const next = routeUrl({
       channel: selection.channel,
@@ -465,8 +517,7 @@ export function App() {
     // A channel in the sidebar leads away from any open page.
     setFocus(null);
     setDraft(null);
-    // On a phone the team is on Home, so a channel opens on its chat.
-    if (view === 'agent' || (phone && view === 'team')) setView('chat');
+    if (view === 'agent') setView('chat');
   };
   if (status === 'signedout') return <Auth denied={denied} />;
   if (!data) {
@@ -556,7 +607,8 @@ export function App() {
     onBoardPage ||
     workerAgent !== undefined ||
     focus?.kind === 'inbox' ||
-    focus?.kind === 'settings';
+    focus?.kind === 'settings' ||
+    focus?.kind === 'search';
   // A task (new or open) sits on the board and the Inbox is its own tab;
   // Settings and a hand-run worker sit on no tab. An agent's page is its own tab panel,
   // which no trigger lights.
@@ -573,11 +625,13 @@ export function App() {
    * shows them side by side and ignores this.
    */
   const screen =
-    focus?.kind === 'inbox' || focus?.kind === 'settings'
+    focus?.kind === 'inbox' ||
+    focus?.kind === 'settings' ||
+    focus?.kind === 'search'
       ? 'tab'
       : onPage || view === 'agent'
         ? 'page'
-        : !selection.channel || view === 'team'
+        : !selection.channel
           ? 'home'
           : 'channel';
   const signOut = () => {
@@ -675,6 +729,34 @@ export function App() {
         setView(v);
       },
     })),
+    // Places to go first, so a name typed finds its place before an
+    // action that mentions it; then the actions.
+    ...data.channels.items.map((c) => ({
+      id: 'channel-' + c.id,
+      group: '频道',
+      label: '# ' + c.name,
+      run: () => {
+        selectChannel(c.id);
+      },
+    })),
+    ...data.agents.map((agent) => ({
+      id: 'agent-' + agent.id,
+      group: '成员',
+      label: agent.name,
+      run: () => {
+        openAgent(agent.id);
+      },
+    })),
+    ...data.tasks.items.map((task) => ({
+      id: 'task-' + task.id,
+      group: '任务',
+      label: task.title,
+      hint:
+        '#' + String(task.position) + ' · ' + statusLabel(task.state.status),
+      run: () => {
+        openTask(task.id);
+      },
+    })),
     ...(channelPath
       ? [
           {
@@ -704,52 +786,63 @@ export function App() {
       label: '立即刷新',
       run: refreshNow,
     },
-    ...data.tasks.items.map((task) => ({
-      id: 'task-' + task.id,
-      group: '任务',
-      label: task.title,
-      hint:
-        '#' + String(task.position) + ' · ' + statusLabel(task.state.status),
-      run: () => {
-        openTask(task.id);
-      },
-    })),
-    ...data.channels.items.map((c) => ({
-      id: 'channel-' + c.id,
-      group: '频道',
-      label: '# ' + c.name,
-      run: () => {
-        selectChannel(c.id);
-      },
-    })),
-    ...data.agents.map((agent) => ({
-      id: 'agent-' + agent.id,
-      group: '成员',
-      label: agent.name,
-      run: () => {
-        openAgent(agent.id);
-      },
-    })),
   ];
+  const teamName = (
+    <p
+      className="team-name"
+      title={data.team.name}
+      data-long={data.team.name.length > 12 || undefined}
+    >
+      {data.team.name}
+    </p>
+  );
   return (
     <MutationPermission value={canAct}>
       <LiveContext.Provider value={liveReads}>
         <AvatarImages.Provider value={avatarImages}>
           <Offline value={!canAct && !switching}>
-            <div className="workspace-shell" data-screen={screen}>
-              <aside className="sidebar">
-                {/* The organization, as Feishu names it, set as a wordmark;
-                    then search. A long name wraps to two lines, smaller. */}
-                <p
-                  className="team-name"
-                  title={data.team.name}
-                  data-long={data.team.name.length > 12 || undefined}
-                >
-                  {data.team.name}
-                </p>
-                <div className="sidebar-top">
-                  <CommandPalette commands={commands} />
-                </div>
+            <div
+              className="workspace-shell"
+              data-screen={screen}
+              data-sidebar={sidebar.state}
+            >
+              <aside
+                className="sidebar"
+                id="sidebar"
+                ref={sidebar.sidebarRef}
+                aria-label="侧栏"
+              >
+                {/* The organization, as Feishu names it, set as a wordmark,
+                    with search at the end of its row. A long name wraps to
+                    two lines, smaller. */}
+                {phone ? (
+                  // A phone's search is its own tab: the row is the name.
+                  <div className="team-row">{teamName}</div>
+                ) : (
+                  <SidebarSearch
+                    commands={commands}
+                    onOpen={sidebar.onSearch}
+                    end={
+                      sidebar.pad && (
+                        <button
+                          type="button"
+                          ref={sidebar.rowToggle}
+                          className="quiet icon-button sidebar-toggle"
+                          aria-label="收起侧栏"
+                          title="收起侧栏"
+                          aria-expanded="true"
+                          aria-controls="sidebar"
+                          aria-keyshortcuts="Meta+Backslash Control+Backslash"
+                          onClick={sidebar.toggle}
+                        >
+                          <SidebarIcon />
+                        </button>
+                      )
+                    }
+                  >
+                    {teamName}
+                  </SidebarSearch>
+                )}
                 <nav aria-label="频道">
                   <div className="nav-heading">
                     <h2>频道</h2>
@@ -760,9 +853,20 @@ export function App() {
                       }}
                     />
                   </div>
-                  {data.channels.items.map((c) => (
+                  {(phone
+                    ? byActivity(data.channels.items, data.latest)
+                    : data.channels.items
+                  ).map((c) => (
                     <Fragment key={c.id}>
                       <button
+                        // On a phone the row also shows the newest message,
+                        // which describes it rather than naming it.
+                        {...(phone
+                          ? {
+                              'aria-label': c.name,
+                              'aria-describedby': 'latest-' + c.id,
+                            }
+                          : {})}
                         aria-current={
                           // Only one place is current: a channel while you are
                           // in its chat or board.
@@ -776,7 +880,20 @@ export function App() {
                           selectChannel(c.id);
                         }}
                       >
-                        <span aria-hidden="true">#</span> {c.name}
+                        {phone ? (
+                          <ChannelRow
+                            data={data}
+                            name={c.name}
+                            latest={data.latest.find(
+                              (l) => l.channelId === c.id,
+                            )}
+                            id={'latest-' + c.id}
+                          />
+                        ) : (
+                          <>
+                            <span aria-hidden="true">#</span> {c.name}
+                          </>
+                        )}
                         {/* Something in this channel waits on you. */}
                         {waitingIn.has(c.id) && (
                           <span className="waiting-dot" title="等你处理">
@@ -833,20 +950,6 @@ export function App() {
                   >
                     更多频道
                   </button>
-                )}
-                {/* On a phone, Home holds the team: the gallery of faces. */}
-                {phone && (
-                  <div className="home-team">
-                    <Team
-                      data={data}
-                      channelPath={null}
-                      onDone={refresh}
-                      openAgent={openAgent}
-                      openSettings={() => {
-                        setFocus({ kind: 'settings' });
-                      }}
-                    />
-                  </div>
                 )}
                 <section
                   className="people"
@@ -940,7 +1043,7 @@ export function App() {
                     <h1 className={phone ? 'header-title' : 'visually-hidden'}>
                       {pageAgent
                         ? pageAgent.name
-                        : view === 'team'
+                        : view === 'team' && !phone
                           ? '团队'
                           : shownChannelName
                             ? '# ' + shownChannelName
@@ -948,6 +1051,24 @@ export function App() {
                               ? '正在打开频道…'
                               : '欢迎来到你的团队'}
                     </h1>
+                    {/* Closed, the sidebar opens from here; open, the same
+                        control ends the team name's row. A floating sidebar
+                        covers this one, which keeps the header still. */}
+                    {sidebar.pad && sidebar.state && (
+                      <button
+                        type="button"
+                        ref={sidebar.headerToggle}
+                        className="quiet icon-button sidebar-toggle"
+                        aria-label="展开侧栏"
+                        title="展开侧栏"
+                        aria-expanded={sidebar.open}
+                        aria-controls="sidebar"
+                        aria-keyshortcuts="Meta+Backslash Control+Backslash"
+                        onClick={sidebar.toggle}
+                      >
+                        <SidebarIcon />
+                      </button>
+                    )}
                     {/* Views stay in reach however far the conversation scrolls. */}
                     <Tabs.List aria-label="工作区视图" className="view-switch">
                       <Tabs.Trigger value="chat" onClick={leavePage}>
@@ -956,15 +1077,11 @@ export function App() {
                       <Tabs.Trigger value="board" onClick={leavePage}>
                         看板
                       </Tabs.Trigger>
-                      {/* On a phone the team is on Home and the Inbox is a
-                        bottom tab. */}
-                      {!phone && (
-                        <Tabs.Trigger value="team" onClick={leavePage}>
-                          团队
-                        </Tabs.Trigger>
-                      )}
+                      <Tabs.Trigger value="team" onClick={leavePage}>
+                        团队
+                      </Tabs.Trigger>
                       {/* What waits on you across the team; an empty inbox
-                        needs no number. */}
+                        needs no number. On a phone it is a bottom tab. */}
                       {!phone && (
                         <Tabs.Trigger
                           value="inbox"
@@ -1071,6 +1188,11 @@ export function App() {
                         onNotify={notify}
                       />
                     )}
+                    {phone && focus?.kind === 'search' && (
+                      <Page label="搜索" onClose={closeFocus} bar={false}>
+                        <SearchPage commands={commands} onClose={closeFocus} />
+                      </Page>
+                    )}
                     {focus?.kind === 'settings' && (
                       <SettingsPage
                         onClose={closeFocus}
@@ -1144,6 +1266,7 @@ export function App() {
                       <Team
                         data={data}
                         channelPath={channelPath}
+                        channelName={channel?.name ?? ''}
                         onDone={refresh}
                         openAgent={openAgent}
                         openSettings={() => {
@@ -1186,16 +1309,35 @@ export function App() {
                   they open; a channel or a pushed page has the screen. */}
               {phone && (
                 <nav className="phone-tabs" aria-label="位置">
+                  {/* Icons only; each says what it is to a screen reader. */}
                   <button
                     type="button"
+                    aria-label="频道"
+                    title="频道"
                     aria-current={screen === 'home' ? 'page' : undefined}
-                    onClick={goHome}
+                    onClick={() => {
+                      leavePage();
+                      goHome();
+                    }}
                   >
-                    <HomeIcon />
-                    <span>主页</span>
+                    <HashIcon />
                   </button>
                   <button
                     type="button"
+                    aria-label="搜索"
+                    title="搜索"
+                    aria-current={focus?.kind === 'search' ? 'page' : undefined}
+                    onClick={() => {
+                      setDraft(null);
+                      setFocus({ kind: 'search' });
+                    }}
+                  >
+                    <SearchIcon />
+                  </button>
+                  <button
+                    type="button"
+                    aria-label="收件箱"
+                    title="收件箱"
                     aria-current={focus?.kind === 'inbox' ? 'page' : undefined}
                     onClick={() => {
                       setDraft(null);
@@ -1203,11 +1345,12 @@ export function App() {
                     }}
                   >
                     <InboxIcon />
-                    <span>收件箱</span>
                     {waiting > 0 && <span className="count">{waiting}</span>}
                   </button>
                   <button
                     type="button"
+                    aria-label="我"
+                    title="我"
                     aria-current={
                       focus?.kind === 'settings' ? 'page' : undefined
                     }
@@ -1222,7 +1365,6 @@ export function App() {
                       id={data.human.id}
                       size="sm"
                     />
-                    <span>我</span>
                   </button>
                 </nav>
               )}
@@ -1268,5 +1410,50 @@ function LeftChannels({
         </li>
       ))}
     </ul>
+  );
+}
+/**
+ * A phone lists channels as conversations: the newest message first (by
+ * name among those without one).
+ */
+function byActivity(
+  channels: WorkspaceSnapshot['channels']['items'],
+  latest: WorkspaceSnapshot['latest'],
+) {
+  const at = new Map(latest.map((l) => [l.channelId, l.createdAt]));
+  return [...channels].sort((a, b) => {
+    const x = at.get(a.id) ?? '';
+    const y = at.get(b.id) ?? '';
+    return x === y ? a.name.localeCompare(b.name, 'zh-CN') : x < y ? 1 : -1;
+  });
+}
+/** A channel on a phone's Home: its name and time, then "作者：正文". */
+function ChannelRow({
+  data,
+  name,
+  latest,
+  id,
+}: {
+  data: WorkspaceSnapshot;
+  name: string;
+  latest: WorkspaceSnapshot['latest'][number] | undefined;
+  id: string;
+}) {
+  return (
+    <span className="channel-row">
+      <span className="channel-row-name">
+        <span aria-hidden="true">#</span> {name}
+      </span>
+      {latest && (
+        <>
+          <time className="channel-row-time" dateTime={latest.createdAt}>
+            {listTime(latest.createdAt)}
+          </time>
+          <span className="channel-row-last" id={id}>
+            {memberName(latest.author, data)}：{plainText(latest.excerpt)}
+          </span>
+        </>
+      )}
+    </span>
   );
 }

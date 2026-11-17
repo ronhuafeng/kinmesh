@@ -97,7 +97,7 @@ function Composer({
     if (document.activeElement?.matches('input, textarea, select')) return;
     input.current?.focus({ preventScroll: true });
   }, [topicId]);
-  const narrow = window.matchMedia('(max-width: 720px)').matches;
+  const narrow = window.matchMedia('(max-width: 575px)').matches;
   // What was typed and not sent survives a reload, per channel.
   const draftKey = 'message:' + channelPath;
   const unsent = kept(draftKey);

@@ -14,6 +14,7 @@ import {
 } from '../domain/contracts.js';
 import { TopicId } from '../domain/communication.js';
 import {
+  ChannelLatest,
   ChannelView,
   Message,
   REACH,
@@ -70,6 +71,8 @@ export const WorkspaceSnapshot = z.strictObject({
   /** The people in the open channel. */
   joinedHumanIds: z.array(HumanId).max(100),
   channels: pageOf(ChannelView),
+  /** The newest message of each listed channel that has one. */
+  latest: z.array(ChannelLatest).max(100),
   channel: ChannelView.nullable(),
   /** Channels the human left and may rejoin (never removed ones). */
   leftChannels: z.array(ChannelView).max(100),

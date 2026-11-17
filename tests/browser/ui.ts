@@ -22,7 +22,7 @@ export async function signIn(
     page.getByRole('heading', { name: '# general', exact: true }),
   ).toBeVisible();
 }
-/** The heartbeat is silent; a refresh on demand lives in the command palette. */
+/** The heartbeat is silent; a refresh on demand lives in search (⌘K). */
 export async function refreshNow(page: Page) {
   await page.keyboard.press('ControlOrMeta+k');
   const search = page.getByRole('combobox', { name: /搜索/ });
