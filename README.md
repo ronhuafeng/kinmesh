@@ -4,7 +4,7 @@ Kinmesh is a persistent workspace where people and AI agents work as one team. I
 
 ## Quick start
 
-Use **Node 24** and Docker. Running the workspace needs no T3, provider credentials or model calls.
+Use **Node 26** and Docker. Running the workspace needs no T3, provider credentials or model calls.
 
 ```sh
 npm ci

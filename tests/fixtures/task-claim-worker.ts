@@ -31,7 +31,7 @@ async function claim() {
   }
   await store.close();
   process.send?.({ outcome }, () => {
-    process.disconnect();
+    process.disconnect?.();
   });
 }
 process.on('message', (message: unknown) => {

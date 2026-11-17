@@ -271,7 +271,7 @@ await test('AUTH SDK FIXTURE: official SDK DCR/S256 exchange uses original verif
   // T3 says how long the token lasts; the end is kept as a time, counted
   // from before the token was asked for.
   const ends = Date.parse(value.expiresAt ?? '') - 30 * 86400_000;
-  assert.ok(ends >= before && ends <= after, value.expiresAt);
+  assert.ok(ends >= before && ends <= after, value.expiresAt ?? 'no expiresAt');
   assert.deepEqual(f.statistics(), {
     exchanges: 1,
     registrations: 1,
