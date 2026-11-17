@@ -173,7 +173,7 @@ export function ActionForm({
             });
           }}
         >
-          Retry same action
+          重试同一操作
         </button>
       )}
     </form>

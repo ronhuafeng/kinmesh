@@ -63,10 +63,10 @@ type Step = 'done' | 'todo' | 'manual';
 type T3Connection = NonNullable<T3Status['connection']>;
 /** T3's names for the modes a person chooses on its approval page. */
 export const MODE_NAMES = {
-  'approval-required': 'supervised',
-  'auto-accept-edits': 'accepts edits',
-  auto: 'auto',
-  'full-access': 'full access',
+  'approval-required': '监督',
+  'auto-accept-edits': '自动接受编辑',
+  auto: '自动',
+  'full-access': '完全访问',
 } as const;
 /** Where the team's T3 is, and how agents run there, when that is known. */
 function t3Where(connection: T3Connection) {
@@ -74,7 +74,7 @@ function t3Where(connection: T3Connection) {
     host: new URL(connection.endpoint).host,
     access:
       connection.access === 'read'
-        ? 'read only'
+        ? '只读'
         : connection.ceiling === null
           ? null
           : MODE_NAMES[connection.ceiling],
@@ -86,7 +86,7 @@ function managedOf(data: WorkspaceSnapshot, agentId: string) {
 }
 /** A setup request; a conflict means the page is behind what changed. */
 const useSetupRequest = () =>
-  useRequest({ 409: 'That no longer applies; the panel shows what changed.' });
+  useRequest({ 409: '这已不适用，面板显示了变化。' });
 
 function usable(grant: ListedGrant, scopes: Scope[]) {
   return (
@@ -111,10 +111,10 @@ function Row({
         <strong>{title}</strong>
         <span className="visually-hidden">
           {step === 'done'
-            ? ' (done)'
+            ? '（已完成）'
             : step === 'manual'
-              ? ' (outside Kinmesh)'
-              : ' (to do)'}
+              ? '（在 Kinmesh 之外）'
+              : '（待完成）'}
         </span>
         {children}
       </div>
@@ -131,7 +131,7 @@ function CopyButton({
   label: string;
   className?: string;
 }) {
-  const [done, setDone] = useState<'' | 'Copied' | 'Copy failed'>('');
+  const [done, setDone] = useState<'' | '已复制' | '复制失败'>('');
   return (
     <button
       type="button"
@@ -139,10 +139,10 @@ function CopyButton({
       onClick={() => {
         navigator.clipboard.writeText(text).then(
           () => {
-            setDone('Copied');
+            setDone('已复制');
           },
           () => {
-            setDone('Copy failed');
+            setDone('复制失败');
           },
         );
       }}
@@ -167,12 +167,12 @@ function TokenOnce({
   return (
     <div className="token-once" role="status">
       <p>
-        <strong>Copy this credential now.</strong> Kinmesh stores only its hash
-        and cannot show it again.
+        <strong>现在就复制这个凭据。</strong>Kinmesh
+        只保存它的哈希，之后无法再显示。
       </p>
       <code className="reference">{token}</code>
       <div className="token-actions">
-        <CopyButton text={token} label="Copy token" />
+        <CopyButton text={token} label="复制凭据" />
         <a
           className="button-link"
           download={`${agent.name.toLowerCase().replace(/[^a-z0-9]+/g, '-')}-token.json`}
@@ -180,15 +180,13 @@ function TokenOnce({
             'data:application/json;charset=utf-8,' + encodeURIComponent(file)
           }
         >
-          Download token file
+          下载凭据文件
         </a>
         <button type="button" className="quiet" onClick={onDismiss}>
-          I saved it
+          我已保存
         </button>
       </div>
-      <p className="muted">
-        {where} Never paste it into chat, logs or command arguments.
-      </p>
+      <p className="muted">{where}不要把它贴到聊天、日志或命令参数里。</p>
     </div>
   );
 }
@@ -248,8 +246,8 @@ function Approve({
   reload: () => void;
 }) {
   const pasted = useRequest({
-    400: 'That isn’t the address this approval opened.',
-    409: 'That no longer applies; the panel shows what changed.',
+    400: '这不是这次批准打开的地址。',
+    409: '这已不适用，面板显示了变化。',
   });
   return (
     <div className="approve">
@@ -259,19 +257,19 @@ function Approve({
         target="_blank"
         rel="noopener noreferrer"
       >
-        Approve in T3 ↗
+        在 T3 中批准 ↗
       </a>
       <span className="muted" role="status">
-        Waiting for your approval…
+        等待你批准…
       </span>
       <ul className="approve-hints">
         <li>
-          Choose how {agentName} may run: <strong>Supervised</strong>,{' '}
-          <strong>Auto</strong> or <strong>Full access</strong>.
+          选择 {agentName} 的运行方式：<strong>监督</strong>、
+          <strong>自动</strong>或<strong>完全访问</strong>。
         </li>
         <li>
-          Asked for a pairing code? Create one on {new URL(url).host} under
-          Settings → Sharing &amp; access.
+          需要配对码？在 {new URL(url).host} 的 Settings → Sharing &amp; access
+          中创建。
         </li>
       </ul>
       {pasteCallback && (
@@ -287,7 +285,7 @@ function Approve({
               });
           }}
         >
-          <Field label="Address after approving">
+          <Field label="批准后的地址">
             <input
               name="url"
               type="url"
@@ -298,7 +296,7 @@ function Approve({
           </Field>
           <div className="token-actions">
             <button type="submit" disabled={!pasted.permitted || pasted.busy}>
-              {pasted.busy ? 'Finishing…' : 'Finish'}
+              {pasted.busy ? '正在完成…' : '完成'}
             </button>
           </div>
         </form>
@@ -356,15 +354,15 @@ function ConnectT3({
   };
   const askForUrl = other || local === null;
   return (
-    <NextStep title={readOnly ? 'Give T3 permission to run' : 'Connect T3'}>
+    <NextStep title={readOnly ? '允许 T3 运行' : '连接 T3'}>
       <p className="muted">
         {readOnly
-          ? `T3 only allowed reading, so ${agentName} can’t run there. Connect again and choose how it may run.`
+          ? `T3 只允许读取，所以 ${agentName} 无法在那里运行。重新连接并选择运行方式。`
           : ended
-            ? `T3’s sign-in ended, so ${agentName} is waiting. Connect again to go on.`
+            ? `T3 的登录已到期，${agentName} 在等待。重新连接即可继续。`
             : local && !other
-              ? `T3 is running on this Mac. Connect it once for the whole team.`
-              : `Paste the MCP URL from T3: Settings → Environments → Copy MCP URL.`}
+              ? `T3 正在这台 Mac 上运行。连接一次，整个团队都能用。`
+              : `粘贴 T3 的 MCP URL：Settings → Environments → Copy MCP URL。`}
       </p>
       {waiting ? (
         <Approve
@@ -385,7 +383,7 @@ function ConnectT3({
           }}
         >
           {askForUrl && local !== undefined && (
-            <Field label="T3 MCP URL">
+            <Field label="T3 的 MCP URL">
               <input
                 name="endpoint"
                 type="url"
@@ -400,7 +398,7 @@ function ConnectT3({
               type="submit"
               disabled={!permitted || busy || local === undefined}
             >
-              {busy ? 'Starting…' : 'Connect T3'}
+              {busy ? '正在开始…' : '连接 T3'}
             </button>
             {local && (
               <button
@@ -410,15 +408,13 @@ function ConnectT3({
                   setOther((v) => !v);
                 }}
               >
-                {other ? 'Use T3 on this Mac' : 'Use another T3'}
+                {other ? '使用这台 Mac 上的 T3' : '使用其他 T3'}
               </button>
             )}
           </div>
         </form>
       )}
-      {t3?.signIn === 'failed' && (
-        <Notice>T3 didn’t approve the connection. Try again.</Notice>
-      )}
+      {t3?.signIn === 'failed' && <Notice>T3 没有批准连接。再试一次。</Notice>}
       {error && <Notice>{error}</Notice>}
     </NextStep>
   );
@@ -444,7 +440,7 @@ export function ReconnectT3({
         teamId={teamId}
         url={approval}
         pasteCallback={renewal.pasteCallback}
-        agentName="agents"
+        agentName="智能体"
         reload={onDone}
       />
     );
@@ -467,10 +463,10 @@ export function ReconnectT3({
           });
         }}
       >
-        {busy ? 'Starting…' : 'Reconnect T3'}
+        {busy ? '正在开始…' : '重新连接 T3'}
       </button>
       {renewal.signIn === 'failed' && (
-        <Notice>T3 didn’t approve the connection. Try again.</Notice>
+        <Notice>T3 没有批准连接。再试一次。</Notice>
       )}
       {error && <Notice>{error}</Notice>}
     </div>
@@ -511,7 +507,7 @@ function ChooseModel({
     prefs.providerId && prefs.modelId
       ? prefs.providerId + '\n' + prefs.modelId
       : '';
-  const title = `Choose what ${agent.name} runs on`;
+  const title = `选择 ${agent.name} 使用的模型`;
   return (
     <NextStep title={title}>
       <form
@@ -533,23 +529,21 @@ function ChooseModel({
         }}
       >
         {offered === null ? (
-          <p className="muted">Asking T3 what it can run…</p>
+          <p className="muted">正在询问 T3 能运行什么…</p>
         ) : offered === 'unavailable' ? (
-          <p className="muted">T3 can’t be reached right now.</p>
+          <p className="muted">现在连不上 T3。</p>
         ) : offered.length === 0 ? (
           <>
-            <p className="muted">
-              T3 didn’t list its models; type them as T3 shows them.
-            </p>
+            <p className="muted">T3 没有列出模型，请按 T3 显示的名称填写。</p>
             <div className="field-row">
-              <Field label="Provider">
+              <Field label="提供方">
                 <input
                   name="providerId"
                   required
                   defaultValue={prefs.providerId ?? ''}
                 />
               </Field>
-              <Field label="Model">
+              <Field label="模型">
                 <input
                   name="modelId"
                   required
@@ -559,7 +553,7 @@ function ChooseModel({
             </div>
           </>
         ) : (
-          <Field label="Model">
+          <Field label="模型">
             <select
               name="model"
               required
@@ -594,11 +588,11 @@ function ChooseModel({
               agent.lifecycle !== 'active'
             }
           >
-            {busy ? 'Connecting…' : `Connect ${agent.name}`}
+            {busy ? '正在连接…' : `连接 ${agent.name}`}
           </button>
           {onCancel && (
             <button type="button" className="quiet" onClick={onCancel}>
-              Keep current
+              保持不变
             </button>
           )}
         </div>
@@ -619,7 +613,7 @@ function TeamMcp({ agent, data }: { agent: Agent; data: WorkspaceSnapshot }) {
     <div className="about-mcp">
       <dl>
         <dt>Team MCP</dt>
-        <dd>{seen ? `reached ${ago(seen)}` : 'not set up'}</dd>
+        <dd>{seen ? `${ago(seen)}连接过` : '未设置'}</dd>
       </dl>
       {token ? (
         <TokenOnce
@@ -627,8 +621,8 @@ function TeamMcp({ agent, data }: { agent: Agent; data: WorkspaceSnapshot }) {
           agent={agent}
           where={
             <>
-              Paste it into {agent.name}’s provider in T3 as the bearer token
-              for Team MCP at <code>{TEAM_MCP_URL}</code>.
+              把它粘贴到 T3 中 {agent.name} 的提供方，作为{' '}
+              <code>{TEAM_MCP_URL}</code> 上 Team MCP 的 bearer token。
             </>
           }
           onDismiss={() => {
@@ -650,7 +644,7 @@ function TeamMcp({ agent, data }: { agent: Agent; data: WorkspaceSnapshot }) {
             });
           }}
         >
-          Issue Team MCP credential
+          签发 Team MCP 凭据
         </button>
       )}
       {error && <Notice>{error}</Notice>}
@@ -689,7 +683,7 @@ function OwnWorker({
         settle('grants', next.revision);
       })
       .catch(() => {
-        setLoadError('Credentials can’t be loaded right now.');
+        setLoadError('现在无法加载凭据。');
         drop('grants');
       });
   }, [base, begin, settle, drop]);
@@ -736,7 +730,7 @@ function OwnWorker({
   );
   return (
     <ol className="setup-steps">
-      <Row step={configured ? 'done' : 'todo'} title="Runtime preferences">
+      <Row step={configured ? 'done' : 'todo'} title="运行偏好">
         {configured && !editing ? (
           <p className="muted">
             {prefs.environmentId} · {prefs.providerId}/{prefs.modelId}{' '}
@@ -747,16 +741,16 @@ function OwnWorker({
                 setEditing(true);
               }}
             >
-              Edit
+              编辑
             </button>
           </p>
         ) : (
           <ActionForm
-            title="Runtime preferences"
+            title="运行偏好"
             method="PUT"
             keyed={false}
             path={base}
-            submit="Save preferences"
+            submit="保存偏好"
             onDone={() => {
               setEditing(false);
               onDone();
@@ -776,7 +770,7 @@ function OwnWorker({
               });
             }}
           >
-            <Field label="T3 environment ID">
+            <Field label="T3 环境 ID">
               <input
                 name="environmentId"
                 required
@@ -784,14 +778,14 @@ function OwnWorker({
               />
             </Field>
             <div className="field-row">
-              <Field label="Isolated provider ID">
+              <Field label="隔离的提供方 ID">
                 <input
                   name="providerId"
                   required
                   defaultValue={prefs.providerId ?? ''}
                 />
               </Field>
-              <Field label="Model ID">
+              <Field label="模型 ID">
                 <input
                   name="modelId"
                   required
@@ -802,14 +796,14 @@ function OwnWorker({
           </ActionForm>
         )}
       </Row>
-      <Row step={credential ? 'done' : 'todo'} title="Worker credential">
+      <Row step={credential ? 'done' : 'todo'} title="工作进程凭据">
         {token && (
           <TokenOnce
             token={token}
             agent={agent}
             where={
               <>
-                Save it as the worker’s <code>tokenFile</code> (mode 0600).
+                把它保存为工作进程的 <code>tokenFile</code>（权限 0600）。
               </>
             }
             onDismiss={() => {
@@ -826,12 +820,12 @@ function OwnWorker({
                 mutate(base + '/grants', issueInput);
               }}
             >
-              Issue worker credential
+              签发工作进程凭据
             </button>
           </>
         )}
         {grants && grants.length > 0 && (
-          <ul className="grant-list" aria-label="Credentials">
+          <ul className="grant-list" aria-label="凭据">
             {grants.map((g) => {
               const live =
                 g.revokedAt === null && Date.parse(g.expiresAt) > Date.now();
@@ -839,13 +833,14 @@ function OwnWorker({
               return (
                 <li key={g.id} data-live={live ? 'true' : undefined}>
                   <span>
-                    {g.label} ·{' '}
+                    {/* The label is stored with the credential, in English. */}
+                    {g.label === 'Inbox worker' ? '工作进程' : g.label} ·{' '}
                     {g.revokedAt
-                      ? 'revoked'
+                      ? '已吊销'
                       : live
-                        ? 'expires ' +
-                          new Date(g.expiresAt).toLocaleDateString()
-                        : 'expired'}
+                        ? new Date(g.expiresAt).toLocaleDateString('zh-CN') +
+                          ' 到期'
+                        : '已过期'}
                   </span>
                   {live && (
                     <span>
@@ -859,7 +854,7 @@ function OwnWorker({
                             mutate(`${base}/grants/${g.id}/rotate`, issueInput);
                           }}
                         >
-                          Rotate
+                          轮换
                         </button>
                       )}
                       <button
@@ -870,7 +865,7 @@ function OwnWorker({
                           mutate(`${base}/grants/${g.id}/revoke`);
                         }}
                       >
-                        Revoke
+                        吊销
                       </button>
                     </span>
                   )}
@@ -881,21 +876,21 @@ function OwnWorker({
         )}
         {(error || loadError) && <Notice>{error || loadError}</Notice>}
       </Row>
-      <Row step="manual" title="T3 access (on the worker machine)">
+      <Row step="manual" title="T3 访问（在工作进程所在的机器上）">
         <p className="muted">
-          Approve the worker’s T3 OAuth access in a browser on that machine:{' '}
-          <code>npm run t3:auth</code>.
+          在那台机器的浏览器中批准工作进程的 T3 OAuth 访问：
+          <code>npm run t3:auth</code>。
         </p>
       </Row>
-      <Row step="manual" title="Inbox worker binding">
+      <Row step="manual" title="收件箱工作进程绑定">
         <p className="muted">
-          Add this to the worker’s private <code>inbox.json</code> bindings,
-          replacing the placeholders, then start the worker.
+          把这段加到工作进程私有的 <code>inbox.json</code>{' '}
+          绑定中，替换占位内容，然后启动工作进程。
         </p>
         <pre className="binding-snippet">
           <code>{binding}</code>
         </pre>
-        <CopyButton text={binding} label="Copy binding" />
+        <CopyButton text={binding} label="复制绑定" />
       </Row>
     </ol>
   );
@@ -933,12 +928,10 @@ export function AgentSetup({
   const base = `/api/teams/${data.team.id}/agents/${agent.id}`;
   let next: ReactNode = null;
   if (agent.lifecycle !== 'active')
-    next = (
-      <p className="muted">{agent.name} is disabled, so it can’t be woken.</p>
-    );
-  else if (t3.status === null) next = <p className="muted">Checking T3…</p>;
+    next = <p className="muted">{agent.name} 已停用，无法唤醒。</p>;
+  else if (t3.status === null) next = <p className="muted">正在查看 T3…</p>;
   else if (t3.status.provisioned && connection === null)
-    next = <p className="muted">Connecting T3…</p>;
+    next = <p className="muted">正在连接 T3…</p>;
   else if (!t3Ready || reconnecting)
     next = (
       <ConnectT3
@@ -970,11 +963,11 @@ export function AgentSetup({
   const t3Line = where && (
     <span className="muted">
       T3 {where.host}
-      {where.access && ` (${where.access})`}
+      {where.access && `（${where.access}）`}
     </span>
   );
   return (
-    <section className="agent-setup" aria-label="Setup">
+    <section className="agent-setup" aria-label="配置">
       {next ? (
         <>
           {next}
@@ -988,7 +981,7 @@ export function AgentSetup({
                   setReconnecting(true);
                 }}
               >
-                Reconnect
+                重新连接
               </button>
             </p>
           )}
@@ -997,9 +990,7 @@ export function AgentSetup({
         <div className="setup-status" data-ready={awake ? 'true' : undefined}>
           <span className="setup-mark" aria-hidden="true" />
           <p>
-            <strong>
-              {awake ? 'Ready to answer' : 'Starting the worker…'}
-            </strong>
+            <strong>{awake ? '可以回复了' : '正在启动工作进程…'}</strong>
           </p>
           <span className="setup-actions">
             <button
@@ -1009,7 +1000,7 @@ export function AgentSetup({
                 setChanging(true);
               }}
             >
-              Change model
+              更换模型
             </button>
             <button
               type="button"
@@ -1018,7 +1009,7 @@ export function AgentSetup({
                 setReconnecting(true);
               }}
             >
-              Reconnect
+              重新连接
             </button>
             <button
               type="button"
@@ -1030,7 +1021,7 @@ export function AgentSetup({
                 });
               }}
             >
-              Disconnect
+              断开连接
             </button>
           </span>
         </div>
@@ -1040,14 +1031,14 @@ export function AgentSetup({
       {!joined && channelPath && agent.lifecycle === 'active' && (
         <div className="channel-note">
           <p className="muted">
-            {agent.name} isn’t in this channel, so mentions here won’t reach it.
+            {agent.name} 不在这个频道，这里的提及它收不到。
           </p>
           <ActionForm
-            title={'Enroll ' + agent.name}
+            title={'邀请 ' + agent.name}
             path={channelPath + '/participants/invite'}
             build={() => ({ member: { kind: 'agent', id: agent.id } })}
             onDone={onDone}
-            submit={'Add ' + agent.name + ' to channel'}
+            submit={'把 ' + agent.name + ' 加入频道'}
           />
         </div>
       )}
@@ -1097,10 +1088,7 @@ function AvatarPicker({
   data: WorkspaceSnapshot;
   onDone: () => void;
 }) {
-  const picture = useRequest(
-    {},
-    'That picture didn’t go through. Try another one.',
-  );
+  const picture = useRequest({}, '这张图片没有成功，换一张试试。');
   const file = useRef<HTMLInputElement>(null);
   const has = data.avatars.some((a) => a.agentId === agent.id);
   const path = `/api/teams/${data.team.id}/agents/${agent.id}/avatar`;
@@ -1113,8 +1101,8 @@ function AvatarPicker({
       <button
         type="button"
         className="avatar-change"
-        aria-label={`Change ${agent.name}’s picture`}
-        title="Change picture"
+        aria-label={`更换 ${agent.name} 的头像`}
+        title="更换头像"
         disabled={picture.disabled}
         onClick={() => file.current?.click()}
       >
@@ -1132,7 +1120,7 @@ function AvatarPicker({
           void avatarFrom(chosen).then(
             (blob) => send(blob, 'PUT'),
             () => {
-              picture.setError('That file isn’t a picture Kinmesh can use.');
+              picture.setError('Kinmesh 无法使用这个文件作为图片。');
             },
           );
         }}
@@ -1146,7 +1134,7 @@ function AvatarPicker({
             void send(undefined, 'DELETE');
           }}
         >
-          Remove picture
+          移除头像
         </button>
       )}
       {picture.error && <Notice>{picture.error}</Notice>}
@@ -1176,42 +1164,40 @@ export function AgentAbout({
   const where = connection && t3Where(connection);
   const provider = managed?.providerId ?? agent.preferences.providerId;
   return (
-    <aside className="agent-about" aria-label="About">
+    <aside className="agent-about" aria-label="关于">
       <AvatarPicker agent={agent} data={data} onDone={onDone} />
       <dl>
-        <dt>Provider</dt>
-        <dd>{provider ?? 'not chosen'}</dd>
-        <dt>Model</dt>
-        <dd>{agent.preferences.modelId ?? 'not chosen'}</dd>
+        <dt>提供方</dt>
+        <dd>{provider ?? '未选择'}</dd>
+        <dt>模型</dt>
+        <dd>{agent.preferences.modelId ?? '未选择'}</dd>
         <dt>T3</dt>
         <dd>
           {where
             ? [where.host, where.access].filter(Boolean).join(' · ')
-            : 'not connected'}
+            : '未连接'}
         </dd>
-        <dt>Worker</dt>
-        <dd>
-          {managed ? 'run by Kinmesh' : awake ? 'run by you' : 'not running'}
-        </dd>
+        <dt>工作进程</dt>
+        <dd>{managed ? '由 Kinmesh 运行' : awake ? '由你运行' : '未运行'}</dd>
       </dl>
       <TeamMcp agent={agent} data={data} />
       <dl>
-        <dt>Agent ID</dt>
+        <dt>智能体 ID</dt>
         <dd className="agent-id">
           <code className="reference" title={agent.id}>
             {agent.id}
           </code>
-          <CopyButton text={agent.id} label="Copy" className="link-button" />
+          <CopyButton text={agent.id} label="复制" className="link-button" />
         </dd>
-        <dt>Memory</dt>
-        <dd>{agent.memoryLocation ?? 'none'}</dd>
+        <dt>记忆</dt>
+        <dd>{agent.memoryLocation ?? '无'}</dd>
       </dl>
       <button
         type="button"
         className="link-button about-link"
         onClick={onOwnWorker}
       >
-        Run the worker yourself →
+        自己运行工作进程 →
       </button>
     </aside>
   );
@@ -1230,9 +1216,9 @@ export function OwnWorkerPage({
 }) {
   const managed = managedOf(data, agent.id);
   return (
-    <Page label="Run the worker yourself" onClose={onClose}>
+    <Page label="自己运行工作进程" onClose={onClose}>
       <div className="page-body">
-        <h2>Run {agent.name}’s worker yourself</h2>
+        <h2>自己运行 {agent.name} 的工作进程</h2>
         <OwnWorker
           agent={agent}
           data={data}

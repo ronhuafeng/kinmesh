@@ -20,7 +20,7 @@ import { DeliveryLine, taskDeliveries } from './deliveries.js';
 import { joinedAgents, memberName, otherPeople, someoneOf } from './names.js';
 import type { Someone } from './names.js';
 import { LEGACY_FOOTER } from './replies.js';
-import { Avatar, Page, shortTime } from './ui.js';
+import { Avatar, Page, cjk, shortTime } from './ui.js';
 import { PlusIcon } from './icons.js';
 import type { Status } from './ui.js';
 
@@ -35,11 +35,11 @@ export function humanAsk(task: Task, data: WorkspaceSnapshot): string | null {
   const me = memberKey({ kind: 'human', id: data.human.id });
   const { status, owner, reviewer } = task.state;
   if (status === 'awaiting-human' && task.acceptorHumanId === data.human.id)
-    return 'Your sign-off';
+    return '等你验收';
   if (status === 'review-requested' && memberKey(reviewer) === me)
-    return 'Your review';
+    return '等你审核';
   if (status === 'rework-requested' && memberKey(owner) === me)
-    return 'Your rework';
+    return '等你修改';
   return null;
 }
 /**
@@ -59,32 +59,31 @@ const stages: readonly {
 }[] = [
   {
     id: 'proposed',
-    label: 'Proposed',
+    label: '待开始',
     tone: 'proposed',
     statuses: ['proposed'],
   },
   {
     id: 'working',
-    label: 'Working',
+    label: '进行中',
     tone: 'in-progress',
     statuses: ['in-progress', 'rework-requested'],
   },
   {
     id: 'review',
-    label: 'Review',
+    label: '审核中',
     tone: 'review-requested',
     statuses: ['review-requested'],
   },
   {
     id: 'sign-off',
-    label: 'Human sign-off',
-    short: 'Sign-off',
+    label: '待验收',
     tone: 'awaiting-human',
     statuses: ['awaiting-human'],
   },
   {
     id: 'done',
-    label: 'Done',
+    label: '已完成',
     tone: 'accepted',
     statuses: ['accepted', 'cancelled'],
   },
@@ -95,9 +94,9 @@ function stageOf(status: Status): StageId {
 /** The one exception a card states in words; the column says the rest. */
 function cardMarker(status: Status) {
   return status === 'rework-requested'
-    ? 'Sent back'
+    ? '已退回'
     : status === 'cancelled'
-      ? 'Cancelled'
+      ? '已取消'
       : null;
 }
 /** A status as people say it: its stage, or the exception a card names. */
@@ -119,7 +118,7 @@ function Lifecycle({ status }: { status: Status }) {
   if (status === 'cancelled') return null;
   const current = stages.findIndex((s) => s.id === stageOf(status));
   return (
-    <ol className="lifecycle" aria-label="Task progress">
+    <ol className="lifecycle" aria-label="任务进度">
       {stages.map((stage, index) => (
         <li
           key={stage.id}
@@ -178,7 +177,7 @@ function MemberSelect({
   name,
   data,
   required = false,
-  empty = 'Unassigned',
+  empty = '未分配',
   exclude = null,
 }: {
   /** Supplied by the wrapping Field, so its label names this select. */
@@ -231,51 +230,54 @@ function MemberChip({
   );
 }
 const quote = (note: string) =>
-  ': “' + (note.length > 120 ? note.slice(0, 117) + '…' : note) + '”';
+  '：“' + (note.length > 120 ? note.slice(0, 117) + '…' : note) + '”';
 /** One line of task history as a person would say it. */
 export function historySentence(
   e: z.infer<typeof TaskEvent>,
   data: WorkspaceSnapshot,
 ): string {
+  return cjk(said(e, data));
+}
+function said(e: z.infer<typeof TaskEvent>, data: WorkspaceSnapshot): string {
   const who =
     e.author.kind === 'human' && e.author.humanId === data.human.id
-      ? 'You'
+      ? '你'
       : memberName(e.author, data);
   const name = (m: Member) =>
-    m.kind === 'human' && m.id === data.human.id ? 'you' : memberName(m, data);
+    m.kind === 'human' && m.id === data.human.id ? '你' : memberName(m, data);
   const c = e.command;
   switch (c.type) {
     case 'create':
-      return `${who} created the task`;
+      return `${who} 创建了任务`;
     case 'claim':
-      return `${who} took it on`;
+      return `${who} 认领了任务`;
     case 'progress':
-      return `${who} posted progress${quote(c.note)}`;
+      return `${who} 发布了进展${quote(c.note)}`;
     case 'handoff': {
       const self =
         e.author.kind === c.recipient.kind &&
         (e.author.kind === 'human' ? e.author.humanId : e.author.agentId) ===
           c.recipient.id;
       return c.mode === 'review'
-        ? `${who} asked ${name(c.recipient)} to review${quote(c.note)}`
+        ? `${who} 请 ${name(c.recipient)} 审核${quote(c.note)}`
         : self
-          ? `${who} took over the work${quote(c.note)}`
-          : `${who} handed the work to ${name(c.recipient)}${quote(c.note)}`;
+          ? `${who} 接手了工作${quote(c.note)}`
+          : `${who} 把工作交给了 ${name(c.recipient)}${quote(c.note)}`;
     }
     case 'request-review':
-      return `${who} asked ${name(c.reviewer)} to review${quote(c.note)}`;
+      return `${who} 请 ${name(c.reviewer)} 审核${quote(c.note)}`;
     case 'review':
       return c.decision === 'approve'
-        ? `${who} approved the review${quote(c.note)}`
-        : `${who} asked for changes${quote(c.note)}`;
+        ? `${who} 审核通过${quote(c.note)}`
+        : `${who} 要求修改${quote(c.note)}`;
     case 'accept':
-      return `${who} accepted it${quote(c.note)}`;
+      return `${who} 验收通过${quote(c.note)}`;
     case 'rework':
-      return `${who} sent it back${quote(c.note)}`;
+      return `${who} 退回了任务${quote(c.note)}`;
     case 'cancel':
-      return `${who} cancelled it${quote(c.note)}`;
+      return `${who} 取消了任务${quote(c.note)}`;
     case 'link-execution':
-      return `${who} linked a T3 run`;
+      return `${who} 关联了一次 T3 运行`;
   }
 }
 function TaskHistory({
@@ -304,7 +306,7 @@ function TaskHistory({
       })
       .catch(() => {
         if (!controller.signal.aborted)
-          setError('Activity unavailable. Refresh activity to retry.');
+          setError('暂时读不到记录，点“刷新”重试。');
       });
     return () => {
       controller.abort();
@@ -326,14 +328,14 @@ function TaskHistory({
       key: link.id,
       at: link.createdAt,
       who: avatarOf(link.author),
-      text: 'Linked a T3 run',
+      text: '关联了一次 T3 运行',
       refs: { thread: link.reference.threadId, run: link.reference.runId },
     })),
   ].sort((x, y) => x.at.localeCompare(y.at));
   return (
-    <section className="task-history" aria-label="History">
+    <section className="task-history" aria-label="记录">
       <div className="page-heading">
-        <h3>History</h3>
+        <h3>记录</h3>
         <button
           type="button"
           className="quiet"
@@ -341,7 +343,7 @@ function TaskHistory({
             setRefresh((value) => value + 1);
           }}
         >
-          Refresh
+          刷新
         </button>
       </div>
       {error && <Notice>{error}</Notice>}
@@ -378,27 +380,27 @@ type Intent =
   | 'cancel';
 type Route = 'request-review' | 'handoff' | 'cancel';
 const intentLabels: Record<Intent, string> = {
-  claim: 'Claim task',
-  progress: 'Post progress update',
-  'request-review': 'Request review',
-  approve: 'Approve review',
-  'review-rework': 'Request changes',
-  accept: 'Accept task',
-  handoff: 'Assign work',
-  rework: 'Request rework',
-  cancel: 'Cancel task',
+  claim: '认领任务',
+  progress: '发布进展',
+  'request-review': '请求审核',
+  approve: '审核通过',
+  'review-rework': '要求修改',
+  accept: '验收通过',
+  handoff: '转交工作',
+  rework: '退回修改',
+  cancel: '取消任务',
 };
 /** What the person sees after the server confirms the decision. */
 const intentDone: Record<Intent, string> = {
-  claim: 'Claimed. The task is in progress with you.',
-  progress: 'Progress note recorded.',
-  'request-review': 'Review requested.',
-  approve: 'Review approved. It now waits for human sign-off.',
-  'review-rework': 'Changes requested. The owner has it back.',
-  accept: 'Accepted. Recorded with your note.',
-  handoff: 'Work reassigned. Review restarts.',
-  rework: 'Sent back for rework.',
-  cancel: 'Task cancelled.',
+  claim: '已认领，任务现在由你进行。',
+  progress: '进展已记录。',
+  'request-review': '已请求审核。',
+  approve: '审核已通过，等待验收。',
+  'review-rework': '已要求修改，任务回到负责人手里。',
+  accept: '已验收，备注已记录。',
+  handoff: '工作已转交，审核重新开始。',
+  rework: '已退回修改。',
+  cancel: '任务已取消。',
 };
 /** Moving on is the plain (green) button; sending back or away is danger. */
 const intentTone: Partial<Record<Intent, string>> = {
@@ -457,9 +459,7 @@ function DecisionPanel({
   if (final && !done) routes.push('cancel');
   // Nothing to do here: say so only when the task is over.
   if (!canClaim && intents.length === 0 && routes.length === 0)
-    return done ? (
-      <p className="muted decision-none">This task is closed.</p>
-    ) : null;
+    return done ? <p className="muted decision-none">任务已关闭。</p> : null;
   const ask = humanAsk(task, data);
   // A recipient must differ from the current owner (work) or from you (review).
   const exclude =
@@ -472,7 +472,7 @@ function DecisionPanel({
     <div className="decision-panel" data-ask={ask ? 'true' : undefined}>
       <ActionForm
         key={task.id}
-        title={ask ? 'Your decision' : 'Task actions'}
+        title={ask ? '等你决定' : '任务操作'}
         path={(f) => {
           const intent = value(f, 'intent');
           return (
@@ -545,31 +545,30 @@ function DecisionPanel({
           </SubmitGroup>
         )}
         {(routing === 'handoff' || routing === 'request-review') && (
-          <Field label="Recipient">
+          <Field label="接收人">
             <MemberSelect
               name="recipient"
               data={data}
               required
-              empty="Choose a joined member"
+              empty="选择频道里的成员"
               exclude={exclude}
             />
           </Field>
         )}
         {routing === 'cancel' && (
           <p className="decision-warning">
-            Cancelling closes the task without acceptance. It cannot be
-            reopened.
+            取消会不经验收直接关闭任务，之后无法重新打开。
           </p>
         )}
         {(routing !== null || intents.length > 0) && (
-          <Field label="Decision note">
+          <Field label="决定备注">
             <textarea
               name="note"
               className="decision-note"
               required
               maxLength={2000}
               rows={1}
-              placeholder="Note for the record"
+              placeholder="写下备注"
             />
           </Field>
         )}
@@ -593,7 +592,7 @@ function DecisionPanel({
                 setRouting(null);
               }}
             >
-              Back
+              返回
             </button>
           </SubmitGroup>
         ) : (
@@ -637,9 +636,7 @@ function DecisionPanel({
           </>
         )}
         {offline && (
-          <p className="decision-help">
-            Actions are paused until the workspace reconnects.
-          </p>
+          <p className="decision-help">工作区重新连上之前，操作暂停。</p>
         )}
       </ActionForm>
     </div>
@@ -658,7 +655,7 @@ function CriteriaInput({ initial }: { initial: string[] }) {
     inputs.current[focus.current]?.focus();
     focus.current = null;
   }, [rows.length]);
-  const placeholders = ['Tests pass', 'Docs updated'];
+  const placeholders = ['测试通过', '文档已更新'];
   return (
     <ul className="criteria-input">
       {rows.map((row, index) => (
@@ -669,7 +666,7 @@ function CriteriaInput({ initial }: { initial: string[] }) {
             }}
             name="criteria"
             aria-label={
-              index === 0 ? 'Done when' : `Done when ${String(index + 1)}`
+              index === 0 ? '完成标准' : `完成标准 ${String(index + 1)}`
             }
             required={index === 0}
             maxLength={500}
@@ -705,7 +702,7 @@ function CriteriaInput({ initial }: { initial: string[] }) {
         <button
           type="button"
           className="quiet add-criterion"
-          aria-label="Add a condition"
+          aria-label="添加一条标准"
           onClick={() => {
             focus.current = rows.length;
             setRows((old) => [...old, '']);
@@ -751,7 +748,7 @@ function PersonPicker({
           setChosen(e.target.value);
         }}
       >
-        {!people && <option value="">Choose…</option>}
+        {!people && <option value="">选择…</option>}
         <MemberOptions data={data} people={people} />
       </select>
     </span>
@@ -784,10 +781,10 @@ export function NewTaskPage({
   const typed = restored?.draft.id === draft.id ? restored.fields : {};
   return (
     <Page
-      label="New task"
+      label="新任务"
       onClose={onClose}
       className="task-page"
-      bar={data.channel ? '# ' + data.channel.name : 'New task'}
+      bar={data.channel ? '# ' + data.channel.name : '新任务'}
     >
       <div
         className="page-body"
@@ -807,12 +804,10 @@ export function NewTaskPage({
       >
         <ActionForm
           key={draft.id}
-          title="New task"
+          title="新任务"
           path={channelPath + '/tasks'}
           onDone={() => {
-            onNotify(
-              draft.from ? 'Task created from the message.' : 'Task created.',
-            );
+            onNotify(draft.from ? '已从消息创建任务。' : '任务已创建。');
           }}
           onResult={(raw) => {
             const created = TaskResult.safeParse(raw);
@@ -845,30 +840,30 @@ export function NewTaskPage({
             status="proposed"
             lead={
               draft.from ? (
-                <p className="draft-source">From {draft.from}’s message</p>
+                <p className="draft-source">来自 {draft.from} 的消息</p>
               ) : null
             }
             title={
-              <Field label="Task title">
+              <Field label="任务标题">
                 <input
                   name="title"
                   className="title-input"
                   required
                   maxLength={160}
-                  placeholder="What needs doing?"
+                  placeholder="要做什么？"
                   defaultValue={typed.title ?? draft.title}
                   autoFocus
                 />
               </Field>
             }
             description={
-              <Field label="Description">
+              <Field label="描述">
                 <textarea
                   name="description"
                   className="description-input"
                   rows={3}
                   maxLength={4000}
-                  placeholder="Add a description"
+                  placeholder="添加描述"
                   defaultValue={typed.description ?? draft.description}
                 />
               </Field>
@@ -881,7 +876,7 @@ export function NewTaskPage({
             owner={
               <PersonPicker
                 name="owner"
-                label="Owner"
+                label="负责人"
                 data={data}
                 initial={typed.owner ?? ''}
               />
@@ -889,7 +884,7 @@ export function NewTaskPage({
             reviewer={
               <PersonPicker
                 name="reviewer"
-                label="Reviewer"
+                label="审核人"
                 data={data}
                 initial={typed.reviewer ?? ''}
               />
@@ -897,7 +892,7 @@ export function NewTaskPage({
             acceptor={
               <PersonPicker
                 name="acceptor"
-                label="Acceptor"
+                label="验收人"
                 data={data}
                 initial={typed.acceptor ?? 'human:' + data.human.id}
                 people
@@ -906,7 +901,7 @@ export function NewTaskPage({
             topic={topic?.title ?? null}
           >
             <button type="submit" className="create-task">
-              Create task
+              创建任务
             </button>
           </TaskLayout>
         </ActionForm>
@@ -960,18 +955,18 @@ function TaskLayout({
         <div className="task-main">
           {decision}
           <section className="task-criteria">
-            <h3>Done when</h3>
+            <h3>完成标准</h3>
             {criteria}
           </section>
           {children}
         </div>
-        <aside className="task-side" aria-label="People">
+        <aside className="task-side" aria-label="成员">
           <dl className="people-list">
-            <dt>Owner</dt>
+            <dt>负责人</dt>
             <dd>{owner}</dd>
-            <dt>Reviewer</dt>
+            <dt>审核人</dt>
             <dd>{reviewer}</dd>
-            <dt>Acceptor</dt>
+            <dt>验收人</dt>
             <dd>{acceptor}</dd>
           </dl>
           {topic && <span className="topic-pill static">{topic}</span>}
@@ -1083,7 +1078,7 @@ export function TaskPage({
           {/* Agent wake-ups matter only while the task is with an agent. */}
           {withAgents(task.state.status) &&
             taskDeliveries(data, task.id).length > 0 && (
-              <ul className="deliveries" aria-label="Agent responses">
+              <ul className="deliveries" aria-label="智能体响应">
                 {taskDeliveries(data, task.id).map((d) => (
                   <DeliveryLine
                     key={d.id}
@@ -1261,9 +1256,9 @@ export function Board({
     if (openStage) setColumn(stageOf(openStage));
   }, [openStage]);
   return (
-    <section aria-label="Task board">
+    <section aria-label="任务看板">
       {/* A narrow board shows one stage at a time. */}
-      <div className="column-switcher" role="group" aria-label="Stages">
+      <div className="column-switcher" role="group" aria-label="阶段">
         {stages.map((s) => (
           <button
             key={s.id}
@@ -1309,7 +1304,7 @@ export function Board({
                 <button
                   type="button"
                   className="add-card"
-                  aria-label="New task"
+                  aria-label="新任务"
                   onClick={onNewTask}
                 >
                   <PlusIcon />
@@ -1324,7 +1319,7 @@ export function Board({
                     setShowCancelled((v) => !v);
                   }}
                 >
-                  {showCancelled ? 'Hide cancelled' : 'Show cancelled'}
+                  {showCancelled ? '隐藏已取消' : '显示已取消'}
                 </button>
               )}
             </section>

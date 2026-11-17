@@ -79,16 +79,14 @@ function NativeStatus({
       ) {
         onAccessLoss();
       } else {
-        setError(
-          'T3 can’t be checked right now. Try again when T3 is reachable.',
-        );
+        setError('现在无法查看 T3。等 T3 能连上时再试一次。');
       }
     } finally {
       if (!controller.signal.aborted) setBusy(false);
       pending.current = null;
     }
   }
-  const subject = correlation.reference.runId ? 'This run' : 'This thread';
+  const subject = correlation.reference.runId ? '这次运行' : '这个对话';
   return (
     <div className="native-status">
       <span className="run-actions" role="cell">
@@ -104,7 +102,7 @@ function NativeStatus({
               void check();
             }}
           >
-            Check in T3
+            在 T3 中查看
           </button>
         )}
         {observation?.verifiedUrl && (
@@ -113,40 +111,41 @@ function NativeStatus({
             target="_blank"
             rel="noopener noreferrer"
           >
-            Open in T3
+            在 T3 中打开
           </a>
         )}
       </span>
       <div role="status" aria-live="polite">
-        {busy && <p>Checking T3…</p>}
+        {busy && <p>正在查看 T3…</p>}
         {error && <p>{error}</p>}
         {observation &&
           (observation.status === 'unobserved' ? (
             <p>
-              T3 checked at{' '}
-              {new Date(observation.observedAt).toLocaleTimeString()}, but this
-              run is older than its recent history, so its status is unknown.
+              T3 于{' '}
+              {new Date(observation.observedAt).toLocaleTimeString('zh-CN')}{' '}
+              查看过，但这次运行早于它最近的记录，状态未知。
             </p>
           ) : (
             <>
               <p>
-                T3 confirms (checked{' '}
-                {new Date(observation.observedAt).toLocaleTimeString()})
+                {'T3 确认（' +
+                  new Date(observation.observedAt).toLocaleTimeString('zh-CN') +
+                  ' 查看）'}
               </p>
               <p>
-                {subject}: {observation.status} ·{' '}
-                {observation.terminal ? 'finished' : 'still going'}
+                {subject}：{observation.status} ·{' '}
+                {observation.terminal ? '已结束' : '仍在进行'}
               </p>
             </>
           ))}
         {observation && (
           <>
-            <p title="Counted for the whole T3 thread, not only this run.">
-              Open requests in this thread: {observation.threadPendingRequests}
+            <p title="按整个 T3 对话计数，不只是这次运行。">
+              这个对话中未处理的请求：{observation.threadPendingRequests}
             </p>
             <p>
-              Model: {observation.providerId ?? 'not reported'} ·{' '}
-              {observation.modelId ?? 'not reported'}
+              模型：{observation.providerId ?? '未报告'} ·{' '}
+              {observation.modelId ?? '未报告'}
             </p>
           </>
         )}
@@ -156,12 +155,12 @@ function NativeStatus({
 }
 /** What a person calls each recorded runtime state. */
 const reported: Record<string, string> = {
-  unknown: 'Unknown',
-  active: 'Working',
-  waiting: 'Waiting',
-  succeeded: 'Finished',
-  failed: 'Failed',
-  stopped: 'Stopped',
+  unknown: '未知',
+  active: '进行中',
+  waiting: '等待中',
+  succeeded: '已完成',
+  failed: '失败',
+  stopped: '已停止',
 };
 function Activity({
   agent,
@@ -179,7 +178,7 @@ function Activity({
   function loseAccess() {
     snapshotRequest.current?.abort();
     setSnapshot(null);
-    setError('You no longer have access to this activity. Sign in again.');
+    setError('你已无权查看这些活动。请重新登录。');
   }
   useEffect(() => {
     const controller = new AbortController();
@@ -202,14 +201,10 @@ function Activity({
         ) {
           // Never retain a formerly authorized execution snapshot after access loss.
           setSnapshot(null);
-          setError(
-            'You no longer have access to this activity. Sign in again.',
-          );
+          setError('你已无权查看这些活动。请重新登录。');
         } else {
           // A temporary transport/server outage does not certify a new snapshot.
-          setError(
-            'Activity can’t be loaded right now. It will try again on the next refresh.',
-          );
+          setError('现在无法加载活动，下次刷新时会再试。');
         }
       });
     return () => {
@@ -224,29 +219,29 @@ function Activity({
     [agent.id, drop],
   );
   return (
-    <section className="activity" aria-label={agent.name + ' activity'}>
-      <h3>Runs</h3>
+    <section className="activity" aria-label={agent.name + ' 的活动'}>
+      <h3>运行</h3>
       {error && <Notice>{error}</Notice>}
       {snapshot && (
         <>
           {snapshot.executions.length === 0 && (
-            <p className="muted">No runs yet.</p>
+            <p className="muted">还没有运行。</p>
           )}
           {snapshot.executions.length > 0 && (
-            <div className="runs" role="table" aria-label="Runs">
+            <div className="runs" role="table" aria-label="运行">
               <div className="run-head" role="row">
-                <span role="columnheader">Status</span>
-                <span role="columnheader">Time</span>
-                <span role="columnheader">By</span>
-                <span role="columnheader">T3 thread</span>
+                <span role="columnheader">状态</span>
+                <span role="columnheader">时间</span>
+                <span role="columnheader">发起人</span>
+                <span role="columnheader">T3 对话</span>
                 <span role="columnheader">
-                  <span className="visually-hidden">Check</span>
+                  <span className="visually-hidden">查看</span>
                 </span>
               </div>
               {snapshot.executions.map((e) => {
                 const latest = e.events.at(-1);
                 const by = (kind: string) =>
-                  kind === 'agent' ? agent.name : 'a person';
+                  kind === 'agent' ? agent.name : '成员';
                 const ref = e.correlation.reference;
                 return (
                   <div
@@ -262,7 +257,9 @@ function Activity({
                       {latest ? (
                         <time
                           dateTime={latest.createdAt}
-                          title={new Date(latest.createdAt).toLocaleString()}
+                          title={new Date(latest.createdAt).toLocaleString(
+                            'zh-CN',
+                          )}
                         >
                           {ago(latest.createdAt)}
                         </time>
@@ -271,7 +268,7 @@ function Activity({
                       )}
                     </span>
                     <span role="cell" className="run-by">
-                      {latest ? 'by ' + by(latest.author.kind) : '—'}
+                      {latest ? by(latest.author.kind) : '—'}
                     </span>
                     {/* One reference per run: the thread, with the run and
                         environment on hover. */}
@@ -281,9 +278,9 @@ function Activity({
                       title={[
                         ref.threadId,
                         ref.runId && ref.runId !== ref.threadId
-                          ? 'run ' + ref.runId
+                          ? '运行 ' + ref.runId
                           : null,
-                        'environment ' + ref.environmentId,
+                        '环境 ' + ref.environmentId,
                       ]
                         .filter(Boolean)
                         .join(' · ')}
@@ -303,7 +300,7 @@ function Activity({
             </div>
           )}
           {snapshot.executionsTruncated && (
-            <p className="muted">Showing the latest 20 runs.</p>
+            <p className="muted">只显示最近 20 次运行。</p>
           )}
         </>
       )}
@@ -391,14 +388,14 @@ function Requests({
     return data.tasks.items.find((t) => t.id === d.taskId)?.title ?? null;
   };
   return (
-    <section aria-label="Requests">
-      <h3>Requests in this channel</h3>
+    <section aria-label="请求">
+      <h3>本频道的请求</h3>
       <ul className="requests">
         {requests.slice(0, 5).map((d) => {
           const { text, tone } = deliveryText(d, agent.name, connected);
           // On the agent's own page its name goes without saying.
-          const outcome = text.startsWith(agent.name + ' ')
-            ? text.slice(agent.name.length + 1)
+          const outcome = text.startsWith(agent.name)
+            ? text.slice(agent.name.length).trimStart()
             : text;
           const what = asked(d);
           const when = d.updatedAt ?? d.queuedAt;
@@ -413,7 +410,7 @@ function Requests({
               title={`${d.state} · ${d.reason}`}
             >
               <span className="request-text">
-                {what ? `“${what}”` : 'A request'}
+                {what ? `“${what}”` : '一个请求'}
               </span>
               <Outcome
                 delivery={d}
@@ -432,7 +429,7 @@ function Requests({
                     onReply(reply);
                   }}
                 >
-                  View reply
+                  查看回复
                 </button>
               ) : stoppable(d) ? (
                 <Stop delivery={d} teamId={data.team.id} onDone={onDone} />
@@ -472,14 +469,14 @@ function RegisterAgent({
   onRegistered: (id: string) => void;
 }) {
   const register = useRequest(
-    { 409: 'An agent with that name already exists.' },
-    'That did not go through. Try again.',
+    { 409: '已有同名的智能体。' },
+    '没有成功，再试一次。',
   );
   const [name, setName] = useState('');
   return (
     <form
       className="new-agent"
-      aria-label="Agent profile"
+      aria-label="智能体资料"
       onSubmit={(event) => {
         event.preventDefault();
         const form = new FormData(event.currentTarget);
@@ -541,8 +538,8 @@ function RegisterAgent({
       <span className="new-agent-name">
         <input
           name="name"
-          aria-label="Agent name"
-          placeholder="Name"
+          aria-label="智能体名称"
+          placeholder="名称"
           required
           maxLength={80}
           autoFocus
@@ -556,7 +553,7 @@ function RegisterAgent({
         <button
           type="submit"
           className="icon-button confirm new-agent-go"
-          aria-label="Register agent"
+          aria-label="添加智能体"
           aria-busy={register.busy}
           disabled={register.disabled || name.trim() === ''}
         >
@@ -566,12 +563,12 @@ function RegisterAgent({
       <select
         name="role"
         className="new-agent-role"
-        aria-label="Role"
+        aria-label="角色"
         defaultValue="developer"
       >
-        <option value="developer">Developer</option>
-        <option value="reviewer">Reviewer</option>
-        <option value="assistant">Assistant</option>
+        <option value="developer">开发</option>
+        <option value="reviewer">审核</option>
+        <option value="assistant">助手</option>
       </select>
       {register.error && (
         <p className="new-agent-error" role="alert">
@@ -597,11 +594,11 @@ export function Team({
 }) {
   const [registering, setRegistering] = useState(false);
   return (
-    <section aria-label="Team">
+    <section aria-label="团队">
       {/* Everyone as a tile, like a meeting's gallery: a face, a name, and
           whether they are here. An agent's tile opens its page; the last
           tile adds an agent. */}
-      <ul className="roster" aria-label="Team">
+      <ul className="roster" aria-label="团队">
         <li className="roster-tile" data-kind="human">
           <button
             type="button"
@@ -636,11 +633,11 @@ export function Team({
               {/* Like an agent: only a missing membership needs a fix. */}
               {channelPath && !data.joinedHumanIds.includes(person.id) && (
                 <ActionForm
-                  title={'Enroll ' + person.name}
+                  title={'邀请 ' + person.name}
                   path={channelPath + '/participants/invite'}
                   build={() => ({ member: { kind: 'human', id: person.id } })}
                   onDone={onDone}
-                  submit={'Add ' + person.name + ' to channel'}
+                  submit={'把 ' + person.name + ' 加入频道'}
                 />
               )}
             </li>
@@ -676,11 +673,11 @@ export function Team({
                 agent.lifecycle === 'active' &&
                 !data.joinedAgentIds.includes(agent.id) && (
                   <ActionForm
-                    title={'Enroll ' + agent.name}
+                    title={'邀请 ' + agent.name}
                     path={channelPath + '/participants/invite'}
                     build={() => ({ member: { kind: 'agent', id: agent.id } })}
                     onDone={onDone}
-                    submit={'Add ' + agent.name + ' to channel'}
+                    submit={'把 ' + agent.name + ' 加入频道'}
                   />
                 )}
             </li>
@@ -704,7 +701,7 @@ export function Team({
             <button
               type="button"
               className="roster-person"
-              aria-label="Register agent"
+              aria-label="添加智能体"
               onClick={() => {
                 setRegistering(true);
               }}
@@ -718,8 +715,7 @@ export function Team({
       </ul>
       {data.agentsTruncated && (
         <p className="muted">
-          Showing the first 100 agents. Use the agent API for additional
-          profiles.
+          只显示前 100 个智能体，其余的请通过智能体 API 查看。
         </p>
       )}
     </section>

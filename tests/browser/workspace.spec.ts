@@ -31,12 +31,12 @@ async function snapshot(request: APIRequestContext, origin: string) {
 }
 /** The one line that says what is on screen is stale. */
 function staleLine(page: Page) {
-  return page.getByRole('status').filter({ hasText: 'Can’t reach Kinmesh' });
+  return page.getByRole('status').filter({ hasText: '连不上 Kinmesh' });
 }
 /** Healthy is silent: no refresh pill and no stale line. */
 async function expectHealthy(page: Page) {
   await expect(
-    page.getByRole('status').filter({ hasText: /^Refreshing…$/ }),
+    page.getByRole('status').filter({ hasText: /^正在刷新…$/ }),
   ).toHaveCount(0);
   await expect(staleLine(page)).toHaveCount(0);
 }
@@ -123,9 +123,9 @@ test('a second person of the organization signs in to the same workspace and see
   hub,
 }) => {
   await signIn(page, hub, 'ada@example.com');
-  const composer = page.getByRole('form', { name: 'Message your team' });
-  await composer.getByLabel('Message', { exact: true }).fill('Hello, team');
-  await composer.getByRole('button', { name: 'Send message' }).click();
+  const composer = page.getByRole('form', { name: '给团队发消息' });
+  await composer.getByLabel('消息', { exact: true }).fill('Hello, team');
+  await composer.getByRole('button', { name: '发送消息' }).click();
   await expect(page.getByText('Hello, team', { exact: true })).toBeVisible();
   // Someone else, in their own browser.
   const theirs = await browser.newContext();
@@ -136,17 +136,17 @@ test('a second person of the organization signs in to the same workspace and see
     // The message is Ada's by name, and Ada is among the people here.
     await expect(
       grace
-        .getByRole('list', { name: 'Channel messages' })
+        .getByRole('list', { name: '频道消息' })
         .getByRole('listitem')
         .filter({ hasText: 'Hello, team' }),
     ).toContainText('ada');
     const people = grace.getByRole('region', {
-      name: 'People in this channel',
+      name: '本频道成员',
     });
     await expect(people.getByText('ada', { exact: true })).toBeVisible();
     // And Ada sees Grace arrive, online, without reloading: by the name and
     // picture Feishu gives her, served from here, never by her handle.
-    const here = page.getByRole('region', { name: 'People in this channel' });
+    const here = page.getByRole('region', { name: '本频道成员' });
     const graceRow = here
       .locator('.person')
       .filter({ hasText: 'Grace Hopper' });
@@ -167,36 +167,34 @@ test('a second person of the organization signs in to the same workspace and see
     // A person is added to a channel the way an agent is: from their tile.
     await createChannel(page, 'design');
     await expect(graceRow).toHaveCount(0);
-    await page.getByRole('tab', { name: 'Team', exact: true }).click();
+    await page.getByRole('tab', { name: '团队', exact: true }).click();
     const add = page.getByRole('button', {
-      name: 'Add Grace Hopper to channel',
+      name: '把 Grace Hopper 加入频道',
     });
     await add.click();
     await expect(graceRow).toBeVisible();
     await expect(add).toHaveCount(0);
     // The @ popover finds her by a word of her name, and the message says
     // her name once, with no second chip.
-    await page.getByRole('tab', { name: 'Chat', exact: true }).click();
-    const message = composer.getByLabel('Message', { exact: true });
+    await page.getByRole('tab', { name: '聊天', exact: true }).click();
+    const message = composer.getByLabel('消息', { exact: true });
     await message.pressSequentially('Thanks @Hop');
     await page
-      .getByRole('listbox', { name: 'Mention suggestions' })
+      .getByRole('listbox', { name: '可提及的成员' })
       .getByRole('option', { name: /Grace Hopper/ })
       .click();
     await expect(message).toHaveValue('Thanks @Grace Hopper ');
-    await composer.getByRole('button', { name: 'Send message' }).click();
+    await composer.getByRole('button', { name: '发送消息' }).click();
     const posted = page
-      .getByRole('list', { name: 'Channel messages' })
+      .getByRole('list', { name: '频道消息' })
       .getByRole('listitem')
       .filter({ hasText: 'Thanks @Grace Hopper' });
     await expect(posted).toBeVisible();
-    await expect(posted.getByRole('list', { name: 'Mentioned' })).toHaveCount(
-      0,
-    );
+    await expect(posted.getByRole('list', { name: '已提及' })).toHaveCount(0);
     // Grace finds the channel in her sidebar without reloading.
     await expect(
       grace
-        .getByRole('navigation', { name: 'Channels' })
+        .getByRole('navigation', { name: '频道' })
         .getByRole('button', { name: 'design', exact: true }),
     ).toBeVisible();
   } finally {
@@ -215,14 +213,14 @@ test('real workspace onboarding, mentions and reconnect on a phone', async ({
   await register(page, 'Ada', 'developer');
   // A phone stacks the places: Home holds the channels and the team.
   await page.setViewportSize({ width: 375, height: 1000 });
-  const places = page.getByRole('navigation', { name: 'Places' });
-  await expect(places.getByRole('button', { name: 'Home' })).toHaveAttribute(
+  const places = page.getByRole('navigation', { name: '位置' });
+  await expect(places.getByRole('button', { name: '主页' })).toHaveAttribute(
     'aria-current',
     'page',
   );
   await expect(agentRow(page, 'Ada')).toBeVisible();
   await page
-    .getByRole('navigation', { name: 'Channels' })
+    .getByRole('navigation', { name: '频道' })
     .getByRole('button', { name: 'design', exact: true })
     .click();
   // A channel has the screen, under a bar that says where it is.
@@ -230,44 +228,44 @@ test('real workspace onboarding, mentions and reconnect on a phone', async ({
     page.getByRole('heading', { name: '# design', exact: true }),
   ).toBeVisible();
   await expect(places).toBeHidden();
-  await page.getByRole('tab', { name: 'Chat', exact: true }).click();
-  await page.getByRole('button', { name: 'Start a topic' }).click();
-  await page.getByLabel('Topic title').fill('Release planning');
-  await page.getByLabel('Topic title').press('Enter');
+  await page.getByRole('tab', { name: '聊天', exact: true }).click();
+  await page.getByRole('button', { name: '新建话题' }).click();
+  await page.getByLabel('话题名称').fill('Release planning');
+  await page.getByLabel('话题名称').press('Enter');
   // The topic just made is the one you are in.
-  const topics = page.getByRole('group', { name: 'Topics' });
+  const topics = page.getByRole('group', { name: '话题' });
   await expect(
     topics.getByRole('button', { name: 'Release planning', exact: true }),
   ).toHaveAttribute('aria-pressed', 'true');
-  const composer = page.getByRole('form', { name: 'Message your team' });
+  const composer = page.getByRole('form', { name: '给团队发消息' });
   const text = '<img src=x onerror="window.__injected=true"> Persistent hello';
   const sent = text + ' @Ada';
-  const message = composer.getByLabel('Message', { exact: true });
+  const message = composer.getByLabel('消息', { exact: true });
   await message.fill(text);
   await message.pressSequentially(' @Ad');
   await page
-    .getByRole('listbox', { name: 'Mention suggestions' })
+    .getByRole('listbox', { name: '可提及的成员' })
     .getByRole('option', { name: /Ada/ })
     .click();
   await expect(
-    composer.getByRole('list', { name: 'Mentions' }).getByText('@Ada'),
+    composer.getByRole('list', { name: '提及' }).getByText('@Ada'),
   ).toBeVisible();
-  await composer.getByRole('button', { name: 'Send message' }).click();
+  await composer.getByRole('button', { name: '发送消息' }).click();
   await expect(
     page
-      .getByRole('list', { name: 'Channel messages' })
+      .getByRole('list', { name: '频道消息' })
       .getByText(sent, { exact: true }),
   ).toBeVisible();
   // The mention reads in the text itself; no second @Ada chip repeats it,
   // and it still reaches Ada (its delivery line is shown).
   const posted = page
-    .getByRole('list', { name: 'Channel messages' })
+    .getByRole('list', { name: '频道消息' })
     .getByRole('listitem')
     .filter({ hasText: sent });
-  await expect(posted.getByRole('list', { name: 'Mentioned' })).toHaveCount(0);
-  await expect(
-    posted.getByRole('list', { name: 'Agent responses' }),
-  ).toContainText('Ada');
+  await expect(posted.getByRole('list', { name: '已提及' })).toHaveCount(0);
+  await expect(posted.getByRole('list', { name: '智能体响应' })).toContainText(
+    'Ada',
+  );
   await page.reload();
   await expect(page.getByText(sent, { exact: true })).toBeVisible();
   expect(await page.locator('.messages img').count()).toBe(0);
@@ -281,7 +279,7 @@ test('real workspace onboarding, mentions and reconnect on a phone', async ({
     0,
   );
   await expect(
-    page.getByRole('button', { name: /Reconnect|Try again|Return to/ }),
+    page.getByRole('button', { name: /重新连接|再试一次|重试/ }),
   ).toHaveCount(0);
   // Asking again while still out of reach keeps the honest state.
   await refreshNow(page);
@@ -301,13 +299,11 @@ test('real workspace onboarding, mentions and reconnect on a phone', async ({
   expect(new Set(ids).size).toBe(ids.length);
   expect(errors).toEqual([]);
   // Back leads Home; signing out is the last row of You.
-  await page.getByRole('button', { name: 'Back', exact: true }).click();
+  await page.getByRole('button', { name: '返回', exact: true }).click();
   await expect(places).toBeVisible();
-  await places.getByRole('button', { name: 'You' }).click();
-  await page.getByRole('button', { name: 'Sign out', exact: true }).click();
-  await expect(
-    page.getByRole('link', { name: 'Sign in with Feishu' }),
-  ).toBeVisible();
+  await places.getByRole('button', { name: '我' }).click();
+  await page.getByRole('button', { name: '退出登录', exact: true }).click();
+  await expect(page.getByRole('link', { name: '使用飞书登录' })).toBeVisible();
 });
 test('two independent task cards: real agent handoff, human review, acceptance and rework', async ({
   page,
@@ -379,53 +375,49 @@ test('two independent task cards: real agent handoff, human review, acceptance a
     // explicit buttons, and Esc returns to the board.
     const alphaPage = taskPage(page, 'Ship alpha');
     const betaPage = taskPage(page, 'Ship beta');
-    await expect(inStage(page, 'Review', 'Ship alpha')).toBeVisible();
+    await expect(inStage(page, '审核中', 'Ship alpha')).toBeVisible();
     await alpha.getByRole('button', { name: 'Ship alpha' }).click();
-    await expect(page.getByRole('region', { name: 'Task board' })).toBeHidden();
+    await expect(page.getByRole('region', { name: '任务看板' })).toBeHidden();
+    await alphaPage.getByLabel('决定备注').fill('Technical review complete');
     await alphaPage
-      .getByLabel('Decision note')
-      .fill('Technical review complete');
-    await alphaPage
-      .getByRole('button', { name: 'Approve review', exact: true })
+      .getByRole('button', { name: '审核通过', exact: true })
       .click();
     await expect(
-      alphaPage.getByRole('button', { name: 'Accept task', exact: true }),
+      alphaPage.getByRole('button', { name: '验收通过', exact: true }),
     ).toBeVisible();
     await backToBoard(page);
-    await expect(inStage(page, 'Human sign-off', 'Ship alpha')).toBeVisible();
-    await expect(inStage(page, 'Review', 'Ship beta')).toBeVisible();
+    await expect(inStage(page, '待验收', 'Ship alpha')).toBeVisible();
+    await expect(inStage(page, '审核中', 'Ship beta')).toBeVisible();
     await alpha.getByRole('button', { name: 'Ship alpha' }).click();
+    await alphaPage.getByLabel('决定备注').fill('I accept the alpha outcome');
     await alphaPage
-      .getByLabel('Decision note')
-      .fill('I accept the alpha outcome');
-    await alphaPage
-      .getByRole('button', { name: 'Accept task', exact: true })
+      .getByRole('button', { name: '验收通过', exact: true })
       .click();
-    await expect(alphaPage.getByText('This task is closed.')).toBeVisible();
+    await expect(alphaPage.getByText('任务已关闭。')).toBeVisible();
     await backToBoard(page);
-    await expect(inStage(page, 'Done', 'Ship alpha')).toBeVisible();
+    await expect(inStage(page, '已完成', 'Ship alpha')).toBeVisible();
     await beta.getByRole('button', { name: 'Ship beta' }).click();
     await expect(alphaPage).toHaveCount(0);
-    await betaPage.getByLabel('Decision note').fill('Beta needs more work');
+    await betaPage.getByLabel('决定备注').fill('Beta needs more work');
     await betaPage
-      .getByRole('button', { name: 'Request rework', exact: true })
+      .getByRole('button', { name: '退回修改', exact: true })
       .click();
     // Sent back, the task's progress returns to Working. The acceptor can
     // still ask for rework, so the button rightly stays.
     await expect(
       betaPage
-        .getByRole('list', { name: 'Task progress' })
+        .getByRole('list', { name: '任务进度' })
         .locator('[aria-current="step"]'),
-    ).toHaveText('Working');
+    ).toHaveText('进行中');
     await backToBoard(page);
     // Sent back is still Working, and the card says so in words.
-    await expect(inStage(page, 'Working', 'Ship beta')).toBeVisible();
-    await expect(beta.getByText('Sent back', { exact: true })).toBeVisible();
-    await expect(inStage(page, 'Done', 'Ship alpha')).toBeVisible();
+    await expect(inStage(page, '进行中', 'Ship beta')).toBeVisible();
+    await expect(beta.getByText('已退回', { exact: true })).toBeVisible();
+    await expect(inStage(page, '已完成', 'Ship alpha')).toBeVisible();
     await page.reload();
-    await page.getByRole('tab', { name: 'Board', exact: true }).click();
-    await expect(inStage(page, 'Done', 'Ship alpha')).toBeVisible();
-    await expect(inStage(page, 'Working', 'Ship beta')).toBeVisible();
+    await page.getByRole('tab', { name: '看板', exact: true }).click();
+    await expect(inStage(page, '已完成', 'Ship alpha')).toBeVisible();
+    await expect(inStage(page, '进行中', 'Ship beta')).toBeVisible();
   } finally {
     await agent.dispose();
   }
@@ -462,24 +454,24 @@ test('AG-UI snapshots render persisted reports honestly', async ({
   );
   expect(event.status()).toBe(201);
   await agentRow(page, 'Observer').click();
-  await expect(runState(page, 'Waiting')).toBeVisible();
+  await expect(runState(page, '等待中')).toBeVisible();
   await expect(
     page.getByText('browser-fixture-thread', { exact: true }),
   ).toBeVisible();
   // One T3 reference per run: the thread, with the run on hover.
   await expect(page.getByText('browser-fixture-run')).toHaveCount(0);
-  await expect(page.getByRole('columnheader', { name: 'T3 run' })).toHaveCount(
+  await expect(page.getByRole('columnheader', { name: 'T3 运行' })).toHaveCount(
     0,
   );
   // No verified link, no link: nothing to click and nothing to explain.
   await expect(
-    page.getByRole('link', { name: 'Open in T3', exact: true }),
+    page.getByRole('link', { name: '在 T3 中打开', exact: true }),
   ).toHaveCount(0);
   // Checking reads the team's T3 connection: before Connect T3 there is
   // nothing to check with, so it isn't offered. (A failing check after
   // connecting is covered by the MOCK tests below and native-http.test.ts.)
   await expect(
-    page.getByRole('button', { name: 'Check in T3', exact: true }),
+    page.getByRole('button', { name: '在 T3 中查看', exact: true }),
   ).toHaveCount(0);
   // A later report replaces the shown state.
   expect(
@@ -490,7 +482,7 @@ test('AG-UI snapshots render persisted reports honestly', async ({
       )
     ).status(),
   ).toBe(201);
-  await expect(runState(page, 'Finished')).toBeVisible();
+  await expect(runState(page, '已完成')).toBeVisible();
 });
 
 test('keyboard mention, and a message becomes a task in its topic', async ({
@@ -500,18 +492,18 @@ test('keyboard mention, and a message becomes a task in its topic', async ({
 }) => {
   await signIn(page, hub);
   await register(page, 'Ada', 'developer');
-  await page.getByRole('tab', { name: 'Chat', exact: true }).click();
-  await page.getByRole('button', { name: 'Start a topic' }).click();
-  await page.getByLabel('Topic title').fill('Billing');
-  await page.getByLabel('Topic title').press('Enter');
+  await page.getByRole('tab', { name: '聊天', exact: true }).click();
+  await page.getByRole('button', { name: '新建话题' }).click();
+  await page.getByLabel('话题名称').fill('Billing');
+  await page.getByLabel('话题名称').press('Enter');
   // The topic just made opens, with the composer ready to type in.
   await expect(
     page
-      .getByRole('list', { name: 'Topics' })
+      .getByRole('list', { name: '话题' })
       .getByRole('button', { name: 'Billing', exact: true }),
   ).toHaveAttribute('aria-pressed', 'true');
-  const composer = page.getByRole('form', { name: 'Message your team' });
-  const message = composer.getByLabel('Message', { exact: true });
+  const composer = page.getByRole('form', { name: '给团队发消息' });
+  const message = composer.getByLabel('消息', { exact: true });
   await expect(message).toBeFocused();
   // No wait for the topic refresh: typing must survive a background reload.
   await message.fill('Validate postal codes per country');
@@ -523,37 +515,37 @@ test('keyboard mention, and a message becomes a task in its topic', async ({
   await message.press('Enter');
   await expect(message).toHaveValue('Validate postal codes per country @Ada ');
   await expect(
-    composer.getByRole('list', { name: 'Mentions' }).getByText('@Ada'),
+    composer.getByRole('list', { name: '提及' }).getByText('@Ada'),
   ).toBeVisible();
   // Sent while the topic switch may still be refreshing: it must go through.
   await message.press('ControlOrMeta+Enter');
   const posted = page
-    .getByRole('list', { name: 'Channel messages' })
+    .getByRole('list', { name: '频道消息' })
     .getByRole('listitem')
     .filter({ hasText: 'Validate postal codes per country @Ada' });
   await expect(posted).toBeVisible();
   // Sending keeps the keyboard: the next message can be typed at once.
   await expect(message).toBeFocused();
   await expect(message).toHaveValue('');
-  await posted.getByRole('button', { name: 'Make task', exact: true }).click();
+  await posted.getByRole('button', { name: '转为任务', exact: true }).click();
   await expect(
-    page.getByRole('tab', { name: 'Board', exact: true }),
+    page.getByRole('tab', { name: '看板', exact: true }),
   ).toHaveAttribute('aria-selected', 'true');
-  const form = page.getByRole('form', { name: 'New task' });
-  await expect(form.getByLabel('Task title')).toHaveValue(
+  const form = page.getByRole('form', { name: '新任务' });
+  await expect(form.getByLabel('任务标题')).toHaveValue(
     'Validate postal codes per country @Ada',
   );
   await expect(
-    page.getByText('From browser_owner’s message', { exact: true }),
+    page.getByText('来自 browser_owner 的消息', { exact: true }),
   ).toBeVisible();
-  await form.getByLabel('Done when').fill('Postal codes validated per country');
+  await form.getByLabel('完成标准').fill('Postal codes validated per country');
   const state = await snapshot(context.request, hub.origin);
   const ada = state.agents[0];
   if (!ada || !state.channel) throw new Error('Local fixture unavailable');
   await form
-    .getByLabel('Owner', { exact: true })
+    .getByLabel('负责人', { exact: true })
     .selectOption('agent:' + ada.id);
-  await form.getByRole('button', { name: 'Create task', exact: true }).click();
+  await form.getByRole('button', { name: '创建任务', exact: true }).click();
   await expect(
     taskPage(page, 'Validate postal codes per country @Ada'),
   ).toBeVisible();
@@ -562,7 +554,7 @@ test('keyboard mention, and a message becomes a task in its topic', async ({
     name: 'Validate postal codes per country @Ada',
   });
   await expect(
-    inStage(page, 'Working', 'Validate postal codes per country @Ada'),
+    inStage(page, '进行中', 'Validate postal codes per country @Ada'),
   ).toBeVisible();
   const base = `${hub.origin}/api/teams/${state.team.id}/channels/${state.channel.id}`;
   const tasks = pageOf(Task).parse(
@@ -574,12 +566,10 @@ test('keyboard mention, and a message becomes a task in its topic', async ({
   expect(tasks).toHaveLength(1);
   expect(tasks[0]?.topicId).toBe(topics.find((t) => t.title === 'Billing')?.id);
   // ⌘K jumps straight to the task; only its acceptor may cancel it, with a note.
-  await page.getByRole('tab', { name: 'Chat', exact: true }).click();
+  await page.getByRole('tab', { name: '聊天', exact: true }).click();
   await page.keyboard.press('ControlOrMeta+k');
-  const palette = page.getByRole('dialog', { name: 'Command palette' });
-  await palette
-    .getByRole('combobox', { name: /Search/ })
-    .fill('postal working');
+  const palette = page.getByRole('dialog', { name: '命令面板' });
+  await palette.getByRole('combobox', { name: /搜索/ }).fill('postal 进行中');
   await expect(
     palette.getByRole('option', { name: /Validate postal codes/ }),
   ).toHaveAttribute('aria-selected', 'true');
@@ -587,27 +577,23 @@ test('keyboard mention, and a message becomes a task in its topic', async ({
   await expect(palette).toBeHidden();
   const task = taskPage(page, 'Validate postal codes per country @Ada');
   await expect(task).toBeVisible();
-  await task.getByRole('button', { name: 'Cancel task…', exact: true }).click();
-  await expect(
-    task.getByText(/closes the task without acceptance/),
-  ).toBeVisible();
-  await task.getByLabel('Decision note').fill('Superseded by the new form');
-  await task.getByRole('button', { name: 'Cancel task', exact: true }).click();
+  await task.getByRole('button', { name: '取消任务…', exact: true }).click();
+  await expect(task.getByText(/不经验收直接关闭任务/)).toBeVisible();
+  await task.getByLabel('决定备注').fill('Superseded by the new form');
+  await task.getByRole('button', { name: '取消任务', exact: true }).click();
   // Cancelled work leaves the board quietly; it is one click away in Done.
-  await expect(task.getByText('This task is closed.')).toBeVisible();
+  await expect(task.getByText('任务已关闭。')).toBeVisible();
   await expect(card).toHaveCount(0);
   await page.keyboard.press('Escape');
-  await page
-    .getByRole('button', { name: 'Show cancelled', exact: true })
-    .click();
+  await page.getByRole('button', { name: '显示已取消', exact: true }).click();
   await expect(
-    inStage(page, 'Done', 'Validate postal codes per country @Ada').getByText(
-      'Cancelled',
+    inStage(page, '已完成', 'Validate postal codes per country @Ada').getByText(
+      '已取消',
       { exact: true },
     ),
   ).toBeVisible();
   await expect(
-    page.getByRole('status').filter({ hasText: 'Task cancelled.' }),
+    page.getByRole('status').filter({ hasText: '任务已取消。' }),
   ).toBeVisible();
 });
 
@@ -622,26 +608,26 @@ test('a mention says what happened to it and leads to the agent’s reply, said 
   const state = await snapshot(context.request, hub.origin);
   const ada = state.agents[0];
   if (!ada || !state.channel) throw new Error('Local fixture unavailable');
-  await page.getByRole('tab', { name: 'Chat', exact: true }).click();
-  const composer = page.getByRole('form', { name: 'Message your team' });
+  await page.getByRole('tab', { name: '聊天', exact: true }).click();
+  const composer = page.getByRole('form', { name: '给团队发消息' });
   const say = async (text: string) => {
-    await composer.getByLabel('Message', { exact: true }).fill(text);
-    await composer.getByRole('button', { name: 'Send message' }).click();
+    await composer.getByLabel('消息', { exact: true }).fill(text);
+    await composer.getByRole('button', { name: '发送消息' }).click();
     await expect(
-      page.getByRole('list', { name: 'Channel messages' }).getByText(text),
+      page.getByRole('list', { name: '频道消息' }).getByText(text),
     ).toBeVisible();
   };
   const item = (text: string) =>
     page
-      .getByRole('list', { name: 'Channel messages' })
+      .getByRole('list', { name: '频道消息' })
       .getByRole('listitem')
       .filter({ hasText: text })
       .first();
   await say('@Ada please check the release notes');
   const asked = item('please check the release notes');
-  const responses = asked.getByRole('list', { name: 'Agent responses' });
+  const responses = asked.getByRole('list', { name: '智能体响应' });
   // Each delivery state's sentence: tests/delivery-copy.test.ts.
-  await expect(responses).toContainText('Ada isn’t connected');
+  await expect(responses).toContainText('Ada 离线');
   const token = await agentGrant(
     context.request,
     hub.origin,
@@ -691,11 +677,11 @@ test('a mention says what happened to it and leads to the agent’s reply, said 
       'please check the release notes',
       'Release notes checked; two links were broken and are fixed.',
     );
-    await responses.getByRole('button', { name: /Ada replied/ }).click();
+    await responses.getByRole('button', { name: /Ada 已回复/ }).click();
     const reply = item('two links were broken');
     await expect(reply).toBeInViewport();
     await expect(
-      reply.getByRole('button', { name: /In reply to browser_owner/ }),
+      reply.getByRole('button', { name: /回复 browser_owner/ }),
     ).toBeVisible();
     // Answered right under the question, neither is said: the reply's place
     // says it.
@@ -704,11 +690,9 @@ test('a mention says what happened to it and leads to the agent’s reply, said 
     const next = item('The changelog lists both fixes.');
     await expect(next).toBeVisible();
     await expect(
-      item('and the changelog?').getByRole('list', { name: 'Agent responses' }),
+      item('and the changelog?').getByRole('list', { name: '智能体响应' }),
     ).toHaveCount(0);
-    await expect(next.getByRole('button', { name: /In reply to/ })).toHaveCount(
-      0,
-    );
+    await expect(next.getByRole('button', { name: /^回复 / })).toHaveCount(0);
   } finally {
     await agent.dispose();
   }
@@ -721,26 +705,26 @@ test('the Inbox gathers what waits on me across channels and leads to the fix', 
   await signIn(page, hub);
   await register(page, 'Ada', 'developer');
   // What the Inbox lists, and when: tests/attention.test.ts.
-  const needs = page.getByRole('tab', { name: /^Inbox/ });
-  await page.getByRole('tab', { name: 'Chat', exact: true }).click();
-  const composer = page.getByRole('form', { name: 'Message your team' });
+  const needs = page.getByRole('tab', { name: /^收件箱/ });
+  await page.getByRole('tab', { name: '聊天', exact: true }).click();
+  const composer = page.getByRole('form', { name: '给团队发消息' });
   await composer
-    .getByLabel('Message', { exact: true })
+    .getByLabel('消息', { exact: true })
     .fill('@Ada please check the release notes');
-  await composer.getByRole('button', { name: 'Send message' }).click();
+  await composer.getByRole('button', { name: '发送消息' }).click();
   // Ada has no worker: queued work leads to setting Ada up.
   await createChannel(page, 'launch');
   await needs.click();
-  const inbox = page.getByRole('region', { name: 'Inbox' });
+  const inbox = page.getByRole('region', { name: '收件箱' });
   await inbox
     .getByRole('button', {
-      name: /1 request waiting, but Ada can’t be woken yet/,
+      name: /1 条请求在等待，但还无法唤醒 Ada/,
     })
     .click();
   await expect(
     page
       .getByRole('region', { name: 'Ada', exact: true })
-      .getByRole('group', { name: 'Connect T3' }),
+      .getByRole('group', { name: '连接 T3' }),
   ).toBeVisible();
   // A blocking failure turns it into something to unstick, wherever I am.
   const sql = rawDatabase(hub.database);
@@ -755,11 +739,11 @@ test('the Inbox gathers what waits on me across channels and leads to the fix', 
   }
   await page.keyboard.press('Escape');
   await needs.click();
-  await inbox.getByRole('button', { name: /Ada is stuck/ }).click();
+  await inbox.getByRole('button', { name: /Ada 卡住了/ }).click();
   await expect(page.getByRole('heading', { name: '# general' })).toBeVisible();
   await expect(
     page
-      .getByRole('list', { name: 'Channel messages' })
+      .getByRole('list', { name: '频道消息' })
       .getByText('please check the release notes'),
   ).toBeVisible();
 });
@@ -774,18 +758,18 @@ test('a stuck request says what was lost and is fixed and retried in place', asy
   const state = await snapshot(context.request, hub.origin);
   const ada = state.agents[0];
   if (!ada || !state.channel) throw new Error('Local fixture unavailable');
-  await page.getByRole('tab', { name: 'Chat', exact: true }).click();
-  const composer = page.getByRole('form', { name: 'Message your team' });
+  await page.getByRole('tab', { name: '聊天', exact: true }).click();
+  const composer = page.getByRole('form', { name: '给团队发消息' });
   await composer
-    .getByLabel('Message', { exact: true })
+    .getByLabel('消息', { exact: true })
     .fill('@Ada please check the release notes');
-  await composer.getByRole('button', { name: 'Send message' }).click();
+  await composer.getByRole('button', { name: '发送消息' }).click();
   const responses = page
-    .getByRole('list', { name: 'Channel messages' })
+    .getByRole('list', { name: '频道消息' })
     .getByRole('listitem')
     .filter({ hasText: 'please check the release notes' })
     .first()
-    .getByRole('list', { name: 'Agent responses' });
+    .getByRole('list', { name: '智能体响应' });
   // Each cause's sentence: tests/delivery-copy.test.ts.
   await expect(responses).toContainText('Ada');
   // Ada is removed from the channel; the worker records that as the cause.
@@ -809,12 +793,10 @@ test('a stuck request says what was lost and is fixed and retried in place', asy
   } finally {
     await sql.close();
   }
-  await expect(responses).toContainText(
-    'Ada was removed from the channel, so this is on hold',
-  );
+  await expect(responses).toContainText('Ada 已被移出频道，这条请求暂停了');
   await expect(responses.getByText(/npm run/)).toHaveCount(0);
   await responses
-    .getByRole('button', { name: 'Add Ada back and retry', exact: true })
+    .getByRole('button', { name: '把 Ada 加回频道并重试', exact: true })
     .click();
   // Back in the channel and retried with the original request.
   await expect
@@ -837,15 +819,15 @@ test('a stuck request says what was lost and is fixed and retried in place', asy
     await db.close();
   }
   await expect(
-    responses.getByRole('button', { name: 'Retry', exact: true }),
+    responses.getByRole('button', { name: '重试', exact: true }),
   ).toBeVisible();
   await responses
-    .getByRole('button', { name: 'Fix Ada’s setup', exact: true })
+    .getByRole('button', { name: '修复 Ada 的配置', exact: true })
     .click();
   await expect(
     page
       .getByRole('region', { name: 'Ada', exact: true })
-      .getByRole('button', { name: 'Connect T3', exact: true }),
+      .getByRole('button', { name: '连接 T3', exact: true }),
   ).toBeVisible();
 });
 
@@ -856,32 +838,32 @@ test('a request waiting for an approval in T3 is stopped from its line, and one 
 }) => {
   await signIn(page, hub);
   await register(page, 'Ada', 'developer');
-  await page.getByRole('tab', { name: 'Chat', exact: true }).click();
-  const composer = page.getByRole('form', { name: 'Message your team' });
+  await page.getByRole('tab', { name: '聊天', exact: true }).click();
+  const composer = page.getByRole('form', { name: '给团队发消息' });
   const say = async (text: string) => {
-    await composer.getByLabel('Message', { exact: true }).fill(text);
-    await composer.getByRole('button', { name: 'Send message' }).click();
+    await composer.getByLabel('消息', { exact: true }).fill(text);
+    await composer.getByRole('button', { name: '发送消息' }).click();
   };
   const responses = (text: string) =>
     page
-      .getByRole('list', { name: 'Channel messages' })
+      .getByRole('list', { name: '频道消息' })
       .getByRole('listitem')
       .filter({ hasText: text })
       .first()
-      .getByRole('list', { name: 'Agent responses' });
+      .getByRole('list', { name: '智能体响应' });
   // Nothing has reached T3: stopping ends it at once.
   await say('@Ada please check the release notes');
   const unsent = responses('please check the release notes');
-  await expect(unsent).toContainText('Ada isn’t connected');
-  await unsent.getByRole('button', { name: 'Stop', exact: true }).click();
-  await expect(unsent).toContainText('Stopped before Ada started');
-  await expect(unsent.getByRole('button', { name: 'Stop' })).toHaveCount(0);
+  await expect(unsent).toContainText('Ada 离线');
+  await unsent.getByRole('button', { name: '停止', exact: true }).click();
+  await expect(unsent).toContainText('Ada 开始前已停止');
+  await expect(unsent.getByRole('button', { name: '停止' })).toHaveCount(0);
   // The next one's run waits for an approval in T3, as the worker records
   // it, in the team's T3. MOCK only: no T3 is reached; the link is the
   // thread on the team's T3 origin.
   await say('@Ada and the changelog?');
   const waiting = responses('and the changelog?');
-  await expect(waiting).toContainText('Ada isn’t connected');
+  await expect(waiting).toContainText('Ada 离线');
   const thread = 'http://127.0.0.1:3773/env-mock/thread-mock';
   await page.route('**/api/teams/*/deliveries/*/link', (route) =>
     route.fulfill({ json: { url: thread } }),
@@ -911,15 +893,15 @@ test('a request waiting for an approval in T3 is stopped from its line, and one 
   }
   // The sentence itself goes to T3, where the approval is given.
   const approve = waiting.getByRole('link', {
-    name: 'Ada is waiting for an approval in T3 ↗',
+    name: 'Ada 正在等待 T3 中的批准 ↗',
     exact: true,
   });
   await expect(approve).toHaveAttribute('href', thread);
   await expect(approve).toHaveAttribute('target', '_blank');
-  await waiting.getByRole('button', { name: 'Stop', exact: true }).click();
+  await waiting.getByRole('button', { name: '停止', exact: true }).click();
   // The worker interrupts the run; the line says so until it has ended.
-  await expect(waiting).toContainText('Ada is stopping');
-  await expect(waiting.getByRole('button', { name: 'Stop' })).toHaveCount(0);
+  await expect(waiting).toContainText('Ada 正在停止');
+  await expect(waiting.getByRole('button', { name: '停止' })).toHaveCount(0);
   expect(
     (await snapshot(context.request, hub.origin)).deliveries.find(
       (d) => d.state === 'waiting',
@@ -964,18 +946,18 @@ test('a week before T3’s sign-in ends anyone reconnects it from the Inbox; onc
   } finally {
     await sql.close();
   }
-  const needs = page.getByRole('tab', { name: /^Inbox/ });
-  const inbox = page.getByRole('region', { name: 'Inbox' });
-  const sign = inbox.getByRole('listitem').filter({ hasText: /T3’s sign-in/ });
+  const needs = page.getByRole('tab', { name: /^收件箱/ });
+  const inbox = page.getByRole('region', { name: '收件箱' });
+  const sign = inbox.getByRole('listitem').filter({ hasText: /T3 的登录/ });
   // A month to go: nothing to do.
   await refreshNow(page);
   await needs.click();
-  await expect(inbox.getByText('You’re all caught up.')).toBeVisible();
+  await expect(inbox.getByText('都处理完了。')).toBeVisible();
   // Three days to go: everyone of the team is asked, on the Inbox's count too.
   signedIn(3 * day);
   await refreshNow(page);
   await expect(needs).toContainText('1');
-  await expect(sign).toContainText(/T3’s sign-in ends \w/);
+  await expect(sign).toContainText(/T3 的登录将于\S+到期/);
   await expect(sign).toContainText('127.0.0.1:3773');
   // One click starts the same sign-in as connecting T3, to the same T3.
   let connecting = false;
@@ -997,36 +979,36 @@ test('a week before T3’s sign-in ends anyone reconnects it from the Inbox; onc
       await route.fulfill({ response, json });
     },
   );
-  await sign.getByRole('button', { name: 'Reconnect T3', exact: true }).click();
+  await sign.getByRole('button', { name: '重新连接 T3', exact: true }).click();
   await expect(
-    sign.getByRole('link', { name: 'Approve in T3 ↗' }),
+    sign.getByRole('link', { name: '在 T3 中批准 ↗' }),
   ).toHaveAttribute('href', 'http://127.0.0.1:3773/authorize?state=x');
-  await expect(sign).toContainText('Supervised');
+  await expect(sign).toContainText('监督');
   expect(asked).toEqual([{ endpoint, replace: true }]);
   // The sign-in ends with nobody having reconnected.
   connecting = false;
   signedIn(-1000);
   await refreshNow(page);
-  await expect(sign).toContainText('T3’s sign-in ended, so agents are waiting');
+  await expect(sign).toContainText('T3 的登录已到期，智能体在等待');
   await expect(sign).toHaveAttribute('data-tone', 'problem');
   await expect(
-    sign.getByRole('button', { name: 'Reconnect T3', exact: true }),
+    sign.getByRole('button', { name: '重新连接 T3', exact: true }),
   ).toBeVisible();
   // A request to Ada waits, and says what it waits for. Ada's worker is
   // running; it found the sign-in ended and sent nothing to T3.
   await page.keyboard.press('Escape');
-  await page.getByRole('tab', { name: 'Chat', exact: true }).click();
-  const composer = page.getByRole('form', { name: 'Message your team' });
+  await page.getByRole('tab', { name: '聊天', exact: true }).click();
+  const composer = page.getByRole('form', { name: '给团队发消息' });
   await composer
-    .getByLabel('Message', { exact: true })
+    .getByLabel('消息', { exact: true })
     .fill('@Ada please check the release notes');
-  await composer.getByRole('button', { name: 'Send message' }).click();
+  await composer.getByRole('button', { name: '发送消息' }).click();
   const responses = page
-    .getByRole('list', { name: 'Channel messages' })
+    .getByRole('list', { name: '频道消息' })
     .getByRole('listitem')
     .filter({ hasText: 'please check the release notes' })
     .first()
-    .getByRole('list', { name: 'Agent responses' });
+    .getByRole('list', { name: '智能体响应' });
   await expect(responses).toContainText('Ada');
   const db = rawDatabase(hub.database);
   try {
@@ -1044,7 +1026,7 @@ test('a week before T3’s sign-in ends anyone reconnects it from the Inbox; onc
     await db.close();
   }
   await expect(
-    responses.getByText('Ada will go on once T3 is reconnected', {
+    responses.getByText('T3 重新连接后 Ada 会继续', {
       exact: true,
     }),
   ).toBeVisible();
@@ -1106,26 +1088,24 @@ test('a T3 on another computer: the person pastes the address its approval opene
   await agentRow(page, 'Ada').click();
   const connectT3 = page
     .getByRole('region', { name: 'Ada', exact: true })
-    .getByRole('region', { name: 'Setup' })
-    .getByRole('group', { name: 'Connect T3' });
-  await connectT3.getByLabel('T3 MCP URL').fill('https://t3.example.com/mcp');
+    .getByRole('region', { name: '配置' })
+    .getByRole('group', { name: '连接 T3' });
   await connectT3
-    .getByRole('button', { name: 'Connect T3', exact: true })
-    .click();
+    .getByLabel('T3 的 MCP URL')
+    .fill('https://t3.example.com/mcp');
+  await connectT3.getByRole('button', { name: '连接 T3', exact: true }).click();
   // The pairing code comes from the T3 being connected, named by its address.
-  await expect(connectT3).toContainText('Create one on t3.example.com');
-  const address = connectT3.getByLabel('Address after approving');
+  await expect(connectT3).toContainText('在 t3.example.com 的 Settings');
+  const address = connectT3.getByLabel('批准后的地址');
   await address.fill('http://127.0.0.1:49871/callback?state=y&code=c&iss=z');
-  await connectT3.getByRole('button', { name: 'Finish' }).click();
-  await expect(connectT3).toContainText(
-    'That isn’t the address this approval opened.',
-  );
+  await connectT3.getByRole('button', { name: '完成' }).click();
+  await expect(connectT3).toContainText('这不是这次批准打开的地址。');
   const right = 'http://127.0.0.1:49871/callback?state=x&code=c&iss=z';
   await address.fill(right);
-  await connectT3.getByRole('button', { name: 'Finish' }).click();
+  await connectT3.getByRole('button', { name: '完成' }).click();
   // Connected: the next step is choosing what Ada runs on.
   await expect(
-    page.getByRole('form', { name: 'Choose what Ada runs on' }),
+    page.getByRole('form', { name: '选择 Ada 使用的模型' }),
   ).toBeVisible();
   expect(pasted.at(-1)).toBe(right);
 });
@@ -1190,31 +1170,29 @@ test('connect T3 and an agent in two clicks: the hub keeps the credential and wa
   await agentRow(page, 'Ada').click();
   const setup = page
     .getByRole('region', { name: 'Ada', exact: true })
-    .getByRole('region', { name: 'Setup' });
+    .getByRole('region', { name: '配置' });
   // T3 on this Mac is found: no URL to look up, one button.
-  const connectT3 = setup.getByRole('group', { name: 'Connect T3' });
-  await expect(connectT3).toContainText('T3 is running on this Mac');
-  await expect(connectT3.getByLabel('T3 MCP URL')).toHaveCount(0);
-  await connectT3
-    .getByRole('button', { name: 'Connect T3', exact: true })
-    .click();
+  const connectT3 = setup.getByRole('group', { name: '连接 T3' });
+  await expect(connectT3).toContainText('T3 正在这台 Mac 上运行');
+  await expect(connectT3.getByLabel('T3 的 MCP URL')).toHaveCount(0);
+  await connectT3.getByRole('button', { name: '连接 T3', exact: true }).click();
   await expect(
-    connectT3.getByRole('link', { name: 'Approve in T3 ↗' }),
+    connectT3.getByRole('link', { name: '在 T3 中批准 ↗' }),
   ).toHaveAttribute('href', 'http://127.0.0.1:3773/authorize?state=x');
-  await expect(connectT3).toContainText('pairing code');
-  await expect(connectT3).toContainText('Supervised, Auto or Full access');
+  await expect(connectT3).toContainText('配对码');
+  await expect(connectT3).toContainText('监督、自动或完全访问');
   // On this Mac the approval comes straight back: nothing to paste.
-  await expect(connectT3.getByLabel('Address after approving')).toHaveCount(0);
+  await expect(connectT3.getByLabel('批准后的地址')).toHaveCount(0);
   // Approved read-only by mistake: said plainly, before anyone waits.
   // The mocked hub cannot push, so the test reads again in its place.
   t3 = 'read';
   await refreshNow(page);
   const permission = setup.getByRole('group', {
-    name: 'Give T3 permission to run',
+    name: '允许 T3 运行',
   });
-  await expect(permission).toContainText('choose how it may run');
+  await expect(permission).toContainText('选择运行方式');
   await permission
-    .getByRole('button', { name: 'Connect T3', exact: true })
+    .getByRole('button', { name: '连接 T3', exact: true })
     .click();
   // Approved with Full access; the hub records the connection.
   const sql = rawDatabase(hub.database);
@@ -1228,28 +1206,28 @@ test('connect T3 and an agent in two clicks: the hub keeps the credential and wa
     await sql.close();
   }
   t3 = 'operate';
-  const choose = setup.getByRole('form', { name: 'Choose what Ada runs on' });
+  const choose = setup.getByRole('form', { name: '选择 Ada 使用的模型' });
   // Out of reach is said as such, not turned into typing model names.
-  await expect(choose).toContainText('T3 can’t be reached right now.');
-  await expect(choose.getByLabel('Model')).toHaveCount(0);
-  await expect(
-    choose.getByRole('button', { name: 'Connect Ada' }),
-  ).toBeDisabled();
+  await expect(choose).toContainText('现在连不上 T3。');
+  await expect(choose.getByLabel('模型', { exact: true })).toHaveCount(0);
+  await expect(choose.getByRole('button', { name: '连接 Ada' })).toBeDisabled();
   // Once T3 answers, reading again lists its models.
   reachable = true;
   await refreshNow(page);
   // One choice: the model, grouped by provider; providers without models are left out.
-  await expect(choose.getByLabel('Model')).toHaveValue('isolated-ada\nmodel-x');
+  await expect(choose.getByLabel('模型', { exact: true })).toHaveValue(
+    'isolated-ada\nmodel-x',
+  );
   await expect(choose.locator('optgroup')).toHaveCount(1);
-  await choose.getByRole('button', { name: 'Connect Ada' }).click();
+  await choose.getByRole('button', { name: '连接 Ada' }).click();
   // The hub started its own worker for Ada; no file was edited.
   await untilReady(page);
   // What it runs on is said once, in About.
-  const about = page.getByRole('complementary', { name: 'About' });
+  const about = page.getByRole('complementary', { name: '关于' });
   await expect(about).toContainText('isolated-ada');
   await expect(about).toContainText('model-x');
   // How Ada runs is what the person chose in T3.
-  await expect(about).toContainText('127.0.0.1:3773 · full access');
+  await expect(about).toContainText('127.0.0.1:3773 · 完全访问');
   const tokenFile = join(hub.state, 'managed', 'agents', ada.id + '.json');
   // File mode and saved preferences: tests/connect.test.ts.
   const { token } = z
@@ -1272,51 +1250,51 @@ test('the agent panel still walks an operator through a self-run worker binding'
   // Running the worker by hand opens beside the agent's page.
   await page
     .getByRole('region', { name: 'Ada', exact: true })
-    .getByRole('button', { name: 'Run the worker yourself →' })
+    .getByRole('button', { name: '自己运行工作进程 →' })
     .click();
   const setup = page.getByRole('region', {
-    name: 'Run the worker yourself',
+    name: '自己运行工作进程',
     exact: true,
   });
   const step = (title: string) =>
     setup.getByRole('listitem').filter({ hasText: title });
-  await expect(step('Runtime preferences')).toContainText('(to do)');
-  await setup.getByLabel('T3 environment ID').fill('env-primary');
-  await setup.getByLabel('Isolated provider ID').fill('isolated-ada');
-  await setup.getByLabel('Model ID').fill('model-x');
-  await setup.getByRole('button', { name: 'Save preferences' }).click();
-  await expect(step('Runtime preferences')).toContainText(
+  await expect(step('运行偏好')).toContainText('（待完成）');
+  await setup.getByLabel('T3 环境 ID').fill('env-primary');
+  await setup.getByLabel('隔离的提供方 ID').fill('isolated-ada');
+  await setup.getByLabel('模型 ID').fill('model-x');
+  await setup.getByRole('button', { name: '保存偏好' }).click();
+  await expect(step('运行偏好')).toContainText(
     'env-primary · isolated-ada/model-x',
   );
-  await expect(step('Runtime preferences')).toContainText('(done)');
+  await expect(step('运行偏好')).toContainText('（已完成）');
   await setup
-    .getByRole('button', { name: 'Issue worker credential', exact: true })
+    .getByRole('button', { name: '签发工作进程凭据', exact: true })
     .click();
-  const shown = step('Worker credential').locator('.token-once code.reference');
+  const shown = step('工作进程凭据').locator('.token-once code.reference');
   await expect(shown).toHaveText(/^kma_/);
   const token = await shown.innerText();
-  await expect(step('Worker credential')).toContainText('(done)');
+  await expect(step('工作进程凭据')).toContainText('（已完成）');
   // The credential is shown once: neither the API nor the page can repeat it.
-  await setup.getByRole('button', { name: 'I saved it' }).click();
+  await setup.getByRole('button', { name: '我已保存' }).click();
   await expect(shown).toHaveCount(0);
   const grantsUrl = `${hub.origin}/api/teams/${state.team.id}/agents/${ada.id}/grants`;
   const listed = await (await context.request.get(grantsUrl)).text();
   expect(listed).not.toContain(token);
   expect(listed).not.toContain('"token"');
   expect(await page.content()).not.toContain(token);
-  const credentials = setup.getByRole('list', { name: 'Credentials' });
-  await credentials.getByRole('button', { name: 'Rotate' }).click();
+  const credentials = setup.getByRole('list', { name: '凭据' });
+  await credentials.getByRole('button', { name: '轮换' }).click();
   await expect(shown).toHaveText(/^kma_/);
   await expect(shown).not.toHaveText(token);
-  await setup.getByRole('button', { name: 'I saved it' }).click();
-  await expect(credentials).toContainText('revoked');
-  await credentials.getByRole('button', { name: 'Revoke' }).click();
-  await expect(step('Worker credential')).toContainText('(to do)');
+  await setup.getByRole('button', { name: '我已保存' }).click();
+  await expect(credentials).toContainText('已吊销');
+  await credentials.getByRole('button', { name: '吊销' }).click();
+  await expect(step('工作进程凭据')).toContainText('（待完成）');
   await expect(
-    setup.getByRole('button', { name: 'Issue worker credential' }),
+    setup.getByRole('button', { name: '签发工作进程凭据' }),
   ).toBeVisible();
   // The binding is generated for this agent and carries no secret.
-  const snippet = step('Inbox worker binding').locator('pre');
+  const snippet = step('收件箱工作进程绑定').locator('pre');
   await expect(snippet).toContainText(ada.id);
   await expect(snippet).toContainText('"isolatedProviderId": "isolated-ada"');
   await expect(snippet).not.toContainText('kma_');
@@ -1342,38 +1320,39 @@ test('lost message response retries the same committed operation; real conflict 
       await route.abort('failed');
     } else await route.continue();
   });
-  const composer = page.getByRole('form', { name: 'Message your team' });
+  const composer = page.getByRole('form', { name: '给团队发消息' });
   await composer
-    .getByLabel('Message', { exact: true })
+    .getByLabel('消息', { exact: true })
     .fill('One committed message, even after a lost response');
-  await composer.getByRole('button', { name: 'Send message' }).click();
+  await composer.getByRole('button', { name: '发送消息' }).click();
   await expect(
-    composer.getByRole('button', { name: 'Retry same action' }),
+    composer.getByRole('button', { name: '重试同一操作' }),
   ).toBeVisible();
-  await expect(composer.getByLabel('Message', { exact: true })).toBeDisabled();
-  await composer.getByRole('button', { name: 'Retry same action' }).click();
+  await expect(composer.getByLabel('消息', { exact: true })).toBeDisabled();
+  await composer.getByRole('button', { name: '重试同一操作' }).click();
   await expect(
     page
-      .getByRole('list', { name: 'Channel messages' })
+      .getByRole('list', { name: '频道消息' })
       .getByText('One committed message, even after a lost response', {
         exact: true,
       }),
   ).toBeVisible();
-  await expect(composer.getByLabel('Message', { exact: true })).toHaveValue('');
+  await expect(composer.getByLabel('消息', { exact: true })).toHaveValue('');
   expect(keys).toHaveLength(2);
   expect(keys[0]).toBe(keys[1]);
   const after = await snapshot(context.request, hub.origin);
   expect(after.messages.items).toHaveLength(1);
   await register(page, 'Duplicate check', 'assistant');
   // Real server uniqueness conflict, not an intercepted/fabricated error response.
-  await page.getByRole('tab', { name: 'Team', exact: true }).click();
-  await page.getByRole('button', { name: 'Register agent' }).click();
-  const form = page.getByRole('form', { name: 'Agent profile' });
-  await form.getByLabel('Agent name').fill('Duplicate check');
-  await form
-    .getByRole('button', { name: 'Register agent', exact: true })
+  await page.getByRole('tab', { name: '团队', exact: true }).click();
+  await page
+    .getByRole('list', { name: '团队', exact: true })
+    .getByRole('button', { name: '添加智能体', exact: true })
     .click();
-  await expect(form.getByRole('alert')).toContainText('already exists');
+  const form = page.getByRole('form', { name: '智能体资料' });
+  await form.getByLabel('智能体名称').fill('Duplicate check');
+  await form.getByRole('button', { name: '添加智能体', exact: true }).click();
+  await expect(form.getByRole('alert')).toContainText('已有同名的智能体');
 });
 
 test('human claim and request-review controls, plus leave/rejoin of known membership', async ({
@@ -1391,50 +1370,44 @@ test('human claim and request-review controls, plus leave/rejoin of known member
     title: 'Human owned task',
     criteria: ['Review requested with a recorded note'],
   });
-  await task.getByRole('button', { name: 'Claim task', exact: true }).click();
+  await task.getByRole('button', { name: '认领任务', exact: true }).click();
+  await task.getByRole('button', { name: '请求审核…', exact: true }).click();
   await task
-    .getByRole('button', { name: 'Request review…', exact: true })
-    .click();
-  await task
-    .getByLabel('Recipient', { exact: true })
+    .getByLabel('接收人', { exact: true })
     .selectOption('agent:' + state.agents[0].id);
-  await task.getByLabel('Decision note').fill('Please review the human work');
-  await task
-    .getByRole('button', { name: 'Request review', exact: true })
-    .click();
+  await task.getByLabel('决定备注').fill('Please review the human work');
+  await task.getByRole('button', { name: '请求审核', exact: true }).click();
   await expect(
     task.getByRole('definition').filter({ hasText: /^Reviewer$/ }),
   ).toBeVisible();
   // Esc returns from the task's page to the board, where it moved on.
   await backToBoard(page);
-  await expect(inStage(page, 'Review', 'Human owned task')).toBeVisible();
+  await expect(inStage(page, '审核中', 'Human owned task')).toBeVisible();
   // Leaving has no place in the sidebar: it is an action in the palette.
-  await page.getByRole('tab', { name: 'Chat', exact: true }).click();
+  await page.getByRole('tab', { name: '聊天', exact: true }).click();
   await expect(
-    page
-      .locator('aside.sidebar')
-      .getByRole('button', { name: 'Leave channel' }),
+    page.locator('aside.sidebar').getByRole('button', { name: '退出频道' }),
   ).toHaveCount(0);
   await page.keyboard.press('ControlOrMeta+k');
-  const palette = page.getByRole('dialog', { name: 'Command palette' });
-  await palette.getByRole('combobox', { name: /Search/ }).fill('leave');
+  const palette = page.getByRole('dialog', { name: '命令面板' });
+  await palette.getByRole('combobox', { name: /搜索/ }).fill('退出');
   await expect(
-    palette.getByRole('option', { name: 'Leave #general' }),
+    palette.getByRole('option', { name: '退出 #general' }),
   ).toHaveAttribute('aria-selected', 'true');
   await page.keyboard.press('Enter');
   await expect(palette).toBeHidden();
   await expect(
-    page.getByText('Welcome to your team', { exact: true }),
+    page.getByText('欢迎来到你的团队', { exact: true }),
   ).toBeVisible();
   // A channel you left is offered back by name; no IDs to copy.
-  const left = page.getByRole('list', { name: 'Channels you left' });
+  const left = page.getByRole('list', { name: '已退出的频道' });
   await expect(left.getByRole('listitem')).toHaveText([/general/]);
-  await left.getByRole('button', { name: 'Rejoin', exact: true }).click();
+  await left.getByRole('button', { name: '重新加入', exact: true }).click();
   await expect(page.getByRole('heading', { name: '# general' })).toBeVisible();
   // Nothing left to rejoin: the list disappears.
   await expect(left).toHaveCount(0);
-  await page.getByRole('tab', { name: 'Board', exact: true }).click();
-  await expect(inStage(page, 'Review', 'Human owned task')).toBeVisible();
+  await page.getByRole('tab', { name: '看板', exact: true }).click();
+  await expect(inStage(page, '审核中', 'Human owned task')).toBeVisible();
 });
 
 test('a heartbeat refresh never interrupts work; after a failure nothing submits until a reconnect succeeds', async ({
@@ -1445,13 +1418,13 @@ test('a heartbeat refresh never interrupts work; after a failure nothing submits
   await signIn(page, hub);
   const state = await snapshot(context.request, hub.origin);
   if (!state.channel) throw new Error('Local channel unavailable');
-  await page.getByRole('button', { name: 'New channel' }).click();
-  const channelName = page.getByLabel('Channel name');
+  await page.getByRole('button', { name: '新建频道' }).click();
+  const channelName = page.getByLabel('频道名称');
   await channelName.fill('after-reconnect');
   const create = channelName.locator('xpath=ancestor::form');
-  const composer = page.getByRole('form', { name: 'Message your team' });
+  const composer = page.getByRole('form', { name: '给团队发消息' });
   await composer
-    .getByLabel('Message', { exact: true })
+    .getByLabel('消息', { exact: true })
     .fill('Sent once the workspace is back');
   let posts = 0;
   page.on('request', (request) => {
@@ -1483,7 +1456,7 @@ test('a heartbeat refresh never interrupts work; after a failure nothing submits
   async function expectNothingSubmits() {
     // The channel name has no button (Enter submits); the composer's is off.
     await expect(
-      composer.getByRole('button', { name: 'Send message' }),
+      composer.getByRole('button', { name: '发送消息' }),
     ).toBeDisabled();
     for (const form of [create, composer]) {
       // Bypass native disabled controls to verify the submit handler also fails closed.
@@ -1494,33 +1467,33 @@ test('a heartbeat refresh never interrupts work; after a failure nothing submits
       );
     }
     await expect(
-      page.getByRole('button', { name: 'Sign out', exact: true }),
+      page.getByRole('button', { name: '退出登录', exact: true }),
     ).toBeDisabled();
     expect(posts).toBe(0);
   }
   // A: refreshing a confirmed snapshot changes nothing the person can do.
   const failRefresh = await holdWorkspace(503);
   await refreshNow(page);
-  await expect(page.getByText('Refreshing…', { exact: true })).toBeVisible();
-  await expect(composer.getByLabel('Message', { exact: true })).toBeEditable();
+  await expect(page.getByText('正在刷新…', { exact: true })).toBeVisible();
+  await expect(composer.getByLabel('消息', { exact: true })).toBeEditable();
   await expect(
-    composer.getByRole('button', { name: 'Send message' }),
+    composer.getByRole('button', { name: '发送消息' }),
   ).toBeEnabled();
   // B: once a refresh fails, the snapshot is stale and every submission stops.
   failRefresh();
   await expect(staleLine(page)).toBeVisible();
   // Typing goes on (nothing is lost); only sending waits for a confirmed snapshot.
-  await expect(create.getByLabel('Channel name')).toBeEditable();
-  await expect(composer.getByLabel('Message', { exact: true })).toBeEditable();
+  await expect(create.getByLabel('频道名称')).toBeEditable();
+  await expect(composer.getByLabel('消息', { exact: true })).toBeEditable();
   await expectNothingSubmits();
   // B': a reconnect still in flight has not confirmed anything yet.
   const succeed = await holdWorkspace(200);
   await refreshNow(page);
   await expect(staleLine(page)).toBeVisible();
-  await expect(create.getByLabel('Channel name')).toBeEditable();
+  await expect(create.getByLabel('频道名称')).toBeEditable();
   await expectNothingSubmits();
   // Asked to send anyway, the composer says why nothing went.
-  await expect(composer.getByRole('alert')).toContainText('Not sent');
+  await expect(composer.getByRole('alert')).toContainText('没有发送');
   // Only GET is broken: real server POST remains reachable to the authenticated owner.
   const probe = await context.request.post(
     `${hub.origin}/api/teams/${state.team.id}/channels`,
@@ -1530,7 +1503,7 @@ test('a heartbeat refresh never interrupts work; after a failure nothing submits
   succeed();
   await expectHealthy(page);
   await page.unroute('**/api/workspace?*');
-  await composer.getByRole('button', { name: 'Send message' }).click();
+  await composer.getByRole('button', { name: '发送消息' }).click();
   await expect(
     page.getByText('Sent once the workspace is back', { exact: true }),
   ).toBeVisible();
@@ -1560,20 +1533,20 @@ test('a link that can’t open leads to the default channel, and a taken name sa
     await expect(page).toHaveURL(hub.origin + '/');
   }
   await page.goto(hub.origin + '/?task=' + randomUUID());
-  await expect(page.getByRole('region', { name: 'Task board' })).toBeVisible();
+  await expect(page.getByRole('region', { name: '任务看板' })).toBeVisible();
   await expect(page).toHaveURL(hub.origin + '/?view=board');
-  await expect(page.getByText('Workspace unavailable')).toHaveCount(0);
+  await expect(page.getByText('工作区打不开')).toHaveCount(0);
   await expectHealthy(page);
   // A refusal is said once, where it can be acted on, in plain words.
-  await page.getByRole('button', { name: 'New channel' }).click();
-  await page.getByLabel('Channel name').fill('general');
-  await page.getByLabel('Channel name').press('Enter');
+  await page.getByRole('button', { name: '新建频道' }).click();
+  await page.getByLabel('频道名称').fill('general');
+  await page.getByLabel('频道名称').press('Enter');
   await expect(
-    page.getByRole('navigation', { name: 'Channels' }).getByRole('alert'),
-  ).toHaveText('That name is taken');
+    page.getByRole('navigation', { name: '频道' }).getByRole('alert'),
+  ).toHaveText('这个名称已被占用');
   await expect(page.getByText(/HTTP \d/)).toHaveCount(0);
   // The refused name keeps the caret, ready to be corrected.
-  await expect(page.getByLabel('Channel name')).toBeFocused();
+  await expect(page.getByLabel('频道名称')).toBeFocused();
 });
 
 test('quiet text is readable where it sits, in light and dark', async ({
@@ -1581,14 +1554,14 @@ test('quiet text is readable where it sits, in light and dark', async ({
   hub,
 }) => {
   await signIn(page, hub);
-  await page.getByRole('button', { name: 'Start a topic' }).click();
-  await page.getByLabel('Topic title').fill('Billing');
-  await page.getByLabel('Topic title').press('Enter');
-  const composer = page.getByRole('form', { name: 'Message your team' });
-  await composer.getByLabel('Message', { exact: true }).fill('Hello');
-  await composer.getByRole('button', { name: 'Send message' }).click();
+  await page.getByRole('button', { name: '新建话题' }).click();
+  await page.getByLabel('话题名称').fill('Billing');
+  await page.getByLabel('话题名称').press('Enter');
+  const composer = page.getByRole('form', { name: '给团队发消息' });
+  await composer.getByLabel('消息', { exact: true }).fill('Hello');
+  await composer.getByRole('button', { name: '发送消息' }).click();
   await expect(
-    page.getByRole('list', { name: 'Channel messages' }).getByText('Hello'),
+    page.getByRole('list', { name: '频道消息' }).getByText('Hello'),
   ).toBeVisible();
   // A message's time, and a row of the tree that isn't the current place
   // ("All", here). A switched
@@ -1615,20 +1588,18 @@ test('the organization names the team at the top of the sidebar; nobody renames 
   await expect(sidebar.getByText('Stand-in Co', { exact: true })).toBeVisible();
   // You are not among the sidebar's people: you know you are here.
   await expect(
-    page
-      .getByRole('region', { name: 'People in this channel' })
-      .getByText('browser_owner'),
+    page.getByRole('region', { name: '本频道成员' }).getByText('browser_owner'),
   ).toHaveCount(0);
   // Your tile on Team opens your page, which has nothing to type: only
   // signing out.
-  await page.getByRole('tab', { name: 'Team', exact: true }).click();
+  await page.getByRole('tab', { name: '团队', exact: true }).click();
   await page
-    .getByRole('list', { name: 'Team' })
+    .getByRole('list', { name: '团队' })
     .getByRole('button', { name: /^browser_owner/ })
     .click();
-  const settings = page.getByRole('region', { name: 'Settings' });
+  const settings = page.getByRole('region', { name: '设置' });
   await expect(
-    settings.getByRole('button', { name: 'Sign out everywhere' }),
+    settings.getByRole('button', { name: '在所有设备上退出登录' }),
   ).toBeVisible();
   await expect(settings.getByRole('textbox')).toHaveCount(0);
 });
@@ -1638,20 +1609,14 @@ test('someone outside the organization is turned back, and a reload starts clean
   hub,
 }) => {
   await page.goto(hub.origin);
-  await page.getByRole('link', { name: 'Sign in with Feishu' }).click();
+  await page.getByRole('link', { name: '使用飞书登录' }).click();
   await page.getByLabel('Mailbox').fill('eve@other.com');
   await page.getByRole('button', { name: 'Continue' }).click();
-  await expect(
-    page.getByText('That Feishu account isn’t part of this organization.'),
-  ).toBeVisible();
+  await expect(page.getByText('这个飞书账号不属于本组织。')).toBeVisible();
   expect(new URL(page.url()).search).toBe('');
   await page.reload();
-  await expect(
-    page.getByRole('link', { name: 'Sign in with Feishu' }),
-  ).toBeVisible();
-  await expect(
-    page.getByText('That Feishu account isn’t part of this organization.'),
-  ).toHaveCount(0);
+  await expect(page.getByRole('link', { name: '使用飞书登录' })).toBeVisible();
+  await expect(page.getByText('这个飞书账号不属于本组织。')).toHaveCount(0);
   // Someone in it, signing in next, makes the team.
   await signIn(page, hub, 'grace@example.com');
 });
@@ -1664,9 +1629,9 @@ test('permission loss purges workspace snapshot instead of retaining stale team 
   await signIn(page, hub);
   const state = await snapshot(context.request, hub.origin);
   const privateMessage = 'Previously authorized channel message';
-  const composer = page.getByRole('form', { name: 'Message your team' });
-  await composer.getByLabel('Message', { exact: true }).fill(privateMessage);
-  await composer.getByRole('button', { name: 'Send message' }).click();
+  const composer = page.getByRole('form', { name: '给团队发消息' });
+  await composer.getByLabel('消息', { exact: true }).fill(privateMessage);
+  await composer.getByRole('button', { name: '发送消息' }).click();
   await expect(page.getByText(privateMessage, { exact: true })).toBeVisible();
 
   await newTask(page, {
@@ -1688,23 +1653,15 @@ test('permission loss purges workspace snapshot instead of retaining stale team 
     });
   });
   await refreshNow(page);
-  await expect(
-    page.getByRole('link', { name: 'Sign in with Feishu' }),
-  ).toBeVisible();
-  await expect(
-    page.getByText('That account no longer has access to this workspace.'),
-  ).toBeVisible();
+  await expect(page.getByRole('link', { name: '使用飞书登录' })).toBeVisible();
+  await expect(page.getByText('这个账号已无权访问此工作区。')).toBeVisible();
   await expect(page.getByText(/HTTP \d/)).toHaveCount(0);
   await expect(page.getByText(privateMessage, { exact: true })).toHaveCount(0);
   await expect(
     page.getByRole('article', { name: 'Previously authorized task' }),
   ).toHaveCount(0);
-  await expect(page.getByRole('navigation', { name: 'Channels' })).toHaveCount(
-    0,
-  );
-  await expect(
-    page.getByRole('form', { name: 'Message your team' }),
-  ).toHaveCount(0);
+  await expect(page.getByRole('navigation', { name: '频道' })).toHaveCount(0);
+  await expect(page.getByRole('form', { name: '给团队发消息' })).toHaveCount(0);
   expect(unauthorizedWorkspaceReads).toBeGreaterThan(0);
 
   // Browser response was denied while the same authenticated backend remains reachable.
@@ -1752,9 +1709,7 @@ test('AG-UI access revocation clears prior reports while a transient outage pres
   });
   await refreshNow(page);
   await expect(
-    page.getByText(
-      'Activity can’t be loaded right now. It will try again on the next refresh.',
-    ),
+    page.getByText('现在无法加载活动，下次刷新时会再试。'),
   ).toBeVisible();
   await expect(page.getByText(thread, { exact: true })).toBeVisible();
 
@@ -1770,12 +1725,10 @@ test('AG-UI access revocation clears prior reports while a transient outage pres
   });
   await refreshNow(page);
   await expect(
-    page.getByText(
-      'You no longer have access to this activity. Sign in again.',
-    ),
+    page.getByText('你已无权查看这些活动。请重新登录。'),
   ).toBeVisible();
   await expect(page.getByText(thread, { exact: true })).toHaveCount(0);
-  await expect(runState(page, 'Unknown')).toHaveCount(0);
+  await expect(runState(page, '未知')).toHaveCount(0);
   expect(denied).toBeGreaterThan(0);
   expect(
     (
@@ -1863,15 +1816,13 @@ test('MOCK UI only: strict native observation renders separate exact state/link 
       body: JSON.stringify(body),
     });
   });
-  const check = page.getByRole('button', { name: 'Check in T3' });
+  const check = page.getByRole('button', { name: '在 T3 中查看' });
   await check.click();
-  await expect(page.getByText(/T3 confirms/)).toBeVisible();
-  await expect(
-    page.getByText('This run: interrupted · finished'),
-  ).toBeVisible();
-  await expect(page.getByText(/Open requests in this thread: 2/)).toBeVisible();
-  await expect(runState(page, 'Unknown')).toBeVisible();
-  const link = page.getByRole('link', { name: 'Open in T3', exact: true });
+  await expect(page.getByText(/T3 确认/)).toBeVisible();
+  await expect(page.getByText('这次运行：interrupted · 已结束')).toBeVisible();
+  await expect(page.getByText(/这个对话中未处理的请求：2/)).toBeVisible();
+  await expect(runState(page, '未知')).toBeVisible();
+  const link = page.getByRole('link', { name: '在 T3 中打开', exact: true });
   await expect(link).toHaveAttribute('href', observation.verifiedUrl);
   await expect(link).toHaveAttribute('target', '_blank');
   await expect(link).toHaveAttribute('rel', 'noopener noreferrer');
@@ -1882,9 +1833,9 @@ test('MOCK UI only: strict native observation renders separate exact state/link 
   ).toBe(true);
   status = 503;
   await check.click();
-  await expect(page.getByText(/T3 can’t be checked right now/)).toBeVisible();
+  await expect(page.getByText(/现在无法查看 T3/)).toBeVisible();
   await expect(link).toHaveCount(0);
-  await expect(page.getByText(/T3 confirms/)).toHaveCount(0);
+  await expect(page.getByText(/T3 确认/)).toHaveCount(0);
   // One invalid DTO proves the page clears on a rejected decode; every
   // rejected shape is in tests/native.test.ts.
   status = 200;
@@ -1892,9 +1843,9 @@ test('MOCK UI only: strict native observation renders separate exact state/link 
   await expect(link).toBeVisible();
   body = { ...observation, verifiedUrl: 'javascript:alert(1)' };
   await check.click();
-  await expect(page.getByText(/T3 can’t be checked right now/)).toBeVisible();
+  await expect(page.getByText(/现在无法查看 T3/)).toBeVisible();
   await expect(link).toHaveCount(0);
-  await expect(page.getByText(/T3 confirms/)).toHaveCount(0);
+  await expect(page.getByText(/T3 确认/)).toHaveCount(0);
   expect((await context.request.get(hub.origin + '/api/me')).status()).toBe(
     200,
   );
@@ -1924,23 +1875,21 @@ test('MOCK UI only: native HTTP 401 or 403 purges native result and protected AG
       ).toBeVisible();
     }
     status = 200;
-    await page.getByRole('button', { name: 'Check in T3' }).click();
+    await page.getByRole('button', { name: '在 T3 中查看' }).click();
     await expect(
-      page.getByRole('link', { name: 'Open in T3', exact: true }),
+      page.getByRole('link', { name: '在 T3 中打开', exact: true }),
     ).toBeVisible();
     status = denied;
-    await page.getByRole('button', { name: 'Check in T3' }).click();
+    await page.getByRole('button', { name: '在 T3 中查看' }).click();
     await expect(
-      page.getByText(
-        'You no longer have access to this activity. Sign in again.',
-      ),
+      page.getByText('你已无权查看这些活动。请重新登录。'),
     ).toBeVisible();
     await expect(
-      page.getByRole('link', { name: 'Open in T3', exact: true }),
+      page.getByRole('link', { name: '在 T3 中打开', exact: true }),
     ).toHaveCount(0);
-    await expect(page.getByText(/T3 confirms/)).toHaveCount(0);
+    await expect(page.getByText(/T3 确认/)).toHaveCount(0);
     await expect(page.getByText('MOCK-thread', { exact: true })).toHaveCount(0);
-    await expect(runState(page, 'Unknown')).toHaveCount(0);
+    await expect(runState(page, '未知')).toHaveCount(0);
     expect((await context.request.get(hub.origin + '/api/me')).status()).toBe(
       200,
     );
@@ -1977,7 +1926,7 @@ async function seedMessages(
 /** Where a message sits in the viewport, by its exact text. */
 async function topOf(page: Page, text: string) {
   const box = await page
-    .getByRole('list', { name: 'Channel messages' })
+    .getByRole('list', { name: '频道消息' })
     .getByText(text, { exact: true })
     .boundingBox();
   if (!box) throw new Error(text + ' is not on the page');
@@ -2009,7 +1958,7 @@ test('a long conversation opens at its newest message, follows new ones, holds s
   const state = await snapshot(context.request, hub.origin);
   if (!state.channel) throw new Error('Local channel missing');
   await seedMessages(hub.database, state.channel.id, state.human.id, 120);
-  const messages = page.getByRole('list', { name: 'Channel messages' });
+  const messages = page.getByRole('list', { name: '频道消息' });
   const say = (text: string) => messages.getByText(text, { exact: true });
   // It opens at the newest message, with nothing to page through.
   await page.reload();
@@ -2083,12 +2032,10 @@ test('a long conversation opens at its newest message, follows new ones, holds s
   await page.evaluate(() => {
     window.scrollTo({ top: 0 });
   });
-  const composer = page.getByRole('form', { name: 'Message your team' });
+  const composer = page.getByRole('form', { name: '给团队发消息' });
+  await composer.getByLabel('消息', { exact: true }).fill('Sent from up top');
   await composer
-    .getByLabel('Message', { exact: true })
-    .fill('Sent from up top');
-  await composer
-    .getByLabel('Message', { exact: true })
+    .getByLabel('消息', { exact: true })
     .press('ControlOrMeta+Enter');
   await expect(say('Sent from up top')).toBeInViewport();
 });
@@ -2102,8 +2049,10 @@ test('“New since” marks only what others wrote while this channel or topic w
   await signIn(page, hub);
   const state = await snapshot(context.request, hub.origin);
   if (!state.channel) throw new Error('Local channel missing');
-  const messages = page.getByRole('list', { name: 'Channel messages' });
-  const divider = page.getByRole('separator').filter({ hasText: /New since/ });
+  const messages = page.getByRole('list', { name: '频道消息' });
+  const divider = page
+    .getByRole('separator')
+    .filter({ hasText: /以来的新消息/ });
   const theirs = await browser.newContext();
   try {
     const grace = await theirs.newPage();
@@ -2126,20 +2075,20 @@ test('“New since” marks only what others wrote while this channel or topic w
     };
     await graceSays('Grace wrote before');
     await expect(messages.getByText('Grace wrote before')).toBeVisible();
-    await page.getByRole('button', { name: 'Start a topic' }).click();
-    await page.getByLabel('Topic title').fill('Billing');
-    await page.getByLabel('Topic title').press('Enter');
-    const composer = page.getByRole('form', { name: 'Message your team' });
-    await composer.getByLabel('Message', { exact: true }).fill('In the topic');
-    await composer.getByRole('button', { name: 'Send message' }).click();
+    await page.getByRole('button', { name: '新建话题' }).click();
+    await page.getByLabel('话题名称').fill('Billing');
+    await page.getByLabel('话题名称').press('Enter');
+    const composer = page.getByRole('form', { name: '给团队发消息' });
+    await composer.getByLabel('消息', { exact: true }).fill('In the topic');
+    await composer.getByRole('button', { name: '发送消息' }).click();
     await expect(messages.getByText('In the topic')).toBeVisible();
     // Reloaded inside the topic, then widened to All: what Grace wrote
     // before is not new, only out of the topic.
     await page.reload();
     await expect(messages.getByText('In the topic')).toBeVisible();
     await page
-      .getByRole('list', { name: 'Topics' })
-      .getByRole('button', { name: 'All', exact: true })
+      .getByRole('list', { name: '话题' })
+      .getByRole('button', { name: '全部', exact: true })
       .click();
     await expect(messages.getByText('Grace wrote before')).toBeVisible();
     await expect(divider).toHaveCount(0);
@@ -2148,7 +2097,7 @@ test('“New since” marks only what others wrote while this channel or topic w
     await readAgain(page);
     await expect(
       messages.getByRole('listitem').filter({ hasText: 'Grace wrote this' }),
-    ).toContainText('New since');
+    ).toContainText('以来的新消息');
     await expect(divider).toHaveCount(1);
   } finally {
     await theirs.close();
@@ -2188,7 +2137,7 @@ test('a task older than the board’s newest still opens by its address', async 
   await expect(taskPage(page, 'The oldest task')).toBeVisible();
   // The board shows the newest tasks, with nothing to page through.
   await page.keyboard.press('Escape');
-  await expect(page.getByRole('region', { name: 'Task board' })).toBeVisible();
+  await expect(page.getByRole('region', { name: '任务看板' })).toBeVisible();
   await expect(
     page.getByRole('article', { name: 'Newer task 100', exact: true }),
   ).toBeVisible();
@@ -2235,24 +2184,24 @@ test('a phone channel: targets a finger can hit, fields that don’t zoom, a com
     await signIn(page, hub);
     const state = await snapshot(page.request, hub.origin);
     if (!state.channel) throw new Error('Local channel missing');
-    await page.getByRole('button', { name: 'Start a topic' }).click();
-    await page.getByLabel('Topic title').fill('Billing');
-    await page.getByLabel('Topic title').press('Enter');
+    await page.getByRole('button', { name: '新建话题' }).click();
+    await page.getByLabel('话题名称').fill('Billing');
+    await page.getByLabel('话题名称').press('Enter');
     await page
-      .getByRole('list', { name: 'Topics' })
-      .getByRole('button', { name: 'All', exact: true })
+      .getByRole('list', { name: '话题' })
+      .getByRole('button', { name: '全部', exact: true })
       .click();
     await page.setViewportSize({ width: 375, height: 812 });
     await page
-      .getByRole('navigation', { name: 'Channels' })
+      .getByRole('navigation', { name: '频道' })
       .getByRole('button', { name: 'general', exact: true })
       .click();
-    const topics = page.getByRole('group', { name: 'Topics' });
+    const topics = page.getByRole('group', { name: '话题' });
     await expect(topics.getByRole('button', { name: 'Billing' })).toBeVisible();
     // Back keeps no chrome, so it is drawn at 44 px; the rest take taps
     // around them.
     const back = await page
-      .getByRole('button', { name: 'Back', exact: true })
+      .getByRole('button', { name: '返回', exact: true })
       .boundingBox();
     expect(back?.width).toBeGreaterThanOrEqual(44);
     expect(back?.height).toBeGreaterThanOrEqual(44);
@@ -2271,20 +2220,20 @@ test('a phone channel: targets a finger can hit, fields that don’t zoom, a com
     expect(new Set(heights).size).toBe(1);
     // Leaving is not among the topics a thumb taps all day; it waits where
     // the conversation begins.
+    await expect(topics.getByRole('button', { name: '退出频道' })).toHaveCount(
+      0,
+    );
     await expect(
-      topics.getByRole('button', { name: 'Leave channel' }),
-    ).toHaveCount(0);
-    await expect(
-      page.getByRole('button', { name: 'Leave channel', exact: true }),
+      page.getByRole('button', { name: '退出频道', exact: true }),
     ).toBeVisible();
     // The field is 16 px (iOS zooms below that) and takes the width; Send is
     // the round confirm, shown once there is something to send.
-    const composer = page.getByRole('form', { name: 'Message your team' });
-    const field = composer.getByLabel('Message', { exact: true });
+    const composer = page.getByRole('form', { name: '给团队发消息' });
+    const field = composer.getByLabel('消息', { exact: true });
     expect(await field.evaluate((el) => getComputedStyle(el).fontSize)).toBe(
       '16px',
     );
-    const send = composer.getByRole('button', { name: 'Send message' });
+    const send = composer.getByRole('button', { name: '发送消息' });
     await expect(send).toBeDisabled();
     await field.fill('Ship the release notes');
     await expect(send).toBeEnabled();
@@ -2313,12 +2262,12 @@ test('a phone channel: targets a finger can hit, fields that don’t zoom, a com
     ).toBeLessThan(1);
     await send.tap();
     const posted = page
-      .getByRole('list', { name: 'Channel messages' })
+      .getByRole('list', { name: '频道消息' })
       .getByRole('listitem')
       .filter({ hasText: 'Ship the release notes' });
     await expect(posted).toBeVisible();
     // On touch, a message shows what can be done with it once tapped.
-    const makeTask = posted.getByRole('button', { name: 'Make task' });
+    const makeTask = posted.getByRole('button', { name: '转为任务' });
     await expect(makeTask).toBeHidden();
     await posted.getByText('Ship the release notes').tap();
     await expect(makeTask).toBeVisible();
@@ -2327,9 +2276,7 @@ test('a phone channel: targets a finger can hit, fields that don’t zoom, a com
     await seedMessages(hub.database, state.channel.id, state.human.id, 40);
     await readAgain(page);
     await expect(
-      page
-        .getByRole('list', { name: 'Channel messages' })
-        .getByText('Message 40'),
+      page.getByRole('list', { name: '频道消息' }).getByText('Message 40'),
     ).toBeVisible();
     await page.evaluate(() => {
       window.scrollTo({ top: document.documentElement.scrollHeight / 2 });
@@ -2356,22 +2303,22 @@ test('said once: a topic’s messages carry no tag for it, and one place is curr
   hub,
 }) => {
   await signIn(page, hub);
-  await page.getByRole('button', { name: 'Start a topic' }).click();
-  await page.getByLabel('Topic title').fill('Billing');
-  await page.getByLabel('Topic title').press('Enter');
-  const composer = page.getByRole('form', { name: 'Message your team' });
-  await composer.getByLabel('Message', { exact: true }).fill('In the topic');
-  await composer.getByRole('button', { name: 'Send message' }).click();
+  await page.getByRole('button', { name: '新建话题' }).click();
+  await page.getByLabel('话题名称').fill('Billing');
+  await page.getByLabel('话题名称').press('Enter');
+  const composer = page.getByRole('form', { name: '给团队发消息' });
+  await composer.getByLabel('消息', { exact: true }).fill('In the topic');
+  await composer.getByRole('button', { name: '发送消息' }).click();
   const posted = page
-    .getByRole('list', { name: 'Channel messages' })
+    .getByRole('list', { name: '频道消息' })
     .getByRole('listitem')
     .filter({ hasText: 'In the topic' });
   await expect(posted).toBeVisible();
   await expect(posted.getByText('Billing', { exact: true })).toHaveCount(0);
-  const topics = page.getByRole('list', { name: 'Topics' });
+  const topics = page.getByRole('list', { name: '话题' });
   const billing = topics.getByRole('button', { name: 'Billing', exact: true });
   const channelRow = page
-    .getByRole('navigation', { name: 'Channels' })
+    .getByRole('navigation', { name: '频道' })
     .getByRole('button', { name: 'general', exact: true });
   const fill = (row: typeof billing) =>
     row.evaluate((el) => getComputedStyle(el).backgroundColor);
@@ -2382,7 +2329,7 @@ test('said once: a topic’s messages carry no tag for it, and one place is curr
   await expect.poll(() => fill(billing)).not.toBe(clear);
   await expect.poll(() => fill(channelRow)).toBe(clear);
   // "All" is the whole channel: the channel row is the place, never "All".
-  const all = topics.getByRole('button', { name: 'All', exact: true });
+  const all = topics.getByRole('button', { name: '全部', exact: true });
   await all.click();
   await expect(posted.getByText('Billing', { exact: true })).toBeVisible();
   await expect(all).not.toHaveAttribute('aria-pressed');
@@ -2400,15 +2347,15 @@ test('said once: a topic’s messages carry no tag for it, and one place is curr
   // On Team the place is Team: neither the channel nor a topic is current,
   // and the row keeps its height.
   await billing.click();
-  await page.getByRole('tab', { name: 'Team', exact: true }).click();
+  await page.getByRole('tab', { name: '团队', exact: true }).click();
   await expect(billing).toHaveAttribute('aria-pressed', 'false');
   await expect(
-    page.locator('nav[aria-label="Channels"] [aria-current="page"]'),
+    page.locator('nav[aria-label="频道"] [aria-current="page"]'),
   ).toHaveCount(0);
   expect(
     await channelRow.evaluate((el) => el.getBoundingClientRect().height),
   ).toBe(box.height);
-  await page.getByRole('tab', { name: 'Board', exact: true }).click();
+  await page.getByRole('tab', { name: '看板', exact: true }).click();
   await expect(billing).toHaveAttribute('aria-pressed', 'true');
 });
 
@@ -2417,15 +2364,15 @@ test('a fenced code block is one block, not a box around every line', async ({
   hub,
 }) => {
   await signIn(page, hub);
-  const composer = page.getByRole('form', { name: 'Message your team' });
+  const composer = page.getByRole('form', { name: '给团队发消息' });
   await composer
-    .getByLabel('Message', { exact: true })
+    .getByLabel('消息', { exact: true })
     .fill(
       'Run this:\n```\nnpm ci\nnpm run build\nnpm start\n```\nthen `npm test`',
     );
-  await composer.getByRole('button', { name: 'Send message' }).click();
+  await composer.getByRole('button', { name: '发送消息' }).click();
   const message = page
-    .getByRole('list', { name: 'Channel messages' })
+    .getByRole('list', { name: '频道消息' })
     .getByRole('listitem')
     .filter({ hasText: 'Run this:' });
   const block = message.locator('pre');
@@ -2464,25 +2411,25 @@ test('a reload keeps the place and unsent work; Back returns to where you were',
   hub,
 }) => {
   await signIn(page, hub);
-  const composer = page.getByRole('form', { name: 'Message your team' });
-  await composer.getByLabel('Message', { exact: true }).fill('half a thought');
+  const composer = page.getByRole('form', { name: '给团队发消息' });
+  await composer.getByLabel('消息', { exact: true }).fill('half a thought');
   await page.reload();
-  await expect(composer.getByLabel('Message', { exact: true })).toHaveValue(
+  await expect(composer.getByLabel('消息', { exact: true })).toHaveValue(
     'half a thought',
   );
   // A new task half written survives a reload, in place.
-  await page.getByRole('tab', { name: 'Board', exact: true }).click();
-  await page.getByRole('button', { name: 'New task' }).click();
-  const form = page.getByRole('form', { name: 'New task' });
-  await form.getByLabel('Task title').fill('Write the release notes');
-  await form.getByLabel('Done when').fill('Notes published');
+  await page.getByRole('tab', { name: '看板', exact: true }).click();
+  await page.getByRole('button', { name: '新任务' }).click();
+  const form = page.getByRole('form', { name: '新任务' });
+  await form.getByLabel('任务标题').fill('Write the release notes');
+  await form.getByLabel('完成标准').fill('Notes published');
   await expect(page).toHaveURL(/task=new/);
   await page.reload();
-  await expect(form.getByLabel('Task title')).toHaveValue(
+  await expect(form.getByLabel('任务标题')).toHaveValue(
     'Write the release notes',
   );
-  await expect(form.getByLabel('Done when')).toHaveValue('Notes published');
-  await form.getByRole('button', { name: 'Create task', exact: true }).click();
+  await expect(form.getByLabel('完成标准')).toHaveValue('Notes published');
+  await form.getByRole('button', { name: '创建任务', exact: true }).click();
   // Created, it is its own address; a reload opens it again.
   const task = page.getByRole('region', {
     name: 'Write the release notes',
@@ -2493,7 +2440,7 @@ test('a reload keeps the place and unsent work; Back returns to where you were',
   await page.reload();
   await expect(task).toBeVisible();
   // The Inbox is a place too, and Back leaves it for the task again.
-  await page.getByRole('tab', { name: /^Inbox/ }).click();
+  await page.getByRole('tab', { name: /^收件箱/ }).click();
   await expect(page).toHaveURL(/inbox/);
   await page.goBack();
   await expect(task).toBeVisible();
@@ -2505,20 +2452,20 @@ test('a wide tablet keeps the board, one stage, beside the task that is open', a
 }) => {
   await signIn(page, hub);
   await page.setViewportSize({ width: 1194, height: 834 });
-  await page.getByRole('tab', { name: 'Board', exact: true }).click();
-  await page.getByRole('button', { name: 'New task' }).first().click();
-  const task = page.getByRole('region', { name: 'New task', exact: true });
+  await page.getByRole('tab', { name: '看板', exact: true }).click();
+  await page.getByRole('button', { name: '新任务' }).first().click();
+  const task = page.getByRole('region', { name: '新任务', exact: true });
   await expect(task).toBeVisible();
   // The board stays, one stage at a time, and the page leads back by touch.
-  const board = page.getByRole('region', { name: 'Task board' });
+  const board = page.getByRole('region', { name: '任务看板' });
   await expect(board).toBeVisible();
-  await expect(board.getByRole('group', { name: 'Stages' })).toBeVisible();
+  await expect(board.getByRole('group', { name: '阶段' })).toBeVisible();
   const [left, right] = await Promise.all([
     board.boundingBox(),
     task.boundingBox(),
   ]);
   expect(left && right && left.x + left.width <= right.x).toBe(true);
-  await task.getByRole('button', { name: 'Back', exact: true }).click();
+  await task.getByRole('button', { name: '返回', exact: true }).click();
   await expect(task).toHaveCount(0);
   await expect(board).toBeVisible();
 });

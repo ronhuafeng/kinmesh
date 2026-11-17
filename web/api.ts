@@ -4,12 +4,12 @@ export const MutationPermission = createContext(true);
 /** True only while disconnected, as opposed to a brief background refresh. */
 export const Offline = createContext(false);
 /** What went wrong, in the person's words; a status code is never shown. */
-const FAILED = 'That did not go through. Nothing was changed; try again.';
+const FAILED = '没有成功，什么都没改，请再试一次。';
 const said: Partial<Record<number, string>> = {
-  401: 'Sign in again.',
-  403: 'You don’t have access to do that.',
-  409: 'That no longer applies; the page shows what changed.',
-  429: 'Too many requests. Wait a minute, then try again.',
+  401: '请重新登录。',
+  403: '你没有权限这样做。',
+  409: '情况已经变了，页面上是最新的内容。',
+  429: '操作太频繁，请稍等一分钟再试。',
 };
 export class HttpError extends Error {
   constructor(readonly status: number) {
@@ -153,7 +153,7 @@ export function useAction(messages: Partial<Record<number, string>> = {}) {
       } else {
         pending.current = command;
         setUncertain(true);
-        setError('That may not have gone through.');
+        setError('可能没有成功。');
       }
       return false;
     } finally {
@@ -170,13 +170,11 @@ export function useAction(messages: Partial<Record<number, string>> = {}) {
     error,
     uncertain,
     invalid() {
-      setError('Check the form fields and try again.');
+      setError('请检查填写的内容后再试。');
     },
     paused() {
       pausedNotice.current = true;
-      setError(
-        'Not sent while Kinmesh can’t be reached. Your text is still here.',
-      );
+      setError('连不上 Kinmesh，没有发送。你写的内容还在。');
     },
     async send(
       path: string,

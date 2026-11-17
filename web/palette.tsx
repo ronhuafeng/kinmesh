@@ -64,19 +64,19 @@ export function CommandPalette({ commands }: { commands: Command[] }) {
       <button
         type="button"
         className="palette-trigger secondary"
-        aria-label="Open command palette"
+        aria-label="打开命令面板"
         aria-keyshortcuts="Meta+K Control+K"
         onClick={open}
       >
         <span className="with-icon">
           <SearchIcon />
-          Jump to…
+          跳转到…
         </span>
       </button>
       <dialog
         ref={dialog}
         className="palette"
-        aria-label="Command palette"
+        aria-label="命令面板"
         onClick={(e) => {
           // A click on the backdrop lands on the dialog element itself.
           if (e.target === e.currentTarget) e.currentTarget.close();
@@ -86,13 +86,13 @@ export function CommandPalette({ commands }: { commands: Command[] }) {
           ref={input}
           type="text"
           role="combobox"
-          aria-label="Search channels, tasks, people and views"
+          aria-label="搜索频道、任务、成员和视图"
           aria-expanded="true"
           aria-controls={listId}
           aria-activedescendant={
             current ? listId + '-' + current.id : undefined
           }
-          placeholder="Search channels, tasks, people and views"
+          placeholder="搜索频道、任务、成员和视图"
           value={query}
           onChange={(e) => {
             setQuery(e.target.value);
@@ -112,7 +112,7 @@ export function CommandPalette({ commands }: { commands: Command[] }) {
             }
           }}
         />
-        <ul id={listId} role="listbox" aria-label="Results">
+        <ul id={listId} role="listbox" aria-label="结果">
           {results.map((command, index) => {
             const heading = command.group !== lastGroup;
             lastGroup = command.group;
@@ -146,18 +146,18 @@ export function CommandPalette({ commands }: { commands: Command[] }) {
           })}
         </ul>
         {results.length === 0 && (
-          <p className="palette-empty">Nothing matches “{query}”.</p>
+          <p className="palette-empty">没有和“{query}”匹配的结果。</p>
         )}
         <footer>
           <span>
             <kbd>↑</kbd>
-            <kbd>↓</kbd> move
+            <kbd>↓</kbd> 移动
           </span>
           <span>
-            <kbd>↵</kbd> open
+            <kbd>↵</kbd> 打开
           </span>
           <span>
-            <kbd>esc</kbd> close
+            <kbd>esc</kbd> 关闭
           </span>
         </footer>
       </dialog>

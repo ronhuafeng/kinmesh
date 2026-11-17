@@ -289,31 +289,29 @@ export class Hub {
     const page = this.page;
     if (!page) throw new Error('NO_WORKSPACE');
     const setup = (await this.openAgent('developer')).getByRole('region', {
-      name: 'Setup',
+      name: '配置',
       exact: true,
     });
     if (reconnect)
       await setup
-        .getByRole('button', { name: 'Reconnect', exact: true })
+        .getByRole('button', { name: '重新连接', exact: true })
         .click();
     const connect = setup.getByRole('group', {
-      name: 'Connect T3',
+      name: '连接 T3',
       exact: true,
     });
     await expect(
-      connect.getByRole('button', { name: 'Connect T3', exact: true }),
+      connect.getByRole('button', { name: '连接 T3', exact: true }),
     ).toBeEnabled();
     const another = connect.getByRole('button', {
-      name: 'Use another T3',
+      name: '使用其他 T3',
       exact: true,
     });
     if (await another.isVisible()) await another.click();
-    await connect.getByLabel('T3 MCP URL').fill(this.native.endpoint);
-    await connect
-      .getByRole('button', { name: 'Connect T3', exact: true })
-      .click();
+    await connect.getByLabel('T3 的 MCP URL').fill(this.native.endpoint);
+    await connect.getByRole('button', { name: '连接 T3', exact: true }).click();
     const popupPromise = page.waitForEvent('popup');
-    await connect.getByRole('link', { name: 'Approve in T3 ↗' }).click();
+    await connect.getByRole('link', { name: '在 T3 中批准 ↗' }).click();
     const popup = await popupPromise;
     try {
       await popup.waitForURL((url) => url.origin === this.native.origin);
@@ -342,20 +340,20 @@ export class Hub {
     for (const role of roles) {
       const agent = await this.openAgent(role);
       const form = agent.getByRole('form', {
-        name: `Choose what CI ${role} runs on`,
+        name: `选择 CI ${role} 使用的模型`,
       });
       const choice =
         this.native.provider(role) + '\n' + models[this.native.executor];
       await expect(
         form
-          .getByLabel('Model')
+          .getByLabel('模型', { exact: true })
           .locator('option')
           .filter({ hasText: models[this.native.executor] })
           .first(),
       ).toBeAttached();
-      await form.getByLabel('Model', { exact: true }).selectOption(choice);
+      await form.getByLabel('模型', { exact: true }).selectOption(choice);
       await form
-        .getByRole('button', { name: 'Connect CI ' + role, exact: true })
+        .getByRole('button', { name: '连接 CI ' + role, exact: true })
         .click();
       // A real managed worker can take a while to start and be seen.
       if (this.page) await untilReady(this.page, 60000);
@@ -364,7 +362,7 @@ export class Hub {
     for (const role of roles) {
       // What it runs on is said once, in About.
       const about = (await this.openAgent(role)).getByRole('complementary', {
-        name: 'About',
+        name: '关于',
       });
       await expect(about).toContainText(this.native.provider(role));
       await expect(about).toContainText(models[this.native.executor]);
@@ -425,7 +423,7 @@ export class Hub {
     if (!page) throw new Error('NO_WORKSPACE');
     const task = await openTask(page, this.title);
     await task
-      .getByLabel('Decision note')
+      .getByLabel('决定备注')
       .fill(
         action === 'rework'
           ? this.reworkNote
@@ -433,7 +431,7 @@ export class Hub {
       );
     await task
       .getByRole('button', {
-        name: action === 'rework' ? 'Request rework' : 'Accept task',
+        name: action === 'rework' ? '退回修改' : '验收通过',
         exact: true,
       })
       .click();

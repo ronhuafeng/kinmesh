@@ -860,11 +860,11 @@ test('complete real two-agent workflow, Human rework/acceptance, recovery and au
     assert.ok(page);
     await hub.openAgent('developer');
     await page
-      .getByRole('button', { name: 'Check in T3', exact: true })
+      .getByRole('button', { name: '在 T3 中查看', exact: true })
       .first()
       .click();
     const link = page
-      .getByRole('link', { name: 'Open in T3', exact: true })
+      .getByRole('link', { name: '在 T3 中打开', exact: true })
       .first();
     await link.waitFor();
     const popupPromise = page.waitForEvent('popup');

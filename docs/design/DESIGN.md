@@ -52,7 +52,7 @@ that isn't needed. Check a change against these before it ships.
    its bar leads back.
 10. The object is the link: a name, a card, a row. No separate "Open" buttons.
 11. One current place is highlighted at a time: a channel or person in the sidebar, or
-    a tab. Plain words ("Inbox").
+    a tab. Plain words ("收件箱").
 12. A reload keeps the place and the unsent work: every page has an address, Back
     works, drafts survive in the tab.
 
@@ -61,13 +61,13 @@ that isn't needed. Check a change against these before it ships.
 13. Icons over labels where the meaning is plain (`+`, inbox, sign out). Every avatar
     is round, people and agents alike; a person shows their Feishu picture, and an
     agent may have one.
-14. Presence reads the same for everyone: "● Online / ○ Offline" under a face, a dot
+14. Presence reads the same for everyone: "● 在线 / ○ 离线" under a face, a dot
     beside a name in a list. The team is a gallery of faces; adding is a tile in it.
 
 **Input**
 
 15. Hints live in placeholders. Fields typed in place look like the text they become:
-    no box, one underline that turns green, no focus halo. "Done when" is written as a
+    no box, one underline that turns green, no focus halo. "完成标准" is written as a
     checklist (Enter starts the next row). Choosing a person shows their face, or an
     empty dashed one.
 
@@ -132,7 +132,7 @@ it is the authority. Use the custom property for its role, never a raw colour.
 - **Names**: a person is their Feishu name everywhere they appear (messages, the
   sidebar, Team, tasks, the Inbox, mentions, delivery lines), said once and never
   beside their handle. Until their next sign-in brings a name, the handle stands in.
-- **Presence**: "● Online / ○ Offline" under a face (Team), a dot beside a name
+- **Presence**: "● 在线 / ○ 离线" under a face (Team), a dot beside a name
   (sidebar, mention list). A person is online while a session of theirs was used in
   the last 90 seconds (an open workspace keeps it so); an agent while a worker can
   wake it, so an agent nobody runs is offline before anyone asks it. Others see it
@@ -144,24 +144,25 @@ it is the authority. Use the custom property for its role, never a raw colour.
   line. A mention already written as `@Name` gets no second chip. An
   agent's reply shows the message it answers, unless it is the very next message,
   and carries a line only for an exception (failed, stopped, shortened); what ran it
-  lives with the run on the agent's page. **Make task** shows on hover, and on touch
+  lives with the run on the agent's page. **转为任务** shows on hover, and on touch
   once the message is tapped.
 - **Conversation**: opens at the newest message and stays at the bottom as messages
   arrive while you are there (and after you send); scrolled up, nothing moves under
-  you. Scrolling up reads older messages in place; there are no page buttons. A "New
-  since" line marks what others wrote while the channel or topic was open.
+  you. Scrolling up reads older messages in place; there are no page buttons. A "_time_ 以来的新消息"
+  line marks what others wrote while the channel or topic was open.
 - **Delivery line**: under a message that mentions an agent, and on a task handed to
-  one, one line per agent in plain words: will pick this up, isn't connected, is
-  working on it, is waiting for an approval in T3 (linking the run in T3, where it is
-  approved), will go on once T3 is
-  reconnected, replied (linking the reply, with how long it took; no line when the
-  reply is the very next message), is stuck (what was lost and the one fix — re-enable the agent,
-  add it back or open its setup — next to a retry), or never picked this up. The
-  machine state is only a tooltip. Until it is answered a line ends in **Stop**
-  (also beside the request on the agent's page); then it reads "is stopping" until
-  the run's stopped reply arrives, or "Stopped before _Ada_ started" when nothing
-  had reached T3. A line stuck because _Ada_'s T3 access changed also ends in
-  **Stop**, which ends it at once: "Stopped after _Ada_'s T3 access changed".
+  one, one line per agent in plain words, the agent's name first: 会接手 (will pick this up),
+  离线，还没人接手 (offline), 正在处理 (working on it), 正在等待 T3 中的批准 (linking the run in
+  T3, where it is approved), "T3 重新连接后 _Ada_ 会继续", 已回复（用时 3 分钟） (linking the
+  reply; no line when the reply is the very next message), 卡住了 (what was lost and the
+  one fix — re-enable the agent, add it back or open its setup — next to a retry), or
+  一直没有接手. Between Chinese words there are no spaces ("小助手正在处理"); a Latin name
+  keeps one ("Ada 正在处理"). The
+  machine state is only a tooltip. Until it is answered a line ends in **停止**
+  (also beside the request on the agent's page); then it reads "_Ada_ 正在停止" until
+  the run's stopped reply ("还没回复就停止了。") arrives, or "_Ada_ 开始前已停止" when
+  nothing had reached T3. A line stuck because _Ada_'s T3 access changed also ends in
+  **停止**, which ends it at once: "_Ada_ 的 T3 权限变了，已停止".
 - **Composer**: multi-line input with the `@` mention popover (the channel's agents
   and other people, found by a word of their name or a person's handle; a choice is
   written as @Name), on the bottom edge of
@@ -169,58 +170,58 @@ it is the authority. Use the custom property for its role, never a raw colour.
   hints in the placeholder. Send is the round confirm button, shown once there is
   something to send. A channel or topic that opens is ready to
   type in (a touch keyboard waits to be asked for), and sending keeps the keyboard.
-  The placeholder never repeats the channel: "@ to mention, ⌘/Ctrl+Enter to send"
-  ("@ to mention" on a phone).
+  The placeholder never repeats the channel: "输入 @ 提及成员，⌘/Ctrl+Enter 发送"
+  ("输入 @ 提及成员" on a phone).
 - **Channels**: the sidebar lists joined channels; a channel you left can be rejoined
   by name. A channel where something waits on you ends in a decision-coloured dot, the
   size of a presence dot and on its edge. The current channel holds its topics under
-  it like a tree on a hairline trunk: "All", the ten most recently active, "More
-  topics" for the rest, and a `+` that starts one. The current place carries the
+  it like a tree on a hairline trunk: "全部", the ten most recently active, "更多话题"
+  for the rest, and a `+` that starts one. The current place carries the
   quiet hover fill, never a card: the channel, or the topic when one is open (its
-  channel then keeps only ink); "All" is never highlighted. A topic is highlighted
-  only while its channel's chat or board is the current place. Leaving is **Leave #_name_** in the command palette; on a phone the topics are pills above the
-  conversation, and "Leave channel" waits where the conversation begins. A channel
+  channel then keeps only ink); "全部" is never highlighted. A topic is highlighted
+  only while its channel's chat or board is the current place. Leaving is **退出 #_name_** in the command palette; on a phone the topics are pills
+  above the conversation, and "退出频道" waits where the conversation begins. A channel
   or topic just created is opened.
-- **Board**: five stage columns, the stages of the lifecycle: Proposed → Working →
-  Review → Human sign-off → Done. Rework stays in Working (marked "Sent back");
-  cancelled work goes to Done (marked "Cancelled", hidden until asked for). Columns sit
+- **Board**: five stage columns, the stages of the lifecycle: 待开始 (proposed) →
+  进行中 (working) → 审核中 (review) → 待验收 (human sign-off) → 已完成 (done). Rework
+  stays in 进行中 (marked "已退回"); cancelled work goes to 已完成 (marked "已取消",
+  hidden until asked for). Columns sit
   on the paper with a hairline under each name, no boxes or counts; a card's column is
   its status. A card shows its title, what it asks of you, and owner/reviewer faces;
   those two markers are its only labels. A new task starts from the dashed
-  `+` card at the end of Proposed.
+  `+` card at the end of 待开始.
 - **Task page** (new or existing, one layout): lifecycle bar; large title;
-  description; on the left the decision waiting on you (orange rule), "Done when" as a
+  description; on the left the decision waiting on you (orange rule), "完成标准" as a
   checklist, then history as one timeline with faces and run references inline; on the
   right owner, reviewer, acceptor and the topic. A new task's acceptor is a picker of
   the channel's people, starting at you; whoever it names decides.
-- **Decision**: the latest note that led here, one note field ("Note for the
-  record"), the actions as buttons; disabled with a reason only when offline.
+- **Decision**: the latest note that led here, one note field ("写下备注"), the actions as buttons; disabled with a reason only when offline.
 - **Agent page**: status card with its actions, requests in this channel, About
   (every fact visible, picture to change, Team MCP credential), runs as a table at the
   bottom, one T3 reference per run (its thread; the run on hover). A run shows what the agent last reported apart from what T3 confirms on
-  **Check in T3**; **Open in T3** appears only when T3 supplied the link.
-- **Agent setup**: one next step at a time. First **Connect T3**, once per team: a T3
+  **在 T3 中查看**; **在 T3 中打开** appears only when T3 supplied the link.
+- **Agent setup**: one next step at a time. First **连接 T3**, once per team: a T3
   on this machine is found on its own, otherwise paste its MCP URL; approve in T3,
-  choosing how agents may run (Supervised, Auto or Full access). When the workspace is reached over HTTPS, T3's approval ends on a
-  page that does not load; its address goes into **Address after approving** and
-  **Finish** completes the connection. The pairing-code hint names the T3 being
+  choosing how agents may run (监督、自动或完全访问: supervised, auto or full access). When the workspace is reached over HTTPS, T3's approval ends on a
+  page that does not load; its address goes into **批准后的地址** and
+  **完成** completes the connection. The pairing-code hint names the T3 being
   connected. A read-only approval shows as the next step, never as success, and
-  so does a sign-in that ended ("T3’s sign-in ended") when nothing else lets agents
-  run. Wherever the T3 is named, the mode agents' runs use follows it, in T3's words
-  ("supervised", "auto", "full access"). When the deployment connects T3 there is no
-  first step (until it has connected, the step reads "Connecting T3…"), and
-  **Reconnect** is how a person signs in to that T3 for a broader mode.
+  so does a sign-in that ended ("T3 的登录已到期") when nothing else lets agents
+  run. Wherever the T3 is named, the mode agents' runs use follows it, in the words
+  setup offers ("监督", "自动", "完全访问"). When the deployment connects T3 there is no
+  first step (until it has connected, the step reads "正在连接 T3…"), and
+  **重新连接** is how a person signs in to that T3 for a broader mode.
   Then choose what the agent runs on from one list of every provider's models. After
   that a single line says the agent is ready (or its worker is starting), with
-  **Change model**, **Reconnect** and **Disconnect**, and offers to add the agent to
-  the channel on screen when it isn't in it. **Run the worker yourself** opens a page
+  **更换模型**, **重新连接** and **断开连接**, and offers to add the agent to
+  the channel on screen when it isn't in it. **自己运行工作进程** opens a page
   for operators: runtime preferences, the worker credential (issue, rotate, revoke),
   the `npm run t3:auth` step and an `inbox.json` binding without secrets.
 - **Credential once**: a newly issued token appears once, with copy and download,
   and is gone when dismissed.
 - **Team**: a gallery of faces with names and presence — you (your tile opens your
   page), the other people, then the agents; the last tile adds an agent. Someone who isn't in the open
-  channel, person or agent, carries **Add _name_ to channel** on their tile.
+  channel, person or agent, carries **把 _name_ 加入频道** on their tile.
 - **People in the sidebar**: the other people in the channel, then its agents; you
   are not listed, since you know you are here. Someone else has no page: their row is their face, name
   and presence, sized and aligned exactly like a row that opens. Owner and reviewer
@@ -229,47 +230,46 @@ it is the authority. Use the custom property for its role, never a raw colour.
 - **Inbox**: the tab after Team, with how many things wait on you. Everything across
   the team waiting on you, one list, newest first: tasks for your sign-off, review or
   rework; stuck deliveries you caused; agents with queued work and no worker; and,
-  first, a person's T3 sign-in from a week before it ends ("T3’s sign-in ends Mon,
-  Nov 23", then "T3’s sign-in ended, so agents are waiting" with a red rule, or
-  "T3’s sign-in ended, so agents run supervised" without one while the deployment's
-  session carries on) with **Reconnect T3** under it, the same sign-in as
-  **Connect T3**; the deployment's own session never asks. A row is a face, what it is, where and when, an orange or red rule for a
+  first, a person's T3 sign-in from a week before it ends ("T3 的登录将于11月23日周一到期",
+  then "T3 的登录已到期，智能体在等待" with a red rule, or "T3 的登录已到期，智能体改为以监督模式运行"
+  without one while the deployment's session carries on) with **重新连接 T3** under it,
+  the same sign-in as **连接 T3**; the deployment's own session never asks. A row is a face, what it is, where and when, an orange or red rule for a
   decision or a problem; the row opens where it is resolved (task, channel or agent),
   or holds the fix under it.
   A row leaves when its cause is resolved; there is nothing to dismiss. Expired
   deliveries are not listed; they stay on their message's delivery line.
 - **Settings**: your own tile on Team (on a phone, the You tab) opens your page; the
   page has no face or name of its own. It holds
-  only **Sign out everywhere**, a quiet row in the danger colour (and **Sign out** on
+  only **在所有设备上退出登录**, a quiet row in the danger colour (and **退出登录** on
   a phone).
 - **Team name**: the organization's name as Feishu gives it, never typed here, heads
   the sidebar above search as a wordmark — no logo or avatar. One line; a name of more
   than 12 characters is set smaller and wraps onto a second line, cut there with an
   ellipsis, its full name on hover. Its text starts on the headings' edge.
-- **Sign in**: the brand and the team's promise beside one card, **Welcome** and a
-  single **Sign in with Feishu** button (a link drawn as the primary button). When
+- **Sign in**: the brand and the team's promise beside one card, **欢迎** and a
+  single **使用飞书登录** button (a link drawn as the primary button). When
   Feishu sends someone back unsigned, the card says why in one line — not part of
   this organization, took too long, or Feishu couldn't be reached — and the reason
   leaves the address, so a reload starts clean. Turning back at Feishu returns here
   silently.
 - **Sign out**: the power icon at the far right of the header.
 - **Opening the workspace**: quiet. A load that is quick shows nothing; one that takes
-  more than 0.6 s fades in the brand, "Opening your workspace…" and a skeleton board
-  (at once without motion). Only a failure says "Workspace unavailable" and offers
-  **Try again**. An address that can't be opened is not a failure: a channel you are
+  more than 0.6 s fades in the brand, "正在打开工作区…" and a skeleton board
+  (at once without motion). Only a failure says "工作区打不开" and offers
+  **再试一次**. An address that can't be opened is not a failure: a channel you are
   not in opens the default channel, a topic that isn't there opens its channel, a task
   that isn't there opens the board, each without a word.
-- **Command palette**: ⌘K / Ctrl+K, opened from **Jump to…** at the top of the
+- **Command palette**: ⌘K / Ctrl+K, opened from **跳转到…** at the top of the
   sidebar, which shows no shortcut badge. It jumps to views, channels, tasks and
-  agents, and holds the actions that have no place on screen: **New task**,
-  **Leave #_name_** and **Refresh now**.
-- **Refreshing**: absent while healthy. A refresh asked for (**Refresh now** in the
-  command palette) or a slow one shows a dot and "Refreshing…".
-- **Out of reach**: one quiet line under the views — "Can't reach Kinmesh. Showing
-  what was here before; sending is paused until it's back." — with nothing to press:
+  agents, and holds the actions that have no place on screen: **新任务**,
+  **退出 #_name_** and **立即刷新**.
+- **Refreshing**: absent while healthy. A refresh asked for (**立即刷新** in the
+  command palette) or a slow one shows a dot and "正在刷新…".
+- **Out of reach**: one quiet line under the views — "连不上 Kinmesh。先显示之前的内容，恢复连接前暂停发送。"
+  — with nothing to press:
   it comes back by itself.
 - **Uncertain send**: when a request's outcome is unknown, the form keeps exactly what
-  was sent and offers **Retry same action**; nothing is resent on its own.
+  was sent and offers **重试同一操作**; nothing is resent on its own.
 
 ## Phone
 
@@ -277,15 +277,15 @@ Below 720 px the places stack instead of sitting side by side:
 
 - **Home** is the sidebar: the team name, search, the channels (full-width rows, the waiting dot),
   then the team as the gallery of faces with its add tile. No channel is current here.
-- **Bottom tabs**: Home, Inbox (with how many things wait on you) and You (your face),
+- **Bottom tabs**: 主页 (Home), 收件箱 (with how many things wait on you) and 我 (your face),
   under Home and the pages they open.
-- **A channel** has the screen under a bar: back to Home, `# name`, then Chat | Board.
+- **A channel** has the screen under a bar: back to Home, `# name`, then 聊天 | 看板.
   Its topics are pills above the conversation; there is no bottom bar.
 - **Fingers and fields**: every target takes taps over 44 px, drawn no larger than it
   is; fields are 16 px, so nothing zooms.
 - **A page** (agent, task, a worker you run) opens under its own bar: back, then what it
   is — the agent's name, or a task's channel since its title leads the page.
-- **You** ends with Sign out, in the danger colour; the header's power icon is for wider
+- **我** ends with 退出登录, in the danger colour; the header's power icon is for wider
   screens.
 
 ## Tablet
@@ -305,8 +305,13 @@ acceptance. Everything honours reduced-motion preferences.
 
 ## Voice
 
-Say what is true for the person, in their words: "Ada is waiting for an approval in T3",
-not what the system disclaims ("Execution does not imply acceptance"). Every honesty
+The interface speaks Simplified Chinese (zh-CN): short, everyday words, one word per
+concept (频道, 话题, 任务, 看板, 团队, 收件箱, 智能体, 成员), full-width punctuation, a
+space only between Chinese and Latin text, dates and times formatted for zh-CN. This
+document is in English and quotes the interface's own words.
+
+Say what is true for the person, in their words: "Ada 正在等待 T3 中的批准", not what
+the system disclaims ("Execution does not imply acceptance"). Every honesty
 guarantee stays; only its wording changes:
 
 - **Explicit acceptance.** Only the designated human accepts a task, with a note; no
@@ -322,7 +327,7 @@ guarantee stays; only its wording changes:
   agent's runs, a history line), small and in mono, after the sentence.
 - The machinery is silent when healthy: no heartbeat, no "connected" badge, no polling
   interval. Show state only when it needs the person.
-- History and status are sentences ("You accepted it: '…'"), never API verbs.
+- History and status are sentences ("你验收通过：“…”"), never API verbs.
 - An error never shows a status code. A refusal is one sentence where the person can
-  act on it ("That name is taken" under the field); what they can't act on isn't
+  act on it ("这个名称已被占用" under the field); what they can't act on isn't
   said.

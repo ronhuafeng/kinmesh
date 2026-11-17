@@ -218,7 +218,7 @@ It also carries:
 - `attention` — what waits on the signed-in person across joined channels: `decide` (tasks awaiting their sign-off, review or rework; up to 50), `unstuck` (blocked deliveries they caused — the root of what woke the agent is theirs; anyone may resume any; up to 50), `connect` (agents with queued work and no live worker) and `t3` (from seven days before a person's T3 sign-in for the team ends until someone signs in again, or while a session the deployment no longer provides has ended: the endpoint, when it ends, whether it has, the mode runs fall back to under the deployment's session (`fallback`, null when they wait) and the sign-in under way; the deployment's own session never asks).
 - `wake` — per agent, when a worker last recorded it and whether that is within 90 seconds (see [worker liveness](operations.md#worker-liveness)).
 - `managed`, `teamMcp` — agents the hub runs, and when an agent's credential last reached Team MCP. Team MCP presence is evidence, not authority.
-- `nativeT3Origin` — the origin of the team's T3 connection, used to [check a run](t3.md#checking-a-run), or null before Connect T3.
+- `nativeT3Origin` — the origin of the team's T3 connection, used to [check a run](t3.md#checking-a-run), or null before T3 is connected (**连接 T3**).
 
 `GET /api/agui/:teamId/:memberId` returns one official AG-UI 1.0 `STATE_SNAPSHOT` event for an agent, validated on both ends with `@ag-ui/core` schemas: source `kinmesh-persisted-reports`, read time, the profile, up to 20 execution associations and 100 reports each, in persisted order. An AgentId is never an AG-UI invocation ID, and a ChannelId is never a T3 ThreadId.
 

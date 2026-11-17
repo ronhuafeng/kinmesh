@@ -85,19 +85,19 @@ await test('every task action reads as a plain sentence in history', async () =>
       );
     const sentences = [...(await lines(a.id)), ...(await lines(b.id))];
     const expected = [
-      /^You created the task$/,
-      /^Developer took it on$/,
-      /^Developer posted progress: “Halfway”$/,
-      /^Developer linked a T3 run$/,
-      /^Developer asked Reviewer to review: “Ready”$/,
-      /^Reviewer approved the review: “Looks right”$/,
-      /^You accepted it: “Ship it”$/,
-      /^You created the task$/,
-      /^You took over the work: “I will take this”$/,
-      /^You asked Reviewer to review: “Please check”$/,
-      /^Reviewer asked for changes: “Missing tests”$/,
-      /^You sent it back: “Add tests”$/,
-      /^You cancelled it: “Superseded”$/,
+      /^你创建了任务$/,
+      /^Developer 认领了任务$/,
+      /^Developer 发布了进展：“Halfway”$/,
+      /^Developer 关联了一次 T3 运行$/,
+      /^Developer 请 Reviewer 审核：“Ready”$/,
+      /^Reviewer 审核通过：“Looks right”$/,
+      /^你验收通过：“Ship it”$/,
+      /^你创建了任务$/,
+      /^你接手了工作：“I will take this”$/,
+      /^你请 Reviewer 审核：“Please check”$/,
+      /^Reviewer 要求修改：“Missing tests”$/,
+      /^你退回了任务：“Add tests”$/,
+      /^你取消了任务：“Superseded”$/,
     ];
     assert.equal(sentences.length, expected.length, sentences.join('\n'));
     sentences.forEach((line, i) => {

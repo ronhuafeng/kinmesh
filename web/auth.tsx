@@ -3,9 +3,9 @@ import { Notice } from './forms.js';
 
 /** Why Feishu sent the browser back without signing it in. */
 const turnedBack: Record<string, string> = {
-  denied: 'That Feishu account isn’t part of this organization.',
-  expired: 'That sign-in took too long. Try again.',
-  unavailable: 'Feishu couldn’t be reached. Try again.',
+  denied: '这个飞书账号不属于本组织。',
+  expired: '登录超时了，请再试一次。',
+  unavailable: '连不上飞书，请再试一次。',
 };
 
 /**
@@ -21,9 +21,7 @@ export function Auth({ denied = false }: { denied?: boolean }) {
     pending = null;
     return value;
   });
-  const reason = denied
-    ? 'That account no longer has access to this workspace.'
-    : turned;
+  const reason = denied ? '这个账号已无权访问此工作区。' : turned;
   return (
     <main className="auth-shell">
       <section className="auth-intro">
@@ -34,18 +32,16 @@ export function Auth({ denied = false }: { denied?: boolean }) {
           <span>kinmesh</span>
         </a>
         <h1>
-          One team.
-          <br />A lasting thread.
+          一个团队，
+          <br />
+          一条长久的主线。
         </h1>
-        <p>
-          People and agents in one place, with the conversation, the work and
-          the decisions kept together.
-        </p>
+        <p>成员和智能体在同一处，对话、工作和决定都留在一起。</p>
       </section>
       <section className="auth-card">
-        <h2>Welcome</h2>
+        <h2>欢迎</h2>
         <a className="button" href="/login">
-          Sign in with Feishu
+          使用飞书登录
         </a>
         {reason && <Notice>{reason}</Notice>}
       </section>

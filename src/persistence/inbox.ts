@@ -841,8 +841,8 @@ export function inboxRepository(
         const body =
           'kind' in result
             ? result.state === 'failed'
-              ? 'The run in T3 failed before writing a reply.'
-              : 'The run in T3 was stopped before writing a reply.'
+              ? '还没回复就失败了。'
+              : '还没回复就停止了。'
             : result.text;
         const message = await communication.post(p, c.teamId, c.channelId, {
           operationKey: 'inbox-result:' + c.id,

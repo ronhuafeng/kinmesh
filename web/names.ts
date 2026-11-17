@@ -21,14 +21,14 @@ export function memberName(
   who: Someone | z.infer<typeof Author> | null,
   data: WorkspaceSnapshot,
 ): string {
-  if (!who) return 'Unassigned';
+  if (!who) return '未分配';
   const { kind, id } = someoneOf(who);
   if (kind === 'human')
     return (
       data.people.find((person) => person.id === id)?.name ??
-      (id === data.human.id ? data.human.name : 'Human member')
+      (id === data.human.id ? data.human.name : '成员')
     );
-  return data.agents.find((agent) => agent.id === id)?.name ?? 'Agent member';
+  return data.agents.find((agent) => agent.id === id)?.name ?? '智能体';
 }
 /**
  * The other people: in the open channel when there is one, otherwise the

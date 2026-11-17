@@ -101,10 +101,7 @@ await test('a person stops a run waiting in T3: it is interrupted once and its s
       f.channelId,
       MessageId.parse(ended.resultMessageId),
     );
-    assert.equal(
-      notice.body,
-      'The run in T3 was stopped before writing a reply.',
-    );
+    assert.equal(notice.body, '还没回复就停止了。');
 
     // Ending one that already finished is a no-op.
     assert.equal((await stop(f, waiting.id)).statusCode, 200);
