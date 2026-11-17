@@ -163,7 +163,8 @@ button text.
 
 ## Layout
 
-- **Columns**: every view starts on the main area's gutter, beside the navigation.
+- **Columns**: every view starts on the main area's gutter, beside the navigation:
+  32 px on a wide screen, 20 px on a tablet, 16 px on a phone.
   A conversation and its composer are one column of `--conversation` (960 px), its
   prose held to `--reading` (720 px) while code, tables and diagrams may use the
   rest; a page (a task, the Inbox, a settings section) is one column of
@@ -290,8 +291,8 @@ fallback.
   nothing had reached T3. A line stuck because _Ada_'s T3 access changed also ends in
   **停止**, which ends it at once: "_Ada_ 的 T3 权限变了，已停止".
 - **Composer**: multi-line input with the `@` mention popover (the channel's agents
-  and other people, found by a word of their name or a person's handle; a choice is
-  written as @Name), floating on the bottom edge of
+  and other people, found by a word of their name or a person's handle, which shows
+  beside a name only when two people share it; a choice is written as @Name), floating on the bottom edge of
   the reading column, over a band of the page that fades the conversation out behind
   it. It is one large rounded field of translucent material at the second elevation,
   a single line until more is written, with "@" and Send sharing its centre; focus
@@ -458,7 +459,9 @@ fallback.
   Feishu gives it: your picture and name with the 来自飞书 pill, then 账号 (用户名,
   邮箱, 团队); 账户与设备 lists your sessions ("此浏览器 · 正在使用", or when one
   signed in and was last used, with **退出**) and the browsers receiving
-  notifications (**移除**), then 退出; 成员, 频道 and 智能体 are list rows, a channel or
+  notifications (**移除**), then 退出; 成员 are list rows by name alone — a handle
+  under a name only where two people share it, 你 beside yours, the others' presence
+  at the end; 频道 and 智能体 are list rows, a channel or
   an agent opening its place, and channels you left are their own group; 连接
   shows T3 and tries the Feishu bot (**给我发一条测试消息**), and, where the deployment can
   mint one, 配对码: **生成配对码** shows the code in 20 px semibold with "14:14 前有效"
