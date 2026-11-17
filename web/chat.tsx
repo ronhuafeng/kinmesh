@@ -14,7 +14,7 @@ import { Attachment } from '../src/domain/attachments.js';
 import type { WorkspaceSnapshot } from '../src/workspace/contracts.js';
 import { MutationPermission, api, request, value } from './api.js';
 import { ActionForm, AddButton, Field, InlineField } from './forms.js';
-import { AttachIcon, SendIcon } from './icons.js';
+import { AttachIcon, SendIcon, SettingsIcons } from './icons.js';
 import {
   MessageFiles,
   fileSize,
@@ -588,6 +588,78 @@ function NewTopic({
     />
   );
 }
+/**
+ * A team's first steps, at the top of a channel until all are done: an
+ * agent, T3 for it to run in, and a first message to it. Each says what is
+ * left and has the one control that does it; what is done is checked.
+ */
+function FirstSteps({
+  data,
+  openAgent,
+  onTeam,
+}: {
+  data: WorkspaceSnapshot;
+  openAgent: (id: string) => void;
+  onTeam: () => void;
+}) {
+  const agent = data.agents[0];
+  const steps = [
+    {
+      label: '添加一个智能体',
+      done: agent !== undefined,
+      action: { label: '添加', run: onTeam },
+    },
+    {
+      label: agent ? `为 ${agent.name} 连接 T3` : '连接 T3，智能体在那里工作',
+      done: data.nativeT3Origin !== null,
+      action: agent
+        ? {
+            label: '连接',
+            run: () => {
+              openAgent(agent.id);
+            },
+          }
+        : null,
+    },
+    {
+      label: agent
+        ? `在下面 @${agent.name}，请它做第一件事`
+        : '在频道里 @ 它，请它做第一件事',
+      done:
+        data.deliveries.length > 0 ||
+        data.messages.items.some((m) => m.author.kind === 'agent'),
+      action: null,
+    },
+  ];
+  if (steps.every((step) => step.done)) return null;
+  return (
+    <section className="first-steps" aria-label="开始使用">
+      <h2>开始使用</h2>
+      <ol>
+        {steps.map((step, index) => (
+          <li key={step.label} data-done={step.done ? 'true' : undefined}>
+            <span className="first-step-mark" aria-hidden="true">
+              {step.done ? <SettingsIcons.check size={16} /> : index + 1}
+            </span>
+            <span className="first-step-label">
+              {step.label}
+              {step.done && <span className="visually-hidden">（已完成）</span>}
+            </span>
+            {!step.done && step.action && (
+              <button
+                type="button"
+                className="link-button"
+                onClick={step.action.run}
+              >
+                {step.action.label}
+              </button>
+            )}
+          </li>
+        ))}
+      </ol>
+    </section>
+  );
+}
 /** Scrolls to a message and flashes it, so the eye finds it. */
 export function showMessage(id: string) {
   const target = document.getElementById('message-' + id);
@@ -1136,6 +1208,7 @@ export function Chat({
   onMakeTask,
   openAgent,
   onLeave,
+  onTeam,
 }: {
   data: WorkspaceSnapshot;
   channelPath: string;
@@ -1150,6 +1223,8 @@ export function Chat({
   onMakeTask: (message: ChatMessage) => void;
   openAgent: (id: string) => void;
   onLeave: () => void;
+  /** The channel's 成员 view, where an agent is added. */
+  onTeam: () => void;
 }) {
   const channel = data.channel;
   const messages = data.messages.items;
@@ -1330,6 +1405,7 @@ export function Chat({
           />
         </div>
       )}
+      <FirstSteps data={data} openAgent={openAgent} onTeam={onTeam} />
       <ol className="messages" aria-label="频道消息" ref={reading.list}>
         {rows.map(({ m, o }, index) => {
           const previous = rows[index - 1]?.m;
