@@ -58,7 +58,8 @@ export const PushSubscriptionInput = z.strictObject({
       .max(32),
   }),
 });
-export const Unsubscribe = z.strictObject({
+/** One of a person's browsers, by its push endpoint. */
+export const PushEndpoint = z.strictObject({
   endpoint: z.url({ protocol: /^https$/ }).max(2048),
 });
 /**
@@ -71,8 +72,9 @@ export const PushPayload = z.strictObject({
   url: z.string().startsWith('/'),
   /** One notification per place: a later one replaces it. */
   tag: z.string().min(1).max(80),
-  kind: NotificationKind,
-  channelId: z.uuid(),
+  /** `test`: one a person sent themselves, to see this browser gets them. */
+  kind: z.union([NotificationKind, z.literal('test')]),
+  channelId: z.uuid().nullable(),
   taskId: z.uuid().nullable(),
   deliveryId: z.uuid().nullable(),
 });

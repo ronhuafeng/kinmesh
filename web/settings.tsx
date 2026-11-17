@@ -3,7 +3,7 @@ import type { NotifyLevel } from '../src/domain/notify.js';
 import type { WorkspaceSnapshot } from '../src/workspace/contracts.js';
 import { MutationPermission, useRequest } from './api.js';
 import { Notice } from './forms.js';
-import { BellIcon, BellOffIcon, PowerIcon } from './icons.js';
+import { PowerIcon } from './icons.js';
 import {
   currentSubscription,
   pushSupported,
@@ -17,39 +17,72 @@ const LEVELS: { level: NotifyLevel; label: string }[] = [
   { level: 'mine', label: '与我有关' },
   { level: 'off', label: '关闭' },
 ];
+/** Whether this is an iPhone or iPad not opened from its Home Screen. */
+const iosInBrowser = () =>
+  (/iPad|iPhone|iPod/.test(navigator.userAgent) ||
+    (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1)) &&
+  !window.matchMedia('(display-mode: standalone)').matches;
+/**
+ * Where this browser stands: it can't be notified, it said no, notifications
+ * are off here, or on (and can be tried). Read once the page opens.
+ */
+type Here = 'unknown' | 'unsupported' | 'home-screen' | 'denied' | 'off' | 'on';
+async function readHere(): Promise<Here> {
+  if (!pushSupported()) return iosInBrowser() ? 'home-screen' : 'unsupported';
+  if (Notification.permission === 'denied') return 'denied';
+  return (await currentSubscription()) ? 'on' : 'off';
+}
 /**
  * What notifies you, on every browser you turned notifications on in, and
- * whether this browser is one of them. Choosing to be notified, here, turns
- * them on here too; a browser that has said no shows no way to.
+ * where this browser stands. Choosing to be notified, here, turns them on
+ * here too.
  */
 function Notifications({ level }: { level: NotifyLevel }) {
-  const action = useRequest();
-  // This browser: on, off, or not yet known.
-  const [here, setHere] = useState<boolean | null>(null);
+  const action = useRequest({
+    410: '这台设备已不再接收通知，请重新开启。',
+    502: '推送服务暂时连不上，通知没有发出。',
+  });
+  const [here, setHere] = useState<Here>('unknown');
+  // A test sent just now says so on its button for a moment.
+  const [tried, setTried] = useState(false);
   useEffect(() => {
-    void currentSubscription().then(
-      (subscription) => {
-        setHere(subscription !== null);
-      },
-      () => {
-        setHere(false);
-      },
-    );
+    void readHere().then(setHere, () => {
+      setHere('unsupported');
+    });
   }, []);
-  const possible =
-    pushSupported() && Notification.permission !== 'denied' && here !== null;
+  useEffect(() => {
+    if (!tried) return;
+    const timer = setTimeout(() => {
+      setTried(false);
+    }, 3000);
+    return () => {
+      clearTimeout(timer);
+    };
+  }, [tried]);
   const turnOn = async () => {
     const on = await action.run(subscribe);
-    if (on !== undefined) setHere(on);
+    if (on !== undefined) setHere(on ? 'on' : await readHere());
+  };
+  const turnOff = async () => {
+    if ((await action.run(unsubscribe)) !== undefined) setHere('off');
+  };
+  const test = async () => {
+    const endpoint = (await currentSubscription())?.endpoint;
+    if (!endpoint) {
+      setHere('off');
+      return;
+    }
+    const sent = await action.send('/api/push/test', { endpoint });
+    if (sent !== undefined) setTried(true);
+    else setHere(await readHere());
   };
   const choose = async (next: NotifyLevel) => {
     if (next === level) return;
     const sent = await action.send('/api/me/notify', { level: next }, 'PUT');
-    if (sent !== undefined && next !== 'off' && possible && !here)
-      await turnOn();
+    if (sent !== undefined && next !== 'off' && here === 'off') await turnOn();
   };
   return (
-    <div className="you-notify">
+    <>
       <div className="you-row">
         <span id="notify-label">通知</span>
         <div className="segmented" role="group" aria-labelledby="notify-label">
@@ -66,25 +99,52 @@ function Notifications({ level }: { level: NotifyLevel }) {
           ))}
         </div>
       </div>
-      {possible && level !== 'off' && (
-        <button
-          type="button"
-          className="you-action"
-          disabled={action.disabled}
-          onClick={() =>
-            void (here
-              ? action.run(unsubscribe).then((done) => {
-                  if (done !== undefined) setHere(false);
-                })
-              : turnOn())
-          }
-        >
-          {here ? <BellOffIcon size={20} /> : <BellIcon size={20} />}
-          {here ? '此设备不再接收通知' : '在此设备上接收通知'}
-        </button>
+      {level !== 'off' && (
+        <div className="you-row">
+          <span>此设备</span>
+          <span className="you-row-end">
+            {here === 'on' ? (
+              <>
+                <button
+                  type="button"
+                  className="link-button"
+                  disabled={action.disabled}
+                  onClick={() => void test()}
+                >
+                  {tried ? '已发送' : '发送测试通知'}
+                </button>
+                <button
+                  type="button"
+                  className="link-button"
+                  disabled={action.disabled}
+                  onClick={() => void turnOff()}
+                >
+                  停止接收
+                </button>
+              </>
+            ) : here === 'off' ? (
+              <button
+                type="button"
+                className="link-button"
+                disabled={action.disabled}
+                onClick={() => void turnOn()}
+              >
+                开启
+              </button>
+            ) : here === 'denied' ? (
+              <span className="muted">
+                浏览器拦截了通知，可在网站设置中允许
+              </span>
+            ) : here === 'home-screen' ? (
+              <span className="muted">添加到主屏幕后可以接收通知</span>
+            ) : here === 'unsupported' ? (
+              <span className="muted">这个浏览器收不到通知</span>
+            ) : null}
+          </span>
+        </div>
       )}
       {action.error && <Notice>{action.error}</Notice>}
-    </div>
+    </>
   );
 }
 /** Eight in the morning after now, by this browser's clock. */
@@ -231,9 +291,11 @@ export function SettingsPage({
   return (
     <Page label="设置" onClose={onClose} bar={false}>
       <div className="page-body you">
-        <Notifications level={data.notify} />
-        {data.notify !== 'off' && <Pause until={data.pausedUntil} />}
-        <Muted data={data} />
+        <section className="you-notify" aria-label="通知">
+          <Notifications level={data.notify} />
+          {data.notify !== 'off' && <Pause until={data.pausedUntil} />}
+          <Muted data={data} />
+        </section>
         <div className="you-sign-outs">
           <button
             type="button"

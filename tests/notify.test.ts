@@ -248,6 +248,38 @@ await test('a browser notifies the person who turned it on, until they sign out 
     assert.equal(off.statusCode, 204);
     assert.equal((await f.store.notifications.browsers(grace.id)).length, 0);
 
+    // A test goes only to a browser that notifies the caller now: one
+    // turned off is gone (410); one whose push service can't be reached
+    // says so (502).
+    const test = (endpoint: string) =>
+      f.app.inject({
+        method: 'POST',
+        url: '/api/push/test',
+        cookies: graceCookies,
+        payload: { endpoint },
+      });
+    assert.equal((await test(hers.endpoint)).statusCode, 410);
+    const unreachable = browser();
+    await f.app.inject({
+      method: 'PUT',
+      url: '/api/push/subscription',
+      cookies: graceCookies,
+      payload: unreachable,
+    });
+    assert.equal((await test(unreachable.endpoint)).statusCode, 502);
+    assert.equal(
+      (
+        await f.app.inject({
+          method: 'POST',
+          url: '/api/push/test',
+          cookies: f.cookies,
+          payload: { endpoint: unreachable.endpoint },
+        })
+      ).statusCode,
+      410,
+      "someone else's browser is not theirs to test",
+    );
+
     // Agents have no browsers.
     const agent = await f.app.inject({
       method: 'PUT',

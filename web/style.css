@@ -4113,12 +4113,11 @@ button.new-agent-go {
   outline-offset: 2px;
   border-radius: var(--radius-sm);
 }
-/* What notifies you: a row with its choice at the end, then a quiet row
- * that turns them on or off in this browser. */
+/* What notifies you: one group of 44 px rows, a label and its choice at
+ * the end, set apart from signing out. */
 .you-notify {
   display: grid;
-  gap: 0.25rem;
-  margin-bottom: 1rem;
+  margin-bottom: 1.5rem;
 }
 .you-row {
   display: flex;
@@ -4128,25 +4127,21 @@ button.new-agent-go {
   min-height: 2.75rem;
   font-weight: 500;
 }
-.you-action {
+/* The end of a row: its state, or what can be done, ending on the edge. */
+.you-row-end {
   display: flex;
   align-items: center;
-  justify-self: start;
-  gap: 0.5rem;
-  padding: 0.6rem 0;
-  border: 0;
-  background: none;
-  color: var(--primary);
-  font-weight: 500;
+  min-width: 0;
+  font-weight: 400;
+  text-align: right;
 }
-.you-action:hover:not(:disabled) {
-  background: none;
-  text-decoration: underline;
+.you-row-end .link-button:last-child {
+  padding-right: 0;
 }
 /* What you muted: a face and a name, and the one click that undoes it. */
 .you-muted {
   list-style: none;
-  margin: 0 0 1rem;
+  margin: 0;
   padding: 0;
   display: grid;
 }

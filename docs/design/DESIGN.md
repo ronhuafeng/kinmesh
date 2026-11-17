@@ -391,15 +391,18 @@ fallback.
 - **Settings**: your own tile on Team (on a phone, the 我 tab) opens your page; the
   page has no face or name of its own. It holds what notifies you and signing out.
   "通知" is a row with the segmented control at its end: 全部 | 与我有关 | 关闭.
-  Choosing 全部 or 与我有关 in a browser that can be notified also turns them on
-  there (the browser asks once); under it a quiet row in the primary colour with a
-  bell, **在此设备上接收通知** or **此设备不再接收通知**, turns this browser on or
-  off. A browser that can't be notified, or has said no, shows no such row. Unless
-  notifications are off, "暂停通知" follows in the same form: 不暂停 | 1 小时 | 到明早
-  (the next 8:00), the pause in force chosen and its end on hover; it ends by
-  itself. Then what you muted, a channel's icon or an agent's face and its name on
-  a 44 px row, **取消静音** at the end on the column's edge. Then **退出登录** and
-  **在所有设备上退出登录**, quiet rows in the danger colour, on every device.
+  Unless notifications are off, two more rows in the same form follow. "此设备"
+  says where this browser stands: **开启**; or **发送测试通知** (which reads
+  "已发送" for a moment) and **停止接收** once it is on; or, in the muted ink, why
+  it can't be ("浏览器拦截了通知，可在网站设置中允许", "添加到主屏幕后可以接收通知" on an
+  iPhone not opened from its Home Screen, "这个浏览器收不到通知"). Choosing 全部 or
+  与我有关 in a browser that can be notified also turns them on there (the
+  browser asks once). "暂停通知": 不暂停 | 1 小时 | 到明早 (the next 8:00), the
+  pause in force chosen and its end on hover; it ends by itself. Then what you
+  muted, a channel's icon or an agent's face and its name, **取消静音** at the end.
+  These are one group of 44 px rows, each ending on the column's edge, set apart
+  from **退出登录** and **在所有设备上退出登录**, quiet rows in the danger colour,
+  on every device.
 - **Notifications**: one per place, the latest replacing the one before. The title
   is who wrote and where ("小助手 · #general · 话题"), or what waits on you and
   where ("等你验收", "请你评审", "退回给你", "交给你了", "_Ada_ 卡住了"); the line is the
