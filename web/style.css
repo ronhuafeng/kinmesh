@@ -868,6 +868,22 @@ textarea {
   border-right: var(--hairline-width) solid var(--hairline);
 }
 /* The Inbox tab carries how many things wait on you, in the decision colour. */
+/* 收件箱 at the top of the sidebar: a row like a channel's, its icon in the
+ * muted ink and what waits on you counted at its end. */
+.sidebar-inbox button {
+  display: flex;
+  align-items: center;
+  gap: 0.625rem;
+  width: 100%;
+  min-height: 2.5rem;
+}
+.sidebar-inbox button .icon {
+  color: var(--ink-muted);
+}
+.sidebar-inbox .count {
+  margin-left: auto;
+}
+.sidebar-inbox .count,
 .view-switch .count {
   min-width: 1.1rem;
   padding: 0 0.35rem;
@@ -1123,9 +1139,8 @@ a.link-button {
 .view-content {
   display: block;
 }
-.view-content [role='tabpanel'][data-state='active'] {
-  animation: fade-rise 180ms var(--ease-out);
-}
+/* Switching views shows the next at once: only opening something new
+ * (a page) eases in. */
 .empty {
   text-align: center;
   padding: 2.5rem 1rem;
@@ -2665,6 +2680,23 @@ a.button-link {
   .workspace-header > .view-switch {
     justify-self: center;
   }
+  /* Over a column narrower than the main area, the bar's three parts span
+   * that column alone (its material still runs edge to edge). */
+  .workspace-header[data-column] {
+    padding-inline-end: max(
+      var(--gutter),
+      calc(100% + var(--gutter) - var(--column))
+    );
+  }
+  .workspace-header[data-column='conversation'] {
+    --column: var(--conversation);
+  }
+  .workspace-header[data-column='reading'] {
+    --column: var(--reading);
+  }
+  .workspace-header[data-column='agent'] {
+    --column: 72rem;
+  }
   .workspace-header > .header-end {
     justify-self: end;
     margin-left: 0;
@@ -3856,6 +3888,10 @@ button.roster-person:hover:not(:disabled) {
   max-width: var(--reading);
   outline: none;
   animation: fade-rise var(--dur) var(--ease-out);
+}
+/* One settings section to the next is the same place: no fade. */
+.page.settings-page {
+  animation: none;
 }
 /* Inbox: one list, newest first, a row per thing waiting on you. A row is
  * a face, what it is, where, and when; a decision is marked in orange, a
@@ -5406,9 +5442,10 @@ button.list-row-main:hover:not(:disabled) .list-row-title {
   margin-left: 0.5rem;
 }
 /* A planned section: its rows to come, quiet, values "—". */
-.settings-planned > p {
-  margin: 0 0 0.25rem;
-  font-size: 13px;
+/* 即将推出: each planned section a group, as the working ones are. */
+.settings-planned {
+  display: grid;
+  gap: 2rem;
 }
 .settings-planned .you-row {
   color: var(--ink-subtle);

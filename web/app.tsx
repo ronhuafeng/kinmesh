@@ -1122,6 +1122,29 @@ export function App() {
                         {teamName}
                       </SidebarSearch>
                     )}
+                    {/* What waits on you across the team, above the channels
+                      it comes from; an empty inbox needs no number. A phone
+                      has it as a bottom tab. */}
+                    {!phone && (
+                      <nav className="sidebar-inbox" aria-label="收件箱">
+                        <button
+                          type="button"
+                          aria-current={
+                            focus?.kind === 'inbox' ? 'page' : undefined
+                          }
+                          onClick={() => {
+                            setDraft(null);
+                            setFocus({ kind: 'inbox' });
+                          }}
+                        >
+                          <InboxIcon size={20} />
+                          <span>收件箱</span>
+                          {waiting > 0 && (
+                            <span className="count">{waiting}</span>
+                          )}
+                        </button>
+                      </nav>
+                    )}
                     <nav aria-label="频道">
                       <div className="nav-heading">
                         <h2>频道</h2>
@@ -1371,6 +1394,17 @@ export function App() {
                           ? 'true'
                           : undefined
                       }
+                      // The views centre over the column the place on
+                      // screen uses: the bar and the content share an axis.
+                      data-column={
+                        view === 'agent'
+                          ? 'agent'
+                          : onBoardPage || view === 'board' || view === 'team'
+                            ? undefined
+                            : onPage
+                              ? 'reading'
+                              : 'conversation'
+                      }
                     >
                       {/* The start: the way back (a phone's, or a page's on a
                         tablet, put here by the page) and the sidebar's
@@ -1437,24 +1471,8 @@ export function App() {
                             看板
                           </Tabs.Trigger>
                           <Tabs.Trigger value="team" onClick={leavePage}>
-                            团队
+                            成员
                           </Tabs.Trigger>
-                          {/* What waits on you across the team; an empty inbox
-                        needs no number. On a phone it is a bottom tab. */}
-                          {!phone && (
-                            <Tabs.Trigger
-                              value="inbox"
-                              onClick={() => {
-                                setDraft(null);
-                                setFocus({ kind: 'inbox' });
-                              }}
-                            >
-                              收件箱
-                              {waiting > 0 && (
-                                <span className="count">{waiting}</span>
-                              )}
-                            </Tabs.Trigger>
-                          )}
                         </Tabs.List>
                       )}
                       <div className="header-end">

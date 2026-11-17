@@ -130,12 +130,24 @@ const GROUPS = [
 ] as const;
 /** Where each entry opens: your menu on 通知, the team's on 成员. */
 export const FIRST = { personal: 'notifications', team: 'members' } as const;
-export const sectionOf = (id: string) => SECTIONS.find((s) => s.id === id);
-/** A group's sections as the map lists them: what works, then what is planned. */
-const inOrder = (group: Section['group']) => {
-  const all = SECTIONS.filter((s) => s.group === group);
-  return [...all.filter((s) => !s.planned), ...all.filter((s) => s.planned)];
+/**
+ * What is coming, as one place at the end of the map: every planned
+ * section's rows, so the map lists only what works.
+ */
+const COMING: Section = {
+  id: 'coming',
+  group: 'team',
+  label: '即将推出',
+  icon: SettingsIcons.sparkles,
 };
+export const sectionOf = (id: string) =>
+  id === COMING.id ? COMING : SECTIONS.find((s) => s.id === id);
+/** A group's sections as the map lists them: only those that work. */
+const inOrder = (group: Section['group']) =>
+  SECTIONS.filter((s) => s.group === group && !s.planned);
+/** Which entry is lit: a planned section's address lights 即将推出. */
+const lit = (current: string) =>
+  sectionOf(current)?.planned ? COMING.id : current;
 
 /**
  * In settings the sidebar is the map: back to where you were, then the
@@ -174,8 +186,7 @@ export function SettingsNav({
               key={s.id}
               type="button"
               className="settings-nav-item"
-              data-planned={s.planned ? 'true' : undefined}
-              aria-current={current === s.id ? 'page' : undefined}
+              aria-current={lit(current) === s.id ? 'page' : undefined}
               onClick={() => {
                 onSelect(s.id);
               }}
@@ -186,6 +197,20 @@ export function SettingsNav({
           ))}
         </section>
       ))}
+      <section aria-label={COMING.label}>
+        <button
+          type="button"
+          className="settings-nav-item"
+          data-planned="true"
+          aria-current={lit(current) === COMING.id ? 'page' : undefined}
+          onClick={() => {
+            onSelect(COMING.id);
+          }}
+        >
+          <COMING.icon size={20} />
+          <span>{COMING.label}</span>
+        </button>
+      </section>
     </nav>
   );
 }
@@ -201,7 +226,6 @@ export function SettingsList({ onSelect }: { onSelect: (id: string) => void }) {
               <li key={s.id}>
                 <button
                   type="button"
-                  data-planned={s.planned ? 'true' : undefined}
                   onClick={() => {
                     onSelect(s.id);
                   }}
@@ -214,21 +238,43 @@ export function SettingsList({ onSelect }: { onSelect: (id: string) => void }) {
           </ul>
         </section>
       ))}
+      <section aria-label={COMING.label}>
+        <ul>
+          <li>
+            <button
+              type="button"
+              data-planned="true"
+              onClick={() => {
+                onSelect(COMING.id);
+              }}
+            >
+              <COMING.icon size={20} />
+              <span>{COMING.label}</span>
+            </button>
+          </li>
+        </ul>
+      </section>
     </div>
   );
 }
 /** A planned section: the rows it will hold, quiet, and that it is coming. */
-function Planned({ rows }: { rows: string[] }) {
+function Planned() {
   return (
-    <section className="settings-planned">
-      <Group title="规划中">
-        {rows.map((row) => (
-          <Row key={row} label={row}>
-            <span className="skeleton" aria-hidden="true" />
-          </Row>
-        ))}
-      </Group>
-    </section>
+    <div className="settings-planned">
+      {SECTIONS.flatMap((s) =>
+        s.planned
+          ? [
+              <Group key={s.id} title={s.label}>
+                {s.planned.map((row) => (
+                  <Row key={row} label={row}>
+                    <span className="skeleton" aria-hidden="true" />
+                  </Row>
+                ))}
+              </Group>,
+            ]
+          : [],
+      )}
+    </div>
   );
 }
 function Appearance() {
@@ -686,7 +732,7 @@ export function SettingsSection({
 }) {
   const section = sectionOf(id);
   if (!section) return null;
-  if (section.planned) return <Planned rows={section.planned} />;
+  if (section.planned || section.id === COMING.id) return <Planned />;
   switch (section.id) {
     case 'notifications':
       return <NotificationSettings data={data} />;
