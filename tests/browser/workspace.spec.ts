@@ -2734,7 +2734,8 @@ test('a wide tablet keeps the board, one stage, beside the task that is open', a
   await page.getByRole('button', { name: '新任务' }).first().click();
   const task = page.getByRole('region', { name: '新任务', exact: true });
   await expect(task).toBeVisible();
-  // The board stays, one stage at a time, and the page leads back by touch.
+  // The board stays, one stage at a time, and the page leads back by touch:
+  // the task has no back bar, the 看板 tab lit above it closes it.
   const board = page.getByRole('region', { name: '任务看板' });
   await expect(board).toBeVisible();
   await expect(board.getByRole('group', { name: '阶段' })).toBeVisible();
@@ -2743,7 +2744,12 @@ test('a wide tablet keeps the board, one stage, beside the task that is open', a
     task.boundingBox(),
   ]);
   expect(left && right && left.x + left.width <= right.x).toBe(true);
-  await task.getByRole('button', { name: '返回', exact: true }).click();
+  await expect(
+    task.getByRole('button', { name: '返回', exact: true }),
+  ).toBeHidden();
+  const boardTab = page.getByRole('tab', { name: '看板', exact: true });
+  await expect(boardTab).toHaveAttribute('aria-selected', 'true');
+  await boardTab.click();
   await expect(task).toHaveCount(0);
   await expect(board).toBeVisible();
 });
