@@ -2300,6 +2300,22 @@ button.quiet.subtle-danger {
 .delivery[data-tone='active']::before {
   animation: pulse 2.4s ease-in-out infinite;
 }
+/* What a run is on in T3, after its line: the step, or what waits on an
+ * approval, in code, cut to one line. */
+.delivery-step {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--ink-muted);
+  font-size: var(--text-small);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.delivery-step[data-waiting] {
+  color: var(--decision-text);
+}
+.delivery-step code {
+  font-size: 12px;
+}
 /* A line's words: a new state cross-fades over the old one. */
 .delivery-words {
   display: inline-grid;

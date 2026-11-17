@@ -6,6 +6,7 @@ import {
   ExecutionFailure,
   type Dispatch,
   type Observation,
+  type Step,
   type ExecutionBackend,
   type WaitResult,
   type StopResult,
@@ -455,6 +456,58 @@ export class T3Backend implements ExecutionBackend {
     }
     return waiting;
   }
+  /**
+   * What a run under way is on, from its latest activity: what waits on a
+   * person's approval (the command or change), or the last step it took.
+   * Best effort: a read that fails, or says nothing to show, is null.
+   */
+  private async currentStep(
+    threadId: string,
+    runId: string,
+    itemCount: number,
+    signal?: AbortSignal,
+  ): Promise<Step | null> {
+    try {
+      const result = reply(
+        Read,
+        await this.tools.call(
+          't3_thread_read',
+          {
+            threadId,
+            view: 'activity',
+            limit: 12,
+            runLimit: 1,
+            maxCharsPerItem: 240,
+            ...(itemCount > 12 ? { afterPosition: itemCount - 13 } : {}),
+          },
+          signal,
+        ),
+      );
+      const own = result.items.filter(
+        (i) => i.runId === runId && i.text?.trim(),
+      );
+      // The first line, without a shell prompt, in one line's room.
+      const line = (text: string | null) =>
+        (text ?? '')
+          .split('\n')
+          .find((l) => l.trim() !== '')
+          ?.replace(/^\$\s*/, '')
+          .trim()
+          .slice(0, 200) ?? '';
+      const asked = own.find(
+        (i) => i.status === 'waiting' && i.type === 'approval_request',
+      );
+      if (asked) return { waiting: true, text: line(asked.text) };
+      const latest = own
+        .filter(
+          (i) => i.type !== 'user_message' && i.type !== 'assistant_message',
+        )
+        .at(-1);
+      return latest ? { waiting: false, text: line(latest.text) } : null;
+    } catch {
+      return null;
+    }
+  }
   async read(
     reference: Reference,
     afterPosition?: number,
@@ -520,6 +573,15 @@ export class T3Backend implements ExecutionBackend {
                 result.thread.itemCount,
                 signal,
               ),
+      step:
+        terminal || ref.runId === undefined
+          ? null
+          : await this.currentStep(
+              ref.threadId,
+              ref.runId,
+              result.thread.itemCount,
+              signal,
+            ),
       history: result.items.map((i) => ({
         id: i.itemId,
         position: i.position,

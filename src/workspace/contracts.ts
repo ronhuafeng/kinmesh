@@ -38,6 +38,14 @@ export const DeliveryView = z.strictObject({
   resultMessageId: z.uuid().nullable(),
   /** A person asked to stop it. */
   stopRequested: z.boolean(),
+  /**
+   * While its run is under way in T3, what it is on: what waits on a
+   * person's approval, or the step it is taking; null when not known.
+   */
+  step: z
+    .strictObject({ waiting: z.boolean(), text: z.string().max(300) })
+    .nullable()
+    .default(null),
 });
 /** Names what one read shows: equal revisions, equal screens. */
 export const Revision = z.string().regex(/^[a-f0-9]{64}$/);
