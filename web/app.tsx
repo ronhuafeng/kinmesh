@@ -1351,7 +1351,16 @@ export function App() {
                     setView(v === 'board' || v === 'team' ? v : 'chat');
                   }}
                 >
-                  <header className="workspace-header">
+                  <header
+                    className="workspace-header"
+                    // Settings beside their map hold nothing up here: no
+                    // views, no title, the sidebar's control in the map.
+                    data-bare={
+                      inSettings && !phone && !(sidebar.pad && sidebar.state)
+                        ? 'true'
+                        : undefined
+                    }
+                  >
                     {/* A phone shows no sidebar beside a channel: its bar leads
                       back Home and says where you are. */}
                     {phone && (

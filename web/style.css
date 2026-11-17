@@ -2624,6 +2624,14 @@ a.button-link {
   backdrop-filter: var(--blur);
   border-bottom: var(--hairline-width) solid var(--hairline);
 }
+.workspace-header[data-bare] {
+  min-height: 0;
+  padding-block: 0;
+  border-bottom: 0;
+  background: transparent;
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+}
 .workspace-header > .view-switch {
   height: 38px;
 }
@@ -4368,17 +4376,50 @@ button.new-agent-go {
   outline-offset: 2px;
   border-radius: var(--radius-sm);
 }
-/* What notifies you: one group of 44 px rows, a label and its choice at
- * the end, set apart from signing out. */
-.you-notify {
+/* Settings: groups of rows, each under a small heading, hairlines between
+ * the rows. A row is two columns: its label, then its value or control on
+ * one shared edge, so each value sits beside what it is. */
+.settings-group {
   display: grid;
-  /* What notifies you, where it reaches you, when, and what you muted:
-   * each a run of rows, a little apart from the next. */
-  gap: 1rem;
-  margin-bottom: 1.5rem;
 }
-.you-rows {
+.settings-group-title {
+  margin: 0 0 0.25rem;
+  color: var(--ink-muted);
+  font-size: var(--text-small);
+  font-weight: 600;
+}
+.you-row {
   display: grid;
+  grid-template-columns: var(--label-column) minmax(0, 1fr);
+  align-items: center;
+  justify-items: start;
+  column-gap: 1rem;
+  min-height: 2.75rem;
+  font-weight: 500;
+}
+.you-row + .you-row,
+.list-row + .list-row {
+  border-top: var(--hairline-width) solid var(--hairline);
+}
+.settings-body {
+  --label-column: 11rem;
+}
+@media (max-width: 575px) {
+  .settings-body {
+    --label-column: 6.5rem;
+  }
+}
+.you-row-end {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  column-gap: 1rem;
+  min-width: 0;
+  font-weight: 400;
+}
+/* A link starts on the value edge, its padding outside it. */
+.you-row-end .link-button {
+  padding-inline: 0;
 }
 /* Under 通知时段, its hours and days, on the same edges. */
 .you-row-sub {
@@ -4408,76 +4449,116 @@ button.new-agent-go {
   border-bottom-color: var(--primary);
   outline: none;
 }
-.you-row {
+/* Under 通知时段, its hours and days in the value column, one row. */
+.you-row.you-row-sub {
   display: flex;
-  align-items: center;
-  justify-content: space-between;
   gap: 1rem;
-  min-height: 2.75rem;
+  padding-left: calc(var(--label-column) + 1rem);
+  border-top: 0;
+}
+/* A page's last group is signing out: rows in the danger colour. */
+.you-row-danger {
+  display: flex;
+}
+.you-row-danger button {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--danger);
+  font: inherit;
   font-weight: 500;
 }
-/* The end of a row: its state, or what can be done, ending on the edge. */
-.you-row-end {
-  display: flex;
-  align-items: center;
-  min-width: 0;
-  font-weight: 400;
-  text-align: right;
+.you-row-danger button:hover:not(:disabled) {
+  background: none;
+  text-decoration: underline;
 }
-.you-row-end .link-button:last-child {
-  padding-right: 0;
+/* A planned row's value: a quiet bar where it will be. */
+.settings-planned .you-row > span:first-child {
+  color: var(--ink-subtle);
 }
-/* What you muted: a face and a name, and the one click that undoes it. */
-.you-muted {
-  list-style: none;
+.skeleton {
+  display: block;
+  width: 8rem;
+  height: 0.625rem;
+  border-radius: 999px;
+  background: var(--fill);
+}
+/* One thing in a list: its face, its name over what to know, and what can
+ * be done at the end; 56 px, hairlines between. */
+.list-rows {
+  display: grid;
   margin: 0;
   padding: 0;
-  display: grid;
+  list-style: none;
 }
-.you-muted li {
+.list-row {
   display: flex;
   align-items: center;
-  gap: 0.625rem;
-  min-height: 2.75rem;
+  gap: 1rem;
+  min-height: 3.5rem;
 }
-.you-muted li > span:not(.channel-icon, .avatar) {
+.list-row-main {
+  display: flex;
   flex: 1;
   min-width: 0;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.5rem 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+}
+button.list-row-main:hover:not(:disabled) {
+  background: none;
+}
+button.list-row-main:hover:not(:disabled) .list-row-title {
+  text-decoration: underline;
+}
+.list-row-text {
+  display: grid;
+  min-width: 0;
+}
+.list-row-title,
+.list-row-detail {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-/* The level sits at the end, before what undoes it. */
-.you-muted li > span.muted {
-  flex: none;
-  font-size: 14px;
-}
-.you-muted .channel-icon {
-  --size: 32px;
-}
-/* Its text ends on the column's edge, as the controls above do. */
-.you-muted button {
-  padding-inline: 0;
-}
-/* Your page ends with signing out: this device on a phone, and every device
- * everywhere. Quiet rows in the danger colour, no boxes. */
-.you-sign-outs {
-  display: grid;
-  justify-items: start;
-}
-.you-sign-out {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  padding: 0.6rem 0;
-  border: 0;
-  background: none;
-  color: var(--danger);
+.list-row-title {
   font-weight: 500;
 }
-.you-sign-out:hover:not(:disabled) {
-  background: none;
-  text-decoration: underline;
+.list-row-detail {
+  color: var(--ink-muted);
+  font-size: var(--text-small);
+}
+.list-row[data-quiet] {
+  color: var(--ink-muted);
+}
+.list-row-end {
+  display: flex;
+  align-items: center;
+}
+.list-row-end .link-button {
+  padding-inline: 0;
+}
+.list-row-end .link-button[data-danger] {
+  color: var(--danger);
+}
+.list-row .channel-icon {
+  --size: 32px;
+}
+.list-row-picture {
+  display: grid;
+  flex: none;
+  place-items: center;
+  width: 2.5rem;
+  height: 2.5rem;
+  border-radius: var(--radius-sm);
+  object-fit: cover;
+  background: var(--fill);
+  color: var(--ink-muted);
 }
 /* ------------------------------------------------------------------
  * Phone: the places stack. Home is the sidebar (the channels and the
@@ -5211,6 +5292,17 @@ button.new-agent-go {
 .sidebar nav.settings-nav {
   gap: 1rem;
 }
+/* The map scrolls by itself above your row, which never covers a section. */
+.sidebar:has(> nav.settings-nav) {
+  overflow: hidden;
+}
+.sidebar > nav.settings-nav {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  margin-inline: -0.75rem;
+  padding-inline: 0.75rem;
+}
 .settings-nav section {
   display: grid;
   grid-template-columns: minmax(0, 1fr);
@@ -5243,16 +5335,25 @@ button.new-agent-go {
   color: var(--ink-subtle);
 }
 .settings-body {
-  gap: 1rem;
+  gap: 2rem;
+  /* The first heading centres on the map's 设置 row beside it. */
+  padding-top: 0.75rem;
 }
+/* 个人资料 opens on who you are: your picture, your name, where it is from. */
 .settings-identity {
   display: flex;
   align-items: center;
   gap: 1rem;
-  padding-bottom: 0.5rem;
+}
+.settings-identity > span {
+  display: grid;
+  gap: 0.125rem;
 }
 .settings-identity strong {
   font-size: 20px;
+}
+.settings-identity .muted {
+  font-size: var(--text-small);
 }
 .danger-text {
   color: var(--danger);
@@ -5276,41 +5377,6 @@ button.new-agent-go {
   color: var(--ink-subtle);
 }
 /* People, channels and agents as rows: a face, a name, then what to know. */
-.settings-people {
-  display: grid;
-  margin: 0;
-  padding: 0;
-  list-style: none;
-}
-.settings-people li,
-.settings-people li > button {
-  display: flex;
-  align-items: center;
-  gap: 0.75rem;
-  width: 100%;
-  min-height: 3rem;
-}
-.settings-people li > button {
-  padding: 0;
-  border: 0;
-  background: none;
-  color: inherit;
-  font: inherit;
-  text-align: left;
-}
-.settings-people li > button:hover:not(:disabled) .settings-people-name {
-  text-decoration: underline;
-}
-.settings-people-name {
-  font-weight: 500;
-}
-.settings-people .muted {
-  margin-left: auto;
-  font-size: 14px;
-}
-.settings-people li[data-left] {
-  color: var(--ink-muted);
-}
 /* A T3 pairing code: the code large enough to read out or type, when it
  * stops working, and the link that pairs at once. */
 .pairing {
@@ -5318,7 +5384,7 @@ button.new-agent-go {
   flex-wrap: wrap;
   align-items: baseline;
   gap: 0.5rem 1rem;
-  padding: 0.25rem 0 0.75rem;
+  padding: 0 0 0.75rem calc(var(--label-column) + 1rem);
 }
 .pairing-code {
   font-size: 1.25rem;
@@ -5328,68 +5394,6 @@ button.new-agent-go {
 }
 .pairing .muted {
   font-size: var(--text-small);
-}
-.pairing a {
-  margin-left: auto;
-}
-/* The team's files: a picture or a file's mark, its name, and where it is
- * from, with 删除 at the row's end. */
-.settings-files {
-  display: grid;
-  margin: 0 0 1rem;
-  padding: 0;
-  list-style: none;
-}
-.settings-files li {
-  display: flex;
-  align-items: center;
-  gap: 0.75rem;
-  min-height: 3.5rem;
-}
-.settings-file {
-  display: flex;
-  flex: 1;
-  min-width: 0;
-  align-items: center;
-  gap: 0.75rem;
-  padding: 0.25rem 0;
-  border: 0;
-  background: none;
-  color: inherit;
-  font: inherit;
-  text-align: left;
-}
-.settings-file:hover .settings-people-name {
-  text-decoration: underline;
-}
-.settings-file img,
-.settings-file-icon {
-  flex: none;
-  width: 2.5rem;
-  height: 2.5rem;
-  border-radius: var(--radius-sm);
-  object-fit: cover;
-  background: var(--fill);
-}
-.settings-file-icon {
-  display: grid;
-  place-items: center;
-  color: var(--ink-muted);
-}
-.settings-file-text {
-  display: grid;
-  min-width: 0;
-}
-.settings-file-text > span {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.settings-file-text .muted {
-  font-size: var(--text-small);
-}
-.settings-files .link-button[data-danger] {
-  color: var(--danger);
 }
 /* A phone's map: the two groups as iOS inset lists on the grey canvas. */
 .settings-list {

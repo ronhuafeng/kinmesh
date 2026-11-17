@@ -435,20 +435,33 @@ fallback.
   the sidebar becomes the settings map: ‹ 设置 where the team's name was (‹ or Esc
   returns to where you were), then 个人 — 通知, 我的助理, 外观, 个人资料, 账户与设备, 快捷键
   — and 团队 — 成员, 频道, 智能体, 规则, 连接, 集成, 文件与存储, 用量与成本, 审计记录,
-  数据与导出 — each a row with its icon, the current one lit as a channel is; your
-  row stays at the foot. The channel's views are not shown. The section opens in
-  the main area on the gutter, with no title (the map says where you are), a
-  form's width; each has its address (`?settings=<id>`). A **planned section**
+  数据与导出 — each a row with its icon, the current one lit as a channel is, the
+  planned ones after the working ones in each group; the map scrolls by itself, so
+  your row at the foot never covers a section. The channel's views are not shown. The section opens in
+  the main area on the gutter, with no title (the map says where you are) and
+  nothing above it (the bar a channel's views sit in is bare here), a form's width;
+  each has its address (`?settings=<id>`). A section is **groups**, 32 px apart,
+  its first heading centred on the map's 设置 row: each under a 13 px semibold
+  heading in the muted ink (none when the section is one group), its rows divided
+  by hairlines. A **row** is two columns, its label (15 px, 500) in an 11rem
+  column (6.5rem on a phone), then its value or control starting on one shared
+  edge, never pushed to the far end. A **list row** (a person, a channel, an
+  agent, a file) is 56 px: a 32–40 px face or mark, the name over what to know in
+  the secondary size and muted ink, and what can be done at the end; it opens its
+  place. Signing out is the last group, 退出, its rows in the danger colour. A **planned section**
   (我的助理, 规则, 集成, 用量与成本, 审计记录, 数据与导出) is in the subtle ink
   in the map and opens as what it will hold: 规划中, then its rows in the subtle
-  ink, each "—", and no controls — never a loading state. 个人资料 is read-only, as
-  Feishu gives it; 账户与设备 lists your sessions ("此浏览器 · 正在使用", or when one
+  ink, each with a quiet rounded bar where its value will be, and no controls —
+  never a loading state. 个人资料 is read-only, as
+  Feishu gives it: your picture and name, "来自飞书" under it, then 账号 (用户名, 邮箱,
+  团队); 账户与设备 lists your sessions ("此浏览器 · 正在使用", or when one
   signed in and was last used, with **退出**) and the browsers receiving
-  notifications (**移除**), then signing out; 成员, 频道 and 智能体 are rows of a face
-  or icon, a name and what to know, a channel or an agent opening its place; 连接
+  notifications (**移除**), then 退出; 成员, 频道 and 智能体 are list rows, a channel or
+  an agent opening its place, and channels you left are their own group; 连接
   shows T3 and tries the Feishu bot (**给我发一条测试消息**), and, where the deployment can
   mint one, 配对码: **生成配对码** shows the code in 20 px semibold with "14:14 前有效"
-  beside it and **在 T3 中配对** at the row's end, gone once it has expired; **换一个**
+  beside it and **在 T3 中配对**, on the value edge under its row, gone once it has
+  expired; **换一个**
   replaces it; 文件与存储 lists the files of
   every channel you are in, newest first, each a 40 px square of the picture (or a
   file mark), its name, and "who · #channel · when · size" in the secondary size;
@@ -458,19 +471,18 @@ fallback.
   section opens under a bar naming it, which leads back to the map.
 - **通知** (the section): what may interrupt you is Kinmesh's rule (what concerns
   you, in channels you haven't muted; every message only where you follow), so
-  nothing here lists kinds. One group of 44 px rows, each a label and, at the end on
-  the column's edge, its control, in runs a little apart. Where it reaches you:
-  "此设备" says where this browser stands — **开启**; or **发送测试通知** (which reads
+  nothing here lists kinds. Three groups: 送达 (where it reaches you), 免打扰 (when
+  you're left alone) and, when there are any, 调整过的频道. "这台设备" says where this browser stands — **开启**; or **发送测试通知** (which reads
   "已发送" for a moment) and **停止接收** once on; or, in the muted ink, why it can't
   be ("浏览器拦截了通知，可在网站设置中允许", "添加到主屏幕后可以接收通知" on an iPhone not
   opened from its Home Screen, "这个浏览器收不到通知"). "转发到飞书": 立即 | 10 分钟后
   | 不用, what it does on hover. When you're left alone: "通知时段": 全天 | 自定; 自定
-  adds a row under it, the two hours chosen in place ("09:00 – 21:00", this
-  browser's time zone) and 每天 | 工作日 at its end. "暂停通知": 不暂停 | 1 小时 | 到明早
+  adds a row under it, on the value edge, the two hours chosen in place ("09:00 –
+  21:00", this browser's time zone) and 每天 | 工作日 after them. "暂停通知": 不暂停 | 1 小时 | 到明早
   (the next 8:00), the pause in force chosen and its end on hover; it ends by
-  itself. Then the channels you made louder or quieter, a channel's icon, its name
-  and its level, **恢复默认** at the end. Signing out, in 账户与设备, ends that section in
-  **退出登录** and **在所有设备上退出登录**, quiet rows in the danger colour.
+  itself. Then 调整过的频道, list rows of a channel's icon, its name over its level,
+  **恢复默认** at the end. Signing out, in 账户与设备, is that section's last group,
+  退出: **退出登录** and **在所有设备上退出登录**, rows in the danger colour.
 - **Feishu card**: what reaches you in Feishu is a card from the app's bot: the
   title in a green header, the line as plain text, and **查看** (the primary button)
   to open its place. Once it is settled the same card turns grey and the button

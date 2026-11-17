@@ -8,6 +8,7 @@ import { FileIcon } from './icons.js';
 import { memberName } from './names.js';
 import { Notice } from './forms.js';
 import { shortTime } from './ui.js';
+import { ListRow } from './settings.js';
 
 const Page = z.strictObject({
   items: z.array(TeamFile),
@@ -55,71 +56,72 @@ export function Files({
     data.channels.items.find((c) => c.id === id)?.name ?? '频道';
   return (
     <>
-      <ul className="settings-files" aria-label="文件">
+      <ul className="list-rows" aria-label="文件">
         {files.map((f) => {
           const base = `/api/teams/${data.team.id}/channels/${f.channelId}/attachments/${f.attachment.id}`;
+          const asking = asked === f.attachment.id;
           return (
-            <li key={f.attachment.id}>
-              <button
-                type="button"
-                className="settings-file"
-                onClick={() => {
-                  openMessage(f.channelId, f.messageId);
-                }}
-              >
-                {inline(f.attachment.type) ? (
-                  <img src={base} alt="" loading="lazy" decoding="async" />
+            <ListRow
+              key={f.attachment.id}
+              lead={
+                inline(f.attachment.type) ? (
+                  <img
+                    className="list-row-picture"
+                    src={base}
+                    alt=""
+                    loading="lazy"
+                    decoding="async"
+                  />
                 ) : (
-                  <span className="settings-file-icon">
+                  <span className="list-row-picture">
                     <FileIcon size={20} />
                   </span>
-                )}
-                <span className="settings-file-text">
-                  <span className="settings-people-name">
-                    {f.attachment.name}
-                  </span>
-                  <span className="muted">
-                    {[
-                      memberName({ kind: 'human', humanId: f.uploader }, data),
-                      '#' + channelName(f.channelId),
-                      shortTime(f.createdAt),
-                      fileSize(f.attachment.size),
-                    ].join(' · ')}
-                  </span>
-                </span>
-              </button>
-              <button
-                type="button"
-                className="link-button"
-                data-danger={asked === f.attachment.id ? 'true' : undefined}
-                disabled={action.disabled}
-                onClick={() => {
-                  if (asked !== f.attachment.id) {
-                    setAsked(f.attachment.id);
-                    return;
-                  }
-                  void action
-                    .send(
-                      `/api/teams/${data.team.id}/channels/${f.channelId}/attachments/${f.attachment.id}/remove`,
-                      {},
-                    )
-                    .then((done) => {
-                      if (!done) return;
-                      setAsked(null);
-                      setFiles((old) =>
-                        (old ?? []).filter(
-                          (o) => o.attachment.id !== f.attachment.id,
-                        ),
-                      );
-                    });
-                }}
-                onBlur={() => {
-                  if (asked === f.attachment.id) setAsked(null);
-                }}
-              >
-                {asked === f.attachment.id ? '确认删除' : '删除'}
-              </button>
-            </li>
+                )
+              }
+              title={f.attachment.name}
+              detail={[
+                memberName({ kind: 'human', humanId: f.uploader }, data),
+                '#' + channelName(f.channelId),
+                shortTime(f.createdAt),
+                fileSize(f.attachment.size),
+              ].join(' · ')}
+              onOpen={() => {
+                openMessage(f.channelId, f.messageId);
+              }}
+              end={
+                <button
+                  type="button"
+                  className="link-button"
+                  data-danger={asking ? 'true' : undefined}
+                  disabled={action.disabled}
+                  onClick={() => {
+                    if (!asking) {
+                      setAsked(f.attachment.id);
+                      return;
+                    }
+                    void action
+                      .send(
+                        `/api/teams/${data.team.id}/channels/${f.channelId}/attachments/${f.attachment.id}/remove`,
+                        {},
+                      )
+                      .then((done) => {
+                        if (!done) return;
+                        setAsked(null);
+                        setFiles((old) =>
+                          (old ?? []).filter(
+                            (o) => o.attachment.id !== f.attachment.id,
+                          ),
+                        );
+                      });
+                  }}
+                  onBlur={() => {
+                    if (asking) setAsked(null);
+                  }}
+                >
+                  {asking ? '确认删除' : '删除'}
+                </button>
+              }
+            />
           );
         })}
       </ul>

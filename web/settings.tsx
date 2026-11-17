@@ -1,9 +1,8 @@
-import { useContext, useEffect, useId, useState } from 'react';
+import { useContext, useEffect, useId, useState, type ReactNode } from 'react';
 import type { NotifyHours } from '../src/domain/notify.js';
 import type { WorkspaceSnapshot } from '../src/workspace/contracts.js';
 import { MutationPermission, useRequest } from './api.js';
 import { Notice } from './forms.js';
-import { PowerIcon } from './icons.js';
 import {
   currentSubscription,
   pushSupported,
@@ -17,6 +16,82 @@ import { LEVEL_LABELS, setLevel } from './levels.js';
  * A row with its choice at the end: the segmented control. `title` says on
  * hover what the row does, when its label alone may not.
  */
+/**
+ * A settings group: a small heading over its rows, which hairlines divide.
+ * A page of one group has no heading; the map already names it.
+ */
+export function Group({
+  title,
+  children,
+}: {
+  title?: string;
+  children: ReactNode;
+}) {
+  return (
+    <section className="settings-group" aria-label={title}>
+      {title && <h2 className="settings-group-title">{title}</h2>}
+      {children}
+    </section>
+  );
+}
+/** One row: its label, then its value or control on the value column. */
+export function Row({
+  label,
+  children,
+}: {
+  label: ReactNode;
+  children?: ReactNode;
+}) {
+  return (
+    <div className="you-row">
+      <span>{label}</span>
+      <span className="you-row-end">{children}</span>
+    </div>
+  );
+}
+/**
+ * One thing in a list (a person, a channel, an agent, a file): its face or
+ * mark, its name over what to know, and what can be done at the end. The
+ * row opens it when there is somewhere to go.
+ */
+export function ListRow({
+  lead,
+  title,
+  detail,
+  end,
+  onOpen,
+  quiet,
+}: {
+  lead: ReactNode;
+  title: ReactNode;
+  detail?: ReactNode;
+  end?: ReactNode;
+  onOpen?: () => void;
+  /** Not current (a channel left): in the muted ink. */
+  quiet?: boolean;
+}) {
+  const body = (
+    <>
+      {lead}
+      <span className="list-row-text">
+        <span className="list-row-title">{title}</span>
+        {detail && <span className="list-row-detail">{detail}</span>}
+      </span>
+    </>
+  );
+  return (
+    <li className="list-row" data-quiet={quiet ? 'true' : undefined}>
+      {onOpen ? (
+        <button type="button" className="list-row-main" onClick={onOpen}>
+          {body}
+        </button>
+      ) : (
+        <span className="list-row-main">{body}</span>
+      )}
+      {end && <span className="list-row-end">{end}</span>}
+    </li>
+  );
+}
 export function ChoiceRow<T extends string>({
   label,
   title,
@@ -118,7 +193,7 @@ function ThisDevice() {
   return (
     <>
       <div className="you-row">
-        <span>此设备</span>
+        <span>这台设备</span>
         <span className="you-row-end">
           {here === 'on' ? (
             <>
@@ -374,30 +449,33 @@ function Levels({ data }: { data: WorkspaceSnapshot }) {
   });
   if (rows.length === 0) return null;
   return (
-    <>
-      <ul className="you-muted" aria-label="调整过的频道">
+    <Group title="调整过的频道">
+      <ul className="list-rows" aria-label="调整过的频道">
         {rows.map(({ channel, level }) => (
-          <li key={channel.id}>
-            <ChannelIcon id={channel.id} name={channel.name} />
-            <span>{channel.name}</span>
-            <span className="muted">{LEVEL_LABELS[level]}</span>
-            <button
-              type="button"
-              className="link-button"
-              disabled={action.disabled}
-              onClick={() =>
-                void action.run(() =>
-                  setLevel(data.team.id, channel.id, 'default'),
-                )
-              }
-            >
-              恢复默认
-            </button>
-          </li>
+          <ListRow
+            key={channel.id}
+            lead={<ChannelIcon id={channel.id} name={channel.name} />}
+            title={channel.name}
+            detail={LEVEL_LABELS[level]}
+            end={
+              <button
+                type="button"
+                className="link-button"
+                disabled={action.disabled}
+                onClick={() =>
+                  void action.run(() =>
+                    setLevel(data.team.id, channel.id, 'default'),
+                  )
+                }
+              >
+                恢复默认
+              </button>
+            }
+          />
         ))}
       </ul>
       {action.error && <Notice>{action.error}</Notice>}
-    </>
+    </Group>
   );
 }
 /**
@@ -407,17 +485,17 @@ function Levels({ data }: { data: WorkspaceSnapshot }) {
  */
 export function NotificationSettings({ data }: { data: WorkspaceSnapshot }) {
   return (
-    <section className="you-notify" aria-label="通知">
-      <div className="you-rows">
+    <>
+      <Group title="送达">
         <ThisDevice />
         <Forward minutes={data.forwardAfter} />
-      </div>
-      <div className="you-rows">
+      </Group>
+      <Group title="免打扰">
         <Hours hours={data.hours} />
         <Pause until={data.pausedUntil} />
-      </div>
+      </Group>
       <Levels data={data} />
-    </section>
+    </>
   );
 }
 /** Signing out, here or everywhere: quiet rows in the danger colour. */
@@ -432,25 +510,21 @@ export function SignOuts({
   // Out of reach, signing out waits like every other action.
   const permitted = useContext(MutationPermission);
   return (
-    <div className="you-sign-outs">
-      <button
-        type="button"
-        className="you-sign-out"
-        disabled={!permitted}
-        onClick={onSignOut}
-      >
-        <PowerIcon size={20} />
-        退出登录
-      </button>
-      <button
-        type="button"
-        className="you-sign-out"
-        disabled={!permitted}
-        onClick={onSignOutEverywhere}
-      >
-        <PowerIcon size={20} />
-        在所有设备上退出登录
-      </button>
-    </div>
+    <Group title="退出">
+      <div className="you-row you-row-danger">
+        <button type="button" disabled={!permitted} onClick={onSignOut}>
+          退出登录
+        </button>
+      </div>
+      <div className="you-row you-row-danger">
+        <button
+          type="button"
+          disabled={!permitted}
+          onClick={onSignOutEverywhere}
+        >
+          在所有设备上退出登录
+        </button>
+      </div>
+    </Group>
   );
 }
