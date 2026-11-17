@@ -839,6 +839,11 @@ textarea {
   ):not(:hover) {
   background: transparent;
 }
+/* A channel you muted reads quieter, in the muted ink. */
+.sidebar nav > button[data-muted] .channel-name,
+.sidebar nav > button[data-muted] .channel-row-name {
+  color: var(--ink-muted);
+}
 /* Someone wrote in a channel since you last read it: its name is set in
  * semibold, as heavy as PingFang goes. */
 .sidebar nav > button[data-unread] .channel-name {
@@ -4137,6 +4142,33 @@ button.new-agent-go {
 .you-action:hover:not(:disabled) {
   background: none;
   text-decoration: underline;
+}
+/* What you muted: a face and a name, and the one click that undoes it. */
+.you-muted {
+  list-style: none;
+  margin: 0 0 1rem;
+  padding: 0;
+  display: grid;
+}
+.you-muted li {
+  display: flex;
+  align-items: center;
+  gap: 0.625rem;
+  min-height: 2.75rem;
+}
+.you-muted li > span:not(.channel-icon, .avatar) {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.you-muted .channel-icon {
+  --size: 32px;
+}
+/* Its text ends on the column's edge, as the controls above do. */
+.you-muted button {
+  padding-inline: 0;
 }
 /* Your page ends with signing out: this device on a phone, and every device
  * everywhere. Quiet rows in the danger colour, no boxes. */

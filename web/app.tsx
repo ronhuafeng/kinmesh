@@ -17,7 +17,7 @@ import { Agent } from '../src/domain/agents.js';
 import { TopicId } from '../src/domain/communication.js';
 import { WorkspaceSnapshot } from '../src/workspace/contracts.js';
 import { Auth } from './auth.js';
-import { api, HttpError, MutationPermission, Offline } from './api.js';
+import { api, HttpError, MutationPermission, Offline, request } from './api.js';
 import { ActionForm, AddButton, InlineField } from './forms.js';
 import { AgentPage, Team } from './agents.js';
 import { OwnWorkerPage } from './setup.js';
@@ -829,6 +829,18 @@ export function App() {
         notify('没能退出频道，请再试一次。');
       });
   };
+  // Muting the open channel, or unmuting it, from search.
+  const channelMuted = channel
+    ? data.muted.channels.includes(channel.id)
+    : false;
+  const muteChannel = () => {
+    if (!canAct || !channelPath) return;
+    void request(channelPath + '/mute', { muted: !channelMuted }).catch(() => {
+      notify(
+        channelMuted ? '没能取消静音，请再试一次。' : '没能静音，请再试一次。',
+      );
+    });
+  };
   const goHome = () => {
     selectChannel('');
     setView('chat');
@@ -935,6 +947,12 @@ export function App() {
     ...(channel && channelPath && onScreen
       ? [
           {
+            id: 'action-mute',
+            group: '操作',
+            label: (channelMuted ? '取消静音 #' : '静音 #') + channel.name,
+            run: muteChannel,
+          },
+          {
             id: 'action-leave',
             group: '操作',
             label: '退出 #' + channel.name,
@@ -1029,6 +1047,11 @@ export function App() {
                               'aria-describedby': 'latest-' + c.id,
                             }
                           : {})}
+                        data-muted={
+                          data.muted.channels.includes(c.id)
+                            ? 'true'
+                            : undefined
+                        }
                         data-unread={
                           data.latest.find((l) => l.channelId === c.id)?.unread
                             ? 'true'
@@ -1374,7 +1397,7 @@ export function App() {
                     )}
                     {focus?.kind === 'settings' && (
                       <SettingsPage
-                        notify={data.notify}
+                        data={data}
                         onClose={closeFocus}
                         onSignOut={signOut}
                         onSignOutEverywhere={signOutEverywhere}

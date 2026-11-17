@@ -24,6 +24,19 @@ export type NotificationKind = z.infer<typeof NotificationKind>;
 export const notifies = (level: NotifyLevel, kind: NotificationKind) =>
   level === 'all' || (level === 'mine' && kind !== 'message');
 /**
+ * What waits on a person rather than tells them what happened: muting a
+ * channel or an agent never silences it; only level `off` or a pause does.
+ */
+export const waitsOnYou = (kind: NotificationKind) =>
+  kind === 'decide' || kind === 'task' || kind === 'blocked';
+/** The longest a person can pause their notifications for. */
+export const PAUSE_MOST_MS = 7 * 24 * 60 * 60 * 1000;
+export const MuteInput = z.strictObject({ muted: z.boolean() });
+/** Until when nothing notifies; null resumes them. */
+export const PauseInput = z.strictObject({
+  until: z.iso.datetime().nullable(),
+});
+/**
  * How long a notification waits before it is sent: long enough for a tab
  * open on its place to have read it, in which case it is not sent.
  */

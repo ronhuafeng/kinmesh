@@ -635,6 +635,22 @@ export function communicationRepository(
           );
       });
     },
+    /** A person mutes or unmutes a channel they are joined to. */
+    mute(p: Principal, teamId: TeamId, channelId: ChannelId, muted: boolean) {
+      return atomic(async () => {
+        if (p.kind !== 'human') throw new DomainError('forbidden');
+        await access(p, teamId, channelId);
+        await q()
+          .update(s.channelParticipants)
+          .set({ muted })
+          .where(
+            and(
+              eq(s.channelParticipants.channelId, channelId),
+              eq(s.channelParticipants.memberKey, memberKey(member(p))),
+            ),
+          );
+      });
+    },
     /** The newest message of each channel the person has joined. */
     latest(p: Principal, teamId: TeamId) {
       return atomic(async () => {
@@ -653,13 +669,15 @@ export function communicationRepository(
           .limit(1)
           .as('newest');
         // Someone else wrote after the person's read position.
+        // A channel muted, or a message from an agent muted, never is.
         const unread =
           p.kind === 'human'
-            ? sql<boolean>`EXISTS (SELECT 1 FROM ${s.messages} WHERE ${and(
+            ? sql<boolean>`(NOT ${s.channelParticipants.muted} AND EXISTS (SELECT 1 FROM ${s.messages} WHERE ${and(
                 eq(s.messages.channelId, s.channels.id),
                 sql`${s.messages.position} > COALESCE(${s.channelParticipants.readPosition}, 0)`,
                 notMine(p.humanId),
-              )})`
+                sql`NOT EXISTS (SELECT 1 FROM ${s.agentMutes} WHERE ${s.agentMutes.humanId} = ${p.humanId} AND ${s.agentMutes.agentId} = (${s.messages.author}::jsonb ->> 'agentId'))`,
+              )}))`
             : sql<boolean>`false`;
         const rows = await q()
           .select({

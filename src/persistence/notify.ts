@@ -9,11 +9,19 @@ import {
   NotifyLevel,
   PushSubscriptionInput,
   notifies,
+  waitsOnYou,
   type NotificationKind,
 } from '../domain/notify.js';
 import { actingMember } from '../domain/tasks.js';
+import { DomainError } from '../domain/errors.js';
 import * as s from './schema.js';
-import { dbNow, digest, type Database, type Query } from './database.js';
+import {
+  dbNow,
+  digest,
+  together,
+  type Database,
+  type Query,
+} from './database.js';
 
 /** The person whose act started a causal chain, if a person's did. */
 async function rootPerson(db: Query, eventId: string | null) {
@@ -39,6 +47,7 @@ async function joinedPeople(db: Query, teamId: string, channelId: string) {
     .select({
       humanId: s.channelParticipants.humanId,
       notify: s.memberships.notify,
+      muted: s.channelParticipants.muted,
     })
     .from(s.channelParticipants)
     .innerJoin(
@@ -101,15 +110,36 @@ export async function notifyFact(db: Query, input: unknown) {
     (p) =>
       p.humanId === null || p.humanId === author
         ? []
-        : [{ humanId: p.humanId, level: NotifyLevel.parse(p.notify) }],
+        : [
+            {
+              humanId: p.humanId,
+              level: NotifyLevel.parse(p.notify),
+              muted: p.muted,
+            },
+          ],
   );
   if (people.length === 0) return;
+  // Who muted the agent that wrote this.
+  const mutedBy = new Set(
+    fact.author.kind === 'agent'
+      ? (
+          await db
+            .select({ humanId: s.agentMutes.humanId })
+            .from(s.agentMutes)
+            .where(eq(s.agentMutes.agentId, fact.author.agentId))
+        ).map((m) => m.humanId)
+      : [],
+  );
+  const heard = (p: (typeof people)[number], kind: NotificationKind): boolean =>
+    notifies(p.level, kind) &&
+    (waitsOnYou(kind) || (!p.muted && !mutedBy.has(p.humanId)));
   if (fact.kind === 'message.posted') {
     const asker =
       fact.author.kind === 'agent'
         ? await rootPerson(db, fact.sourceEventId)
         : null;
-    for (const { humanId, level } of people) {
+    for (const person of people) {
+      const { humanId } = person;
       const kind: NotificationKind = fact.mentions.some(
         (m) => m.kind === 'human' && m.id === humanId,
       )
@@ -117,7 +147,7 @@ export async function notifyFact(db: Query, input: unknown) {
         : humanId === asker
           ? 'reply'
           : 'message';
-      if (!notifies(level, kind)) continue;
+      if (!heard(person, kind)) continue;
       await record(db, {
         humanId,
         teamId: fact.teamId,
@@ -147,14 +177,15 @@ export async function notifyFact(db: Query, input: unknown) {
     'review',
     'rework',
   ].includes(fact.taskAction);
-  for (const { humanId, level } of people) {
+  for (const person of people) {
+    const { humanId } = person;
     const kind: NotificationKind | null =
       fact.taskStatus === 'awaiting-human' && task?.acceptor === humanId
         ? 'decide'
         : handed && acting?.kind === 'human' && acting.id === humanId
           ? 'task'
           : null;
-    if (kind === null || !notifies(level, kind)) continue;
+    if (kind === null || !heard(person, kind)) continue;
     await record(db, {
       humanId,
       teamId: fact.teamId,
@@ -224,6 +255,96 @@ export function notificationRepository(d: Database) {
           .limit(1)
       )[0];
       return NotifyLevel.parse(row?.notify ?? 'mine');
+    },
+    /** What a person muted, and until when they paused notifications. */
+    async quiet(humanId: HumanId, teamId: string) {
+      const [channels, mutedAgents, member] = await together([
+        q()
+          .select({ id: s.channelParticipants.channelId })
+          .from(s.channelParticipants)
+          .where(
+            and(
+              eq(s.channelParticipants.teamId, teamId),
+              eq(s.channelParticipants.memberKey, 'human:' + humanId),
+              eq(s.channelParticipants.state, 'joined'),
+              eq(s.channelParticipants.muted, true),
+            ),
+          ),
+        q()
+          .select({ id: s.agentMutes.agentId })
+          .from(s.agentMutes)
+          .where(
+            and(
+              eq(s.agentMutes.humanId, humanId),
+              eq(s.agentMutes.teamId, teamId),
+            ),
+          ),
+        q()
+          .select({
+            pausedUntil: s.memberships.pausedUntil,
+            now: dbNow,
+          })
+          .from(s.memberships)
+          .where(
+            and(
+              eq(s.memberships.humanId, humanId),
+              eq(s.memberships.teamId, teamId),
+            ),
+          )
+          .limit(1),
+      ]);
+      const until = member[0]?.pausedUntil ?? null;
+      return {
+        channels: channels.map((c) => c.id).sort(),
+        agents: mutedAgents.map((a) => a.id).sort(),
+        pausedUntil:
+          until !== null && until > Number(member[0]?.now)
+            ? new Date(until).toISOString()
+            : null,
+      };
+    },
+    muteAgent(
+      humanId: HumanId,
+      teamId: string,
+      agentId: string,
+      muted: boolean,
+    ) {
+      return atomic(async () => {
+        const [agent] = await q()
+          .select({ id: s.agents.id })
+          .from(s.agents)
+          .where(and(eq(s.agents.id, agentId), eq(s.agents.teamId, teamId)))
+          .limit(1);
+        if (agent === undefined) throw new DomainError('not-found');
+        if (muted)
+          await q()
+            .insert(s.agentMutes)
+            .values({ humanId, teamId, agentId })
+            .onConflictDoNothing();
+        else
+          await q()
+            .delete(s.agentMutes)
+            .where(
+              and(
+                eq(s.agentMutes.humanId, humanId),
+                eq(s.agentMutes.agentId, agentId),
+              ),
+            );
+      });
+    },
+    /** Nothing notifies the person until `until` (null: from now on again). */
+    pause(humanId: HumanId, teamId: string, until: number | null) {
+      return atomic(async () => {
+        await q()
+          .update(s.memberships)
+          .set({ pausedUntil: until })
+          .where(
+            and(
+              eq(s.memberships.humanId, humanId),
+              eq(s.memberships.teamId, teamId),
+            ),
+          );
+      });
     },
     /**
      * This browser now notifies this person, held by the session it was
@@ -356,6 +477,18 @@ export function notificationRepository(d: Database) {
      * or delivery moved on.
      */
     async describe(n: typeof s.notifications.$inferSelect) {
+      // Paused, nothing is sent: it is dropped, not kept for later.
+      const [paused] = await q()
+        .select({ id: s.memberships.humanId })
+        .from(s.memberships)
+        .where(
+          and(
+            eq(s.memberships.humanId, n.humanId),
+            gt(s.memberships.pausedUntil, dbNow),
+          ),
+        )
+        .limit(1);
+      if (paused !== undefined) return null;
       const [place] = await q()
         .select({
           channelName: s.channels.name,

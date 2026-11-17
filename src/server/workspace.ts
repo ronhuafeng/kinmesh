@@ -251,6 +251,7 @@ export function registerWorkspace(
       bindings,
       teamMcp,
       avatars,
+      quiet,
       topics,
       activeTopics,
     ] = await together([
@@ -297,6 +298,7 @@ export function registerWorkspace(
       store.managed.teamBindings(principal, teamId),
       store.managed.teamMcpPresence(principal, teamId),
       store.agents.avatars(principal, teamId),
+      store.notifications.quiet(principal.humanId, teamId),
       channel
         ? store.communication.topics(principal, teamId, channel.id, {
             ...(query.topicsCursor ? { cursor: query.topicsCursor } : {}),
@@ -396,6 +398,8 @@ export function registerWorkspace(
         nativeT3Origin: t3Origin,
         human,
         notify,
+        muted: { channels: quiet.channels, agents: quiet.agents },
+        pausedUntil: quiet.pausedUntil,
         team: membership.team,
         people,
         joinedHumanIds,

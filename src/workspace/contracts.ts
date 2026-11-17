@@ -65,6 +65,12 @@ export const WorkspaceSnapshot = z.strictObject({
   human: Person,
   /** What notifies you, on every browser you turned notifications on in. */
   notify: NotifyLevel,
+  /** Channels and agents you muted, and until when you paused notifications. */
+  muted: z.strictObject({
+    channels: z.array(ChannelId).max(100),
+    agents: z.array(AgentId).max(100),
+  }),
+  pausedUntil: z.iso.datetime().nullable(),
   team: Team,
   /**
    * Everyone of the team, you included, and who is online now. A picture is
