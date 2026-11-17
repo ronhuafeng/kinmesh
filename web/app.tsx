@@ -1538,6 +1538,19 @@ export function App() {
                           selectChannel(id);
                           setView('chat');
                         }}
+                        openMessage={(id, messageId) => {
+                          setFocus(null);
+                          if (id !== channel?.id) selectChannel(id);
+                          setView('chat');
+                          // Once the channel's conversation is on screen.
+                          let tries = 0;
+                          const find = () => {
+                            if (document.getElementById('message-' + messageId))
+                              showMessage(messageId);
+                            else if ((tries += 1) < 20) setTimeout(find, 100);
+                          };
+                          setTimeout(find, 0);
+                        }}
                         openAgent={openAgent}
                       />
                     )}

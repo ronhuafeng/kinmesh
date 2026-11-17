@@ -9,6 +9,7 @@ import {
   sniff,
 } from '../domain/attachments.js';
 import { ChannelId, TeamId } from '../domain/contracts.js';
+import type { FileRemover } from '../inbox/space.js';
 import { OperationKey } from '../domain/communication.js';
 import { DomainError } from '../domain/errors.js';
 import type { Store } from '../persistence/store.js';
@@ -84,6 +85,31 @@ export function registerAttachments(
     );
     done();
   });
+  // A person joined to the channel removes a file from its message.
+  app.post(base + '/:attachmentId/remove', async (request) => {
+    const { teamId, channelId, attachmentId } = FilePath.parse(request.params);
+    const { sha256, ...removal } = await store.communication.removeAttachment(
+      principal(request),
+      teamId,
+      channelId,
+      attachmentId,
+      z.strictObject({ operationKey: OperationKey }).parse(request.body),
+    );
+    await store.communication.release(sha256, () => bytes.remove(sha256));
+    return removal;
+  });
+  // The files of every channel the person is in, newest first.
+  app.get('/api/teams/:teamId/files', async (request) => {
+    const { teamId } = z.object({ teamId: TeamId }).parse(request.params);
+    const { before } = z
+      .strictObject({ before: z.coerce.number().int().positive().optional() })
+      .parse(request.query);
+    return store.communication.files(
+      principal(request),
+      teamId,
+      before ?? null,
+    );
+  });
   app.get(base + '/:attachmentId', async (request, reply) => {
     const { teamId, channelId, attachmentId } = FilePath.parse(request.params);
     const { attachment, sha256 } = await store.communication.attachment(
@@ -139,4 +165,40 @@ export function sweepAttachments(
   return () => {
     clearInterval(timer);
   };
+}
+/**
+ * Removed files' copies leave their channels' folders: asked of the
+ * provisioner every minute until it has removed each.
+ */
+export function unplaceAttachments(
+  store: Store,
+  remove: FileRemover,
+  failed: (error: unknown) => void,
+) {
+  const stopping = new AbortController();
+  const round = async () => {
+    try {
+      await unplaceOnce(store, remove, stopping.signal);
+    } catch (error) {
+      if (!stopping.signal.aborted) failed(error);
+    }
+  };
+  void round();
+  const timer = setInterval(() => void round(), 60_000);
+  timer.unref();
+  return () => {
+    clearInterval(timer);
+    stopping.abort();
+  };
+}
+/** One round: each queued copy, removed and then forgotten. */
+export async function unplaceOnce(
+  store: Store,
+  remove: FileRemover,
+  signal: AbortSignal,
+) {
+  for (const row of await store.communication.unplacings()) {
+    await remove(row.directory, row.attachmentId, signal);
+    await store.communication.unplaced(row.attachmentId);
+  }
 }

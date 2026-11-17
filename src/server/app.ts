@@ -4,7 +4,12 @@ import { watchChanges } from './changes.js';
 import { registerWeb } from './web.js';
 import { registerTasks } from './tasks.js';
 import { registerCommunication } from './communication.js';
-import { registerAttachments, sweepAttachments } from './attachments.js';
+import {
+  registerAttachments,
+  sweepAttachments,
+  unplaceAttachments,
+} from './attachments.js';
+import { spaceRemover } from '../inbox/space.js';
 import { directoryBytes } from '../persistence/attachment-bytes.js';
 import { registerNotifications } from './notify.js';
 import { registerMe } from './me.js';
@@ -312,8 +317,15 @@ export async function createApp(
   const stopSweeping = sweepAttachments(store, attachmentBytes, (error) => {
     app.log.error(describeFailure(error), 'attachment_sweep_failed');
   });
+  const stopUnplacing =
+    config.space === null
+      ? () => undefined
+      : unplaceAttachments(store, spaceRemover(config.space), (error) => {
+          app.log.error(describeFailure(error), 'attachment_unplace_failed');
+        });
   app.addHook('onClose', () => {
     stopSweeping();
+    stopUnplacing();
     return Promise.resolve();
   });
   registerTasks(app, store);

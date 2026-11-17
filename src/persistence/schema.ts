@@ -467,6 +467,41 @@ export const attachments = pgTable(
     check('attachment_size', sql`${t.size} >= 0`),
   ],
 );
+/**
+ * The audit of a removed attachment: who removed which file of which
+ * message, and when; never its name or content. The message shows it.
+ */
+export const attachmentRemovals = pgTable(
+  'attachment_removals',
+  {
+    attachmentId: text('attachment_id').primaryKey(),
+    teamId: text('team_id')
+      .notNull()
+      .references(() => teams.id),
+    channelId: text('channel_id').notNull(),
+    messageId: text('message_id').notNull(),
+    removedBy: text('removed_by')
+      .notNull()
+      .references(() => humans.id),
+    removedAt: millis('removed_at').notNull(),
+  },
+  (t) => [
+    foreignKey({
+      columns: [t.messageId, t.channelId],
+      foreignColumns: [messages.id, messages.channelId],
+    }),
+    index('attachment_removal_message').on(t.messageId),
+  ],
+);
+/**
+ * A removed file's copy still in a channel's folder: the hub asks the
+ * provisioner to remove it until it has.
+ */
+export const attachmentUnplacings = pgTable('attachment_unplacings', {
+  attachmentId: text('attachment_id').primaryKey(),
+  directory: text('directory').notNull(),
+  createdAt: millis('created_at').notNull(),
+});
 export const messageMentions = pgTable(
   'message_mentions',
   {
