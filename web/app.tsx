@@ -11,7 +11,7 @@ import { flushSync } from 'react-dom';
 import * as Tabs from '@radix-ui/react-tabs';
 import { ChannelId, TaskId } from '../src/domain/contracts.js';
 import { PageRef, Revisions, pageParam } from '../src/workspace/events.js';
-import { LiveContext, useRevisions } from './live.js';
+import { LiveContext, takeStream, useRevisions } from './live.js';
 import { Agent } from '../src/domain/agents.js';
 import { TopicId } from '../src/domain/communication.js';
 import { WorkspaceSnapshot } from '../src/workspace/contracts.js';
@@ -116,6 +116,8 @@ function useThumb() {
     };
   }, []);
 }
+/** How long a stream may stay silent before the place is read without it. */
+const SILENT_STREAM_MS = 3000;
 function animate(update: () => void) {
   if (
     typeof document.startViewTransition !== 'function' ||
@@ -357,47 +359,75 @@ export function App() {
     return query.toString();
   }, [cursors, selection.channel, selection.topic, openTaskId]);
   const paged = Object.keys(cursors).length > 0;
+  // The place the snapshot on screen was read for.
+  const shownPlace = useRef<string | null>(null);
+  // How many snapshots the stream has brought: a read answered after a
+  // newer one arrived on it says nothing new.
+  const streamedCount = useRef(0);
+  /** A snapshot of a place, read or from the stream, put on screen. */
+  const show = useCallback(
+    (next: WorkspaceSnapshot, readPlace: string, readChannel: string) => {
+      // Held at once, so the revisions naming it read nothing again.
+      settle('workspace', next.revision);
+      const apply = () => {
+        // The same revision of the same place shows the same: nothing to draw.
+        if (
+          shownPlace.current !== readPlace ||
+          shown.current?.revision !== next.revision
+        ) {
+          shown.current = next;
+          shownPlace.current = readPlace;
+          setData(next);
+        }
+        setStatus('ready');
+        setLoadedFor(readChannel);
+        setLoadedPlace(readPlace);
+        setLastOk(true);
+        setUnreachable(false);
+        if (refused.current) {
+          refused.current = false;
+          setStreamTry((n) => n + 1);
+        }
+        // A task that isn't here closes to the board.
+        setFocus((old) =>
+          old?.kind === 'task' &&
+          next.openTask?.id !== old.id &&
+          !next.tasks.items.some((task) => task.id === old.id)
+            ? null
+            : old,
+        );
+      };
+      // Cards on screen travel to their new column; other refreshes stay
+      // instant.
+      if (
+        document.querySelector('.board') &&
+        statusesMoved(shown.current, next)
+      )
+        animate(apply);
+      else apply();
+    },
+    [settle],
+  );
+  // The first place comes on the stream (`boot.ts` opened it as the page
+  // started); a new place, and every refresh, is read at once.
+  const streamed = useRef(true);
   useEffect(() => {
-    const controller = new AbortController();
     setStatus((previous) => (previous === 'signedout' ? previous : 'loading'));
     begin('workspace');
+    if (streamed.current) {
+      streamed.current = false;
+      return;
+    }
+    const controller = new AbortController();
+    const before = streamedCount.current;
     void api('/api/workspace?' + place, {
       signal: controller.signal,
     })
       .then((raw) => {
         // An answer for a place already left says nothing about this one.
-        if (controller.signal.aborted) return;
-        const next = WorkspaceSnapshot.parse(raw);
-        const apply = () => {
-          settle('workspace', next.revision);
-          shown.current = next;
-          setData(next);
-          setStatus('ready');
-          setLoadedFor(selection.channel);
-          setLoadedPlace(place);
-          setLastOk(true);
-          setUnreachable(false);
-          if (refused.current) {
-            refused.current = false;
-            setStreamTry((n) => n + 1);
-          }
-          // A task that isn't here closes to the board.
-          setFocus((old) =>
-            old?.kind === 'task' &&
-            next.openTask?.id !== old.id &&
-            !next.tasks.items.some((task) => task.id === old.id)
-              ? null
-              : old,
-          );
-        };
-        // Cards on screen travel to their new column; other refreshes stay
-        // instant.
-        if (
-          document.querySelector('.board') &&
-          statusesMoved(shown.current, next)
-        )
-          animate(apply);
-        else apply();
+        if (controller.signal.aborted || streamedCount.current !== before)
+          return;
+        show(WorkspaceSnapshot.parse(raw), place, selection.channel);
       })
       .catch((cause: unknown) => {
         if (controller.signal.aborted) return;
@@ -433,7 +463,7 @@ export function App() {
     revision,
     toSignedOut,
     begin,
-    settle,
+    show,
     drop,
   ]);
   // The address follows the place. Going somewhere new adds a history
@@ -501,31 +531,43 @@ export function App() {
     );
     return page.success ? pageParam(page.data) : null;
   }, [focus, view, agentId]);
-  const live = status !== 'signedout' && loadedPlace === place;
+  const signedOut = status === 'signedout';
   useEffect(() => {
-    if (!live) return;
+    if (signedOut) return;
     const query = new URLSearchParams(place);
     if (pageOnScreen) query.set('page', pageOnScreen);
-    const events = new EventSource('/api/events?' + query.toString());
-    let lost = false;
-    events.addEventListener('revisions', (event) => {
+    const { events, early, failed } = takeStream(query.toString());
+    // A stream that opens but brings nothing, as behind a proxy that holds
+    // it, still lets the place be read.
+    const silent = setTimeout(refresh, SILENT_STREAM_MS);
+    // The workspace arrives on the stream, first as it is, then as it changes.
+    const onWorkspace = (event: Event) => {
+      if (!(event instanceof MessageEvent) || typeof event.data !== 'string')
+        return;
+      const next = WorkspaceSnapshot.parse(JSON.parse(event.data) as unknown);
+      streamedCount.current++;
+      clearTimeout(silent);
+      show(next, place, selection.channel);
+    };
+    const onRevisions = (event: Event) => {
       if (event instanceof MessageEvent && typeof event.data === 'string')
         receive(Revisions.parse(JSON.parse(event.data) as unknown));
-    });
-    // The browser retries a lost stream. Reading the view now shows whether
-    // the hub is out of reach or the session has ended; it is read again
-    // once the stream is back.
-    events.onerror = () => {
-      lost = true;
+    };
+    events.addEventListener('workspace', onWorkspace);
+    events.addEventListener('revisions', onRevisions);
+    for (const event of early)
+      if (event.type === 'workspace') onWorkspace(event);
+      else onRevisions(event);
+    // The browser retries a lost stream, whose first event is the workspace
+    // again. Reading the view now shows whether the hub is out of reach or
+    // the session has ended.
+    const lost = () => {
       // The browser retries a dropped stream but not a refused one.
       if (events.readyState === EventSource.CLOSED) refused.current = true;
       refresh();
     };
-    events.onopen = () => {
-      if (!lost) return;
-      lost = false;
-      refresh();
-    };
+    events.onerror = lost;
+    if (failed) lost();
     // A network that comes back may not have broken the stream at all; what
     // came from outside the hub, such as T3's models, is read again too.
     const back = () => {
@@ -534,10 +576,21 @@ export function App() {
     };
     window.addEventListener('online', back);
     return () => {
+      clearTimeout(silent);
       events.close();
       window.removeEventListener('online', back);
     };
-  }, [live, place, pageOnScreen, refresh, readAll, receive, streamTry]);
+  }, [
+    signedOut,
+    place,
+    pageOnScreen,
+    selection.channel,
+    show,
+    refresh,
+    readAll,
+    receive,
+    streamTry,
+  ]);
   // While the hub cannot be reached, nothing can say it is back: ask again.
   useEffect(() => {
     if (status !== 'offline') return;

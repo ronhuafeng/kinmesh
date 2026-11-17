@@ -298,6 +298,8 @@ export async function createApp(
     store,
     runCredential,
     renewal,
+    changes,
+    metrics.workspaceRead,
   );
   const { openStreams } = registerEvents(app, store, changes, {
     snapshot,

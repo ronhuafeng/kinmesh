@@ -70,16 +70,17 @@ A person who used Kinmesh before Feishu sign-in keeps their identity by being li
 
 The two health endpoints answer `status`, `component` and `version`: the commit the hub was built from (`KINMESH_VERSION`, which the published image sets), or `null` for an image built elsewhere; nothing else, and no sign-in.
 
-| Series                                  | Labels                      | Meaning                                       |
-| --------------------------------------- | --------------------------- | --------------------------------------------- |
-| `kinmesh_http_requests_total`           | `route`, `method`, `status` | Requests; `route` is the pattern, never an ID |
-| `kinmesh_http_request_duration_seconds` | `route`, `method`           | Latency histogram                             |
-| `kinmesh_rate_limited_total`            | `route`                     | Requests refused for a rate limit             |
-| `kinmesh_deliveries`                    | `state`                     | Inbox deliveries by state                     |
-| `kinmesh_inbox_worker_up`               |                             | 1 while the supervised worker is connected    |
-| `kinmesh_agents_awake`                  |                             | Agents a worker can wake now                  |
-| `kinmesh_event_streams`                 |                             | Open event streams                            |
-| `kinmesh_process_*`                     |                             | Node.js process: CPU, memory, event loop, GC  |
+| Series                                  | Labels                      | Meaning                                                              |
+| --------------------------------------- | --------------------------- | -------------------------------------------------------------------- |
+| `kinmesh_http_requests_total`           | `route`, `method`, `status` | Requests; `route` is the pattern, never an ID                        |
+| `kinmesh_http_request_duration_seconds` | `route`, `method`           | Latency histogram                                                    |
+| `kinmesh_rate_limited_total`            | `route`                     | Requests refused for a rate limit                                    |
+| `kinmesh_deliveries`                    | `state`                     | Inbox deliveries by state                                            |
+| `kinmesh_inbox_worker_up`               |                             | 1 while the supervised worker is connected                           |
+| `kinmesh_agents_awake`                  |                             | Agents a worker can wake now                                         |
+| `kinmesh_event_streams`                 |                             | Open event streams                                                   |
+| `kinmesh_workspace_reads_total`         |                             | Workspace snapshots read; the views and reads of one place share one |
+| `kinmesh_process_*`                     |                             | Node.js process: CPU, memory, event loop, GC                         |
 
 No label carries anything a person wrote, a mailbox, a name or an ID.
 

@@ -85,6 +85,7 @@ await test('/metrics reports the hub in Prometheus text, and nothing about anyon
       'kinmesh_inbox_worker_up 1',
       'kinmesh_agents_awake',
       'kinmesh_event_streams 0',
+      'kinmesh_workspace_reads_total',
       'kinmesh_rate_limited_total{route="/health/live"}',
     ])
       assert.ok(metrics.body.includes(series), series);

@@ -28,11 +28,19 @@ const KEEPALIVE_MS = 25_000;
 const RETRY_MS = 2000;
 /** A resource the viewer can no longer read; reading it again shows why. */
 const UNREADABLE = fingerprint('unreadable');
+/** A snapshot as it travels: written out once, however many streams carry it. */
+const written = new WeakMap<object, string>();
+const writeOut = (snapshot: object) => {
+  const text = written.get(snapshot) ?? JSON.stringify(snapshot);
+  written.set(snapshot, text);
+  return text;
+};
 
 /**
- * `GET /api/events`: one Server-Sent Events stream per open view, whose only
- * event is `revisions` (see `src/workspace/events.ts`). No data travels on
- * the stream; the view reads what changed through its usual route.
+ * `GET /api/events`: one Server-Sent Events stream per open view (see
+ * `src/workspace/events.ts`). `revisions` names what changed; the workspace
+ * itself travels just before, as a `workspace` event, and the view reads the
+ * rest through their routes.
  */
 export function registerEvents(
   app: FastifyInstance,
@@ -70,35 +78,43 @@ export function registerEvents(
     const mine = [...open.values()].filter((h) => h === principal.humanId);
     if (open.size >= TOTAL || mine.length >= PER_HUMAN)
       return reply.code(429).send({ error: 'Too many requests' });
+    /** What a read shows, or null once the viewer can no longer read it. */
     const readable = async (read: () => Promise<Revisioned>) => {
       try {
-        return (await read()).revision;
+        return await read();
       } catch (error) {
-        if (error instanceof DomainError) return UNREADABLE;
+        if (error instanceof DomainError) return null;
         throw error;
       }
     };
-    /** The current revision of every watched resource. */
+    const revision = (read: Revisioned | null) => read?.revision ?? UNREADABLE;
+    /**
+     * Every watched resource as it is now: its revision, and the workspace
+     * itself while it can be read.
+     */
     const look = async () => {
       const now: Partial<Record<Resource, string>> = {};
+      let workspace: Revisioned | null = null;
       for (const resource of resources) {
-        if (resource === 'workspace')
-          now.workspace = await readable(() =>
-            reads.snapshot(principal, place),
-          );
+        if (resource === 'workspace') {
+          workspace = await readable(() => reads.snapshot(principal, place));
+          now.workspace = revision(workspace);
+        }
         if (resource === 't3')
-          now.t3 = await readable(() => reads.t3Status(principal, teamId));
+          now.t3 = revision(
+            await readable(() => reads.t3Status(principal, teamId)),
+          );
         // Both pages are about one agent: `page.id`.
         if (resource === 'runs' && page)
-          now.runs = await readable(() =>
-            reads.runs(principal, teamId, page.id),
+          now.runs = revision(
+            await readable(() => reads.runs(principal, teamId, page.id)),
           );
         if (resource === 'grants' && page)
-          now.grants = await readable(() =>
-            reads.grants(principal, teamId, page.id),
+          now.grants = revision(
+            await readable(() => reads.grants(principal, teamId, page.id)),
           );
       }
-      return now;
+      return { now, workspace };
     };
 
     // The stream answers at once; what it watches is read after, so a slow
@@ -119,9 +135,9 @@ export function registerEvents(
       response.write(
         `event: revisions\ndata: ${JSON.stringify(Revisions.parse(revisions))}\n\n`,
       );
-    // Nothing is held yet, so the first check names everything watched, and
-    // a view that read before the stream opened learns at once what it is
-    // behind on.
+    // Nothing is held yet, so the first check carries the workspace and
+    // names everything else watched: a view that read before the stream
+    // opened learns at once what it is behind on.
     let held: Partial<Record<Resource, string>> = {};
 
     let pending = false;
@@ -131,7 +147,7 @@ export function registerEvents(
       try {
         // A changed password or lost membership ends the stream at once.
         await resolvePrincipal(store, undefined, session);
-        const now = await look();
+        const { now, workspace } = await look();
         const changed: Partial<Record<Resource, string>> = {};
         for (const resource of resources) {
           const revision = now[resource];
@@ -139,6 +155,11 @@ export function registerEvents(
             changed[resource] = revision;
         }
         held = now;
+        // A workspace that can be read travels, just before the revisions
+        // that name it; one that can't is only named, and reading it shows
+        // why.
+        if (changed.workspace !== undefined && workspace)
+          response.write(`event: workspace\ndata: ${writeOut(workspace)}\n\n`);
         if (Object.keys(changed).length > 0) send(changed);
       } catch {
         end();

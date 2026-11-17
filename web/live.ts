@@ -94,3 +94,27 @@ export function useRevisions(readWorkspace: () => void) {
   );
   return { live, receive, readAll };
 }
+
+/**
+ * The event stream for a view's query: the one `boot.ts` opened as the page
+ * started when it watches the same, else a new one. `early` holds what the
+ * opened one received before it was taken, in order; `failed`, whether it
+ * failed meanwhile.
+ */
+export function takeStream(query: string) {
+  const opened = window.kinmeshStream;
+  delete window.kinmeshStream;
+  opened?.release();
+  if (opened?.query === query)
+    return {
+      events: opened.source,
+      early: opened.early,
+      failed: opened.failed,
+    };
+  opened?.source.close();
+  return {
+    events: new EventSource('/api/events?' + query),
+    early: [],
+    failed: false,
+  };
+}
