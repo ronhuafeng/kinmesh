@@ -3424,6 +3424,21 @@ button.roster-person:hover:not(:disabled) {
   padding: 0.75rem;
   border-radius: var(--radius-lg);
   background: var(--canvas);
+  position: relative;
+}
+/* Under each column, centred in the view's bottom gutter, a bar of its
+ * dot's colour: together they run along the board's foot as the
+ * lifecycle, the same bar a task page heads with. */
+.board-column::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: calc(-0.5 * var(--gutter) - 2px);
+  height: 4px;
+  border-radius: 999px;
+  /* Softer than the dot: it underlines, it doesn't call. */
+  background: color-mix(in srgb, var(--tone) 40%, transparent);
 }
 /* Awaiting your sign-off stands out, while it holds a card: an orange edge
  * and a warm tint. */

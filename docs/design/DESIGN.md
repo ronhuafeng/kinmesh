@@ -309,7 +309,7 @@ fallback.
   stays in 进行中 (marked "已退回"); cancelled work goes to 已完成 (marked "已取消",
   hidden until asked for). Columns are rounded panels of the grey canvas sharing the width (the
   board never scrolls sideways), one equal height down to the view's bottom gutter, each headed by a coloured dot and its name
-  (the dot on the cards' text edge), no counts; 待验收 stands out with an orange edge
+  (the dot on the cards' text edge) with a bar of that colour under it in the bottom gutter (together, the lifecycle along the board's foot), no counts; 待验收 stands out with an orange edge
   and a warm tint while it holds a card. A card's column is its status. A card is white and rounded: its
   title, then one line — what it asks of you — beside its owner/reviewer faces; a
   decision or rework is marked by an orange or red rule on its left. A new task
