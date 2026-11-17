@@ -67,6 +67,15 @@ const Environment = z.object({
   KINMESH_SPACE_TOKEN_FILE: z.string().min(1).optional(),
   /** Lets a scraper elsewhere read /metrics; this machine needs none. */
   KINMESH_METRICS_TOKEN: z.string().min(32).optional(),
+  /**
+   * The commit the hub was built from, which the image sets; empty or unset
+   * when built elsewhere.
+   */
+  KINMESH_VERSION: z
+    .string()
+    .regex(/^(?:[0-9a-f]{40})?$/)
+    .optional()
+    .transform((value) => (value === '' ? undefined : value)),
   /** A stand-in for Feishu's hosts, for tests only. */
   KINMESH_FEISHU_URL: z.url().optional(),
   /**
@@ -126,6 +135,8 @@ export function loadConfig(env: NodeJS.ProcessEnv) {
     rateLimit: value.KINMESH_RATE_LIMIT,
     trustedProxies: value.KINMESH_TRUSTED_PROXIES,
     metricsToken: value.KINMESH_METRICS_TOKEN ?? null,
+    /** The commit the hub was built from, if known. */
+    version: value.KINMESH_VERSION ?? null,
     /** The T3 the deployment connects, if it does. */
     t3:
       value.KINMESH_T3_ENDPOINT && value.KINMESH_T3_CREDENTIAL_FILE

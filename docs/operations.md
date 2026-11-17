@@ -68,6 +68,8 @@ A person who used Kinmesh before Feishu sign-in keeps their identity by being li
 | `GET /health`      | Ready: 200 when the database answers (it opens only fully migrated) and, while the hub supervises a worker, that worker's loop is running; otherwise 503. Never T3, OAuth, Team MCP or provider health |
 | `GET /metrics`     | Prometheus text, for this machine or a bearer holding `KINMESH_METRICS_TOKEN` (see [security](security.md)); 403 otherwise                                                                             |
 
+The two health endpoints answer `status`, `component` and `version`: the commit the hub was built from (`KINMESH_VERSION`, which the published image sets), or `null` for an image built elsewhere; nothing else, and no sign-in.
+
 | Series                                  | Labels                      | Meaning                                       |
 | --------------------------------------- | --------------------------- | --------------------------------------------- |
 | `kinmesh_http_requests_total`           | `route`, `method`, `status` | Requests; `route` is the pattern, never an ID |
@@ -328,7 +330,7 @@ Dependabot (`.github/dependabot.yml`) proposes updates weekly: npm minor and pat
 
 ### Deploying a commit
 
-Merging to `main` deploys. Once `Publish image` has tagged `ghcr.io/ronhuafeng/kinmesh:<commit>`, its `deploy` job commits to `main` of `weavertech-group/infra` the hub image's `newTag` in `apps/kinmesh/kustomization.yaml`, set to the commit, and nothing else; Flux then applies it and waits for the pods to be ready, and the team's Feishu group hears of a failure. Only the newest commit on `main` is deployed, so a run that finishes late changes nothing; when the tag already names the commit, the job changes nothing. The hub applies its migrations as it starts, and they only go forward.
+Merging to `main` deploys. Once `Publish image` has tagged `ghcr.io/ronhuafeng/kinmesh:<commit>`, its `deploy` job commits to `main` of `weavertech-group/infra` the hub image's `newTag` in `apps/kinmesh/kustomization.yaml`, set to the commit, and nothing else; Flux then applies it and waits for the pods to be ready, and the team's Feishu group hears of a failure, and also when `/health` still names another `version` 15 minutes after the tag changed (the infra repository's probe). Only the newest commit on `main` is deployed, so a run that finishes late changes nothing; when the tag already names the commit, the job changes nothing. The hub applies its migrations as it starts, and they only go forward.
 
 To roll back, set that `newTag` in infra to an earlier commit; the database keeps the newer migrations. To pause deploying, remove the secret below: the job is then skipped, and the tag in infra is set by hand.
 
