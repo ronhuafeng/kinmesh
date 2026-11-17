@@ -1,12 +1,13 @@
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { PROTOCOL_VERSION } from '@ag-ui/core';
-import { AgentId, TeamId } from '../domain/contracts.js';
+import { AgentId, TeamId, type ChannelId } from '../domain/contracts.js';
 import type { Principal } from '../domain/agents.js';
 import { DomainError } from '../domain/errors.js';
 import { INBOX_LIVENESS_MS } from '../domain/inbox.js';
 import type { Reference } from '../domain/execution.js';
 import type { Store } from '../persistence/store.js';
+import { together } from '../persistence/database.js';
 import { fingerprint } from '../persistence/transactional.js';
 import type { Credential } from '../adapters/t3/oauth.js';
 import { readNativeExecution } from '../workspace/native.js';
@@ -139,66 +140,124 @@ export function registerWorkspace(
       }
     },
   );
-  /** What one person's workspace shows for one place. */
-  const snapshot = async (principal: Person, query: WorkspaceQuery) => {
-    const human = await store.human(principal.humanId);
-    const membership = await store.teamFor(principal.humanId);
+  /**
+   * What one person's workspace shows for one place: one consistent read
+   * (`store.read`), in which each access check is asked once and reads that
+   * don't depend on each other go together.
+   */
+  const snapshot = (principal: Person, query: WorkspaceQuery) =>
+    store.read(() => build(principal, query));
+  const build = async (principal: Person, query: WorkspaceQuery) => {
+    const [human, membership] = await together([
+      store.human(principal.humanId),
+      store.teamFor(principal.humanId),
+    ]);
     if (!human || !membership) throw new DomainError('forbidden');
     const teamId = membership.team.id;
-    const channels = await store.communication.channels(principal, teamId, {
-      limit: 100,
-      ...(query.channelsCursor ? { cursor: query.channelsCursor } : {}),
-    });
+    const open = (id: z.infer<typeof ChannelId>) =>
+      store.communication.channel(principal, teamId, id);
+    const [channels, named] = await together([
+      store.communication.channels(principal, teamId, {
+        limit: 100,
+        ...(query.channelsCursor ? { cursor: query.channelsCursor } : {}),
+      }),
+      query.channelId ? open(query.channelId) : null,
+    ]);
     const id = query.channelId ?? channels.items[0]?.id;
-    const channel = id
-      ? await store.communication.channel(principal, teamId, id)
-      : null;
-    const profiles = await store.agents.workspaceProfiles(principal, teamId);
-    const agents = profiles.agents;
-    // In the order the profiles are listed, as before: one read for all.
-    const joined = new Set(
-      channel
-        ? await store.communication.joinedAgents(principal, teamId, channel.id)
-        : [],
-    );
-    const joinedAgentIds = agents
-      .filter((agent) => joined.has(agent.id))
-      .map((agent) => agent.id);
+    const channel = named ?? (id ? await open(id) : null);
     const now = Date.now();
-    const known = new Set(agents.map((agent) => agent.id));
-    const wake = (await store.inboxViews.liveness(principal, teamId))
-      .filter((row) => known.has(AgentId.parse(row.agentId)))
-      .map((row) => ({
-        agentId: row.agentId,
-        connected: now - row.lastSeenAt <= INBOX_LIVENESS_MS,
-        lastSeenAt: new Date(row.lastSeenAt).toISOString(),
-      }));
-    // The newest messages, reaching back as far as the view has scrolled.
-    const messages = channel
-      ? await store.communication.history(
-          principal,
-          teamId,
-          channel.id,
-          {},
-          query.topicId,
-          query.messagesCursor,
-        )
-      : { items: [], nextCursor: null };
-    const tasks = channel
-      ? await store.tasks.list(principal, teamId, channel.id, { limit: 100 })
-      : { items: [], nextCursor: null };
-    // A task opened by its address is shown even when older than the board.
-    const openTask =
-      channel &&
-      query.taskId !== undefined &&
-      !tasks.items.some((task) => task.id === query.taskId)
-        ? await store.tasks
+    const [
+      profiles,
+      joined,
+      liveness,
+      messages,
+      tasks,
+      opened,
+      decide,
+      blocked,
+      queued,
+      t3Renewal,
+      t3,
+      people,
+      joinedHumanIds,
+      latest,
+      leftChannels,
+      bindings,
+      teamMcp,
+      avatars,
+      topics,
+      activeTopics,
+    ] = await together([
+      store.agents.workspaceProfiles(principal, teamId),
+      channel
+        ? store.communication.joinedAgents(principal, teamId, channel.id)
+        : [],
+      store.inboxViews.liveness(principal, teamId),
+      // The newest messages, reaching back as far as the view has scrolled.
+      channel
+        ? store.communication.history(
+            principal,
+            teamId,
+            channel.id,
+            {},
+            query.topicId,
+            query.messagesCursor,
+          )
+        : { items: [], nextCursor: null },
+      channel
+        ? store.tasks.list(principal, teamId, channel.id, { limit: 100 })
+        : { items: [], nextCursor: null },
+      // A task opened by its address, kept below unless the board shows it.
+      channel && query.taskId !== undefined
+        ? store.tasks
             .get(principal, teamId, channel.id, query.taskId)
             .catch((error: unknown) => {
               if (error instanceof DomainError && error.kind === 'not-found')
                 return null;
               throw error;
             })
+        : null,
+      store.tasks.waitingOn(principal, teamId),
+      store.inboxViews.blockedIn(principal, teamId),
+      store.inboxViews.queuedPerAgent(principal, teamId),
+      renewal(principal, teamId),
+      store.managed.teamConnection(principal, teamId),
+      store.people(principal, teamId, now),
+      channel
+        ? store.communication.joinedHumans(principal, teamId, channel.id)
+        : [],
+      store.communication.latest(principal, teamId),
+      store.communication.leftChannels(principal, teamId),
+      store.managed.teamBindings(principal, teamId),
+      store.managed.teamMcpPresence(principal, teamId),
+      store.agents.avatars(principal, teamId),
+      channel
+        ? store.communication.topics(principal, teamId, channel.id, {
+            ...(query.topicsCursor ? { cursor: query.topicsCursor } : {}),
+          })
+        : { items: [], nextCursor: null },
+      channel
+        ? store.communication.activeTopics(principal, teamId, channel.id, 10)
+        : { items: [], more: false },
+    ]);
+    const agents = profiles.agents;
+    // In the order the profiles are listed: one read for all.
+    const joinedSet = new Set<string>(joined);
+    const joinedAgentIds = agents
+      .filter((agent) => joinedSet.has(agent.id))
+      .map((agent) => agent.id);
+    const known = new Set(agents.map((agent) => agent.id));
+    const wake = liveness
+      .filter((row) => known.has(AgentId.parse(row.agentId)))
+      .map((row) => ({
+        agentId: row.agentId,
+        connected: now - row.lastSeenAt <= INBOX_LIVENESS_MS,
+        lastSeenAt: new Date(row.lastSeenAt).toISOString(),
+      }));
+    // A task opened by its address is shown even when older than the board.
+    const openTask =
+      opened && !tasks.items.some((task) => task.id === opened.id)
+        ? opened
         : null;
     // The projection is allow-listed.
     const iso = (ms: number | null) =>
@@ -226,101 +285,75 @@ export function registerWorkspace(
       resultMessageId: d.resultMessageId,
       stopRequested: d.stopRequested,
     });
-    const deliveries = channel
-      ? (
-          await store.inboxViews.deliveriesFor(
+    const messageIds = messages.items.map((m) => m.id);
+    const [deliveries, replies] = channel
+      ? await together([
+          store.inboxViews.deliveriesFor(
             principal,
             teamId,
             channel.id,
-            messages.items.map((m) => m.id),
+            messageIds,
             [...tasks.items, ...(openTask ? [openTask] : [])].map((t) => t.id),
-          )
-        ).map(project)
-      : [];
+          ),
+          store.inboxViews.repliesFor(
+            principal,
+            teamId,
+            channel.id,
+            messageIds,
+          ),
+        ])
+      : [[], []];
     // Every member reaches this route; what waits on them is theirs: tasks
     // they decide on, and the deliveries and setup the team shares.
     const live = new Set(wake.filter((w) => w.connected).map((w) => w.agentId));
     const attention = {
-      decide: await store.tasks.waitingOn(principal, teamId),
-      unstuck: (await store.inboxViews.blockedIn(principal, teamId))
+      decide,
+      unstuck: blocked
         .filter((d) => known.has(AgentId.parse(d.agentId)))
         .map((d) => ({
           ...project(d),
           channelId: d.channelId,
           channelName: d.channelName,
         })),
-      connect: (await store.inboxViews.queuedPerAgent(principal, teamId))
+      connect: queued
         .filter(
           (q) => known.has(AgentId.parse(q.agentId)) && !live.has(q.agentId),
         )
         .map((q) => ({ agentId: q.agentId, queued: q.count })),
-      t3: await renewal(principal, teamId),
+      t3: t3Renewal,
     };
-    const t3 = await store.managed.teamConnection(principal, teamId);
     const t3Origin = t3 ? new URL(t3.endpoint).origin : null;
+    const listed = new Set<string>(channels.items.map((c) => c.id));
     return WorkspaceSnapshot.parse(
       withRevision({
         observedAt: new Date(now).toISOString(),
         nativeT3Origin: t3Origin,
         human,
         team: membership.team,
-        people: await store.people(principal, teamId, now),
-        joinedHumanIds: channel
-          ? await store.communication.joinedHumans(
-              principal,
-              teamId,
-              channel.id,
-            )
-          : [],
+        people,
+        joinedHumanIds,
         channels,
-        latest: await (async () => {
-          const listed = new Set<string>(channels.items.map((c) => c.id));
-          return (await store.communication.latest(principal, teamId)).filter(
-            (l) => listed.has(l.channelId),
-          );
-        })(),
+        latest: latest.filter((l) => listed.has(l.channelId)),
         channel,
-        leftChannels: await store.communication.leftChannels(principal, teamId),
+        leftChannels,
         agents,
         agentsTruncated: profiles.truncated,
         joinedAgentIds,
-        deliveries,
-        replies: channel
-          ? await store.inboxViews.repliesFor(
-              principal,
-              teamId,
-              channel.id,
-              messages.items.map((m) => m.id),
-            )
-          : [],
+        deliveries: deliveries.map(project),
+        replies,
         attention,
         wake,
-        managed: (await store.managed.teamBindings(principal, teamId)).filter(
-          (b) => known.has(AgentId.parse(b.agentId)),
-        ),
-        teamMcp: (await store.managed.teamMcpPresence(principal, teamId))
+        managed: bindings.filter((b) => known.has(AgentId.parse(b.agentId))),
+        teamMcp: teamMcp
           .filter((row) => known.has(AgentId.parse(row.agentId)))
           .map((row) => ({
             agentId: row.agentId,
             lastSeenAt: new Date(row.lastSeenAt).toISOString(),
           })),
-        avatars: (await store.agents.avatars(principal, teamId)).filter((row) =>
-          known.has(AgentId.parse(row.agentId)),
-        ),
+        avatars: avatars.filter((row) => known.has(AgentId.parse(row.agentId))),
         messages,
-        topics: channel
-          ? await store.communication.topics(principal, teamId, channel.id, {
-              ...(query.topicsCursor ? { cursor: query.topicsCursor } : {}),
-            })
-          : { items: [], nextCursor: null },
-        activeTopics: channel
-          ? await store.communication.activeTopics(
-              principal,
-              teamId,
-              channel.id,
-              10,
-            )
-          : { items: [], more: false },
+        topics,
+        activeTopics,
         tasks,
         openTask,
       }),

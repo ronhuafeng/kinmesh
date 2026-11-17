@@ -45,6 +45,12 @@ export function avatarType(bytes: Buffer) {
 }
 export function agentRepository(d: Database) {
   const { q, atomic } = transactional(d);
+  const agentOf = (row: { capabilities: string; preferences: string }) =>
+    Agent.parse({
+      ...row,
+      capabilities: parseJson(row.capabilities),
+      preferences: parseJson(row.preferences),
+    });
   async function profile(teamId: TeamId, agentId: AgentId) {
     const row = (
       await q()
@@ -54,11 +60,7 @@ export function agentRepository(d: Database) {
         .limit(1)
     )[0];
     if (row === undefined) throw new DomainError('not-found');
-    return Agent.parse({
-      ...row,
-      capabilities: parseJson(row.capabilities),
-      preferences: parseJson(row.preferences),
-    });
+    return agentOf(row);
   }
   async function checkedGrant(p: Extract<Principal, { kind: 'agent' }>) {
     const grant = (
@@ -83,7 +85,17 @@ export function agentRepository(d: Database) {
    * Membership of the team, holding every scope given (agents) — unauthenticated
    * for an unknown human or a dead grant, forbidden otherwise.
    */
-  async function teamAccess(p: Principal, teamId: TeamId, ...scopes: Scope[]) {
+  // Asked once per read (`perRead`): the same caller, team and scopes.
+  const teamAccess = d.perRead(
+    (p: Principal, teamId: TeamId, ...scopes: Scope[]) =>
+      JSON.stringify([p, teamId, [...scopes].sort()]),
+    (p, teamId, ...scopes) => checkTeamAccess(p, teamId, scopes),
+  );
+  async function checkTeamAccess(
+    p: Principal,
+    teamId: TeamId,
+    scopes: Scope[],
+  ) {
     Principal.parse(p);
     TeamId.parse(teamId);
     if (p.kind === 'agent') {
@@ -341,29 +353,26 @@ export function agentRepository(d: Database) {
     },
     async list(p: Principal, teamId: TeamId) {
       await person(p, teamId);
-      const rows = await q()
-        .select({ id: s.agents.id })
-        .from(s.agents)
-        .where(eq(s.agents.teamId, teamId))
-        .orderBy(asc(s.agents.position));
-      return Promise.all(rows.map((r) => profile(teamId, AgentId.parse(r.id))));
+      return (
+        await q()
+          .select(s.agentFields)
+          .from(s.agents)
+          .where(eq(s.agents.teamId, teamId))
+          .orderBy(asc(s.agents.position))
+      ).map(agentOf);
     },
     /** Bounded projection for people. Existing list/identity API contracts remain unchanged. */
     workspaceProfiles(p: Principal, teamId: TeamId) {
       return atomic(async () => {
         await person(p, teamId);
         const rows = await q()
-          .select({ id: s.agents.id })
+          .select(s.agentFields)
           .from(s.agents)
           .where(eq(s.agents.teamId, teamId))
           .orderBy(asc(s.agents.position))
           .limit(101);
         return {
-          agents: await Promise.all(
-            rows
-              .slice(0, 100)
-              .map((row) => profile(teamId, AgentId.parse(row.id))),
-          ),
+          agents: rows.slice(0, 100).map(agentOf),
           truncated: rows.length > 100,
         };
       });
