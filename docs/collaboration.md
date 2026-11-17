@@ -115,7 +115,7 @@ Post input (every field required; null means absent):
 
 A mention target must be an active, joined participant of this channel; duplicates and disabled agents are rejected. `@text` is never parsed. Mentions grant no access. Topic and causal IDs must belong to the same channel. Messages have a stable ID, server-derived author and time, channel/topic IDs, a persisted position, structured mentions and causal IDs; they cannot be edited or deleted. Limits: body 1–8000 characters, title 160, channel name 80, 20 mentions, HTTP body 16 KiB. Bodies are plain text in the API.
 
-Each person keeps a **read position** in each channel they joined: the newest message of its timeline they have seen, the same on every device. A channel is unread for them while someone else wrote after it; their own messages never make it unread, nor do messages from an agent they muted, and a channel they muted never is ([notifications](#notifications)). `POST P/read` says they have seen the channel up to `messageId`, reading the whole channel (`topicId` null) or that topic (the message must be in it, else 404): the whole channel moves the position to the message; a topic moves it only as far as everything someone else wrote after the position is in that topic, so what they haven't seen elsewhere stays unread. The position never moves back, and reading again changes nothing, so the route takes no `operationKey`. Agents have none (403). A person who joins a channel has read nothing in it yet.
+Each person keeps a **read position** in each channel they joined: the newest message of its timeline they have seen, the same on every device. A channel is unread for them while someone else wrote after it; their own messages never make it unread, and a channel they muted never is ([notifications](#notifications)). `POST P/read` says they have seen the channel up to `messageId`, reading the whole channel (`topicId` null) or that topic (the message must be in it, else 404): the whole channel moves the position to the message; a topic moves it only as far as everything someone else wrote after the position is in that topic, so what they haven't seen elsewhere stays unread. The position never moves back, and reading again changes nothing, so the route takes no `operationKey`. Agents have none (403). A person who joins a channel has read nothing in it yet.
 
 ## Tasks
 
@@ -212,24 +212,27 @@ Work that never reached T3 expires after seven days, frozen or not, whether a wo
 
 ## Notifications
 
-A person is notified in their browsers of what concerns them, even with Kinmesh closed, through Web Push, and, if they ask, in Feishu. What notifies whom is decided from the facts above, inside the transaction that commits each one (as the [Inbox](#agent-inbox) enqueues), once per cause and person, and never for a person's own act:
+A person is notified in their browsers of what concerns them, even with Kinmesh closed, through Web Push, and in Feishu. What notifies whom is decided from the facts above, inside the transaction that commits each one (as the [Inbox](#agent-inbox) enqueues), once per cause and person, and never for a person's own act:
 
-| Cause                                                                                                    | Kind      | By default |
-| -------------------------------------------------------------------------------------------------------- | --------- | ---------- |
-| An agent's message whose causal chain starts with the person's act (it answers what they asked)          | `reply`   | On         |
-| A delivery whose causal chain starts with the person's act becomes `blocked` (each time it does)         | `blocked` | On         |
-| A task reaches `awaiting-human` with the person as acceptor                                              | `decide`  | On         |
-| A task is created, handed, sent for review or back for rework, and the person now works on or reviews it | `task`    | On         |
-| A message mentions the person                                                                            | `mention` | On         |
-| Any other message in a channel the person is joined to                                                   | `message` | Off        |
+| Cause                                                                                                    | Kind      |
+| -------------------------------------------------------------------------------------------------------- | --------- |
+| An agent's message whose causal chain starts with the person's act (it answers what they asked)          | `reply`   |
+| A delivery whose causal chain starts with the person's act becomes `blocked` (each time it does)         | `blocked` |
+| A task reaches `awaiting-human` with the person as acceptor                                              | `decide`  |
+| A task is created, handed, sent for review or back for rework, and the person now works on or reviews it | `task`    |
+| A message mentions the person                                                                            | `mention` |
+| Any other message in a channel the person is joined to                                                   | `message` |
 
-Each person chooses, kind by kind, what notifies them (`notify` in the snapshot); choosing none turns notifications off. A notification is due five seconds after its cause, then sent at most once, and only if it still concerns the person: they are still joined to the channel, the message is still unread for them ([read position](#channels-topics-and-messages)), the task still at the version that caused it, the delivery still blocked. So nothing is sent about what a tab open on it has already read.
+**The rule, not a setting.** The first five kinds concern the person and may interrupt them in any channel they haven't muted; `message` interrupts only in channels they follow. Each person sets each channel they are in to one **level**: `default`, `follow` (every message) or `mute` (nothing, and never unread); the snapshot carries the channels not at the default as `levels`. A notification is due five seconds after its cause, then sent at most once, and only if it still concerns the person: they are still joined to the channel, the message is still unread for them ([read position](#channels-topics-and-messages)), the task still at the version that caused it, the delivery still blocked. So nothing is sent about what a tab open on it has already read.
+
+**In Kinmesh, or away.** While a session of the person's was used in the last 90 seconds they are in Kinmesh: what falls due is not pushed or sent but shown on their page, in the snapshot's `notices` (for two minutes: what it says and where it opens). Otherwise it is pushed to their browsers, and goes to Feishu as below.
+
+**Quiet time.** While the person has paused, or is outside their hours, nothing is pushed or sent: what falls due is held. When the quiet time ends, what was held and still concerns them goes out as one summary (how many things wait), pushed and sent to Feishu, never as a backlog.
 
 A browser is notified once a person turns notifications on in it, held by the session they did that in: signing out of that session, or everywhere, ends it, and it lasts no longer than that session could (seven days from its sign-in, [security](security.md#sign-in-and-sessions)). Opening the workspace hands a browser already notifying that person to the session in use. A push carries a title and one line (who wrote or what changed, and where), the address of the place, and what it is about.
 
 | Method/path                  | Input / policy                                                                                                                                                        |
 | ---------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `PUT /api/me/notify`         | `{kinds}`, the kinds above, each at most once; the person's own; 204                                                                                                  |
 | `GET /api/push/key`          | The hub's Web Push (VAPID) public key                                                                                                                                 |
 | `PUT /api/push/subscription` | The browser's `PushSubscription.toJSON()`, an `https` endpoint; this browser now notifies the caller                                                                  |
 | `POST /api/push/renew`       | `{endpoint}`; held by this session from now, only if it already notifies the caller; 204                                                                              |
@@ -242,22 +245,21 @@ A browser is notified once a person turns notifications on in it, held by the se
 | `POST /api/me/session/end`   | `{id}`; ends that session of the caller's; 404 if it isn't one; 204                                                                                                   |
 | `POST /api/feishu/test`      | The team's Feishu bot sends the caller one message: 204 when Feishu took it, 502 when it refused or couldn't be reached, 409 before they signed in with Feishu        |
 
-**Feishu.** A person may also have what stays unread reach them in Feishu, from the app's bot: `forwardAfter` minutes (5, 15 or 60; null, the default, never) after a notification falls due, if it still concerns them by the same checks and they still want it then, it is sent to them once (by their Feishu `union_id`) with its title, line and a link to its place, whether or not a browser of theirs was notified. It is never retried as another message.
+**Feishu.** What stays unread reaches the person in Feishu, from the app's bot: `forwardAfter` minutes (0, or 10 by default; null, never) after a notification falls due, if it still concerns them by the same checks and they still want it then, it is sent to them once (by their Feishu `union_id`) with its title, line and a link to its place, whether or not a browser of theirs was notified. It is never retried as another message.
 
-**Hours.** A person may choose the hours notifications may reach them: from one time of day to another (past midnight when the second is earlier), every day or on weekdays only, in the time zone their browser had when they chose them (`hours` in the snapshot; null, the default, is any time). Outside them a notification due to be pushed or sent to Feishu waits, and goes when they open, if it still concerns them then. A pause, by contrast, drops what falls due while it lasts.
+**Hours.** A person may choose the hours notifications may reach them: from one time of day to another (past midnight when the second is earlier), every day or on weekdays only, in the time zone their browser had when they chose them (`hours` in the snapshot; null, the default, is any time). Outside them is quiet time (above), held and summed up when they open, if it still concerns them then. A pause, by contrast, drops what falls due while it lasts.
 
 | Method/path           | Input / policy                                                                                               |
 | --------------------- | ------------------------------------------------------------------------------------------------------------ |
-| `PUT /api/me/forward` | `{minutes}`: 5, 15, 60 or null; 204                                                                          |
+| `PUT /api/me/forward` | `{minutes}`: 0, 10 or null; 204                                                                              |
 | `PUT /api/me/hours`   | `{hours}`: `{from,to,weekdays,timeZone}` (minutes of the day, `from` ≠ `to`, an IANA time zone) or null; 204 |
 
-A person may also **mute** a channel they are joined to, or an agent of the team: a muted channel's activity, or a muted agent's messages, then neither notify them nor make channels unread for them. Muting never silences what waits on them (`decide`, `task`, `blocked`); only turning that kind off, or a **pause**, does. A pause lasts until a time at most a week ahead, and ends by itself; what falls due while it lasts is dropped, not sent later. The snapshot carries what the person muted (`muted.channels`, `muted.agents`) and `pausedUntil` (null when not paused).
+A **pause** is quiet time until a time at most a week ahead, and ends by itself.
 
-| Method/path                               | Input / policy                                                                     |
-| ----------------------------------------- | ---------------------------------------------------------------------------------- |
-| `POST P/mute`                             | `{muted}`; a joined person, for themselves; 204                                    |
-| `POST /api/teams/:teamId/agents/:id/mute` | `{muted}`; a person of the team, for themselves; 404 for another team's agent; 204 |
-| `PUT /api/me/pause`                       | `{until}` (ISO time within a week, or null to resume); 204                         |
+| Method/path         | Input / policy                                                                 |
+| ------------------- | ------------------------------------------------------------------------------ |
+| `POST P/level`      | `{level}`: `default`, `follow` or `mute`; a joined person, for themselves; 204 |
+| `PUT /api/me/pause` | `{until}` (ISO time within a week, or null to resume); 204                     |
 
 These are a person's own; agents are refused. They need no `operationKey`: repeating one changes nothing more.
 

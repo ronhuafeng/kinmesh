@@ -15,37 +15,26 @@ export const NotificationKind = z.enum([
 ]);
 export type NotificationKind = z.infer<typeof NotificationKind>;
 /**
- * What notifies a person, kind by kind; none at all is notifications off.
- * By default everything that concerns them, not every other message.
+ * How loud a channel is for one person: muted (nothing, and never unread),
+ * the default (only what concerns them), or followed (every message).
  */
-export const NotifyKinds = z
-  .array(NotificationKind)
-  .max(6)
-  .refine((kinds) => new Set(kinds).size === kinds.length);
-export type NotifyKinds = z.infer<typeof NotifyKinds>;
-export const DEFAULT_KINDS: NotifyKinds = [
-  'reply',
-  'blocked',
-  'decide',
-  'task',
-  'mention',
-];
-/** Whether a person who chose these kinds is notified of this. */
-export const notifies = (kinds: readonly string[], kind: NotificationKind) =>
-  kinds.includes(kind);
+export const ChannelLevel = z.enum(['mute', 'default', 'follow']);
+export type ChannelLevel = z.infer<typeof ChannelLevel>;
+export const LevelInput = z.strictObject({ level: ChannelLevel });
 /**
- * What waits on a person rather than tells them what happened: muting a
- * channel or an agent never silences it; only level `off` or a pause does.
+ * The interruption rule: what concerns a person may interrupt them in any
+ * channel they haven't muted; every other message only where they follow.
  */
-export const waitsOnYou = (kind: NotificationKind) =>
-  kind === 'decide' || kind === 'task' || kind === 'blocked';
+export const interrupts = (level: ChannelLevel, kind: NotificationKind) =>
+  level !== 'mute' && (kind !== 'message' || level === 'follow');
 /** The longest a person can pause their notifications for. */
 export const PAUSE_MOST_MS = 7 * 24 * 60 * 60 * 1000;
-export const MuteInput = z.strictObject({ muted: z.boolean() });
-/** How long unread before it also goes to Feishu, in minutes; null: never. */
-export const FORWARD_MINUTES = [5, 15, 60] as const;
+/**
+ * How long unread before it also comes to the person in Feishu, in minutes:
+ * at once, after ten (the default), or never (null).
+ */
 export const ForwardInput = z.strictObject({
-  minutes: z.union([z.literal(5), z.literal(15), z.literal(60)]).nullable(),
+  minutes: z.union([z.literal(0), z.literal(10)]).nullable(),
 });
 /** Until when nothing notifies; null resumes them. */
 export const PauseInput = z.strictObject({

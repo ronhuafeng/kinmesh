@@ -220,10 +220,6 @@ fallback.
   the muted ink, hairline separators between groups, a danger row in the danger
   colour. A pointer or the arrow keys light a row with the hover fill; Esc or a
   click elsewhere closes it, focus returning to what opened it.
-- **Switch**: on or off, iOS's (Radix Switch): a 51 × 31 px track, grey off and the primary colour
-  on, and a white raised thumb that slides across (at once without motion). It
-  ends its row, which names it; a click anywhere on the row flips it, and what
-  it turns on takes effect at once.
 - **Hour picker**: an hour of the day chosen in place, written as the time
   ("09:00") in tabular figures on one hairline underline that turns the primary
   colour under the pointer or focus, no box; the list is the browser's own.
@@ -315,8 +311,11 @@ fallback.
   semibold (the others medium); it reads as read once its newest message has been
   on screen in a visible tab, on any device (in a topic, as far as what is new is in
   that topic). There are no unread counts. Where the browser shows an app badge, it
-  says whether anything is unread. A channel you muted is never unread, and its name
-  is in the muted ink. A channel where something waits on you ends in a
+  says whether anything is unread. Each channel is as loud as you set it from its
+  row's **Menu** (right-click, or a long press on a phone): 与我有关 (the default),
+  每条消息 or 静音, ticked, then 退出 #_name_ in the danger colour. A channel you muted
+  is never unread and its name is in the muted ink; one you follow ends in a small
+  bell in the subtle ink. A channel where something waits on you ends in a
   decision-coloured dot, the
   size of a presence dot and on its edge; it fades out once nothing waits there. The current channel holds its topics under
   it like a tree on a hairline trunk: "全部", the ten most recently active, "更多话题"
@@ -359,8 +358,7 @@ fallback.
   fails retries by itself, a little later each time, and says "暂时读不到记录。" only
   once it keeps failing; it reads again whenever the task changes.
 - **Agent page**: status card with its actions, requests in this channel, About
-  (every fact visible, picture to change, whether it notifies you — "照常" or
-  "已静音" — with **静音** / **取消静音** beside it, Team MCP credential), runs as a table at the
+  (every fact visible, picture to change, Team MCP credential), runs as a table at the
   bottom, one T3 reference per run (its thread; the run on hover). A run shows what the agent last reported apart from what T3 confirms on
   **在 T3 中查看**; **在 T3 中打开** appears only when T3 supplied the link.
 - **Agent setup**: one next step at a time. First **连接 T3**, once per team: a T3
@@ -407,9 +405,9 @@ fallback.
 - **Your mark and your menu**: at the foot of the sidebar, a row like a person's —
   your **mark** (your initials, the last two characters of a Chinese name, on the
   primary colour, round, 32 px; never your picture) and your name. A small moon on
-  the mark's edge says notifications are paused or off. It opens your menu (a
+  the mark's edge says you are in quiet time (paused, or outside your hours). It opens your menu (a
   **Menu**, above it): your mark, name and team; the state of notifications ("通知已开",
-  "通知暂停到 08:00", "通知已关") and, one choice away, 暂停 1 小时 / 暂停到明早 or
+  "通知暂停到 08:00", "通知时段外，09:00 恢复") and, one choice away, 暂停 1 小时 / 暂停到明早 or
   恢复通知; 跟随系统 / 浅色 / 深色, ticked, which stays open to show it; 个人资料; 设置 ⌘,;
   then 退出登录 and 在所有设备上退出登录 in the danger colour.
 - **Team menu**: the team's name at the head of the sidebar opens it: 成员, 智能体, 连接
@@ -432,22 +430,24 @@ fallback.
   shows T3 and tries the Feishu bot (**给我发一条测试消息**). On a phone, 我 opens the
   map as two iOS inset lists on the grey canvas (subtle ink for planned ones), and a
   section opens under a bar naming it, which leads back to the map.
-- **通知** (the section): what notifies you is one group of 44 px rows, each a
-  label and, at the end on the column's edge, its control, in runs a little apart. First what can notify
-  you, most pressing first, a **Switch** each: 等我验收, 交给我的任务, 我的请求卡住了,
-  智能体回复我, @我, 频道里的其他消息 (all on but the last); a click anywhere on a row
-  flips it. With none on, the rest of the group is left out. Then where they
-  reach you: "此设备" says where this browser stands — **开启**; or **发送测试通知**
-  (which reads "已发送" for a moment) and **停止接收** once on; or, in the muted
-  ink, why it can't be ("浏览器拦截了通知，可在网站设置中允许", "添加到主屏幕后可以接收通知"
-  on an iPhone not opened from its Home Screen, "这个浏览器收不到通知"). "转发到飞书":
-  不转发 | 5 分钟 | 15 分钟 | 1 小时, what it does on hover. Then when: "通知时段": 全天 |
-  自定; 自定 adds a row under it, the two hours chosen in place ("09:00 – 21:00",
-  this browser's time zone) and 每天 | 工作日 at its end. "暂停通知": 不暂停 | 1 小时 |
-  到明早 (the next 8:00), the pause in force chosen and its end on hover; it ends
-  by itself. Then what you muted, a channel's icon or an agent's face and its
-  name, **取消静音** at the end. Signing out, in 账户与设备, ends that section in
+- **通知** (the section): what may interrupt you is Kinmesh's rule (what concerns
+  you, in channels you haven't muted; every message only where you follow), so
+  nothing here lists kinds. One group of 44 px rows, each a label and, at the end on
+  the column's edge, its control, in runs a little apart. Where it reaches you:
+  "此设备" says where this browser stands — **开启**; or **发送测试通知** (which reads
+  "已发送" for a moment) and **停止接收** once on; or, in the muted ink, why it can't
+  be ("浏览器拦截了通知，可在网站设置中允许", "添加到主屏幕后可以接收通知" on an iPhone not
+  opened from its Home Screen, "这个浏览器收不到通知"). "转发到飞书": 立即 | 10 分钟后
+  | 不用, what it does on hover. When you're left alone: "通知时段": 全天 | 自定; 自定
+  adds a row under it, the two hours chosen in place ("09:00 – 21:00", this
+  browser's time zone) and 每天 | 工作日 at its end. "暂停通知": 不暂停 | 1 小时 | 到明早
+  (the next 8:00), the pause in force chosen and its end on hover; it ends by
+  itself. Then the channels you made louder or quieter, a channel's icon, its name
+  and its level, **恢复默认** at the end. Signing out, in 账户与设备, ends that section in
   **退出登录** and **在所有设备上退出登录**, quiet rows in the danger colour.
+- **Notice**: while you are in Kinmesh, what would have notified you comes as a
+  notice at the foot of the screen instead — the same title and line, in the toast's
+  dark, for eight seconds — and a click opens its place.
 - **Notifications**: one per place, the latest replacing the one before. The title
   is who wrote and where ("小助手 · #general · 话题"), or what waits on you and
   where ("等你验收", "请你评审", "退回给你", "交给你了", "_Ada_ 卡住了"); the line is the
@@ -480,8 +480,9 @@ fallback.
   hang below it, wider than the sidebar; Esc, a click elsewhere or a choice folds it
   back to the name. A closed sidebar opens to hold it. It jumps to
   views, channels, tasks and agents, and holds the actions that have no place on
-  screen: **新任务**, **静音 #_name_** (**取消静音 #_name_** once muted), **退出 #_name_**
-  and **立即刷新**. Places come before actions,
+  screen: **新任务**, **静音 #_name_** (**取消静音 #_name_** once muted), **每条消息都通知
+  #_name_** (**只通知与我有关的 #_name_** once followed), **退出 #_name_** and
+  **立即刷新**. Places come before actions,
   so a channel's name finds the channel first, not an action that mentions it.
 - **Sidebar**: beside the content on every screen wider than a phone, open or closed
   from one control, the sidebar icon (**展开侧栏** / **收起侧栏**). Closed, the icon

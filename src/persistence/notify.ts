@@ -7,15 +7,12 @@ import { SESSION_LIFETIME_MS, type HumanId } from '../domain/contracts.js';
 import {
   NOTIFY_DELAY_MS,
   NotifyHours,
-  NotifyKinds,
-  DEFAULT_KINDS,
   PushSubscriptionInput,
-  notifies,
-  waitsOnYou,
+  ChannelLevel,
+  interrupts,
   type NotificationKind,
 } from '../domain/notify.js';
 import { actingMember } from '../domain/tasks.js';
-import { DomainError } from '../domain/errors.js';
 import * as s from './schema.js';
 import {
   dbNow,
@@ -48,8 +45,7 @@ async function joinedPeople(db: Query, teamId: string, channelId: string) {
   return await db
     .select({
       humanId: s.channelParticipants.humanId,
-      kinds: s.memberships.notifyKinds,
-      muted: s.channelParticipants.muted,
+      level: s.channelParticipants.level,
       forwardAfterMs: s.memberships.forwardAfterMs,
     })
     .from(s.channelParticipants)
@@ -86,6 +82,10 @@ async function record(
   },
 ) {
   const { forwardAfterMs, ...rest } = values;
+  // One reading of the clock, so the delays are exact.
+  const now = Number(
+    (await db.select({ now: dbNow }).from(sql`(select 1) as clock`))[0]?.now,
+  );
   await db
     .insert(s.notifications)
     .values({
@@ -96,12 +96,10 @@ async function record(
       deliveryId: null,
       ...rest,
       state: 'pending',
-      dueAt: sql`${dbNow} + ${NOTIFY_DELAY_MS}`,
+      dueAt: now + NOTIFY_DELAY_MS,
       forwardAt:
-        forwardAfterMs === null
-          ? null
-          : sql`${dbNow} + ${NOTIFY_DELAY_MS + forwardAfterMs}`,
-      createdAt: dbNow,
+        forwardAfterMs === null ? null : now + NOTIFY_DELAY_MS + forwardAfterMs,
+      createdAt: now,
     })
     .onConflictDoNothing();
 }
@@ -123,27 +121,14 @@ export async function notifyFact(db: Query, input: unknown) {
         : [
             {
               humanId: p.humanId,
-              kinds: p.kinds,
-              muted: p.muted,
+              level: ChannelLevel.parse(p.level),
               forwardAfterMs: p.forwardAfterMs,
             },
           ],
   );
   if (people.length === 0) return;
-  // Who muted the agent that wrote this.
-  const mutedBy = new Set(
-    fact.author.kind === 'agent'
-      ? (
-          await db
-            .select({ humanId: s.agentMutes.humanId })
-            .from(s.agentMutes)
-            .where(eq(s.agentMutes.agentId, fact.author.agentId))
-        ).map((m) => m.humanId)
-      : [],
-  );
-  const heard = (p: (typeof people)[number], kind: NotificationKind): boolean =>
-    notifies(p.kinds, kind) &&
-    (waitsOnYou(kind) || (!p.muted && !mutedBy.has(p.humanId)));
+  const heard = (p: (typeof people)[number], kind: NotificationKind) =>
+    interrupts(p.level, kind);
   if (fact.kind === 'message.posted') {
     const asker =
       fact.author.kind === 'agent'
@@ -230,7 +215,8 @@ export async function notifyBlocked(
   const person = (
     await joinedPeople(db, delivery.teamId, delivery.channelId)
   ).find((p) => p.humanId === humanId);
-  if (!person || !notifies(person.kinds, 'blocked')) return;
+  if (!person || !interrupts(ChannelLevel.parse(person.level), 'blocked'))
+    return;
   await record(db, {
     humanId,
     teamId: delivery.teamId,
@@ -247,51 +233,24 @@ export async function notifyBlocked(
 export function notificationRepository(d: Database) {
   const { q, atomic } = d;
   return {
-    /** The kinds of notification the person wants; none turns them off. */
-    kinds(humanId: HumanId, teamId: string, kinds: NotifyKinds) {
-      return atomic(async () => {
-        await q()
-          .update(s.memberships)
-          .set({ notifyKinds: NotifyKinds.parse(kinds) })
-          .where(
-            and(
-              eq(s.memberships.humanId, humanId),
-              eq(s.memberships.teamId, teamId),
-            ),
-          );
-      });
-    },
-    async kindsOf(humanId: HumanId) {
-      const row = (
-        await q()
-          .select({ kinds: s.memberships.notifyKinds })
-          .from(s.memberships)
-          .where(eq(s.memberships.humanId, humanId))
-          .limit(1)
-      )[0];
-      return NotifyKinds.parse(row?.kinds ?? DEFAULT_KINDS);
-    },
-    /** What a person muted, and until when they paused notifications. */
+    /**
+     * How the person set Kinmesh to reach them: channels they muted or
+     * follow, how fast Feishu finds them, their hours and their pause.
+     */
     async quiet(humanId: HumanId, teamId: string) {
-      const [channels, mutedAgents, member] = await together([
+      const [channels, member] = await together([
         q()
-          .select({ id: s.channelParticipants.channelId })
+          .select({
+            id: s.channelParticipants.channelId,
+            level: s.channelParticipants.level,
+          })
           .from(s.channelParticipants)
           .where(
             and(
               eq(s.channelParticipants.teamId, teamId),
               eq(s.channelParticipants.memberKey, 'human:' + humanId),
               eq(s.channelParticipants.state, 'joined'),
-              eq(s.channelParticipants.muted, true),
-            ),
-          ),
-        q()
-          .select({ id: s.agentMutes.agentId })
-          .from(s.agentMutes)
-          .where(
-            and(
-              eq(s.agentMutes.humanId, humanId),
-              eq(s.agentMutes.teamId, teamId),
+              sql`${s.channelParticipants.level} <> 'default'`,
             ),
           ),
         q()
@@ -317,42 +276,14 @@ export function notificationRepository(d: Database) {
         hours: member[0]?.notifyHours
           ? NotifyHours.parse(JSON.parse(member[0].notifyHours))
           : null,
-        channels: channels.map((c) => c.id).sort(),
-        agents: mutedAgents.map((a) => a.id).sort(),
+        levels: channels
+          .map((c) => ({ channelId: c.id, level: ChannelLevel.parse(c.level) }))
+          .sort((a, b) => (a.channelId < b.channelId ? -1 : 1)),
         pausedUntil:
           until !== null && until > Number(member[0]?.now)
             ? new Date(until).toISOString()
             : null,
       };
-    },
-    muteAgent(
-      humanId: HumanId,
-      teamId: string,
-      agentId: string,
-      muted: boolean,
-    ) {
-      return atomic(async () => {
-        const [agent] = await q()
-          .select({ id: s.agents.id })
-          .from(s.agents)
-          .where(and(eq(s.agents.id, agentId), eq(s.agents.teamId, teamId)))
-          .limit(1);
-        if (agent === undefined) throw new DomainError('not-found');
-        if (muted)
-          await q()
-            .insert(s.agentMutes)
-            .values({ humanId, teamId, agentId })
-            .onConflictDoNothing();
-        else
-          await q()
-            .delete(s.agentMutes)
-            .where(
-              and(
-                eq(s.agentMutes.humanId, humanId),
-                eq(s.agentMutes.agentId, agentId),
-              ),
-            );
-      });
     },
     /** The hours notifications may reach the person; null: any time. */
     hours(humanId: HumanId, teamId: string, hours: NotifyHours | null) {
@@ -378,19 +309,88 @@ export function notificationRepository(d: Database) {
       )[0];
       return row?.hours ? NotifyHours.parse(JSON.parse(row.hours)) : null;
     },
+    /** Until when a person paused, if they did and it hasn't ended. */
+    async pausedUntilOf(humanId: string) {
+      const row = (
+        await q()
+          .select({ until: s.memberships.pausedUntil })
+          .from(s.memberships)
+          .where(
+            and(
+              eq(s.memberships.humanId, humanId),
+              gt(s.memberships.pausedUntil, dbNow),
+            ),
+          )
+          .limit(1)
+      )[0];
+      return row?.until ?? null;
+    },
     /**
-     * Outside the person's hours a notification waits: pushed, or sent to
-     * Feishu, once they open, if it still concerns them then.
+     * In the person's quiet time a notification is held, to be summed up
+     * once it ends; one going to Feishu then is left to that summary.
      */
-    async hold(id: string, until: number, what: 'push' | 'forward') {
+    async hold(id: string, what: 'push' | 'forward') {
       await q()
         .update(s.notifications)
-        .set(
-          what === 'push'
-            ? { state: 'pending', dueAt: until }
-            : { forwardAt: until },
-        )
+        .set(what === 'push' ? { state: 'held' } : { forwardAt: null })
         .where(eq(s.notifications.id, id));
+    },
+    /** The person was in Kinmesh: an in-page notice instead of a push. */
+    async shownInApp(id: string) {
+      await q()
+        .update(s.notifications)
+        .set({ state: 'inapp', forwardAt: null })
+        .where(eq(s.notifications.id, id));
+    },
+    /** The people with notifications held in their quiet time. */
+    async heldPeople() {
+      return (
+        await q()
+          .selectDistinct({ humanId: s.notifications.humanId })
+          .from(s.notifications)
+          .where(eq(s.notifications.state, 'held'))
+      ).map((r) => r.humanId);
+    },
+    /** Takes a person's held notifications, each once, to be summed up. */
+    takeHeld(humanId: string) {
+      return atomic(async () => {
+        const held = await q()
+          .select()
+          .from(s.notifications)
+          .where(
+            and(
+              eq(s.notifications.humanId, humanId),
+              eq(s.notifications.state, 'held'),
+            ),
+          )
+          .for('update', { skipLocked: true });
+        if (held.length === 0) return [];
+        await q()
+          .update(s.notifications)
+          .set({ state: 'sent', forwardAt: null })
+          .where(
+            inArray(
+              s.notifications.id,
+              held.map((n) => n.id),
+            ),
+          );
+        return held;
+      });
+    },
+    /** In-page notices for a person: shown to them in Kinmesh just now. */
+    async recentInApp(humanId: string, withinMs: number) {
+      return await q()
+        .select()
+        .from(s.notifications)
+        .where(
+          and(
+            eq(s.notifications.humanId, humanId),
+            eq(s.notifications.state, 'inapp'),
+            gt(s.notifications.createdAt, sql`${dbNow} - ${withinMs}`),
+          ),
+        )
+        .orderBy(s.notifications.createdAt)
+        .limit(5);
     },
     /** How long a notification may stay unread before it goes to Feishu. */
     forwardAfter(humanId: HumanId, teamId: string, minutes: number | null) {
@@ -572,6 +572,17 @@ export function notificationRepository(d: Database) {
         .where(eq(s.pushSubscriptions.endpoint, row.endpoint));
       return true;
     },
+    /** Whether what stays unread goes to the person in Feishu. */
+    async forwardsTo(humanId: string) {
+      const row = (
+        await q()
+          .select({ after: s.memberships.forwardAfterMs })
+          .from(s.memberships)
+          .where(eq(s.memberships.humanId, humanId))
+          .limit(1)
+      )[0];
+      return row?.after !== null && row?.after !== undefined;
+    },
     /** A person's Feishu identity, once they signed in with Feishu. */
     async unionOf(humanId: string) {
       const row = (
@@ -637,18 +648,6 @@ export function notificationRepository(d: Database) {
      * or delivery moved on.
      */
     async describe(n: typeof s.notifications.$inferSelect) {
-      // Paused, nothing is sent: it is dropped, not kept for later.
-      const [paused] = await q()
-        .select({ id: s.memberships.humanId })
-        .from(s.memberships)
-        .where(
-          and(
-            eq(s.memberships.humanId, n.humanId),
-            gt(s.memberships.pausedUntil, dbNow),
-          ),
-        )
-        .limit(1);
-      if (paused !== undefined) return null;
       const [place] = await q()
         .select({
           channelName: s.channels.name,

@@ -1,8 +1,5 @@
 import { useContext, useEffect, useId, useState } from 'react';
-import {
-  type NotificationKind,
-  type NotifyHours,
-} from '../src/domain/notify.js';
+import type { NotifyHours } from '../src/domain/notify.js';
 import type { WorkspaceSnapshot } from '../src/workspace/contracts.js';
 import { MutationPermission, useRequest } from './api.js';
 import { Notice } from './forms.js';
@@ -13,17 +10,9 @@ import {
   subscribe,
   unsubscribe,
 } from './push.js';
-import { Avatar, ChannelIcon, Switch } from './ui.js';
+import { ChannelIcon } from './ui.js';
+import { LEVEL_LABELS, setLevel } from './levels.js';
 
-/** What can notify you, most pressing first, as your page lists it. */
-const KINDS: { kind: NotificationKind; label: string }[] = [
-  { kind: 'decide', label: '等我验收' },
-  { kind: 'task', label: '交给我的任务' },
-  { kind: 'blocked', label: '我的请求卡住了' },
-  { kind: 'reply', label: '智能体回复我' },
-  { kind: 'mention', label: '@我' },
-  { kind: 'message', label: '频道里的其他消息' },
-];
 /**
  * A row with its choice at the end: the segmented control. `title` says on
  * hover what the row does, when its label alone may not.
@@ -82,47 +71,6 @@ async function readHere(): Promise<Here> {
   if (!pushSupported()) return iosInBrowser() ? 'home-screen' : 'unsupported';
   if (Notification.permission === 'denied') return 'denied';
   return (await currentSubscription()) ? 'on' : 'off';
-}
-/**
- * What can notify you, kind by kind: a switch each, flipped at once and
- * sent; the workspace then shows what the hub kept.
- */
-function Kinds({ kinds }: { kinds: readonly NotificationKind[] }) {
-  const action = useRequest();
-  const [shown, setShown] = useState<readonly NotificationKind[]>(kinds);
-  useEffect(() => {
-    setShown(kinds);
-  }, [kinds]);
-  const base = useId();
-  const flip = (kind: NotificationKind, on: boolean) => {
-    const next = KINDS.map((k) => k.kind).filter((k) =>
-      k === kind ? on : shown.includes(k),
-    );
-    setShown(next);
-    void action.send('/api/me/notify', { kinds: next }, 'PUT').then((sent) => {
-      if (sent === undefined) setShown(kinds);
-    });
-  };
-  return (
-    <>
-      <div className="you-rows">
-        {KINDS.map(({ kind, label }) => (
-          <label className="you-row" key={kind}>
-            <span id={base + kind}>{label}</span>
-            <Switch
-              on={shown.includes(kind)}
-              labelledBy={base + kind}
-              disabled={action.disabled}
-              onChange={(on) => {
-                flip(kind, on);
-              }}
-            />
-          </label>
-        ))}
-      </div>
-      {action.error && <Notice>{action.error}</Notice>}
-    </>
-  );
 }
 /**
  * Where this browser stands: on (and can be tried), off, or why it can't
@@ -223,10 +171,9 @@ function Forward({ minutes }: { minutes: number | null }) {
         label="转发到飞书"
         title="通知这段时间里还没读，就由飞书机器人私信你"
         options={[
-          { id: 'never', label: '不转发' },
-          { id: '5', label: '5 分钟' },
-          { id: '15', label: '15 分钟' },
-          { id: '60', label: '1 小时' },
+          { id: '0', label: '立即' },
+          { id: '10', label: '10 分钟后' },
+          { id: 'never', label: '不用' },
         ]}
         value={value}
         disabled={action.disabled}
@@ -415,53 +362,36 @@ function Pause({ until }: { until: string | null }) {
     </>
   );
 }
-/** What you muted, each one click from undoing it. */
-function Muted({ data }: { data: WorkspaceSnapshot }) {
+/**
+ * The channels you made louder or quieter than the default, each one click
+ * from going back to it. A channel's level is set on the channel itself.
+ */
+function Levels({ data }: { data: WorkspaceSnapshot }) {
   const action = useRequest();
-  const team = '/api/teams/' + data.team.id;
-  const rows = [
-    ...data.muted.channels.flatMap((id) => {
-      const channel = data.channels.items.find((c) => c.id === id);
-      return channel
-        ? [
-            {
-              key: id,
-              face: <ChannelIcon id={id} name={channel.name} />,
-              name: channel.name,
-              path: `${team}/channels/${id}/mute`,
-            },
-          ]
-        : [];
-    }),
-    ...data.muted.agents.flatMap((id) => {
-      const agent = data.agents.find((a) => a.id === id);
-      return agent
-        ? [
-            {
-              key: id,
-              face: <Avatar kind="agent" name={agent.name} id={id} />,
-              name: agent.name,
-              path: `${team}/agents/${id}/mute`,
-            },
-          ]
-        : [];
-    }),
-  ];
+  const rows = data.levels.flatMap((l) => {
+    const channel = data.channels.items.find((c) => c.id === l.channelId);
+    return channel ? [{ channel, level: l.level }] : [];
+  });
   if (rows.length === 0) return null;
   return (
     <>
-      <ul className="you-muted" aria-label="已静音">
-        {rows.map((row) => (
-          <li key={row.key}>
-            {row.face}
-            <span>{row.name}</span>
+      <ul className="you-muted" aria-label="调整过的频道">
+        {rows.map(({ channel, level }) => (
+          <li key={channel.id}>
+            <ChannelIcon id={channel.id} name={channel.name} />
+            <span>{channel.name}</span>
+            <span className="muted">{LEVEL_LABELS[level]}</span>
             <button
               type="button"
               className="link-button"
               disabled={action.disabled}
-              onClick={() => void action.send(row.path, { muted: false })}
+              onClick={() =>
+                void action.run(() =>
+                  setLevel(data.team.id, channel.id, 'default'),
+                )
+              }
             >
-              取消静音
+              恢复默认
             </button>
           </li>
         ))}
@@ -471,26 +401,22 @@ function Muted({ data }: { data: WorkspaceSnapshot }) {
   );
 }
 /**
- * 通知 in settings: what can notify you, where it reaches you, when, and
- * what you muted, each a run of rows.
+ * 通知 in settings. What may interrupt you is Kinmesh's rule, not a list
+ * of switches; what is yours to set is where it reaches you, when you are
+ * left alone, and channels louder or quieter than the default.
  */
 export function NotificationSettings({ data }: { data: WorkspaceSnapshot }) {
   return (
     <section className="you-notify" aria-label="通知">
-      <Kinds kinds={data.notify} />
-      {data.notify.length > 0 && (
-        <>
-          <div className="you-rows">
-            <ThisDevice />
-            <Forward minutes={data.forwardAfter} />
-          </div>
-          <div className="you-rows">
-            <Hours hours={data.hours} />
-            <Pause until={data.pausedUntil} />
-          </div>
-        </>
-      )}
-      <Muted data={data} />
+      <div className="you-rows">
+        <ThisDevice />
+        <Forward minutes={data.forwardAfter} />
+      </div>
+      <div className="you-rows">
+        <Hours hours={data.hours} />
+        <Pause until={data.pausedUntil} />
+      </div>
+      <Levels data={data} />
     </section>
   );
 }

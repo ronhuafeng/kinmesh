@@ -116,29 +116,18 @@ export const memberships = pgTable(
     teamId: text('team_id')
       .notNull()
       .references(() => teams.id, { onDelete: 'cascade' }),
-    /** The kinds of notification this person wants; none: off. */
-    notifyKinds: text('notify_kinds')
-      .array()
-      .notNull()
-      .default(sql`'{reply,blocked,decide,task,mention}'::text[]`),
     /** Nothing notifies this person until then. */
     pausedUntil: millis('paused_until'),
     /**
      * How long a notification may stay unread before it is also sent to the
      * person in Feishu; null: never.
      */
-    forwardAfterMs: millis('forward_after_ms'),
+    forwardAfterMs: millis('forward_after_ms').default(600_000),
     /** The hours notifications may reach them (NotifyHours, JSON); null: any. */
     notifyHours: text('notify_hours'),
   },
   // Everyone in the organization is an equal member: there are no roles.
-  (t) => [
-    primaryKey({ columns: [t.humanId, t.teamId] }),
-    check(
-      'membership_notify_kinds',
-      sql`${t.notifyKinds} <@ ARRAY['reply','blocked','decide','task','mention','message']::text[]`,
-    ),
-  ],
+  (t) => [primaryKey({ columns: [t.humanId, t.teamId] })],
 );
 export const channels = pgTable(
   'channels',
@@ -355,7 +344,11 @@ export const channelParticipants = pgTable(
      */
     readPosition: integer('read_position'),
     /** A person muted the channel: it neither notifies nor turns unread. */
-    muted: boolean('muted').notNull().default(false),
+    /**
+     * How loud the channel is for this person: muted (nothing, never
+     * unread), the default (what concerns them), or followed (every message).
+     */
+    level: text('level').notNull().default('default'),
   },
   (t) => [
     primaryKey({ columns: [t.channelId, t.memberKey] }),
@@ -376,6 +369,7 @@ export const channelParticipants = pgTable(
       sql`(${t.humanId} IS NOT NULL AND ${t.agentId} IS NULL AND ${t.memberKey} = 'human:' || ${t.humanId}) OR (${t.agentId} IS NOT NULL AND ${t.humanId} IS NULL AND ${t.memberKey} = 'agent:' || ${t.agentId})`,
     ),
     check('participant_state', sql`${t.state} IN ('joined','left','removed')`),
+    check('participant_level', sql`${t.level} IN ('mute','default','follow')`),
     index('participant_visibility').on(
       t.teamId,
       t.memberKey,
@@ -864,26 +858,9 @@ export const notifications = pgTable(
       'notification_kind',
       sql`${t.kind} IN ('reply','blocked','decide','task','mention','message')`,
     ),
-    check('notification_state', sql`${t.state} IN ('pending','sent')`),
-  ],
-);
-/** Agents a person muted: their messages neither notify nor turn unread. */
-export const agentMutes = pgTable(
-  'agent_mutes',
-  {
-    humanId: text('human_id').notNull(),
-    teamId: text('team_id').notNull(),
-    agentId: text('agent_id').notNull(),
-  },
-  (t) => [
-    primaryKey({ columns: [t.humanId, t.agentId] }),
-    foreignKey({
-      columns: [t.humanId, t.teamId],
-      foreignColumns: [memberships.humanId, memberships.teamId],
-    }).onDelete('cascade'),
-    foreignKey({
-      columns: [t.agentId, t.teamId],
-      foreignColumns: [agents.id, agents.teamId],
-    }),
+    check(
+      'notification_state',
+      sql`${t.state} IN ('pending','sent','held','inapp')`,
+    ),
   ],
 );

@@ -92,6 +92,20 @@
       "when": 1794941519361,
       "tag": "0012_drop_notify_level",
       "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "7",
+      "when": 1794944615214,
+      "tag": "0013_channel_levels",
+      "breakpoints": true
+    },
+    {
+      "idx": 14,
+      "version": "7",
+      "when": 1794944625924,
+      "tag": "0014_drop_kinds_and_mutes",
+      "breakpoints": true
     }
   ]
 }

@@ -20,21 +20,19 @@ const browser = () => ({
   },
 });
 
-await test('what concerns a person notifies them, kind by kind, and never their own act', async () => {
+await test('what concerns a person notifies them in channels they have not muted; every other message only where they follow', async () => {
   const f = await communicationFixture();
   const raw = rawDatabase(f.dbPath);
   try {
     await f.invite();
     const graceCookies = await signInAs(f.app, 'grace@example.com');
     const grace = await f.store.signIn(feishuPerson('grace@example.com'));
-    const MINE = ['reply', 'blocked', 'decide', 'task', 'mention'];
-    const ALL = [...MINE, 'message'];
-    const level = (cookies: typeof f.cookies, value: string[]) =>
+    const level = (value: string) =>
       f.app.inject({
-        method: 'PUT',
-        url: '/api/me/notify',
-        cookies,
-        payload: { kinds: value },
+        method: 'POST',
+        url: f.channelPath + '/level',
+        cookies: graceCookies,
+        payload: { level: value },
       });
     const kinds = async (humanId: string) =>
       (
@@ -58,29 +56,61 @@ await test('what concerns a person notifies them, kind by kind, and never their 
       assert.equal(posted.statusCode, 201);
       return posted.json<{ id: string }>().id;
     };
+    const mentionGrace = {
+      mentions: [{ kind: 'human' as const, id: grace.id }],
+    };
 
-    // By default an ordinary message notifies no one, and its
-    // author never.
+    // At the default, an ordinary message notifies no one, and its author
+    // never; a mention notifies the person mentioned.
     await post('owner');
     assert.deepEqual(await kinds(grace.id), []);
     assert.deepEqual(await kinds(f.owner.id), []);
-
-    // A mention notifies the person mentioned.
-    await post('owner', { mentions: [{ kind: 'human', id: grace.id }] });
+    await post('owner', mentionGrace);
     assert.deepEqual(await kinds(grace.id), ['mention']);
 
-    // Asking for every message adds them; asking for nothing adds none.
-    assert.equal((await level(graceCookies, ALL)).statusCode, 204);
+    // Following the channel adds every message.
+    assert.equal((await level('follow')).statusCode, 204);
     await post('owner');
     assert.deepEqual(await kinds(grace.id), ['mention', 'message']);
-    assert.equal((await level(graceCookies, [])).statusCode, 204);
-    await post('owner', { mentions: [{ kind: 'human', id: grace.id }] });
+
+    // Muting it silences everything there, what concerns her included.
+    assert.equal((await level('mute')).statusCode, 204);
+    await post('owner', mentionGrace);
+    const handed = await f.app.inject({
+      method: 'POST',
+      url: f.channelPath + '/tasks',
+      cookies: f.cookies,
+      payload: taskInput({
+        owner: { kind: 'human', id: HumanId.parse(grace.id) },
+      }),
+    });
+    assert.equal(handed.statusCode, 201);
     assert.deepEqual(await kinds(grace.id), ['mention', 'message']);
-    assert.equal(
-      (await level(graceCookies, ['loud'])).statusCode,
-      400,
-      'an unknown kind is refused',
+    assert.equal((await level('loud')).statusCode, 400, 'an unknown level');
+    const muted = WorkspaceSnapshot.parse(
+      (
+        await f.app.inject({ url: '/api/workspace', cookies: graceCookies })
+      ).json<unknown>(),
     );
+    assert.deepEqual(muted.levels, [{ channelId: f.channelId, level: 'mute' }]);
+    assert.equal(
+      muted.latest.find((l) => l.channelId === f.channelId)?.unread,
+      false,
+      'a muted channel is never unread',
+    );
+
+    // Back at the default, a task handed to her notifies her.
+    assert.equal((await level('default')).statusCode, 204);
+    const again = await f.app.inject({
+      method: 'POST',
+      url: f.channelPath + '/tasks',
+      cookies: f.cookies,
+      payload: taskInput({
+        owner: { kind: 'human', id: HumanId.parse(grace.id) },
+      }),
+    });
+    assert.equal(again.statusCode, 201);
+    assert.deepEqual(await kinds(grace.id), ['mention', 'message', 'task']);
 
     // An agent answering what the owner asked notifies the owner.
     const asked = await post('owner', {
@@ -100,32 +130,11 @@ await test('what concerns a person notifies them, kind by kind, and never their 
     });
     assert.deepEqual(await kinds(f.owner.id), ['reply']);
 
-    // A task handed to a person notifies them.
-    assert.equal((await level(graceCookies, MINE)).statusCode, 204);
-    const created = await f.app.inject({
-      method: 'POST',
-      url: f.channelPath + '/tasks',
-      cookies: f.cookies,
-      payload: taskInput({
-        owner: { kind: 'human', id: HumanId.parse(grace.id) },
-      }),
-    });
-    assert.equal(created.statusCode, 201);
-    assert.deepEqual(await kinds(grace.id), ['mention', 'message', 'task']);
-
     // Each is due a little later, for an open tab to read it first.
     const due = await raw
       .prepare('SELECT due_at - created_at AS wait FROM notifications LIMIT 1')
       .get();
     assert.equal(Number(due?.wait), 5000);
-
-    // The kinds are the person's own, shown in their snapshot.
-    const snapshot = WorkspaceSnapshot.parse(
-      (
-        await f.app.inject({ url: '/api/workspace', cookies: graceCookies })
-      ).json<unknown>(),
-    );
-    assert.deepEqual([...snapshot.notify].sort(), [...MINE].sort());
   } finally {
     await raw.close();
     await f.dispose();
@@ -298,140 +307,92 @@ await test('a browser notifies the person who turned it on, until they sign out 
   }
 });
 
-await test('muting silences a channel or an agent, never what waits on you; a pause silences everything', async () => {
+await test('while a person is in Kinmesh it shows a notice instead; in their quiet time it holds, then sends one summary', async () => {
+  standInMessages.length = 0;
   const f = await communicationFixture();
   const raw = rawDatabase(f.dbPath);
   try {
-    await f.invite();
     const graceCookies = await signInAs(f.app, 'grace@example.com');
     const grace = await f.store.signIn(feishuPerson('grace@example.com'));
-    const kinds = async () =>
-      (
-        await raw
-          .prepare(
-            'SELECT kind FROM notifications WHERE human_id = ? ORDER BY created_at',
-          )
-          .pluck()
-          .all(grace.id)
-      ).map(String);
-    const seen = async () =>
-      WorkspaceSnapshot.parse(
-        (
-          await f.app.inject({ url: '/api/workspace', cookies: graceCookies })
-        ).json<unknown>(),
-      );
-    const unread = async () =>
-      (await seen()).latest.find((l) => l.channelId === f.channelId)?.unread;
-    const post = async (as: 'owner' | 'agent') => {
+    const mention = async () => {
       const posted = await f.app.inject({
         method: 'POST',
         url: f.channelPath + '/messages',
-        ...(as === 'owner' ? { cookies: f.cookies } : { headers: f.headers }),
+        cookies: f.cookies,
         payload: postInput({ mentions: [{ kind: 'human', id: grace.id }] }),
       });
       assert.equal(posted.statusCode, 201);
     };
-    // Everything she had seen is read: only what follows can be new.
-    const latest = (await seen()).latest.find(
-      (l) => l.channelId === f.channelId,
-    );
-    if (latest)
-      await f.app.inject({
-        method: 'POST',
-        url: f.channelPath + '/read',
-        cookies: graceCookies,
-        payload: { messageId: latest.messageId, topicId: null },
-      });
+    const state = async () =>
+      String(
+        await raw
+          .prepare(
+            'SELECT state FROM notifications WHERE human_id = ? ORDER BY created_at DESC LIMIT 1',
+          )
+          .pluck()
+          .get(grace.id),
+      );
 
-    // A muted agent's mention neither notifies her nor makes the channel unread.
-    const agentMute = `/api/teams/${f.teamId}/agents/${f.agent.id}/mute`;
-    const muted = await f.app.inject({
-      method: 'POST',
-      url: agentMute,
-      cookies: graceCookies,
-      payload: { muted: true },
-    });
-    assert.equal(muted.statusCode, 204);
-    await post('agent');
-    assert.deepEqual(await kinds(), []);
-    assert.equal(await unread(), false);
-    // An agent can't mute anyone.
-    const byAgent = await f.app.inject({
-      method: 'POST',
-      url: agentMute,
-      headers: f.headers,
-      payload: { muted: true },
-    });
-    assert.equal(byAgent.statusCode, 403);
-
-    // A muted channel: a person's mention is silent and never unread.
-    const channelMute = await f.app.inject({
-      method: 'POST',
-      url: f.channelPath + '/mute',
-      cookies: graceCookies,
-      payload: { muted: true },
-    });
-    assert.equal(channelMute.statusCode, 204);
-    await post('owner');
-    assert.deepEqual(await kinds(), []);
-    assert.equal(await unread(), false);
-    const quiet = await seen();
-    assert.deepEqual(quiet.muted, {
-      channels: [f.channelId],
-      agents: [f.agent.id],
-    });
-
-    // What waits on her still notifies in a muted channel.
-    const handed = await f.app.inject({
-      method: 'POST',
-      url: f.channelPath + '/tasks',
-      cookies: f.cookies,
-      payload: taskInput({
-        owner: { kind: 'human', id: HumanId.parse(grace.id) },
-      }),
-    });
-    assert.equal(handed.statusCode, 201);
-    assert.deepEqual(await kinds(), ['task']);
-
-    // Paused, nothing is sent, that included.
-    const pause = (until: string | null) =>
-      f.app.inject({
-        method: 'PUT',
-        url: '/api/me/pause',
-        cookies: graceCookies,
-        payload: { until },
-      });
-    assert.equal(
-      (await pause(new Date(Date.now() - 1000).toISOString())).statusCode,
-      400,
-      'a pause in the past is refused',
-    );
-    assert.equal(
-      (await pause(new Date(Date.now() + 8 * 86_400_000).toISOString()))
-        .statusCode,
-      400,
-      'a pause of more than a week is refused',
-    );
-    assert.equal(
-      (await pause(new Date(Date.now() + 3_600_000).toISOString())).statusCode,
-      204,
-    );
-    assert.ok((await seen()).pausedUntil);
+    // She is here (her session was just used): a notice on her page, in
+    // her snapshot, not a push.
+    await mention();
     await raw.prepare('UPDATE notifications SET due_at = 0').run();
-    const [n] = await f.store.notifications.take(10);
-    assert.ok(n);
-    assert.equal(await f.store.notifications.describe(n), null);
-    assert.equal((await pause(null)).statusCode, 204);
-    assert.equal((await seen()).pausedUntil, null);
+    await until(async () => (await state()) === 'inapp');
+    const here = WorkspaceSnapshot.parse(
+      (
+        await f.app.inject({ url: '/api/workspace', cookies: graceCookies })
+      ).json<unknown>(),
+    );
+    assert.equal(here.notices.length, 1);
+    assert.match(here.notices[0]?.url ?? '', /^\/\?channel=/);
 
-    // Unmuted, the channel turns unread again for what she hasn't read.
-    await f.app.inject({
-      method: 'POST',
-      url: f.channelPath + '/mute',
+    // Paused: what falls due is held, not pushed, not dropped.
+    const pause = await f.app.inject({
+      method: 'PUT',
+      url: '/api/me/pause',
       cookies: graceCookies,
-      payload: { muted: false },
+      payload: { until: new Date(Date.now() + 3_600_000).toISOString() },
     });
-    assert.equal(await unread(), true);
+    assert.equal(pause.statusCode, 204);
+    await raw
+      .prepare(
+        // Two minutes ago: away from Kinmesh, still signed in.
+        'UPDATE sessions SET last_seen_at = (extract(epoch from now()) * 1000)::bigint - 120000 WHERE human_id = ?',
+      )
+      .run(grace.id);
+    await mention();
+    await mention();
+    await raw
+      .prepare("UPDATE notifications SET due_at = 0 WHERE state = 'pending'")
+      .run();
+    await until(
+      async () =>
+        Number(
+          await raw
+            .prepare("SELECT count(*) FROM notifications WHERE state = 'held'")
+            .pluck()
+            .get(),
+        ) === 2,
+    );
+    assert.equal(standInMessages.length, 0);
+
+    // When it ends, one summary of what still waits, to Feishu (on by
+    // default), and nothing held is left.
+    await raw
+      .prepare('UPDATE memberships SET paused_until = NULL WHERE human_id = ?')
+      .run(grace.id);
+    await until(() => Promise.resolve(standInMessages.length > 0));
+    assert.equal(standInMessages.length, 1);
+    assert.match(standInMessages[0]?.title ?? '', /有 2 件事等你/);
+    assert.equal(
+      Number(
+        await raw
+          .prepare("SELECT count(*) FROM notifications WHERE state = 'held'")
+          .pluck()
+          .get(),
+      ),
+      0,
+    );
   } finally {
     await raw.close();
     await f.dispose();
@@ -461,8 +422,16 @@ await test('what stays unread goes to Feishu after the delay; nothing goes once 
         cookies: graceCookies,
         payload: { minutes },
       });
-    assert.equal((await forward(7)).statusCode, 400, 'only 5, 15 or 60');
-    assert.equal((await forward(5)).statusCode, 204);
+    assert.equal((await forward(7)).statusCode, 400, 'only 0, 10 or never');
+    assert.equal((await forward(10)).statusCode, 204);
+    // Away from Kinmesh: her session last used long ago.
+    const away = () =>
+      raw
+        .prepare(
+          // Two minutes ago: away from Kinmesh, still signed in.
+          'UPDATE sessions SET last_seen_at = (extract(epoch from now()) * 1000)::bigint - 120000 WHERE human_id = ?',
+        )
+        .run(grace.id);
     const mention = async (body: string) => {
       const posted = await f.app.inject({
         method: 'POST',
@@ -480,8 +449,9 @@ await test('what stays unread goes to Feishu after the delay; nothing goes once 
     const wait = await raw
       .prepare('SELECT forward_at - created_at AS wait FROM notifications')
       .get();
-    assert.equal(Number(wait?.wait), 5000 + 5 * 60_000);
+    assert.equal(Number(wait?.wait), 5000 + 10 * 60_000);
     // Its time come, it goes to her in Feishu, once, with a link to it.
+    await away();
     await raw.prepare('UPDATE notifications SET forward_at = 0').run();
     await until(() => Promise.resolve(standInMessages.length > 0));
     assert.equal(standInMessages.length, 1);
@@ -519,13 +489,13 @@ await test('what stays unread goes to Feishu after the delay; nothing goes once 
         ) === 0,
     );
     assert.equal(standInMessages.length, 1);
-    assert.equal((await forward(15)).statusCode, 204);
+    assert.equal((await forward(0)).statusCode, 204);
     const snapshot = WorkspaceSnapshot.parse(
       (
         await f.app.inject({ url: '/api/workspace', cookies: graceCookies })
       ).json<unknown>(),
     );
-    assert.equal(snapshot.forwardAfter, 15);
+    assert.equal(snapshot.forwardAfter, 0);
   } finally {
     await raw.close();
     await f.dispose();
@@ -573,20 +543,14 @@ await test("outside a person's hours a notification waits for them to open; a ba
     });
     assert.equal(posted.statusCode, 201);
     await raw.prepare('UPDATE notifications SET due_at = 0').run();
-    // The sender takes it, finds her hours closed, and keeps it for when
-    // they open: still pending, due at the window's first minute.
-    await until(async () => {
-      const row = await raw
-        .prepare('SELECT state, due_at FROM notifications')
-        .get();
-      return row?.state === 'pending' && Number(row.due_at) > 0;
-    });
-    const due = Number(
-      await raw.prepare('SELECT due_at FROM notifications').pluck().get(),
+    // The sender takes it, finds her hours closed, and holds it for when
+    // they open (a summary then), neither pushed nor dropped.
+    await until(
+      async () =>
+        String(
+          await raw.prepare('SELECT state FROM notifications').pluck().get(),
+        ) === 'held',
     );
-    const opens = new Date(due);
-    assert.equal(opens.getUTCHours() * 60 + opens.getUTCMinutes(), from);
-    assert.equal(opens.getUTCSeconds(), 0);
     const snapshot = WorkspaceSnapshot.parse(
       (
         await f.app.inject({ url: '/api/workspace', cookies: graceCookies })
