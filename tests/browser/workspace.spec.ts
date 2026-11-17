@@ -1442,6 +1442,10 @@ test('a message shows at once and settles in place; one that didn’t go is sent
   const first = item('On its way');
   await expect(first).toHaveAttribute('data-pending', 'sending');
   expect(await strength('On its way')).toBe('0.5');
+  // It arrives rising 6 px into place; measured once it is there.
+  await expect
+    .poll(() => first.evaluate((el) => el.getAnimations().length))
+    .toBe(0);
   const box = await first.boundingBox();
   await first.evaluate((el) => {
     el.dataset.probe = 'shown';
