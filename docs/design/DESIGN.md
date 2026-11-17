@@ -549,6 +549,16 @@ fallback.
   is not among a channel's views. On a phone it is a bottom tab.
 - **文件** (a channel's view): the channel's files, newest first, as list rows (see
   **Settings**, 文件与存储), the reading measure wide.
+- **The installed app**: Kinmesh installs as an app (its own window, the green "k" icon,
+  a full-bleed version for Android). Its icon counts what waits on you, as 收件箱 does;
+  a long press or right click offers 收件箱 and 通知设置; a Kinmesh link opens in the
+  window already open. 通知 › 送达 starts with 安装: **安装到桌面** where the browser
+  offers it, how from the browser's menu where it doesn't (Safari: 分享 › 添加到主屏幕,
+  or 文件 › 添加到程序坞), 已安装 as a green pill once it is; nothing where it can't be.
+- **分享到频道**: what another app shares to an installed Kinmesh (files, a link, some
+  text) opens a page that says what came ("2 个文件和一段文字") and lists the channels;
+  the one chosen opens with the files attached in its composer and the text in its field,
+  to send as any message.
 - **开始使用**: a new team's first steps at the top of every channel until all are
   done, on a raised surface with a hairline: 添加一个智能体, 连接 T3, and @ it with a
   first request — each a numbered mark that turns into a green check, the one control

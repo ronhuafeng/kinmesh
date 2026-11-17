@@ -16,7 +16,7 @@ import { LiveContext, takeStream, useRevisions } from './live.js';
 import { Agent, Author } from '../src/domain/agents.js';
 import { TeamFile, TopicId } from '../src/domain/communication.js';
 import { WorkspaceSnapshot } from '../src/workspace/contracts.js';
-import { Auth } from './auth.js';
+import { Auth, SIGNED_OUT } from './auth.js';
 import { api, HttpError, MutationPermission, Offline } from './api.js';
 import { ActionForm, AddButton, InlineField } from './forms.js';
 import { AgentPage, Team } from './agents.js';
@@ -52,6 +52,8 @@ import { useSidebar } from './sidebar.js';
 import { InboxPage, attentionCount } from './inbox.js';
 import { FIRST, SettingsNav, SettingsPage } from './settings-map.js';
 import { Files } from './files.js';
+import { ListRow } from './settings.js';
+import { sharedId, takeShared, type Shared } from './share.js';
 import { AccountMenu, ChannelMenu, Mark, TeamMenu } from './menus.js';
 import { levelOf, setLevel } from './levels.js';
 import type { ChannelLevel } from '../src/domain/notify.js';
@@ -149,6 +151,14 @@ function keepUnchanged(
 }
 /** How long a stream may stay silent before the place is read without it. */
 const SILENT_STREAM_MS = 3000;
+/** You signed out here: the sign-in page waits for you to sign in again. */
+function markSignedOut() {
+  try {
+    sessionStorage.setItem(SIGNED_OUT, '1');
+  } catch {
+    // Storage refused: inside Feishu the page may sign you back in.
+  }
+}
 /** What the hub's search finds: messages and files, newest first. */
 const SearchFound = z.object({
   messages: z.array(
@@ -331,6 +341,21 @@ export function App() {
   // A short word at the foot of the screen; a notice also opens its place.
   // Where a page beside the sidebar puts its way back.
   const [headerStart, setHeaderStart] = useState<HTMLElement | null>(null);
+  // What the system shared to Kinmesh: asked where it goes, then handed to
+  // that channel's composer.
+  const [shared, setShared] = useState<Shared | null>(null);
+  const [incoming, setIncoming] = useState<
+    { key: string; shared: Shared } | undefined
+  >(undefined);
+  useEffect(() => {
+    if (sharedId === null) return;
+    void takeShared(sharedId).then(
+      (found) => {
+        setShared(found);
+      },
+      () => undefined,
+    );
+  }, []);
   const [toast, setToast] = useState<{
     id: number;
     message: string;
@@ -602,6 +627,24 @@ export function App() {
     return page.success ? pageParam(page.data) : null;
   }, [focus, view, agentId]);
   const signedOut = status === 'signedout';
+  // Installed, the app's icon counts what waits on you; nothing once
+  // signed out.
+  const badge = data && !signedOut ? attentionCount(data.attention) : 0;
+  useEffect(() => {
+    if (!('setAppBadge' in navigator)) return;
+    void (
+      badge > 0 ? navigator.setAppBadge(badge) : navigator.clearAppBadge()
+    ).catch(() => undefined);
+  }, [badge]);
+  // Signed in again: a later link from Feishu signs in by itself.
+  useEffect(() => {
+    if (status !== 'ready') return;
+    try {
+      sessionStorage.removeItem(SIGNED_OUT);
+    } catch {
+      // Storage refused: nothing was kept.
+    }
+  }, [status]);
   useEffect(() => {
     if (signedOut) return;
     const query = new URLSearchParams(place);
@@ -829,7 +872,8 @@ export function App() {
     workerAgent !== undefined ||
     focus?.kind === 'inbox' ||
     focus?.kind === 'settings' ||
-    focus?.kind === 'search';
+    focus?.kind === 'search' ||
+    shared !== null;
   // A task (new or open) sits on the board and the Inbox is its own tab;
   // Settings and a hand-run worker sit on no tab. An agent's page is its own tab panel,
   // which no trigger lights.
@@ -862,6 +906,7 @@ export function App() {
       .catch(() => undefined)
       .then(() => api('/api/logout', { method: 'POST' }))
       .then(() => {
+        markSignedOut();
         toSignedOut();
       })
       .catch(() => {
@@ -875,6 +920,7 @@ export function App() {
       .catch(() => undefined)
       .then(() => api('/api/me/sessions/end', { method: 'POST' }))
       .then(() => {
+        markSignedOut();
         toSignedOut();
       })
       .catch(() => {
@@ -1643,6 +1689,47 @@ export function App() {
                           />
                         </Page>
                       )}
+                      {shared && (
+                        <Page
+                          label="分享到频道"
+                          onClose={() => {
+                            setShared(null);
+                          }}
+                        >
+                          <div className="page-body share-page">
+                            <p className="muted">
+                              {[
+                                shared.files.length > 0
+                                  ? `${String(shared.files.length)} 个文件`
+                                  : '',
+                                shared.text !== '' ? '一段文字' : '',
+                              ]
+                                .filter(Boolean)
+                                .join('和')}
+                              ，发到哪个频道？
+                            </p>
+                            <ul className="list-rows" aria-label="频道">
+                              {data.channels.items.map((c) => (
+                                <ListRow
+                                  key={c.id}
+                                  lead={<ChannelIcon id={c.id} name={c.name} />}
+                                  title={c.name}
+                                  onOpen={() => {
+                                    setIncoming({
+                                      key: crypto.randomUUID(),
+                                      shared,
+                                    });
+                                    setShared(null);
+                                    setFocus(null);
+                                    selectChannel(c.id);
+                                    setView('chat');
+                                  }}
+                                />
+                              ))}
+                            </ul>
+                          </div>
+                        </Page>
+                      )}
                       {focus?.kind === 'settings' && (
                         <SettingsPage
                           key={settingsSection}
@@ -1705,6 +1792,7 @@ export function App() {
                             onTeam={() => {
                               setView('team');
                             }}
+                            incoming={incoming}
                           />
                         ) : (
                           <div className="empty">

@@ -60,3 +60,24 @@ window.kinmeshStream = {
   },
 };
 export {};
+// The service worker keeps the app's own files, so an installed Kinmesh
+// opens at once, and receives what is shared to it (`sw.ts`).
+if ('serviceWorker' in navigator)
+  window.addEventListener('load', () => {
+    navigator.serviceWorker
+      .register('/sw.js', { scope: '/' })
+      .catch(() => undefined);
+  });
+// Chrome offers to install the app once, early: kept for 安装 in settings.
+const isOffer = (event: Event): event is InstallOffer =>
+  'prompt' in event && 'userChoice' in event;
+window.addEventListener('beforeinstallprompt', (event) => {
+  if (!isOffer(event)) return;
+  event.preventDefault();
+  window.kinmeshInstall = event;
+  window.dispatchEvent(new Event('kinmesh-install'));
+});
+window.addEventListener('appinstalled', () => {
+  window.kinmeshInstall = null;
+  window.dispatchEvent(new Event('kinmesh-install'));
+});
