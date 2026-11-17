@@ -303,31 +303,43 @@ export function registerNotifications(
     }
   }
   // What is due goes out within a second, each notification once.
-  let sending = false;
-  const send = async () => {
-    if (sending) return;
-    sending = true;
+  // One round at a time; closing waits for the one under way, and says
+  // nothing of a database it closed under it.
+  let sending: Promise<void> | null = null;
+  let closing = false;
+  // Read anew each time: it changes while a round awaits.
+  const closed = () => closing;
+  const round = async () => {
     try {
       for (;;) {
+        if (closed()) return;
         const due = await store.notifications.take(20);
         if (due.length === 0) break;
         for (const n of due) await deliver(n);
       }
       for (;;) {
+        if (closed()) return;
         const due = await store.notifications.takeForwards(20);
         if (due.length === 0) break;
         for (const { notification, union, forwarding } of due)
           if (forwarding) await forward(notification, union);
       }
     } catch (error) {
-      app.log.error(describeFailure(error), 'notification_send_failed');
-    } finally {
-      sending = false;
+      if (!closed())
+        app.log.error(describeFailure(error), 'notification_send_failed');
     }
   };
-  const timer = setInterval(() => void send(), 1000);
+  const send = () => {
+    if (sending || closing) return;
+    sending = round().finally(() => {
+      sending = null;
+    });
+  };
+  const timer = setInterval(send, 1000);
   timer.unref();
-  app.addHook('onClose', () => {
+  app.addHook('onClose', async () => {
+    closing = true;
     clearInterval(timer);
+    await sending;
   });
 }
