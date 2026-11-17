@@ -32,12 +32,48 @@ function matches(command: Command, query: string) {
     .filter(Boolean)
     .every((word) => text.includes(word));
 }
-/** What is typed, the results, the one active. */
-function useSearch(commands: Command[]) {
+/** Found on the hub for what is typed: messages and files, by their text. */
+export type Remote = (query: string, signal: AbortSignal) => Promise<Command[]>;
+/**
+ * What is typed, the results, the one active. With `remote`, two or more
+ * characters also find messages and files, after what is on screen.
+ */
+function useSearch(commands: Command[], remote?: Remote) {
   const [query, setQuery] = useState('');
   const [active, setActive] = useState(0);
+  const [found, setFound] = useState<{ query: string; items: Command[] }>({
+    query: '',
+    items: [],
+  });
   const listId = useId();
-  const results = commands.filter((c) => matches(c, query)).slice(0, 40);
+  // The latest way to ask, without asking again when only it changed.
+  const asking = useRef(remote);
+  useEffect(() => {
+    asking.current = remote;
+  }, [remote]);
+  useEffect(() => {
+    const typed = query.trim();
+    const ask = asking.current;
+    if (!ask || typed.length < 2) return;
+    const stop = new AbortController();
+    // Asked once typing pauses, not for every key.
+    const timer = setTimeout(() => {
+      ask(typed, stop.signal).then(
+        (items) => {
+          setFound({ query: typed, items });
+        },
+        () => undefined,
+      );
+    }, 200);
+    return () => {
+      clearTimeout(timer);
+      stop.abort();
+    };
+  }, [query]);
+  const results = [
+    ...commands.filter((c) => matches(c, query)),
+    ...(found.query === query.trim() ? found.items : []),
+  ].slice(0, 40);
   const current = results[Math.min(active, results.length - 1)];
   return {
     query,
@@ -54,7 +90,7 @@ function useSearch(commands: Command[]) {
       return {
         type: 'text',
         role: 'combobox',
-        'aria-label': '搜索频道、任务、成员和视图',
+        'aria-label': '搜索频道、任务、成员、消息和文件',
         'aria-expanded': true,
         'aria-controls': listId,
         'aria-activedescendant': current
@@ -177,11 +213,13 @@ function useShortcut(toggle: () => void) {
  */
 export function SidebarSearch({
   commands,
+  remote,
   children,
   onOpen,
   end,
 }: {
   commands: Command[];
+  remote?: Remote;
   /** The team name, shown while not searching. */
   children: ReactNode;
   /** After the magnifier while not searching (closing the sidebar). */
@@ -194,7 +232,7 @@ export function SidebarSearch({
   const field = useRef<HTMLInputElement>(null);
   const popup = useRef<HTMLDivElement>(null);
   const returnTo = useRef<HTMLElement | null>(null);
-  const search = useSearch(commands);
+  const search = useSearch(commands, remote);
   function show() {
     const focused = document.activeElement;
     returnTo.current = focused instanceof HTMLElement ? focused : null;
@@ -323,13 +361,15 @@ export function SidebarSearch({
  */
 export function SearchPage({
   commands,
+  remote,
   onClose,
 }: {
   commands: Command[];
+  remote?: Remote;
   /** Back to where search was opened from. */
   onClose: () => void;
 }) {
-  const search = useSearch(commands);
+  const search = useSearch(commands, remote);
   const field = useRef<HTMLInputElement>(null);
   const page = useRef<HTMLDivElement>(null);
   const scroller = useRef<HTMLDivElement>(null);

@@ -13,6 +13,7 @@ import {
   gt,
   getTableColumns,
   gte,
+  ilike,
   inArray,
   isNotNull,
   isNull,
@@ -71,6 +72,8 @@ const decode = (value: string): unknown => JSON.parse(value);
 const notMine = (humanId: string) =>
   sql`NOT (${s.messages.author}::jsonb @> ${JSON.stringify({ kind: 'human', humanId })}::jsonb)`;
 const now = () => new Date().toISOString();
+/** Text to find as itself in a LIKE pattern: `%`, `_` and `\\` escaped. */
+const escapeLike = (text: string) => text.replace(/[\\%_]/g, (c) => '\\' + c);
 export function communicationRepository(
   d: Database,
   agents: ReturnType<typeof agentRepository>,
@@ -1349,7 +1352,16 @@ export function communicationRepository(
      * The files of every channel the person is joined to, newest first,
      * a page at a time (`before` is the last one's `createdAt`).
      */
-    files(p: Principal, teamId: TeamId, before: number | null, limit = 50) {
+    files(
+      p: Principal,
+      teamId: TeamId,
+      before: number | null,
+      limit = 50,
+      /** One channel's files only; null for every channel the person is in. */
+      channelId: ChannelId | null = null,
+      /** Files whose name holds this, any case; null for all. */
+      named: string | null = null,
+    ) {
       return atomic(async () => {
         await team(p, teamId);
         const rows = await q()
@@ -1368,6 +1380,12 @@ export function communicationRepository(
               eq(s.attachments.teamId, teamId),
               isNotNull(s.attachments.messageId),
               before === null ? undefined : lt(s.attachments.createdAt, before),
+              channelId === null
+                ? undefined
+                : eq(s.attachments.channelId, channelId),
+              named === null
+                ? undefined
+                : ilike(s.attachments.name, '%' + escapeLike(named) + '%'),
             ),
           )
           .orderBy(desc(s.attachments.createdAt), desc(s.attachments.id))
@@ -1386,6 +1404,51 @@ export function communicationRepository(
           items,
           next: rows.length > limit && last ? last.file.createdAt : null,
         };
+      });
+    },
+    /**
+     * Messages in the channels the person is in whose text holds what was
+     * typed, any case, newest first: each with its channel and the start of
+     * its text.
+     */
+    searchMessages(p: Principal, teamId: TeamId, text: string, limit = 10) {
+      return atomic(async () => {
+        await team(p, teamId);
+        const rows = await q()
+          .select({
+            id: s.messages.id,
+            channelId: s.messages.channelId,
+            topicId: s.messages.topicId,
+            body: s.messages.body,
+            author: s.messages.author,
+            createdAt: s.messages.createdAt,
+          })
+          .from(s.messages)
+          .innerJoin(s.channels, eq(s.channels.id, s.messages.channelId))
+          .innerJoin(
+            s.channelParticipants,
+            and(
+              eq(s.channelParticipants.channelId, s.messages.channelId),
+              eq(s.channelParticipants.memberKey, memberKey(member(p))),
+              eq(s.channelParticipants.state, 'joined'),
+            ),
+          )
+          .where(
+            and(
+              eq(s.channels.teamId, teamId),
+              ilike(s.messages.body, '%' + escapeLike(text) + '%'),
+            ),
+          )
+          .orderBy(desc(s.messages.position))
+          .limit(limit);
+        return rows.map((r) => ({
+          messageId: MessageId.parse(r.id),
+          channelId: r.channelId,
+          topicId: r.topicId,
+          excerpt: r.body.replace(/\s+/g, ' ').slice(0, 160),
+          author: decode(r.author),
+          createdAt: r.createdAt,
+        }));
       });
     },
     /** Removed files' copies still in a channel's folder. */

@@ -5442,6 +5442,11 @@ button.list-row-main:hover:not(:disabled) .list-row-title {
   margin-left: 0.5rem;
 }
 /* A planned section: its rows to come, quiet, values "—". */
+/* A channel's 文件 view: the files list, the reading measure wide. */
+.channel-files {
+  max-width: var(--reading);
+  padding-top: 0.75rem;
+}
 /* 即将推出: each planned section a group, as the working ones are. */
 .settings-planned {
   display: grid;

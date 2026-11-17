@@ -22,12 +22,17 @@ type File = z.infer<typeof TeamFile>;
  */
 export function Files({
   data,
+  channelId,
   openMessage,
 }: {
   data: WorkspaceSnapshot;
+  /** One channel's files (its 文件 view); without, every channel's. */
+  channelId?: string;
   openMessage: (channelId: string, messageId: string) => void;
 }) {
-  const path = `/api/teams/${data.team.id}/files`;
+  const path =
+    `/api/teams/${data.team.id}/files` +
+    (channelId ? `?channelId=${channelId}` : '');
   const [files, setFiles] = useState<File[] | null>(null);
   const [next, setNext] = useState<number | null>(null);
   const [asked, setAsked] = useState<string | null>(null);
@@ -51,7 +56,13 @@ export function Files({
   }, [path, data.revision]);
   if (files === null) return null;
   if (files.length === 0)
-    return <p className="muted">频道里分享的文件会在这里。</p>;
+    return (
+      <p className="muted">
+        {channelId
+          ? '这个频道里分享的文件会在这里。'
+          : '频道里分享的文件会在这里。'}
+      </p>
+    );
   const channelName = (id: string) =>
     data.channels.items.find((c) => c.id === id)?.name ?? '频道';
   return (
@@ -130,7 +141,9 @@ export function Files({
           type="button"
           className="link-button"
           onClick={() => {
-            void api(`${path}?before=${String(next)}`).then((raw) => {
+            void api(
+              path + (channelId ? '&' : '?') + `before=${String(next)}`,
+            ).then((raw) => {
               const page = Page.parse(raw);
               setFiles((old) => [...(old ?? []), ...page.items]);
               setNext(page.next);
