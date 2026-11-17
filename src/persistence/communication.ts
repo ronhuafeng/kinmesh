@@ -22,7 +22,7 @@ import {
   max,
   sql,
 } from 'drizzle-orm';
-import type { z } from 'zod';
+import { z } from 'zod';
 import * as s from './schema.js';
 import type { agentRepository } from './agents.js';
 import {
@@ -44,7 +44,9 @@ import {
 } from '../domain/tasks.js';
 import {
   ChannelInput,
+  AttachmentRemoval,
   ChannelLatest,
+  TeamFile,
   ChannelView,
   CommunicationFact,
   Event,
@@ -286,13 +288,32 @@ export function communicationRepository(
           ...(mentions.get(r.messageId) ?? []),
           Member.parse(decode(r.target)),
         ]);
-    const files = await attachmentsOf(rows.map((row) => row.id));
+    const ids = rows.map((row) => row.id);
+    const files = await attachmentsOf(ids);
+    const removed = new Map<
+      string,
+      { removedBy: string; removedAt: string }[]
+    >();
+    if (ids.length > 0)
+      for (const r of await q()
+        .select()
+        .from(s.attachmentRemovals)
+        .where(inArray(s.attachmentRemovals.messageId, ids))
+        .orderBy(asc(s.attachmentRemovals.removedAt)))
+        removed.set(r.messageId, [
+          ...(removed.get(r.messageId) ?? []),
+          {
+            removedBy: r.removedBy,
+            removedAt: new Date(r.removedAt).toISOString(),
+          },
+        ]);
     return rows.map((row) =>
       Message.parse({
         ...row,
         author: decode(row.author),
         mentions: mentions.get(row.id) ?? [],
         attachments: files.get(row.id) ?? [],
+        removedAttachments: removed.get(row.id) ?? [],
       }),
     );
   }
@@ -1241,6 +1262,145 @@ export function communicationRepository(
           .returning({ sha256: s.attachments.sha256 });
         return [...new Set(gone.map((row) => row.sha256))];
       });
+    },
+    /**
+     * A person joined to the channel removes a file from its message: the
+     * file goes (its bytes with `release` once nothing refers to them), the
+     * audit keeps who and when, its copy in the channel's folder is queued
+     * for removal, and a fact tells open views. Agents never can.
+     */
+    removeAttachment(
+      p: Principal,
+      teamId: TeamId,
+      channelId: ChannelId,
+      id: AttachmentId,
+      input: { operationKey: string },
+    ) {
+      return atomic(async () => {
+        await access(p, teamId, channelId, true);
+        if (p.kind !== 'human') throw new DomainError('forbidden');
+        const data = Mutation.parse(input);
+        return mutation(
+          p,
+          teamId,
+          `${channelId}/${id}`,
+          'attachment.remove',
+          data,
+          AttachmentRemoval.extend({ sha256: z.string() }),
+          async () => {
+            const [row] = await q()
+              .select()
+              .from(s.attachments)
+              .where(
+                and(
+                  eq(s.attachments.id, id),
+                  eq(s.attachments.channelId, channelId),
+                  isNotNull(s.attachments.messageId),
+                ),
+              )
+              .limit(1);
+            if (row?.messageId == null) throw new DomainError('not-found');
+            const removedAt = Date.now();
+            await q().delete(s.attachments).where(eq(s.attachments.id, id));
+            await q().insert(s.attachmentRemovals).values({
+              attachmentId: id,
+              teamId,
+              channelId,
+              messageId: row.messageId,
+              removedBy: p.humanId,
+              removedAt,
+            });
+            const [space] = await q()
+              .select({ directory: s.channelSpaces.directory })
+              .from(s.channelSpaces)
+              .where(eq(s.channelSpaces.channelId, channelId))
+              .limit(1);
+            if (space !== undefined)
+              await q()
+                .insert(s.attachmentUnplacings)
+                .values({
+                  attachmentId: id,
+                  directory: space.directory,
+                  createdAt: removedAt,
+                })
+                .onConflictDoNothing();
+            await fact(
+              p,
+              teamId,
+              channelId,
+              data.operationKey,
+              'attachment.removed',
+              {
+                messageId: MessageId.parse(row.messageId),
+              },
+            );
+            return {
+              attachmentId: id,
+              messageId: MessageId.parse(row.messageId),
+              removedBy: p.humanId,
+              removedAt: new Date(removedAt).toISOString(),
+              sha256: row.sha256,
+            };
+          },
+        );
+      });
+    },
+    /**
+     * The files of every channel the person is joined to, newest first,
+     * a page at a time (`before` is the last one's `createdAt`).
+     */
+    files(p: Principal, teamId: TeamId, before: number | null, limit = 50) {
+      return atomic(async () => {
+        await team(p, teamId);
+        const rows = await q()
+          .select({ file: s.attachments })
+          .from(s.attachments)
+          .innerJoin(
+            s.channelParticipants,
+            and(
+              eq(s.channelParticipants.channelId, s.attachments.channelId),
+              eq(s.channelParticipants.memberKey, memberKey(member(p))),
+              eq(s.channelParticipants.state, 'joined'),
+            ),
+          )
+          .where(
+            and(
+              eq(s.attachments.teamId, teamId),
+              isNotNull(s.attachments.messageId),
+              before === null ? undefined : lt(s.attachments.createdAt, before),
+            ),
+          )
+          .orderBy(desc(s.attachments.createdAt), desc(s.attachments.id))
+          .limit(limit + 1);
+        const items = rows.slice(0, limit).map(({ file }) =>
+          TeamFile.parse({
+            attachment: attachmentOf(file),
+            channelId: file.channelId,
+            messageId: file.messageId,
+            uploader: file.uploader,
+            createdAt: new Date(file.createdAt).toISOString(),
+          }),
+        );
+        const last = rows[limit - 1];
+        return {
+          items,
+          next: rows.length > limit && last ? last.file.createdAt : null,
+        };
+      });
+    },
+    /** Removed files' copies still in a channel's folder. */
+    unplacings(limit = 20) {
+      return q()
+        .select()
+        .from(s.attachmentUnplacings)
+        .orderBy(asc(s.attachmentUnplacings.createdAt))
+        .limit(limit);
+    },
+    /** A removed file's copy is gone from its channel's folder. */
+    async unplaced(attachmentId: string) {
+      await q()
+        .delete(s.attachmentUnplacings)
+        .where(eq(s.attachmentUnplacings.attachmentId, attachmentId));
     },
     /** Lets go of bytes (`remove`) once no attachment refers to them. */
     release(sha256: string, remove: () => Promise<void>) {

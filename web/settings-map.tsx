@@ -3,6 +3,7 @@ import { z } from 'zod';
 import type { WorkspaceSnapshot } from '../src/workspace/contracts.js';
 import { api, useRequest } from './api.js';
 import { Notice } from './forms.js';
+import { Files } from './files.js';
 import { BackIcon, SettingsIcons } from './icons.js';
 import { ChoiceRow, NotificationSettings, SignOuts } from './settings.js';
 import { MODE_NAMES, t3Where, useT3 } from './setup.js';
@@ -92,7 +93,6 @@ export const SECTIONS: readonly Section[] = [
     group: 'team',
     label: '文件与存储',
     icon: SettingsIcons.folder,
-    planned: ['附件', '存储用量', '频道文件夹'],
   },
   {
     id: 'usage',
@@ -556,6 +556,7 @@ export function SettingsSection({
   onSignOutEverywhere,
   openChannel,
   openAgent,
+  openMessage,
 }: {
   id: string;
   data: WorkspaceSnapshot;
@@ -563,6 +564,7 @@ export function SettingsSection({
   onSignOutEverywhere: () => void;
   openChannel: (id: string) => void;
   openAgent: (id: string) => void;
+  openMessage: (channelId: string, messageId: string) => void;
 }) {
   const section = sectionOf(id);
   if (!section) return null;
@@ -591,6 +593,8 @@ export function SettingsSection({
       return <Agents data={data} openAgent={openAgent} />;
     case 'connections':
       return <Connections data={data} />;
+    case 'files':
+      return <Files data={data} openMessage={openMessage} />;
     default:
       return null;
   }
@@ -617,6 +621,7 @@ export function SettingsPage({
   onSignOutEverywhere: () => void;
   openChannel: (id: string) => void;
   openAgent: (id: string) => void;
+  openMessage: (channelId: string, messageId: string) => void;
 }) {
   if (phone && section === '')
     return (

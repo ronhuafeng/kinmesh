@@ -1036,6 +1036,14 @@ const MessageRow = memo(function MessageRow({
               base={`/api/teams/${data.team.id}/channels/${m.channelId}/attachments`}
             />
           )}
+          {m.removedAttachments.map((r) => (
+            // The text stays as written; a removed file says who and when.
+            <p key={r.removedAt + r.removedBy} className="message-removed">
+              {memberName({ kind: 'human', humanId: r.removedBy }, data)}{' '}
+              删除了一个文件 ·{' '}
+              <time dateTime={r.removedAt}>{shortTime(r.removedAt)}</time>
+            </p>
+          ))}
           {reply && <ReplyOrigin reply={reply} />}
           {mentions.length > 0 && (
             <ul className="mentions" aria-label="已提及">
@@ -1418,6 +1426,7 @@ export function Chat({
             message: Message.parse({
               ...body,
               attachments,
+              removedAttachments: [],
               id: key,
               channelId: channel.id,
               position: after + 1,

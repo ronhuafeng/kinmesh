@@ -101,6 +101,25 @@ export const Message = z.strictObject({
   sourceMessageId: MessageId.nullable(),
   sourceEventId: z.uuid().nullable(),
   attachments: z.array(Attachment).max(ATTACHMENTS_PER_MESSAGE),
+  /** Files removed from it since: who removed each, and when. */
+  removedAttachments: z
+    .array(z.strictObject({ removedBy: HumanId, removedAt: z.iso.datetime() }))
+    .max(ATTACHMENTS_PER_MESSAGE),
+});
+/** A file someone removed from a message, as the audit keeps it. */
+export const AttachmentRemoval = z.strictObject({
+  attachmentId: AttachmentId,
+  messageId: MessageId,
+  removedBy: HumanId,
+  removedAt: z.iso.datetime(),
+});
+/** A file of the team, as the files page lists it. */
+export const TeamFile = z.strictObject({
+  attachment: Attachment,
+  channelId: ChannelId,
+  messageId: MessageId,
+  uploader: HumanId,
+  createdAt: z.iso.datetime(),
 });
 export const Participant = z.strictObject({
   channelId: ChannelId,
@@ -121,6 +140,7 @@ export const CommunicationFact = z
       'participant.changed',
       'topic.created',
       'message.posted',
+      'attachment.removed',
     ]),
     topicId: TopicId.nullable(),
     messageId: MessageId.nullable(),
@@ -135,7 +155,8 @@ export const CommunicationFact = z
     const isMessage = v.kind === 'message.posted';
     const isParticipant = v.kind === 'participant.changed';
     if (
-      isMessage !== (v.messageId !== null) ||
+      (isMessage || v.kind === 'attachment.removed') !==
+        (v.messageId !== null) ||
       isParticipant !== (v.participant !== null) ||
       isParticipant !== (v.participantState !== null) ||
       (v.kind === 'topic.created' && v.topicId === null) ||

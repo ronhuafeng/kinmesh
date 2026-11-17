@@ -1627,6 +1627,11 @@ button.author-link:hover:not(:disabled) {
 .message-files .file-row:hover {
   background: var(--hover);
 }
+.message-removed {
+  margin: 0.35rem 0 0;
+  color: var(--ink-muted);
+  font-size: var(--text-small);
+}
 .message-files .file-row .icon {
   grid-row: 1 / span 2;
   color: var(--ink-muted);
@@ -5305,6 +5310,65 @@ button.new-agent-go {
 }
 .settings-people li[data-left] {
   color: var(--ink-muted);
+}
+/* The team's files: a picture or a file's mark, its name, and where it is
+ * from, with 删除 at the row's end. */
+.settings-files {
+  display: grid;
+  margin: 0 0 1rem;
+  padding: 0;
+  list-style: none;
+}
+.settings-files li {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  min-height: 3.5rem;
+}
+.settings-file {
+  display: flex;
+  flex: 1;
+  min-width: 0;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.25rem 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+}
+.settings-file:hover .settings-people-name {
+  text-decoration: underline;
+}
+.settings-file img,
+.settings-file-icon {
+  flex: none;
+  width: 2.5rem;
+  height: 2.5rem;
+  border-radius: var(--radius-sm);
+  object-fit: cover;
+  background: var(--fill);
+}
+.settings-file-icon {
+  display: grid;
+  place-items: center;
+  color: var(--ink-muted);
+}
+.settings-file-text {
+  display: grid;
+  min-width: 0;
+}
+.settings-file-text > span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.settings-file-text .muted {
+  font-size: var(--text-small);
+}
+.settings-files .link-button[data-danger] {
+  color: var(--danger);
 }
 /* A phone's map: the two groups as iOS inset lists on the grey canvas. */
 .settings-list {

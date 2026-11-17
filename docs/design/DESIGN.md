@@ -319,7 +319,9 @@ fallback.
 - **Files in a message**: under its text (or alone), images as they are, at most 240
   px tall and 360 px wide, rounded with a hairline, each holding its place before it
   loads and opening on its own when clicked; other files as a 360 px row of a file
-  icon, the name and its size (2.4 MB) that downloads it.
+  icon, the name and its size (2.4 MB) that downloads it. A file someone removed
+  leaves a line in the secondary size and muted ink where it was: "_Grace_
+  删除了一个文件 · 11月17日 14:02"; the text stays as written.
   The placeholder never repeats the channel: "输入 @ 提及成员，⌘/Ctrl+Enter 发送"
   ("输入 @ 提及成员" on a phone).
 - **Channels**: the sidebar lists joined channels; a channel you left can be rejoined
@@ -437,14 +439,18 @@ fallback.
   row stays at the foot. The channel's views are not shown. The section opens in
   the main area on the gutter, with no title (the map says where you are), a
   form's width; each has its address (`?settings=<id>`). A **planned section**
-  (我的助理, 规则, 集成, 文件与存储, 用量与成本, 审计记录, 数据与导出) is in the subtle ink
+  (我的助理, 规则, 集成, 用量与成本, 审计记录, 数据与导出) is in the subtle ink
   in the map and opens as what it will hold: 规划中, then its rows in the subtle
   ink, each "—", and no controls — never a loading state. 个人资料 is read-only, as
   Feishu gives it; 账户与设备 lists your sessions ("此浏览器 · 正在使用", or when one
   signed in and was last used, with **退出**) and the browsers receiving
   notifications (**移除**), then signing out; 成员, 频道 and 智能体 are rows of a face
   or icon, a name and what to know, a channel or an agent opening its place; 连接
-  shows T3 and tries the Feishu bot (**给我发一条测试消息**). On a phone, 我 opens the
+  shows T3 and tries the Feishu bot (**给我发一条测试消息**); 文件与存储 lists the files of
+  every channel you are in, newest first, each a 40 px square of the picture (or a
+  file mark), its name, and "who · #channel · when · size" in the secondary size;
+  the row opens its message, and **删除** at its end becomes a red **确认删除** for a
+  second press (leaving the button takes it back). On a phone, 我 opens the
   map as two iOS inset lists on the grey canvas (subtle ink for planned ones), and a
   section opens under a bar naming it, which leads back to the map.
 - **通知** (the section): what may interrupt you is Kinmesh's rule (what concerns

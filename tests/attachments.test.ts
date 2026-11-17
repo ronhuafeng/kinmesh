@@ -3,13 +3,15 @@ import assert from 'node:assert/strict';
 import { existsSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { Attachment, sniff } from '../src/domain/attachments.js';
-import { Message } from '../src/domain/communication.js';
+import { Message, TeamFile } from '../src/domain/communication.js';
+import { z } from 'zod';
+import { unplaceOnce } from '../src/server/attachments.js';
 import {
   communicationFixture,
   key,
   postInput,
 } from './communication-helpers.js';
-import { signInAs } from './feishu.js';
+import { feishuPerson, signInAs } from './feishu.js';
 import { directoryBytes } from '../src/persistence/attachment-bytes.js';
 import { rawDatabase } from './raw.js';
 
@@ -212,6 +214,127 @@ await test('a file larger than allowed is refused from what the request says', a
     assert.equal(refused.statusCode, 413);
     assert.equal(kept(f.directory), 0);
   } finally {
+    await f.dispose();
+  }
+});
+
+await test('anyone joined removes a file: it is gone everywhere, the message says who and when, and the audit keeps it', async () => {
+  const f = await communicationFixture();
+  const raw = rawDatabase(f.dbPath);
+  try {
+    // The channel has a folder in the space, where the file was placed.
+    await raw
+      .prepare(
+        'INSERT INTO channel_spaces (channel_id, team_id, directory) VALUES (?, ?, ?)',
+      )
+      .run(f.channelId, f.teamId, 'general-12345678');
+    const uploaded = await f.app.inject({
+      method: 'POST',
+      url: `${f.channelPath}/attachments?operationKey=${key()}&name=secret.png`,
+      cookies: f.cookies,
+      headers: { 'content-type': 'image/png' },
+      payload: png,
+    });
+    const file = Attachment.parse(uploaded.json<unknown>());
+    const posted = Message.parse(
+      (
+        await f.app.inject({
+          method: 'POST',
+          url: f.channelPath + '/messages',
+          cookies: f.cookies,
+          payload: { ...postInput({ body: 'Oops' }), attachments: [file.id] },
+        })
+      ).json<unknown>(),
+    );
+    const files = async (cookies: Record<string, string>) =>
+      z.object({ items: z.array(TeamFile) }).parse(
+        (
+          await f.app.inject({
+            url: `/api/teams/${f.teamId}/files`,
+            cookies,
+          })
+        ).json<unknown>(),
+      ).items;
+    const grace = await signInAs(f.app, 'grace@example.com');
+    assert.deepEqual(
+      (await files(grace)).map((x) => x.attachment.id),
+      [file.id],
+    );
+    const remove = (
+      options: {
+        cookies?: Record<string, string>;
+        headers?: Record<string, string>;
+      },
+      path = f.channelPath,
+    ) =>
+      f.app.inject({
+        method: 'POST',
+        url: `${path}/attachments/${file.id}/remove`,
+        ...options,
+        payload: { operationKey: key() },
+      });
+    // Not through a channel she isn't in.
+    const other = await f.app.inject({
+      method: 'POST',
+      url: f.channelsPath,
+      cookies: f.cookies,
+      payload: { operationKey: key(), name: 'private' },
+    });
+    assert.equal(
+      (
+        await remove(
+          { cookies: grace },
+          `${f.channelsPath}/${other.json<{ id: string }>().id}`,
+        )
+      ).statusCode,
+      404,
+    );
+    // An agent never removes one, even joined.
+    await f.invite();
+    assert.equal((await remove({ headers: f.headers })).statusCode, 403);
+    // Someone joined does; she isn't the uploader.
+    const removed = await remove({ cookies: grace });
+    assert.equal(removed.statusCode, 200);
+    // Gone by every route, its bytes with it, its folder copy queued.
+    assert.equal(
+      (
+        await f.app.inject({
+          url: `${f.channelPath}/attachments/${file.id}`,
+          cookies: f.cookies,
+        })
+      ).statusCode,
+      404,
+    );
+    assert.equal(kept(f.directory), 0);
+    assert.deepEqual(await files(f.cookies), []);
+    assert.equal((await remove({ cookies: f.cookies })).statusCode, 404);
+    // The message keeps its text and says who removed a file, and when.
+    const message = await f.comm.message(
+      f.principal,
+      f.teamId,
+      f.channelId,
+      posted.id,
+    );
+    assert.equal(message.body, 'Oops');
+    assert.deepEqual(message.attachments, []);
+    const grace0 = await f.store.signIn(feishuPerson('grace@example.com'));
+    assert.equal(message.removedAttachments[0]?.removedBy, grace0.id);
+    // The audit holds who and when, never the file, and never changes.
+    const audit = await raw.prepare('SELECT * FROM attachment_removals').all();
+    assert.equal(audit.length, 1);
+    assert.ok(!JSON.stringify(audit).includes('secret.png'));
+    await assert.rejects(raw.prepare('DELETE FROM attachment_removals').run());
+    // The provisioner is asked to remove the folder's copy until it has.
+    const asked: string[] = [];
+    const remover = (directory: string, id: string) => {
+      asked.push(`${directory}/${id}`);
+      return Promise.resolve();
+    };
+    await unplaceOnce(f.store, remover, new AbortController().signal);
+    await unplaceOnce(f.store, remover, new AbortController().signal);
+    assert.deepEqual(asked, [`general-12345678/${file.id}`]);
+  } finally {
+    await raw.close();
     await f.dispose();
   }
 });

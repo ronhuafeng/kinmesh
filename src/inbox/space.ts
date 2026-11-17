@@ -108,3 +108,30 @@ export function spacePlacer(space: SpaceProvisioner): FilePlacer {
     return placed.data.path;
   };
 }
+/** Removes a removed file's copy from a channel's folder; gone already is done. */
+export type FileRemover = (
+  directory: string,
+  attachmentId: string,
+  signal: AbortSignal,
+) => Promise<void>;
+/** The provisioner's `DELETE /projects/:directory/attachments/:id`. */
+export function spaceRemover(space: SpaceProvisioner): FileRemover {
+  return async (directory, attachmentId, signal) => {
+    const token = readFileSync(space.tokenFile, 'utf8').trim();
+    const response = await fetch(
+      new URL(
+        `/projects/${encodeURIComponent(directory)}/attachments/${encodeURIComponent(attachmentId)}`,
+        space.endpoint,
+      ),
+      {
+        method: 'DELETE',
+        headers: { authorization: `Bearer ${token}` },
+        redirect: 'error',
+        signal: AbortSignal.any([signal, AbortSignal.timeout(30_000)]),
+      },
+    );
+    // A folder it never made holds no copy to remove.
+    if (!response.ok && response.status !== 404)
+      throw new Error(`provisioner ${String(response.status)}`);
+  };
+}
