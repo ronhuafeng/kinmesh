@@ -2272,6 +2272,10 @@ test('a phone channel: targets a finger can hit, fields that don’t zoom, a com
       width(send),
     ]);
     expect(fieldWidth + atWidth + sendWidth).toBeGreaterThan(formWidth - 48);
+    // Send grows in once there is something to send: measure it grown.
+    await expect
+      .poll(() => send.evaluate((el) => el.getAnimations().length))
+      .toBe(0);
     expect(await takesTaps(page, '.composer button[type="submit"]')).toEqual([
       true,
       true,
