@@ -267,12 +267,15 @@ await test('a browser notifies the person who turned it on, until they sign out 
       payload: unreachable,
     });
     assert.equal((await test(unreachable.endpoint)).statusCode, 502);
+    // The owner signed out above: signed in again, Grace's browser is still
+    // not theirs to test.
+    const ownerAgain = await signInAs(f.app, 'owner@example.com');
     assert.equal(
       (
         await f.app.inject({
           method: 'POST',
           url: '/api/push/test',
-          cookies: f.cookies,
+          cookies: ownerAgain,
           payload: { endpoint: unreachable.endpoint },
         })
       ).statusCode,
