@@ -33,6 +33,11 @@ export function createMetrics() {
     buckets: [0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1, 2.5, 5],
     registers: [registry],
   });
+  const workspaceReads = new Counter({
+    name: 'kinmesh_workspace_reads_total',
+    help: 'Workspace snapshots read; the views and reads of one place share one.',
+    registers: [registry],
+  });
   const rateLimited = new Counter({
     name: 'kinmesh_rate_limited_total',
     help: 'Requests refused for exceeding a rate limit, by route.',
@@ -41,6 +46,10 @@ export function createMetrics() {
   });
   return {
     registry,
+    /** A workspace snapshot was read. */
+    workspaceRead: () => {
+      workspaceReads.inc();
+    },
     /** For the rate limiter: a client went over a limit. */
     limited: (request: FastifyRequest) => {
       rateLimited.inc({ route: routeOf(request) });

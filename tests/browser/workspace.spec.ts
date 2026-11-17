@@ -1,6 +1,6 @@
 import type { Page, APIRequestContext } from '@playwright/test';
 import { z } from 'zod';
-import { randomUUID } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import { rawDatabase } from '../raw.js';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
@@ -28,6 +28,17 @@ async function snapshot(request: APIRequestContext, origin: string) {
   const response = await request.get(origin + '/api/workspace');
   expect(response.status()).toBe(200);
   return WorkspaceSnapshot.parse(await response.json());
+}
+/**
+ * Holds every event stream unopened, so what the view shows comes only from
+ * reading the workspace, which the test holds or rewrites. Silent streams
+ * leave the view to read the workspace itself.
+ */
+async function withoutStream(page: Page) {
+  await page.route(
+    (url) => url.pathname === '/api/events',
+    () => undefined,
+  );
 }
 /** The one line that says what is on screen is stale. */
 function staleLine(page: Page) {
@@ -946,6 +957,9 @@ test('a week before T3’s sign-in ends anyone reconnects it from the Inbox; onc
   context,
   hub,
 }) => {
+  // The test says a sign-in is under way by rewriting the workspace it
+  // reads, so the view reads it, and nothing arrives on its own.
+  await withoutStream(page);
   await signIn(page, hub);
   await register(page, 'Ada', 'developer');
   const state = await snapshot(context.request, hub.origin);
@@ -1007,7 +1021,13 @@ test('a week before T3’s sign-in ends anyone reconnects it from the Inbox; onc
     async (route) => {
       const response = await route.fetch();
       const json = WorkspaceSnapshot.parse(await response.json());
-      if (connecting && json.attention.t3) json.attention.t3.signIn = 'waiting';
+      // Another screen, so another revision, as the hub would name it.
+      if (connecting && json.attention.t3) {
+        json.attention.t3.signIn = 'waiting';
+        json.revision = createHash('sha256')
+          .update(json.revision + ':waiting')
+          .digest('hex');
+      }
       await route.fulfill({ response, json });
     },
   );
@@ -1057,6 +1077,7 @@ test('a week before T3’s sign-in ends anyone reconnects it from the Inbox; onc
   } finally {
     await db.close();
   }
+  await readAgain(page);
   await expect(
     responses.getByText('T3 重新连接后 Ada 会继续', {
       exact: true,
@@ -1337,6 +1358,8 @@ test('lost message response retries the same committed operation; real conflict 
   context,
   hub,
 }) => {
+  // Nothing arrives on its own: the view reads the workspace when asked.
+  await withoutStream(page);
   await signIn(page, hub);
   const state = await snapshot(context.request, hub.origin);
   if (!state.channel) throw new Error('Local channel missing');
@@ -1868,6 +1891,8 @@ async function openMockNativeCard(
   request: APIRequestContext,
   hub: { origin: string },
 ) {
+  // The workspace comes only from reads, which carry the mock origin.
+  await withoutStream(page);
   await page.route('**/api/workspace**', async (route) => {
     // A read after the test's hub has stopped is simply lost.
     const response = await route.fetch().catch(() => null);
@@ -2098,8 +2123,10 @@ test('a long conversation opens at its newest message, follows new ones, holds s
   const held = new Promise<void>((resolve) => {
     release = resolve;
   });
+  // The older page is read, and watched, only once released.
   const reachBack = (url: URL) =>
-    url.pathname === '/api/workspace' && url.searchParams.has('messagesCursor');
+    (url.pathname === '/api/workspace' || url.pathname === '/api/events') &&
+    url.searchParams.has('messagesCursor');
   await page.route(reachBack, async (route) => {
     await held;
     await route.continue();

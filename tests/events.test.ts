@@ -10,7 +10,10 @@ import {
 import { Revisions } from '../src/workspace/events.js';
 import { communicationFixture, postInput } from './communication-helpers.js';
 
-/** One open `GET /api/events` stream, read event by event. */
+/**
+ * One open `GET /api/events` stream, read `revisions` by `revisions`. The
+ * workspace a `workspace` event carried before them is kept.
+ */
 async function stream(origin: string, cookie: string, query = '') {
   const response = await fetch(origin + '/api/events?' + query, {
     headers: { cookie },
@@ -24,15 +27,24 @@ async function stream(origin: string, cookie: string, query = '') {
   const reader = response.body.getReader();
   const decoder = new TextDecoder();
   let buffer = '';
+  let carried: WorkspaceSnapshot | null = null;
   const next = async (): Promise<Revisions | null> => {
     for (;;) {
       const end = buffer.indexOf('\n\n');
       if (end >= 0) {
         const block = buffer.slice(0, end);
         buffer = buffer.slice(end + 2);
-        if (!/^event: revisions$/m.test(block)) continue;
         const data = /^data: (.*)$/m.exec(block)?.[1] ?? '';
-        return Revisions.parse(JSON.parse(data) as unknown);
+        if (/^event: workspace$/m.test(block)) {
+          carried = WorkspaceSnapshot.parse(JSON.parse(data) as unknown);
+          continue;
+        }
+        if (!/^event: revisions$/m.test(block)) continue;
+        const revisions = Revisions.parse(JSON.parse(data) as unknown);
+        // The workspace named travels just before, unless unreadable.
+        if (revisions.workspace !== undefined)
+          assert.equal(carried?.revision, revisions.workspace);
+        return revisions;
       }
       const { value, done } = await reader.read();
       if (done) return null;
@@ -42,6 +54,8 @@ async function stream(origin: string, cookie: string, query = '') {
   return {
     /** The next `revisions` event, or null once the hub ends the stream. */
     next,
+    /** The workspace the latest `workspace` event carried. */
+    carried: () => carried,
     /** Reads to the end; true once the hub has ended the stream. */
     async ended() {
       while ((await next()) !== null);
@@ -100,11 +114,25 @@ await test(
           400,
         );
 
-      // A channel view watches the workspace: named first, then on change.
+      // A channel view watches the workspace: it travels first, then on
+      // change, as the person reads it.
       const place = await stream(origin, cookie);
       assert.deepEqual(await place.next(), { workspace: await workspace() });
+      // The same as reading it, but for when it was read.
+      assert.deepEqual(
+        { ...place.carried(), observedAt: null },
+        {
+          ...WorkspaceSnapshot.parse(await get('/api/workspace')),
+          observedAt: null,
+        },
+      );
       await post('Pushed, not polled');
       assert.deepEqual(await place.next(), { workspace: await workspace() });
+      assert.ok(
+        place
+          .carried()
+          ?.messages.items.some((m) => m.body === 'Pushed, not polled'),
+      );
       // Another process writes: the agent's worker starts.
       await other.inbox.heartbeat([f.agent.id]);
       assert.deepEqual(await place.next(), { workspace: await workspace() });
@@ -232,6 +260,55 @@ await test(
       assert.deepEqual(await place.next(), { workspace: revision });
     } finally {
       views.liveness = liveness;
+      await f.dispose();
+    }
+  },
+);
+
+await test(
+  'one change with several views of one place open reads the workspace once',
+  { timeout: 30_000 },
+  async () => {
+    const f = await communicationFixture();
+    const read = f.store.read;
+    let reads = 0;
+    f.store.read = <T>(action: () => Promise<T>) => {
+      reads++;
+      return read(action);
+    };
+    try {
+      await f.app.listen({ host: '127.0.0.1', port: 0 });
+      const address = f.app.server.address();
+      assert.ok(address && typeof address === 'object');
+      const origin = 'http://127.0.0.1:' + String(address.port);
+      const cookie = Object.entries(f.cookies)
+        .map(([name, value]) => `${name}=${encodeURIComponent(value)}`)
+        .join('; ');
+      // Three views of the same place, as three tabs of one person: the
+      // workspace each opens with is one read.
+      const views = [];
+      for (let i = 0; i < 3; i++) views.push(await stream(origin, cookie));
+      for (const view of views) assert.ok((await view.next())?.workspace);
+      assert.equal(reads, 1);
+      // A change reaches all three, read once for them all.
+      reads = 0;
+      await f.comm.post(
+        f.principal,
+        f.teamId,
+        f.channelId,
+        postInput({ body: 'Seen by every tab' }),
+      );
+      for (const view of views) {
+        assert.ok((await view.next())?.workspace);
+        assert.ok(
+          view
+            .carried()
+            ?.messages.items.some((m) => m.body === 'Seen by every tab'),
+        );
+      }
+      assert.equal(reads, 1);
+    } finally {
+      f.store.read = read;
       await f.dispose();
     }
   },

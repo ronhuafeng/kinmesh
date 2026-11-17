@@ -49,10 +49,12 @@ export const WatchQuery = WorkspaceQuery.extend({
 });
 
 /**
- * The stream's only event, `revisions`. The first, sent when the stream
- * opens, names every watched resource; each later one names only those that
+ * The stream's `revisions` event. The first, sent when the stream opens,
+ * names every watched resource; each later one names only those that
  * changed. A view reads again exactly the resources whose revision differs
- * from the one it holds.
+ * from the one it holds. The workspace needs no read while it can be read:
+ * a `workspace` event (a `WorkspaceSnapshot`) carries it just before the
+ * `revisions` that names it.
  */
 export const Revisions = z
   .strictObject({

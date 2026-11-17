@@ -10,6 +10,7 @@ import type { Store } from '../persistence/store.js';
 import { together } from '../persistence/database.js';
 import { fingerprint } from '../persistence/transactional.js';
 import type { Credential } from '../adapters/t3/oauth.js';
+import type { Changes } from './changes.js';
 import { readNativeExecution } from '../workspace/native.js';
 import {
   ExecutionSnapshot,
@@ -19,6 +20,10 @@ import {
 } from '../workspace/contracts.js';
 
 type Person = Extract<Principal, { kind: 'human' }>;
+/** How long a snapshot is reused at most, with no change announced. */
+const REUSE_MS = 10_000;
+/** How many person-and-place snapshots are kept at once. */
+const SHARED_LIMIT = 256;
 /**
  * Names what a snapshot shows. The time it was read and worker heartbeats,
  * which change nothing on screen, are left out.
@@ -45,6 +50,9 @@ export function registerWorkspace(
   runCredential: (endpoint: string) => Credential | null,
   /** T3's sign-in when it needs renewing by a person (`registerConnect`). */
   renewal: (principal: Person, teamId: TeamId) => Promise<unknown>,
+  changes: Changes,
+  /** Called for each snapshot read, shared or not. */
+  counted: () => void,
 ) {
   /** One read of a run through the team's T3 connection, the one runs use. */
   async function readRun(
@@ -141,12 +149,69 @@ export function registerWorkspace(
     },
   );
   /**
+   * Snapshots read since the last change, by person and place: the streams
+   * of one person's place share one, and a `GET` shares one still being
+   * read (a finished one may miss what changes unannounced: heartbeats,
+   * presence, T3's sign-in on disk). A change, or a write through this hub
+   * (whose announcement may still be on its way), forgets them all; one is
+   * reused for `REUSE_MS` at most.
+   */
+  const shared = new Map<
+    string,
+    { at: number; done: boolean; snapshot: Promise<WorkspaceSnapshot> }
+  >();
+  const forget = () => {
+    shared.clear();
+  };
+  changes.subscribe(forget);
+  app.addHook('onSend', (request, _reply, payload, done) => {
+    if (request.method !== 'GET' && request.method !== 'HEAD') forget();
+    done(null, payload);
+  });
+  /**
    * What one person's workspace shows for one place: one consistent read
    * (`store.read`), in which each access check is asked once and reads that
    * don't depend on each other go together.
    */
-  const snapshot = (principal: Person, query: WorkspaceQuery) =>
-    store.read(() => build(principal, query));
+  const snapshot = (
+    principal: Person,
+    query: WorkspaceQuery,
+    /** Only one still being read: what a `GET` asks for. */
+    current = false,
+  ) => {
+    const key = JSON.stringify([
+      principal.humanId,
+      Object.entries(query).sort(([a], [b]) => (a < b ? -1 : 1)),
+    ]);
+    const now = Date.now();
+    const kept = shared.get(key);
+    if (kept && now - kept.at < REUSE_MS && !(current && kept.done))
+      return kept.snapshot;
+    counted();
+    const entry = {
+      at: now,
+      done: false,
+      snapshot: store.read(() => build(principal, query)),
+    };
+    void entry.snapshot.then(
+      () => {
+        entry.done = true;
+      },
+      () => undefined,
+    );
+    shared.delete(key);
+    shared.set(key, entry);
+    // Beyond the bound, the oldest go first.
+    for (const old of shared.keys()) {
+      if (shared.size <= SHARED_LIMIT) break;
+      shared.delete(old);
+    }
+    // A failed read is not kept: the next one asks again.
+    entry.snapshot.catch(() => {
+      if (shared.get(key) === entry) shared.delete(key);
+    });
+    return entry.snapshot;
+  };
   const build = async (principal: Person, query: WorkspaceQuery) => {
     const [human, membership] = await together([
       store.human(principal.humanId),
@@ -379,7 +444,7 @@ export function registerWorkspace(
     reply.header('Cache-Control', 'no-store');
     const principal = request.principal;
     if (principal?.kind !== 'human') throw new DomainError('forbidden');
-    return snapshot(principal, WorkspaceQuery.parse(request.query));
+    return snapshot(principal, WorkspaceQuery.parse(request.query), true);
   });
   app.get('/api/agui/:teamId/:memberId', async (request, reply) => {
     reply.header('Cache-Control', 'no-store');
