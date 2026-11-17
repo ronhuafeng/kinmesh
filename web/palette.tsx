@@ -1,4 +1,13 @@
-import { useEffect, useId, useRef, useState } from 'react';
+import {
+  useEffect,
+  useId,
+  useLayoutEffect,
+  useRef,
+  useState,
+  type ChangeEvent,
+  type KeyboardEvent,
+  type ReactNode,
+} from 'react';
 import { SearchIcon } from './icons.js';
 
 export interface Command {
@@ -20,24 +29,123 @@ function matches(command: Command, query: string) {
     .filter(Boolean)
     .every((word) => text.includes(word));
 }
-/**
- * ⌘K / Ctrl+K: jump to any view, channel, task or teammate, or do one of the
- * few actions that have no place on screen (leaving the open channel).
- */
-export function CommandPalette({ commands }: { commands: Command[] }) {
-  const dialog = useRef<HTMLDialogElement>(null);
-  const input = useRef<HTMLInputElement>(null);
+/** What is typed, the results, the one active. */
+function useSearch(commands: Command[]) {
   const [query, setQuery] = useState('');
   const [active, setActive] = useState(0);
   const listId = useId();
+  const results = commands.filter((c) => matches(c, query)).slice(0, 40);
+  const current = results[Math.min(active, results.length - 1)];
+  return {
+    query,
+    results,
+    current,
+    listId,
+    setActive,
+    reset() {
+      setQuery('');
+      setActive(0);
+    },
+    /** The combobox: typing filters, arrows move, Enter runs. */
+    input(run: (command: Command | undefined) => void, reversed = false) {
+      return {
+        type: 'text',
+        role: 'combobox',
+        'aria-label': '搜索频道、任务、成员和视图',
+        'aria-expanded': true,
+        'aria-controls': listId,
+        'aria-activedescendant': current
+          ? listId + '-' + current.id
+          : undefined,
+        value: query,
+        onChange: (e: ChangeEvent<HTMLInputElement>) => {
+          setQuery(e.target.value);
+          setActive(0);
+        },
+        onKeyDown: (e: KeyboardEvent<HTMLInputElement>) => {
+          if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+            e.preventDefault();
+            if (results.length === 0) return;
+            // Shown best-last (nearest the thumb), Up moves to worse ones.
+            const step = (e.key === 'ArrowDown') !== reversed ? 1 : -1;
+            setActive((old) => (old + step + results.length) % results.length);
+          } else if (e.key === 'Enter') {
+            e.preventDefault();
+            run(current);
+          }
+        },
+      } as const;
+    },
+  };
+}
+type Search = ReturnType<typeof useSearch>;
+/** The results, grouped as views, actions, channels, tasks and people. */
+function Results({
+  search,
+  run,
+  reversed = false,
+}: {
+  search: Search;
+  run: (command: Command) => void;
+  /** Best last, as where the field is at the bottom of the screen. */
+  reversed?: boolean;
+}) {
+  const { results, current, listId, query } = search;
+  const shown = results.map((command, index) => ({ command, index }));
+  if (reversed) shown.reverse();
+  let lastGroup = '';
+  return (
+    <>
+      <ul id={listId} role="listbox" aria-label="结果">
+        {shown.map(({ command, index }) => {
+          const heading = command.group !== lastGroup;
+          lastGroup = command.group;
+          return [
+            heading && (
+              <li
+                key={'group-' + command.group}
+                role="presentation"
+                aria-hidden="true"
+                className="palette-group"
+              >
+                {command.group}
+              </li>
+            ),
+            <li
+              key={command.id}
+              id={listId + '-' + command.id}
+              role="option"
+              aria-selected={command === current}
+              onMouseMove={() => {
+                search.setActive(index);
+              }}
+              onClick={() => {
+                run(command);
+              }}
+            >
+              <span className="palette-label">{command.label}</span>
+              {command.hint && <small>{command.hint}</small>}
+            </li>,
+          ];
+        })}
+      </ul>
+      {results.length === 0 && (
+        <p className="palette-empty">没有和“{query}”匹配的结果。</p>
+      )}
+    </>
+  );
+}
+/** ⌘K / Ctrl+K anywhere opens the search, or closes it again. */
+function useShortcut(toggle: () => void) {
+  const latest = useRef(toggle);
   useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
+    latest.current = toggle;
+  });
+  useEffect(() => {
+    const onKey = (e: globalThis.KeyboardEvent) => {
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
         e.preventDefault();
-        const el = dialog.current;
-        if (!el) return;
-        if (el.open) el.close();
-        else open();
+        latest.current();
       }
     };
     window.addEventListener('keydown', onKey);
@@ -45,122 +153,225 @@ export function CommandPalette({ commands }: { commands: Command[] }) {
       window.removeEventListener('keydown', onKey);
     };
   }, []);
-  function open() {
-    setQuery('');
-    setActive(0);
-    dialog.current?.showModal();
-    input.current?.focus();
+}
+/**
+ * The sidebar's head: the team name, and at the end of its row a magnifier.
+ * Searching, the field grows from the magnifier over the whole row and the
+ * results drop below it, wider than the sidebar (on a phone, the screen's
+ * width; away from Home, ⌘K opens the row over the top). Jump to any view, channel,
+ * task or teammate, or do one of the few actions that have no place on
+ * screen (leaving the open channel).
+ */
+export function SidebarSearch({
+  commands,
+  children,
+  onOpen,
+  end,
+}: {
+  commands: Command[];
+  /** The team name, shown while not searching. */
+  children: ReactNode;
+  /** After the magnifier while not searching (closing the sidebar). */
+  end?: ReactNode;
+  /** Before it opens: a closed sidebar opens, search and all. */
+  onOpen?: () => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const row = useRef<HTMLDivElement>(null);
+  const field = useRef<HTMLInputElement>(null);
+  const popup = useRef<HTMLDivElement>(null);
+  const returnTo = useRef<HTMLElement | null>(null);
+  const search = useSearch(commands);
+  function show() {
+    const focused = document.activeElement;
+    returnTo.current = focused instanceof HTMLElement ? focused : null;
+    onOpen?.();
+    search.reset();
+    setOpen(true);
   }
-  const results = commands.filter((c) => matches(c, query)).slice(0, 40);
-  const current = results[Math.min(active, results.length - 1)];
+  /** Back to the team name; Esc and a choice give focus back where it was. */
+  function hide(restore: boolean) {
+    setOpen(false);
+    search.reset();
+    if (restore) returnTo.current?.focus({ preventScroll: true });
+  }
+  useShortcut(() => {
+    if (open) hide(true);
+    else show();
+  });
+  // The results hang under the field, outside the sidebar's scrolling box.
+  useLayoutEffect(() => {
+    const list = popup.current;
+    const input = field.current;
+    if (!open || !list || !input) return;
+    input.focus();
+    list.showPopover();
+    const place = () => {
+      // Its left edge is the row's: the field is still growing from the
+      // magnifier.
+      const box = input.getBoundingClientRect();
+      const start = row.current?.getBoundingClientRect().left ?? box.left;
+      list.style.setProperty('--search-top', String(box.bottom + 4) + 'px');
+      list.style.setProperty('--search-left', String(start) + 'px');
+    };
+    place();
+    const outside = (e: PointerEvent) => {
+      const target = e.target;
+      if (!(target instanceof Node)) return;
+      if (!row.current?.contains(target) && !list.contains(target)) hide(false);
+    };
+    window.addEventListener('resize', place);
+    document.addEventListener('scroll', place, true);
+    // A sidebar sliding in carries the field with it: follow it a moment.
+    let frames = 0;
+    let frame = requestAnimationFrame(function follow() {
+      place();
+      if (++frames < 20) frame = requestAnimationFrame(follow);
+    });
+    document.addEventListener('pointerdown', outside, true);
+    return () => {
+      window.removeEventListener('resize', place);
+      document.removeEventListener('scroll', place, true);
+      cancelAnimationFrame(frame);
+      document.removeEventListener('pointerdown', outside, true);
+    };
+  }, [open]);
   function run(command: Command | undefined) {
     if (!command) return;
-    dialog.current?.close();
+    hide(true);
     command.run();
   }
-  let lastGroup = '';
+  const input = search.input(run);
   return (
-    <>
-      <button
-        type="button"
-        className="palette-trigger secondary"
-        aria-label="打开命令面板"
-        aria-keyshortcuts="Meta+K Control+K"
-        onClick={open}
-      >
-        <span className="with-icon">
-          <SearchIcon />
-          跳转到…
-        </span>
-      </button>
-      <dialog
-        ref={dialog}
-        className="palette"
-        aria-label="命令面板"
-        onClick={(e) => {
-          // A click on the backdrop lands on the dialog element itself.
-          if (e.target === e.currentTarget) e.currentTarget.close();
-        }}
-      >
+    <div className="team-row" ref={row} data-open={open || undefined}>
+      {children}
+      {open && (
         <input
-          ref={input}
-          type="text"
-          role="combobox"
-          aria-label="搜索频道、任务、成员和视图"
-          aria-expanded="true"
-          aria-controls={listId}
-          aria-activedescendant={
-            current ? listId + '-' + current.id : undefined
-          }
-          placeholder="搜索频道、任务、成员和视图"
-          value={query}
-          onChange={(e) => {
-            setQuery(e.target.value);
-            setActive(0);
-          }}
+          ref={field}
+          {...input}
+          placeholder="搜索"
+          aria-keyshortcuts="Meta+K Control+K"
           onKeyDown={(e) => {
-            if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+            if (e.key === 'Escape') {
               e.preventDefault();
-              if (results.length === 0) return;
-              const step = e.key === 'ArrowDown' ? 1 : -1;
-              setActive(
-                (old) => (old + step + results.length) % results.length,
-              );
-            } else if (e.key === 'Enter') {
-              e.preventDefault();
-              run(current);
+              hide(true);
+              return;
             }
+            input.onKeyDown(e);
+          }}
+          onBlur={(e) => {
+            // Tabbing away closes it; a click is handled as a click outside.
+            const next = e.relatedTarget;
+            if (
+              next &&
+              !row.current?.contains(next) &&
+              !popup.current?.contains(next)
+            )
+              hide(false);
           }}
         />
-        <ul id={listId} role="listbox" aria-label="结果">
-          {results.map((command, index) => {
-            const heading = command.group !== lastGroup;
-            lastGroup = command.group;
-            return [
-              heading && (
-                <li
-                  key={'group-' + command.group}
-                  role="presentation"
-                  aria-hidden="true"
-                  className="palette-group"
-                >
-                  {command.group}
-                </li>
-              ),
-              <li
-                key={command.id}
-                id={listId + '-' + command.id}
-                role="option"
-                aria-selected={command === current}
-                onMouseMove={() => {
-                  setActive(index);
-                }}
-                onClick={() => {
-                  run(command);
-                }}
-              >
-                <span className="palette-label">{command.label}</span>
-                {command.hint && <small>{command.hint}</small>}
-              </li>,
-            ];
-          })}
-        </ul>
-        {results.length === 0 && (
-          <p className="palette-empty">没有和“{query}”匹配的结果。</p>
-        )}
-        <footer>
-          <span>
-            <kbd>↑</kbd>
-            <kbd>↓</kbd> 移动
-          </span>
-          <span>
-            <kbd>↵</kbd> 打开
-          </span>
-          <span>
-            <kbd>esc</kbd> 关闭
-          </span>
-        </footer>
-      </dialog>
-    </>
+      )}
+      <button
+        type="button"
+        className="quiet icon-button search-toggle"
+        aria-label="搜索"
+        title="搜索"
+        aria-expanded={open}
+        aria-keyshortcuts="Meta+K Control+K"
+        onClick={() => {
+          if (open) hide(true);
+          else show();
+        }}
+      >
+        <SearchIcon />
+      </button>
+      {end}
+      {open && (
+        <div
+          ref={popup}
+          popover="manual"
+          className="palette search-results"
+          // The field keeps focus while a result is clicked.
+          onMouseDown={(e) => {
+            e.preventDefault();
+          }}
+        >
+          <Results search={search} run={run} />
+        </div>
+      )}
+    </div>
+  );
+}
+
+/**
+ * On a phone, search is a tab of its own: the field at the bottom, just
+ * above the keyboard (or the tabs, with none), and the results above it,
+ * the best nearest the thumb. A choice goes there and leaves search.
+ */
+export function SearchPage({
+  commands,
+  onClose,
+}: {
+  commands: Command[];
+  /** Back to where search was opened from. */
+  onClose: () => void;
+}) {
+  const search = useSearch(commands);
+  const field = useRef<HTMLInputElement>(null);
+  const page = useRef<HTMLDivElement>(null);
+  const scroller = useRef<HTMLDivElement>(null);
+  // The field rides on the keyboard: the visual viewport says how much of
+  // the screen it takes.
+  useEffect(() => {
+    const view = window.visualViewport;
+    const place = () => {
+      const keyboard = view
+        ? Math.max(0, window.innerHeight - view.height - view.offsetTop)
+        : 0;
+      // With no keyboard, the field sits just above the tabs.
+      const tabs =
+        document.querySelector('.phone-tabs')?.getBoundingClientRect().height ??
+        0;
+      page.current?.style.setProperty(
+        '--search-bottom',
+        String(keyboard > 0 ? keyboard : tabs) + 'px',
+      );
+    };
+    place();
+    view?.addEventListener('resize', place);
+    view?.addEventListener('scroll', place);
+    // The page takes focus as it opens; the field takes it after.
+    const later = window.setTimeout(() => {
+      field.current?.focus({ preventScroll: true });
+    });
+    return () => {
+      window.clearTimeout(later);
+      view?.removeEventListener('resize', place);
+      view?.removeEventListener('scroll', place);
+    };
+  }, []);
+  // The best result stays in view, at the bottom.
+  useLayoutEffect(() => {
+    const list = scroller.current;
+    if (list) list.scrollTop = list.scrollHeight;
+  }, [search.query]);
+  function run(command: Command | undefined) {
+    if (!command) return;
+    onClose();
+    command.run();
+  }
+  return (
+    <div className="search-page" ref={page}>
+      <div className="palette search-page-results" ref={scroller}>
+        <Results search={search} run={run} reversed />
+      </div>
+      <input
+        ref={field}
+        {...search.input(run, true)}
+        className="search-page-field"
+        placeholder="搜索"
+        enterKeyHint="go"
+      />
+    </div>
   );
 }

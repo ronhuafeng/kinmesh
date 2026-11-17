@@ -74,6 +74,7 @@ export function ActionForm({
   onDone,
   children,
   submit,
+  submitName,
   keyed = true,
   method = 'POST',
   onResult,
@@ -88,6 +89,8 @@ export function ActionForm({
   children?: ReactNode;
   /** Omit when the children supply their own submit buttons. */
   submit?: string;
+  /** The button's full name when its words lean on what is around it. */
+  submitName?: string;
   keyed?: boolean;
   /** PUT replaces a whole resource, such as an agent profile. */
   method?: 'POST' | 'PUT';
@@ -154,7 +157,12 @@ export function ActionForm({
               {icon}
             </button>
           ) : (
-            <button type="submit" disabled={action.disabled || action.busy}>
+            <button
+              type="submit"
+              aria-label={submitName}
+              title={submitName}
+              disabled={action.disabled || action.busy}
+            >
               {submit}
             </button>
           ))}

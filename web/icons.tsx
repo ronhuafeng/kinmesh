@@ -37,6 +37,13 @@ export const PowerIcon = () => (
     <path d="M18.4 6.6a9 9 0 1 1-12.79.04" />
   </Icon>
 );
+/** The sidebar: opens and closes it. */
+export const SidebarIcon = () => (
+  <Icon>
+    <rect x="3" y="4" width="18" height="16" rx="2" />
+    <path d="M9 4v16" />
+  </Icon>
+);
 export const MenuIcon = () => (
   <Icon>
     <path d="M4 7h16M4 12h16M4 17h16" />
@@ -58,9 +65,9 @@ export const BackIcon = () => (
     <path d="m15 18-6-6 6-6" />
   </Icon>
 );
-/** Home on a phone: the channels and the team. */
-export const HomeIcon = () => (
+/** A phone's channels tab: the channels and the team. */
+export const HashIcon = () => (
   <Icon>
-    <path d="M3 10.5 12 3l9 7.5V20a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1z" />
+    <path d="M4 9h16M4 15h16M10 3 8 21M16 3l-2 18" />
   </Icon>
 );

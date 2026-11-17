@@ -169,7 +169,7 @@ test('a second person of the organization signs in to the same workspace and see
     await expect(graceRow).toHaveCount(0);
     await page.getByRole('tab', { name: '团队', exact: true }).click();
     const add = page.getByRole('button', {
-      name: '把 Grace Hopper 加入频道',
+      name: '把 Grace Hopper 加入 #design',
     });
     await add.click();
     await expect(graceRow).toBeVisible();
@@ -211,18 +211,44 @@ test('real workspace onboarding, mentions and reconnect on a phone', async ({
   await signIn(page, hub);
   await createChannel(page, 'design');
   await register(page, 'Ada', 'developer');
-  // A phone stacks the places: Home holds the channels and the team.
+  // A phone stacks the places. The team is a view of the channel, beside
+  // its chat and board, as on a wider screen.
   await page.setViewportSize({ width: 375, height: 1000 });
+  await expect(
+    page.getByRole('tab', { name: '团队', exact: true }),
+  ).toHaveAttribute('aria-selected', 'true');
+  await expect(agentRow(page, 'Ada')).toBeVisible();
+  // Back leads Home: the channels as conversations, and no gallery.
+  await page.getByRole('button', { name: '返回', exact: true }).click();
   const places = page.getByRole('navigation', { name: '位置' });
-  await expect(places.getByRole('button', { name: '主页' })).toHaveAttribute(
+  await expect(places.getByRole('button', { name: '频道' })).toHaveAttribute(
     'aria-current',
     'page',
   );
-  await expect(agentRow(page, 'Ada')).toBeVisible();
+  await expect(
+    page.getByRole('list', { name: '团队', exact: true }),
+  ).toHaveCount(0);
+  // Search is a tab of its own: the field waits at the bottom, just above
+  // the tabs, ready to type in, and Esc goes back.
+  await places.getByRole('button', { name: '搜索', exact: true }).click();
+  const search = page.getByRole('combobox', { name: /搜索/ });
+  await expect(search).toBeFocused();
+  const [field, tabs] = await Promise.all([
+    search.boundingBox(),
+    places.boundingBox(),
+  ]);
+  expect(field && tabs && field.y + field.height <= tabs.y).toBe(true);
+  expect(field && tabs && tabs.y - (field.y + field.height) < 24).toBe(true);
+  await page.keyboard.press('Escape');
+  await expect(search).toBeHidden();
+  // A choice goes there and leaves search.
+  await places.getByRole('button', { name: '搜索', exact: true }).click();
+  await search.fill('design');
   await page
-    .getByRole('navigation', { name: '频道' })
-    .getByRole('button', { name: 'design', exact: true })
+    .getByRole('listbox', { name: '结果' })
+    .getByRole('option', { name: /^# design/ })
     .click();
+  await expect(search).toBeHidden();
   // A channel has the screen, under a bar that says where it is.
   await expect(
     page.getByRole('heading', { name: '# design', exact: true }),
@@ -562,16 +588,18 @@ test('keyboard mention, and a message becomes a task in its topic', async ({
     .parse(await (await context.request.get(base + '/topics')).json()).items;
   expect(tasks).toHaveLength(1);
   expect(tasks[0]?.topicId).toBe(topics.find((t) => t.title === 'Billing')?.id);
-  // ⌘K jumps straight to the task; only its acceptor may cancel it, with a note.
+  // Search, from the magnifier by the team name, jumps straight to the task; only its acceptor may cancel it, with a note.
   await page.getByRole('tab', { name: '聊天', exact: true }).click();
-  await page.keyboard.press('ControlOrMeta+k');
-  const palette = page.getByRole('dialog', { name: '命令面板' });
-  await palette.getByRole('combobox', { name: /搜索/ }).fill('postal 进行中');
+  await page.getByRole('button', { name: '搜索', exact: true }).click();
+  const search = page.getByRole('combobox', { name: /搜索/ });
+  await search.fill('postal 进行中');
   await expect(
-    palette.getByRole('option', { name: /Validate postal codes/ }),
+    page
+      .getByRole('listbox', { name: '结果' })
+      .getByRole('option', { name: /Validate postal codes/ }),
   ).toHaveAttribute('aria-selected', 'true');
   await page.keyboard.press('Enter');
-  await expect(palette).toBeHidden();
+  await expect(search).toBeHidden();
   const task = taskPage(page, 'Validate postal codes per country @Ada');
   await expect(task).toBeVisible();
   await task.getByRole('button', { name: '取消任务…', exact: true }).click();
@@ -1386,13 +1414,15 @@ test('human claim and request-review controls, plus leave/rejoin of known member
     page.locator('aside.sidebar').getByRole('button', { name: '退出频道' }),
   ).toHaveCount(0);
   await page.keyboard.press('ControlOrMeta+k');
-  const palette = page.getByRole('dialog', { name: '命令面板' });
-  await palette.getByRole('combobox', { name: /搜索/ }).fill('退出');
+  const search = page.getByRole('combobox', { name: /搜索/ });
+  await search.fill('退出');
   await expect(
-    palette.getByRole('option', { name: '退出 #general' }),
+    page
+      .getByRole('listbox', { name: '结果' })
+      .getByRole('option', { name: '退出 #general' }),
   ).toHaveAttribute('aria-selected', 'true');
   await page.keyboard.press('Enter');
-  await expect(palette).toBeHidden();
+  await expect(search).toBeHidden();
   await expect(
     page.getByText('欢迎来到你的团队', { exact: true }),
   ).toBeVisible();
@@ -2439,6 +2469,50 @@ test('a reload keeps the place and unsent work; Back returns to where you were',
   await expect(task).toBeVisible();
 });
 
+test('one control opens and closes the sidebar: it floats on an upright tablet and docks on a wide screen', async ({
+  page,
+  hub,
+}) => {
+  await signIn(page, hub);
+  await page.setViewportSize({ width: 768, height: 1024 });
+  const sidebar = page.locator('aside.sidebar');
+  const open = page.getByRole('button', { name: '展开侧栏', exact: true });
+  const close = sidebar.getByRole('button', { name: '收起侧栏', exact: true });
+  // Upright, it starts closed and the content has the whole width.
+  await expect(sidebar).toBeHidden();
+  const header = await page.locator('.workspace-header').boundingBox();
+  expect(header && header.x < 24).toBe(true);
+  // Opened, it floats over the content, which does not move; the control
+  // now ends the team name's row.
+  await open.click();
+  await expect(sidebar).toBeVisible();
+  await expect(close).toBeFocused();
+  expect(await page.locator('.workspace-header').boundingBox()).toEqual(header);
+  // A click outside, Esc, or its own control closes it.
+  await page.mouse.click(700, 600);
+  await expect(sidebar).toBeHidden();
+  await open.click();
+  await page.keyboard.press('Escape');
+  await expect(sidebar).toBeHidden();
+  await expect(open).toBeFocused();
+  await open.click();
+  await close.click();
+  await expect(sidebar).toBeHidden();
+  // Wide, it starts open as a column beside the content, and the same
+  // control closes it; this device remembers.
+  await page.setViewportSize({ width: 1280, height: 800 });
+  await expect(sidebar).toBeVisible();
+  const [aside, main] = await Promise.all([
+    sidebar.boundingBox(),
+    page.locator('.workspace-main').boundingBox(),
+  ]);
+  expect(aside && main && aside.x + aside.width <= main.x).toBe(true);
+  await close.click();
+  await expect(sidebar).toBeHidden();
+  await page.reload();
+  await expect(open).toBeVisible();
+  await expect(sidebar).toBeHidden();
+});
 test('a wide tablet keeps the board, one stage, beside the task that is open', async ({
   page,
   hub,

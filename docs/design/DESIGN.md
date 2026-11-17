@@ -42,7 +42,9 @@ that isn't needed. Check a change against these before it ships.
    Folds hide information; show it or leave it out.
 8. No drawers or overlays for content. A task, a new task, the Inbox, Settings and an
    agent open as pages in the main area. Creating is the same page as viewing: a new
-   task is its task page, empty; once created it stays on screen as that task.
+   task is its task page, empty; once created it stays on screen as that task. The one
+   exception is navigation: below 900 px the open sidebar floats over the content's
+   edge (see **Sidebar**).
 
 **Navigation**
 
@@ -179,7 +181,7 @@ it is the authority. Use the custom property for its role, never a raw colour.
   for the rest, and a `+` that starts one. The current place carries the
   quiet hover fill, never a card: the channel, or the topic when one is open (its
   channel then keeps only ink); "全部" is never highlighted. A topic is highlighted
-  only while its channel's chat or board is the current place. Leaving is **退出 #_name_** in the command palette; on a phone the topics are pills
+  only while its channel's chat or board is the current place. Leaving is **退出 #_name_** in search; on a phone the topics are pills
   above the conversation, and "退出频道" waits where the conversation begins. A channel
   or topic just created is opened.
 - **Board**: five stage columns, the stages of the lifecycle: 待开始 (proposed) →
@@ -220,8 +222,11 @@ it is the authority. Use the custom property for its role, never a raw colour.
 - **Credential once**: a newly issued token appears once, with copy and download,
   and is gone when dismissed.
 - **Team**: a gallery of faces with names and presence — you (your tile opens your
-  page), the other people, then the agents; the last tile adds an agent. Someone who isn't in the open
-  channel, person or agent, carries **把 _name_ 加入频道** on their tile.
+  page), the other people, then the agents; the last tile adds an agent. Faces are
+  56 px in tiles of at least 7rem, as many to a row as fit; the add tile is simply the
+  next cell. Someone who isn't in the open
+  channel, person or agent, carries **加入 #_channel_** on their tile (their name is
+  already under the face), on one line; a long channel name ends in an ellipsis.
 - **People in the sidebar**: the other people in the channel, then its agents; you
   are not listed, since you know you are here. Someone else has no page: their row is their face, name
   and presence, sized and aligned exactly like a row that opens. Owner and reviewer
@@ -238,12 +243,13 @@ it is the authority. Use the custom property for its role, never a raw colour.
   or holds the fix under it.
   A row leaves when its cause is resolved; there is nothing to dismiss. Expired
   deliveries are not listed; they stay on their message's delivery line.
-- **Settings**: your own tile on Team (on a phone, the You tab) opens your page; the
+- **Settings**: your own tile on Team (on a phone, the 我 tab) opens your page; the
   page has no face or name of its own. It holds
   only **在所有设备上退出登录**, a quiet row in the danger colour (and **退出登录** on
   a phone).
 - **Team name**: the organization's name as Feishu gives it, never typed here, heads
-  the sidebar above search as a wordmark — no logo or avatar. One line; a name of more
+  the sidebar as a wordmark — no logo or avatar — sharing its row with search
+  and, beside the content, the control that closes the sidebar. One line; a name of more
   than 12 characters is set smaller and wraps onto a second line, cut there with an
   ellipsis, its full name on hover. Its text starts on the headings' edge.
 - **Sign in**: the brand and the team's promise beside one card, **欢迎** and a
@@ -259,12 +265,30 @@ it is the authority. Use the custom property for its role, never a raw colour.
   **再试一次**. An address that can't be opened is not a failure: a channel you are
   not in opens the default channel, a topic that isn't there opens its channel, a task
   that isn't there opens the board, each without a word.
-- **Command palette**: ⌘K / Ctrl+K, opened from **跳转到…** at the top of the
-  sidebar, which shows no shortcut badge. It jumps to views, channels, tasks and
-  agents, and holds the actions that have no place on screen: **新任务**,
-  **退出 #_name_** and **立即刷新**.
-- **Refreshing**: absent while healthy. A refresh asked for (**立即刷新** in the
-  command palette) or a slow one shows a dot and "正在刷新…".
+- **Search** (the command palette): a magnifier in the team name's row, with no
+  shortcut badge (on a phone, its own tab; see **Phone**). It or ⌘K / Ctrl+K turns
+  the row into a field grown from the magnifier (the name hides), and the results
+  hang below it, wider than the sidebar; Esc, a click elsewhere or a choice folds it
+  back to the name. A closed sidebar opens to hold it. It jumps to
+  views, channels, tasks and agents, and holds the actions that have no place on
+  screen: **新任务**, **退出 #_name_** and **立即刷新**. Places come before actions,
+  so a channel's name finds the channel first, not an action that mentions it.
+- **Sidebar**: beside the content on every screen wider than a phone, open or closed
+  from one control, the sidebar icon (**展开侧栏** / **收起侧栏**). Closed, the icon
+  starts the header, its glyph on the content's edge and centred with the tabs, and
+  the content takes the whole width. Open, the same icon ends the team name's row,
+  after search: its glyph on the channels' `+` edge, centred with the magnifier and a
+  finger's 44 px after it; while searching the field takes the whole row and the icon
+  steps aside. From 900 px an open sidebar is a column beside the content. Narrower,
+  it floats over the content's edge — inset 0.5 rem from the window, rounded, a soft
+  shadow, at its usual width, nothing dimmed, the header under it unmoved — and closes
+  again on a choice of place, a click or tap outside, or Esc. Nothing opens it on its
+  own: no hover, no edge. `⌘\` / `Ctrl+\` opens and closes it; ⌘K opens it with search.
+  From 900 px it starts open and each device remembers whether it was left open;
+  narrower it always starts closed. This is navigation, not content, so it is the one
+  overlay Principles 7–8 allow: an upright tablet cannot spare a column for it.
+- **Refreshing**: absent while healthy. A refresh asked for (**立即刷新** in
+  search) or a slow one shows a dot and "正在刷新…".
 - **Out of reach**: one quiet line under the views — "连不上 Kinmesh。先显示之前的内容，恢复连接前暂停发送。"
   — with nothing to press:
   it comes back by itself.
@@ -273,13 +297,29 @@ it is the authority. Use the custom property for its role, never a raw colour.
 
 ## Phone
 
-Below 720 px the places stack instead of sitting side by side:
+Below 576 px the places stack instead of sitting side by side (from 576 px the
+sidebar sits beside a content column of at least 360 px):
 
-- **Home** is the sidebar: the team name, search, the channels (full-width rows, the waiting dot),
-  then the team as the gallery of faces with its add tile. No channel is current here.
-- **Bottom tabs**: 主页 (Home), 收件箱 (with how many things wait on you) and 我 (your face),
-  under Home and the pages they open.
-- **A channel** has the screen under a bar: back to Home, `# name`, then 聊天 | 看板.
+- **Home** (the 频道 tab) is the sidebar: the team name alone on its row, then the
+  channels as conversations, the most recently written in first (by name among the
+  silent ones). A row is the channel's name and the time of its newest message (the
+  time today, otherwise the day), then "author：text" on one line — the text without
+  its Markdown, cut with an ellipsis — and the waiting dot. No channel is current
+  here, and the team is not here: it is a view of each channel.
+- **Opening**: an address with no place in it opens on 收件箱 when something waits on
+  you, otherwise on Home; an address that names a place always opens there.
+- **Bottom tabs**: icons only, each named for a screen reader — 频道 (`#`, Home), 搜索
+  (the magnifier), 收件箱 (with how many things wait on you) and 我 (your face) — four
+  equal 44 px tabs with 22 px icons, the current one in the primary colour and a
+  heavier stroke (your face gets a primary ring). They sit under Home and the pages
+  they open.
+- **Search** is the 搜索 tab, a page at `?search` (⌘K on a keyboard): the field at
+  the bottom, just above the keyboard (or the tabs, with none) and ready to type in,
+  the results above it with the best match nearest the thumb — the same results,
+  keys and actions as beside a sidebar. A choice goes there and leaves search; Esc or
+  Back returns to where it was opened.
+- **A channel** has the screen under a bar: back to Home, `# name`, then 聊天 | 看板 |
+  团队 (the same gallery as on a wider screen, its add tile included).
   Its topics are pills above the conversation; there is no bottom bar.
 - **Fingers and fields**: every target takes taps over 44 px, drawn no larger than it
   is; fields are 16 px, so nothing zooms.
@@ -290,12 +330,17 @@ Below 720 px the places stack instead of sitting side by side:
 
 ## Tablet
 
-From 721 to 1279 px the sidebar stays beside the content, sized for a finger (rows of
-44 px). Touch has no Esc, so a page leads back from a bar at its top-left; the sidebar
-already says where you are, so the bar holds only the way back. Held upright (below
-1024 px) the board shows one stage at a time and a page replaces the view. Held wide,
-an open task sits beside the board — one stage, its card marked by a green edge —
-instead of replacing it.
+From 576 to 1279 px the sidebar sits beside the content (see **Sidebar**: closed below 900 px,
+open from there). On a touch screen (a coarse pointer, whatever the width) every target takes a
+finger: sidebar rows, topics and the board's stage pills grow to 44 px; the header's
+tabs and icons, the new-channel `+`, the sidebar icon and the magnifier keep their drawn
+size and take 44 px of taps around it. A mouse keeps the compact sizes. The edges are
+narrow so the content has the screen: 0.75 rem gutters beside the content, 0.5 rem inside
+the sidebar, a header no taller than its tabs need. Touch has no Esc, so a page leads back
+from a bar at its top-left; the sidebar already says where you are, so the bar holds
+only the way back. Held upright (below 1024 px) the board shows one stage at a time
+and a page replaces the view. Held wide, an open task sits beside the board — one
+stage, its card marked by a green edge — instead of replacing it.
 
 ## Motion
 

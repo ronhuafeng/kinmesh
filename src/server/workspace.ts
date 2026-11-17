@@ -273,6 +273,12 @@ export function registerWorkspace(
             )
           : [],
         channels,
+        latest: await (async () => {
+          const listed = new Set<string>(channels.items.map((c) => c.id));
+          return (await store.communication.latest(principal, teamId)).filter(
+            (l) => listed.has(l.channelId),
+          );
+        })(),
         channel,
         leftChannels: await store.communication.leftChannels(principal, teamId),
         agents,

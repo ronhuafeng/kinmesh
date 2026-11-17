@@ -134,3 +134,17 @@ function blocks(text: string): ReactNode[] {
   }
   return out;
 }
+/**
+ * A message as one plain line, for a list: the words without their Markdown
+ * (fences, code ticks, emphasis, headings, quotes, list marks; a link keeps
+ * its text).
+ */
+export function plainText(text: string) {
+  return text
+    .replace(/```[^\n]*\n?/g, ' ')
+    .replace(/\[([^\]]*)\]\([^)]*\)/g, '$1')
+    .replace(/^[ \t]*(?:#{1,6}|>|[-*+]|\d+[.)])[ \t]+/gm, '')
+    .replace(/`+|\*+|~~|__/g, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+}

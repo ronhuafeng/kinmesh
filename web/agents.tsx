@@ -581,12 +581,15 @@ function RegisterAgent({
 export function Team({
   data,
   channelPath,
+  channelName = '',
   onDone,
   openAgent,
   openSettings,
 }: {
   data: WorkspaceSnapshot;
   channelPath: string | null;
+  /** The open channel, which a tile's join names. */
+  channelName?: string;
   onDone: () => void;
   openAgent: (id: string) => void;
   /** Your own tile opens your page, as an agent's opens theirs. */
@@ -637,7 +640,8 @@ export function Team({
                   path={channelPath + '/participants/invite'}
                   build={() => ({ member: { kind: 'human', id: person.id } })}
                   onDone={onDone}
-                  submit={'把 ' + person.name + ' 加入频道'}
+                  submit={'加入 #' + channelName}
+                  submitName={'把 ' + person.name + ' 加入 #' + channelName}
                 />
               )}
             </li>
@@ -677,7 +681,8 @@ export function Team({
                     path={channelPath + '/participants/invite'}
                     build={() => ({ member: { kind: 'agent', id: agent.id } })}
                     onDone={onDone}
-                    submit={'把 ' + agent.name + ' 加入频道'}
+                    submit={'加入 #' + channelName}
+                    submitName={'把 ' + agent.name + ' 加入 #' + channelName}
                   />
                 )}
             </li>

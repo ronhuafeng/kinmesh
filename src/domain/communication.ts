@@ -45,6 +45,17 @@ export type PostInput = z.infer<typeof PostInput>;
 export const ChannelView = Channel.extend({
   position: z.number().int().positive(),
 });
+/**
+ * A channel's newest message, as a list of channels shows it: who wrote it,
+ * the start of what they wrote, and when.
+ */
+export const ChannelLatest = z.strictObject({
+  channelId: ChannelId,
+  messageId: MessageId,
+  author: Author,
+  excerpt: z.string().min(1).max(200),
+  createdAt: z.iso.datetime(),
+});
 export const Topic = z.strictObject({
   id: TopicId,
   channelId: ChannelId,

@@ -32,6 +32,7 @@ import {
 } from '../domain/tasks.js';
 import {
   ChannelInput,
+  ChannelLatest,
   ChannelView,
   CommunicationFact,
   Event,
@@ -510,6 +511,43 @@ export function communicationRepository(
                 .orderBy(asc(s.channels.position))
                 .limit(limit)
             ).map((r) => ChannelView.parse(r)),
+        );
+      });
+    },
+    /** The newest message of each channel the person has joined. */
+    latest(p: Principal, teamId: TeamId) {
+      return atomic(async () => {
+        await team(p, teamId);
+        const rows = await q()
+          .selectDistinctOn([s.messages.channelId], {
+            channelId: s.messages.channelId,
+            id: s.messages.id,
+            author: s.messages.author,
+            body: s.messages.body,
+            createdAt: s.messages.createdAt,
+          })
+          .from(s.messages)
+          .innerJoin(s.channels, eq(s.channels.id, s.messages.channelId))
+          .innerJoin(
+            s.channelParticipants,
+            eq(s.channelParticipants.channelId, s.messages.channelId),
+          )
+          .where(
+            and(
+              eq(s.channels.teamId, teamId),
+              eq(s.channelParticipants.memberKey, memberKey(member(p))),
+              eq(s.channelParticipants.state, 'joined'),
+            ),
+          )
+          .orderBy(s.messages.channelId, desc(s.messages.position));
+        return rows.map((r) =>
+          ChannelLatest.parse({
+            channelId: r.channelId,
+            messageId: r.id,
+            author: decode(r.author),
+            excerpt: r.body.slice(0, 200),
+            createdAt: r.createdAt,
+          }),
         );
       });
     },

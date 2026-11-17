@@ -54,6 +54,17 @@ export function shortTime(iso: string) {
       : { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' },
   );
 }
+/** In a list: the time today, otherwise the day ("11月14日"). */
+export function listTime(iso: string) {
+  const date = new Date(iso);
+  const today = new Date().toDateString() === date.toDateString();
+  return date.toLocaleString(
+    'zh-CN',
+    today
+      ? { hour: '2-digit', minute: '2-digit' }
+      : { month: 'short', day: 'numeric' },
+  );
+}
 /** Whether an Inbox worker would wake this agent now. */
 export function workerConnected(
   wake: readonly { agentId: string; connected: boolean }[],
@@ -87,20 +98,31 @@ export function ago(iso: string, now = Date.now()) {
  * back, unless a popover or dialog takes it. Only the innermost (last)
  * page answers Esc, so a page shown within another closes alone.
  */
-const PHONE = '(max-width: 720px)';
-/** True on a phone-sized screen, where places stack instead of sitting side by side. */
-export function usePhone() {
+function useMedia(media: string) {
   return useSyncExternalStore(
     (changed) => {
-      const query = window.matchMedia(PHONE);
+      const query = window.matchMedia(media);
       query.addEventListener('change', changed);
       return () => {
         query.removeEventListener('change', changed);
       };
     },
-    () => window.matchMedia(PHONE).matches,
+    () => window.matchMedia(media).matches,
     () => false,
   );
+}
+/** True on a phone-sized screen, where places stack instead of sitting side by side. */
+export function usePhone() {
+  return useMedia('(max-width: 575px)');
+}
+/**
+ * Beside the sidebar, how much room there is: narrow (576–899 px, an upright
+ * tablet) or wide; null on a phone, where places stack.
+ */
+export function usePad(): 'narrow' | 'wide' | null {
+  const narrow = useMedia('(min-width: 576px) and (max-width: 899px)');
+  const wide = useMedia('(min-width: 900px)');
+  return narrow ? 'narrow' : wide ? 'wide' : null;
 }
 /**
  * A page in the main area. On a phone it opens under a bar with a way back
