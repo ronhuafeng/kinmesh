@@ -4,11 +4,8 @@ import { watchChanges } from './changes.js';
 import { registerWeb } from './web.js';
 import { registerTasks } from './tasks.js';
 import { registerCommunication } from './communication.js';
-import {
-  directoryBytes,
-  registerAttachments,
-  sweepAttachments,
-} from './attachments.js';
+import { registerAttachments, sweepAttachments } from './attachments.js';
+import { directoryBytes } from '../persistence/attachment-bytes.js';
 import { registerNotifications } from './notify.js';
 import { registerMe } from './me.js';
 import { registerAgents } from './agents.js';

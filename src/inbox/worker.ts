@@ -38,7 +38,17 @@ import {
   t3DeploymentFile,
 } from './managed.js';
 import type { BackendFactory } from './t3.js';
-import { spaceProvisioner, type Provisioner } from './space.js';
+import {
+  spacePlacer,
+  spaceProvisioner,
+  type FilePlacer,
+  type Provisioner,
+} from './space.js';
+import {
+  directoryBytes,
+  type AttachmentBytes,
+} from '../persistence/attachment-bytes.js';
+import { posix } from 'node:path';
 
 /**
  * Native read only. No tool/user text or synthetic status can become an
@@ -226,6 +236,8 @@ export async function deliver(
   stopping: AbortSignal,
   /** Makes a channel's folder in the space a T3 project; null: scratch threads. */
   space: Provisioner | null = null,
+  /** Places a message's files in the channel's folder, from the hub's bytes. */
+  files: { place: FilePlacer; bytes: AttachmentBytes } | null = null,
 ) {
   const signal = AbortSignal.any([
     stopping,
@@ -299,6 +311,46 @@ export async function deliver(
       if (projectId === null) throw new ExecutionFailure('incompatible');
       return { kind: 'project', projectId };
     };
+    // A message's files are in the channel's folder before any agent it
+    // wakes is sent to T3, so every thread of the channel finds them; the
+    // turn says where. Without a space the turn says how to read them.
+    // Placing again changes nothing, so every attempt does.
+    const attached = context.message?.attachments ?? [];
+    let placed: Record<string, string> | null = null;
+    if (space !== null) {
+      placed = {};
+      if (attached.length > 0) {
+        if (files === null) throw new ExecutionFailure('unavailable');
+        const directory = await store.inbox.space(
+          claim,
+          spaceDirectory(context.channelName, claim.channelId),
+        );
+        const root = await space(directory, context.channelName, signal);
+        for (const file of attached) {
+          const { sha256 } = await store.communication.attachment(
+            principal,
+            claim.teamId,
+            claim.channelId,
+            file.id,
+          );
+          let bytes: Buffer;
+          try {
+            bytes = await files.bytes.get(sha256);
+          } catch {
+            // The hub no longer has them: placing again won't help.
+            throw new ExecutionFailure('incompatible');
+          }
+          const path = await files.place(
+            directory,
+            file,
+            bytes,
+            sha256,
+            signal,
+          );
+          placed[file.id] = posix.relative(root, path);
+        }
+      }
+    }
     // A message to the conversation's thread goes where the thread is; a new
     // thread keeps the project it was frozen into, so a retry needs nothing
     // from the provisioner.
@@ -335,6 +387,7 @@ export async function deliver(
             context,
             profile.name,
             conversation === undefined,
+            placed,
           ),
         },
         ...(conversation === undefined ? {} : { conversation }),
@@ -605,6 +658,14 @@ export async function runWorker(
   const running = new Set<Promise<void>>();
   const directory = managedDirectory(config.state);
   const space = config.space === null ? null : spaceProvisioner(config.space);
+  // The hub's state directory holds the bytes of the files people attached.
+  const files =
+    config.space === null
+      ? null
+      : {
+          place: spacePlacer(config.space),
+          bytes: directoryBytes(config.state),
+        };
   let bindings = new Map<AgentId, WorkerBinding>();
   let lastBeat = 0;
   try {
@@ -637,6 +698,7 @@ export async function runWorker(
           factory,
           stopping,
           space,
+          files,
         ).finally(() => {
           running.delete(work);
         });

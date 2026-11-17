@@ -9,10 +9,13 @@ import {
   existsSync,
   mkdirSync,
   readFileSync,
+  readdirSync,
   realpathSync,
+  renameSync,
+  rmSync,
   writeFileSync,
 } from 'node:fs';
-import { createServer, type Server } from 'node:http';
+import { createServer, type IncomingHttpHeaders, type Server } from 'node:http';
 import { request } from 'node:https';
 import { join, resolve, sep } from 'node:path';
 import { promisify } from 'node:util';
@@ -96,6 +99,90 @@ function inputOf(body: string): { directory: string; title: string } | null {
   return title === '' ? null : { directory, title };
 }
 
+/** A file the hub places at most: 25 MB, as Kinmesh attaches. */
+const FILE_LIMIT = 25 * 1024 * 1024;
+const ATTACHMENT =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
+const PLACE = /^\/projects\/([^/]+)\/attachments\/([^/]+)$/;
+/**
+ * A file name kept inside `attachments/`: its last segment, letters,
+ * digits, `.`, `_`, `-` and spaces, no leading dot, at most 100 characters
+ * with its extension kept.
+ */
+export function placedName(id: string, name: string) {
+  const last = name.split(/[/\\]/).at(-1) ?? '';
+  let clean = last
+    .replace(/[^\p{L}\p{N}._ -]/gu, '_')
+    .replace(/^[. ]+/, '')
+    .trim();
+  if (clean === '') clean = 'file';
+  if (clean.length > 100) {
+    const dot = clean.lastIndexOf('.');
+    const extension =
+      dot > 0 && clean.length - dot <= 16 ? clean.slice(dot) : '';
+    clean = clean.slice(0, 100 - extension.length) + extension;
+  }
+  return `${id.slice(0, 8)}-${clean}`;
+}
+const sha256 = (bytes: Buffer) =>
+  createHash('sha256').update(bytes).digest('hex');
+/** The channel's folder, when it is one this provisioner made. */
+function folderOf(options: SpaceOptions, directory: string) {
+  if (!DIRECTORY.test(directory)) return null;
+  const space = resolve(options.space);
+  const root = resolve(space, directory);
+  if (!root.startsWith(space + sep) || !existsSync(join(root, '.git')))
+    return null;
+  return root;
+}
+/** `attachments/` stays out of the folder's git status, diffs and commits. */
+function excluded(root: string) {
+  const info = join(root, '.git', 'info');
+  mkdirSync(info, { recursive: true });
+  const exclude = join(info, 'exclude');
+  const kept = existsSync(exclude) ? readFileSync(exclude, 'utf8') : '';
+  if (!kept.split('\n').includes('attachments/'))
+    writeFileSync(
+      exclude,
+      kept +
+        (kept === '' || kept.endsWith('\n') ? '' : '\n') +
+        'attachments/\n',
+    );
+}
+/** What is already placed for an attachment, by its ID's start. */
+function placedFor(folder: string, id: string) {
+  if (!existsSync(folder)) return [];
+  return readdirSync(folder).filter(
+    (name) =>
+      name.startsWith(id.slice(0, 8) + '-') && !name.endsWith('.partial'),
+  );
+}
+/**
+ * Places an attachment's bytes in the folder's `attachments/`, whole or not
+ * at all. The same ID with the same bytes again changes nothing; with other
+ * bytes it is a conflict.
+ */
+function place(root: string, id: string, name: string, bytes: Buffer) {
+  excluded(root);
+  const folder = join(root, 'attachments');
+  mkdirSync(folder, { recursive: true });
+  const [there] = placedFor(folder, id);
+  if (there !== undefined) {
+    const path = join(folder, there);
+    return sha256(readFileSync(path)) === sha256(bytes) ? path : null;
+  }
+  const path = join(folder, placedName(id, name));
+  const partial = join(folder, `.${randomBytes(8).toString('hex')}.partial`);
+  writeFileSync(partial, bytes);
+  renameSync(partial, path);
+  return path;
+}
+function unplace(root: string, id: string) {
+  const folder = join(root, 'attachments');
+  for (const name of placedFor(folder, id))
+    rmSync(join(folder, name), { force: true });
+}
+
 export function spaceServer(options: SpaceOptions): Server {
   const expected = digest(options.token);
   // One at a time: two topics of a channel may ask at once.
@@ -113,31 +200,37 @@ export function spaceServer(options: SpaceOptions): Server {
       answer(401, { error: 'unauthorized' });
       return;
     }
-    if (req.method !== 'POST' || req.url !== '/projects') {
+    const placing = PLACE.exec(req.url ?? '');
+    if (
+      !(req.method === 'POST' && req.url === '/projects') &&
+      !(placing && (req.method === 'PUT' || req.method === 'DELETE'))
+    ) {
       answer(404, { error: 'not found' });
       return;
     }
-    let body = '';
-    req.setEncoding('utf8');
-    req.on('data', (chunk: string) => {
-      body += chunk;
-      if (body.length > BODY_LIMIT) req.destroy();
+    const limit = placing ? FILE_LIMIT : BODY_LIMIT;
+    const chunks: Buffer[] = [];
+    let size = 0;
+    req.on('data', (chunk: Buffer) => {
+      size += chunk.length;
+      if (size > limit) {
+        answer(413, { error: 'too large' });
+        req.destroy();
+        return;
+      }
+      chunks.push(chunk);
     });
     req.on('end', () => {
-      const input = inputOf(body);
-      if (input === null) {
-        answer(400, { error: 'invalid' });
+      const body = Buffer.concat(chunks);
+      const work = route(options, req.method ?? '', placing, req.headers, body);
+      if ('status' in work) {
+        answer(work.status, work.body);
         return;
       }
       queue = queue.then(async () => {
         try {
-          answer(200, {
-            workspaceRoot: await provision(
-              options,
-              input.directory,
-              input.title,
-            ),
-          });
+          const done = await work.run();
+          answer(done.status, done.body);
         } catch (error) {
           console.error(
             'provision failed:',
@@ -148,6 +241,64 @@ export function spaceServer(options: SpaceOptions): Server {
       });
     });
   });
+}
+interface Answer {
+  status: number;
+  body: object;
+}
+/**
+ * What a request asks for: refused at once (`status`), or work to do in
+ * turn (`run`).
+ */
+function route(
+  options: SpaceOptions,
+  method: string,
+  placing: RegExpExecArray | null,
+  headers: IncomingHttpHeaders,
+  body: Buffer,
+): Answer | { run: () => Promise<Answer> } {
+  const invalid = { status: 400, body: { error: 'invalid' } };
+  if (placing === null) {
+    const input = inputOf(body.toString('utf8'));
+    if (input === null) return invalid;
+    return {
+      run: async () => ({
+        status: 200,
+        body: {
+          workspaceRoot: await provision(options, input.directory, input.title),
+        },
+      }),
+    };
+  }
+  const [, directory = '', id = ''] = placing;
+  if (!ATTACHMENT.test(id)) return invalid;
+  const root = folderOf(options, directory);
+  if (root === null) return { status: 404, body: { error: 'not found' } };
+  if (method === 'DELETE')
+    return {
+      run: () => {
+        unplace(root, id);
+        return Promise.resolve({ status: 200, body: {} });
+      },
+    };
+  let name = '';
+  try {
+    name = decodeURIComponent(String(headers['x-kinmesh-name'] ?? ''));
+  } catch {
+    return invalid;
+  }
+  if (name === '' || sha256(body) !== String(headers['x-kinmesh-sha256'] ?? ''))
+    return invalid;
+  return {
+    run: () => {
+      const path = place(root, id, name, body);
+      return Promise.resolve(
+        path === null
+          ? { status: 409, body: { error: 'conflict' } }
+          : { status: 200, body: { path } },
+      );
+    },
+  };
 }
 
 /**

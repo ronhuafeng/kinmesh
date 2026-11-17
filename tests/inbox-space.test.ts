@@ -6,7 +6,13 @@ import { once } from 'node:events';
 import { join } from 'node:path';
 import { z } from 'zod';
 import { deliver } from '../src/inbox/worker.js';
-import { spaceProvisioner, type Provisioner } from '../src/inbox/space.js';
+import {
+  spaceProvisioner,
+  type FilePlacer,
+  type Provisioner,
+} from '../src/inbox/space.js';
+import { createHash } from 'node:crypto';
+import { directoryBytes } from '../src/persistence/attachment-bytes.js';
 import { spaceDirectory } from '../src/domain/inbox.js';
 import { ExecutionFailure } from '../src/domain/execution.js';
 import { assistantRead, due, inboxFixture } from './inbox-helpers.js';
@@ -267,4 +273,91 @@ await test('a channel’s folder is a slug of its name and the start of its ID',
   assert.equal(spaceDirectory('  ——  ', id), 'channel-3f2a91c0');
   assert.equal(spaceDirectory('Café ✨ #1', id), 'cafe-1-3f2a91c0');
   assert.match(spaceDirectory('x'.repeat(80), id), /^x{40}-3f2a91c0$/);
+});
+
+await test('a message’s files are in the channel’s folder before the agent it wakes is sent to T3, and its turn says where', async () => {
+  const f = await inboxFixture();
+  try {
+    const { provisioner } = space(f);
+    const bytes = directoryBytes(f.directory);
+    const content = Buffer.from('the error log');
+    const sha256 = createHash('sha256').update(content).digest('hex');
+    const file = await f.comm.upload(
+      f.principal,
+      f.teamId,
+      f.channelId,
+      {
+        operationKey: key(),
+        name: 'error.log',
+        type: 'application/octet-stream',
+        size: content.length,
+        sha256,
+        width: null,
+        height: null,
+      },
+      1024 ** 3,
+      () => bytes.put(sha256, content),
+    );
+    await f.comm.post(f.principal, f.teamId, f.channelId, {
+      ...postInput({ mentions: [{ kind: 'agent', id: f.agent.id }] }),
+      attachments: [file.id],
+    });
+    const placedAt: string[] = [];
+    let launchesWhenPlaced = -1;
+    const placer =
+      (answer: () => Promise<void>): FilePlacer =>
+      async (directory, attached, given, hash) => {
+        await answer();
+        assert.deepEqual(given, content);
+        assert.equal(hash, sha256);
+        launchesWhenPlaced = calls(f, 't3_thread_launch').length;
+        const path = `/space/${directory}/attachments/${attached.id.slice(0, 8)}-error.log`;
+        placedAt.push(path);
+        return path;
+      };
+    const attemptWith = async (place: FilePlacer) => {
+      await due(f.dbPath);
+      const claim = await f.inbox.claim([f.agent.id]);
+      assert.ok(claim);
+      await deliver(
+        f.store,
+        claim,
+        f.binding,
+        f.factory,
+        signal(),
+        provisioner,
+        {
+          place,
+          bytes,
+        },
+      );
+      return f.inbox.get(claim.id);
+    };
+    // Unreachable, it waits; refused, it blocks until a person resumes it.
+    const down = await attemptWith(
+      placer(() => Promise.reject(new ExecutionFailure('unavailable'))),
+    );
+    assert.equal(down.state, 'ready');
+    const refused = await attemptWith(
+      placer(() => Promise.reject(new ExecutionFailure('permission'))),
+    );
+    assert.equal(refused.state, 'blocked');
+    assert.equal(refused.reason, 'native-access');
+    assert.equal(calls(f, 't3_thread_launch').length, 0);
+    await f.inbox.resume(refused.id);
+    f.wire.values.t3_thread_read = assistantRead('Read it');
+    const done = await attemptWith(placer(() => Promise.resolve()));
+    assert.equal(done.state, 'acked', done.reason);
+    // Placed before the launch, and the turn names it from the folder's root.
+    assert.equal(launchesWhenPlaced, 0);
+    const [launch] = calls(f, 't3_thread_launch');
+    assert.match(
+      String(launch?.message),
+      new RegExp(
+        `Attached files, in your working directory:\\n- attachments/${file.id.slice(0, 8)}-error\\.log \\(application/octet-stream, 13 B\\)`,
+      ),
+    );
+  } finally {
+    await f.dispose();
+  }
 });

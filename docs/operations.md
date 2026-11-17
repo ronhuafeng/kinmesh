@@ -208,6 +208,19 @@ Content-Type: application/json
 
 It answers `200 {"workspaceRoot": "/space/design-3f2a91c0"}` once that folder exists, is a git repository with a first commit, and is a T3 project (`t3 project add --title <title> <folder>`); for a folder that already is one, it answers the same without changing anything. `401` or `403` means the token is wrong. `directory` is lowercase letters, digits and `-`, at most 80 characters; the provisioner refuses anything else and never leaves the space.
 
+It also places the files people attach to a message in the channel's folder, so agents find them in their working directory:
+
+```http
+PUT {KINMESH_SPACE_ENDPOINT}/projects/design-3f2a91c0/attachments/<AttachmentId>
+Authorization: Bearer <token>
+X-Kinmesh-Name: <the file's name, URI-encoded>
+X-Kinmesh-Sha256: <the bytes' SHA-256, hex>
+
+<the file's bytes, at most 25 MB>
+```
+
+It writes `<folder>/attachments/<first 8 of the ID>-<name>` whole (a temporary file, then renamed) and answers `200 {"path": "/space/design-3f2a91c0/attachments/3f2a91c0-screen.png"}`. The name keeps only letters, digits, `.`, `_`, `-` and spaces of its last segment, no leading dot, at most 100 characters, so nothing leaves `attachments/`. The same ID with the same bytes again changes nothing; with other bytes, `409`. Bytes that don't match the hash, or an ID that isn't one, are `400`; a folder it didn't make, `404`. `DELETE` on the same path removes the file, `200` also when it is already gone. The folder's `.git/info/exclude` lists `attachments/`, so the files stay out of agents' diffs and commits unless one copies them in. The worker reads the bytes from the hub's state directory, so it runs where that directory is (as the hub's own worker does).
+
 The provisioner ships in the `kinmesh-t3` image as `/opt/kinmesh/space.ts` and runs with Node alone, wherever the `t3` CLI reaches T3's state: `node /opt/kinmesh/space.ts` beside T3 in the deployment, or `node deploy/t3/space.ts` on the machine running T3 desktop. It answers one request at a time and is configured by its environment:
 
 | Variable                      | Meaning                                                                                                                                                   |
