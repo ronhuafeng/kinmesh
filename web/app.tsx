@@ -13,8 +13,8 @@ import * as Tabs from '@radix-ui/react-tabs';
 import { ChannelId, TaskId } from '../src/domain/contracts.js';
 import { PageRef, Revisions, pageParam } from '../src/workspace/events.js';
 import { LiveContext, takeStream, useRevisions } from './live.js';
-import { Agent } from '../src/domain/agents.js';
-import { TopicId } from '../src/domain/communication.js';
+import { Agent, Author } from '../src/domain/agents.js';
+import { TeamFile, TopicId } from '../src/domain/communication.js';
 import { WorkspaceSnapshot } from '../src/workspace/contracts.js';
 import { Auth } from './auth.js';
 import { api, HttpError, MutationPermission, Offline } from './api.js';
@@ -47,10 +47,11 @@ import {
   usePhone,
   workerConnected,
 } from './ui.js';
-import { SearchPage, SidebarSearch } from './palette.js';
+import { SearchPage, SidebarSearch, type Remote } from './palette.js';
 import { useSidebar } from './sidebar.js';
 import { InboxPage, attentionCount } from './inbox.js';
 import { FIRST, SettingsNav, SettingsPage } from './settings-map.js';
+import { Files } from './files.js';
 import { AccountMenu, ChannelMenu, Mark, TeamMenu } from './menus.js';
 import { levelOf, setLevel } from './levels.js';
 import type { ChannelLevel } from '../src/domain/notify.js';
@@ -65,7 +66,7 @@ import {
 } from './icons.js';
 import type { Command } from './palette.js';
 /** Tabs, plus one agent's own page reached from them. */
-type View = 'chat' | 'board' | 'team' | 'agent';
+type View = 'chat' | 'board' | 'team' | 'files' | 'agent';
 type Tab = Exclude<View, 'agent'>;
 type Focus =
   | { kind: 'task' | 'worker'; id: string }
@@ -148,6 +149,18 @@ function keepUnchanged(
 }
 /** How long a stream may stay silent before the place is read without it. */
 const SILENT_STREAM_MS = 3000;
+/** What the hub's search finds: messages and files, newest first. */
+const SearchFound = z.object({
+  messages: z.array(
+    z.object({
+      messageId: z.string(),
+      channelId: z.string(),
+      excerpt: z.string(),
+      author: Author,
+    }),
+  ),
+  files: z.array(TeamFile),
+});
 function animate(update: () => void) {
   if (
     typeof document.startViewTransition !== 'function' ||
@@ -179,12 +192,9 @@ function readRoute() {
   const worker = agentParam('worker');
   const task = query.get('task');
   let agent = agentParam('agent');
+  const asked = query.get('view');
   let view: View =
-    query.get('view') === 'board'
-      ? 'board'
-      : query.get('view') === 'team'
-        ? 'team'
-        : 'chat';
+    asked === 'board' || asked === 'team' || asked === 'files' ? asked : 'chat';
   let focus: Focus = null;
   let draft: TaskDraft | null = null;
   if (task === 'new') {
@@ -230,7 +240,11 @@ function routeUrl(place: {
   else if (place.focus?.kind === 'search') query.set('search', '');
   else if (place.view === 'agent' && place.agent)
     query.set('agent', place.agent);
-  else if (place.view === 'board' || place.view === 'team')
+  else if (
+    place.view === 'board' ||
+    place.view === 'team' ||
+    place.view === 'files'
+  )
     query.set('view', place.view);
   const search = query.toString().replace(/=(?=&|$)/g, '');
   return '/' + (search ? '?' + search : '');
@@ -957,6 +971,52 @@ export function App() {
     ...data.attention.decide.map((d) => d.task.channelId),
     ...data.attention.unstuck.map((d) => d.channelId),
   ]);
+  /** A message, in its channel's conversation, scrolled to and flashed. */
+  const openMessageIn = (id: string, messageId: string) => {
+    setFocus(null);
+    if (id !== channel?.id) selectChannel(id);
+    setView('chat');
+    // Once the channel's conversation is on screen.
+    let tries = 0;
+    const find = () => {
+      if (document.getElementById('message-' + messageId))
+        showMessage(messageId);
+      else if ((tries += 1) < 20) setTimeout(find, 100);
+    };
+    setTimeout(find, 0);
+  };
+  /** Messages and files the hub finds for what is typed in search. */
+  const remote: Remote = async (query, signal) => {
+    const found = SearchFound.parse(
+      await api(
+        `/api/teams/${data.team.id}/search?q=${encodeURIComponent(query)}`,
+        { signal },
+      ),
+    );
+    const where = (channelId: string) =>
+      '#' +
+      (data.channels.items.find((c) => c.id === channelId)?.name ?? '频道');
+    return [
+      ...found.messages.map((m) => ({
+        id: 'message-' + m.messageId,
+        group: '消息',
+        label: m.excerpt,
+        hint: memberName(m.author, data) + ' · ' + where(m.channelId),
+        run: () => {
+          openMessageIn(m.channelId, m.messageId);
+        },
+      })),
+      ...found.files.map((f) => ({
+        id: 'file-' + f.attachment.id,
+        group: '文件',
+        label: f.attachment.name,
+        hint: where(f.channelId),
+        run: () => {
+          openMessageIn(f.channelId, f.messageId);
+        },
+      })),
+    ];
+  };
   const commands: Command[] = [
     ...data.attention.decide.map(({ task, channelName }) => ({
       id: 'ask-' + task.id,
@@ -967,10 +1027,10 @@ export function App() {
         openTaskIn(task.channelId, task.id);
       },
     })),
-    ...(['chat', 'board', 'team'] as const).map((v) => ({
+    ...(['chat', 'board', 'team', 'files'] as const).map((v) => ({
       id: 'view-' + v,
       group: '视图',
-      label: v === 'chat' ? '聊天' : v === 'board' ? '看板' : '团队',
+      label: { chat: '聊天', board: '看板', team: '成员', files: '文件' }[v],
       run: () => {
         setView(v);
       },
@@ -1100,6 +1160,7 @@ export function App() {
                     ) : (
                       <SidebarSearch
                         commands={commands}
+                        remote={remote}
                         onOpen={sidebar.onSearch}
                         end={
                           sidebar.pad && (
@@ -1382,7 +1443,11 @@ export function App() {
                     activationMode="manual"
                     onValueChange={(v) => {
                       if (v === 'inbox') return;
-                      setView(v === 'board' || v === 'team' ? v : 'chat');
+                      setView(
+                        v === 'board' || v === 'team' || v === 'files'
+                          ? v
+                          : 'chat',
+                      );
                     }}
                   >
                     <header
@@ -1401,7 +1466,7 @@ export function App() {
                           ? 'agent'
                           : onBoardPage || view === 'board' || view === 'team'
                             ? undefined
-                            : onPage
+                            : onPage || view === 'files'
                               ? 'reading'
                               : 'conversation'
                       }
@@ -1430,7 +1495,7 @@ export function App() {
                           {pageAgent
                             ? pageAgent.name
                             : view === 'team' && !phone
-                              ? '团队'
+                              ? '成员'
                               : shownChannelName
                                 ? '# ' + shownChannelName
                                 : switching
@@ -1472,6 +1537,9 @@ export function App() {
                           </Tabs.Trigger>
                           <Tabs.Trigger value="team" onClick={leavePage}>
                             成员
+                          </Tabs.Trigger>
+                          <Tabs.Trigger value="files" onClick={leavePage}>
+                            文件
                           </Tabs.Trigger>
                         </Tabs.List>
                       )}
@@ -1570,6 +1638,7 @@ export function App() {
                         <Page label="搜索" onClose={closeFocus} bar={false}>
                           <SearchPage
                             commands={commands}
+                            remote={remote}
                             onClose={closeFocus}
                           />
                         </Page>
@@ -1589,21 +1658,7 @@ export function App() {
                             selectChannel(id);
                             setView('chat');
                           }}
-                          openMessage={(id, messageId) => {
-                            setFocus(null);
-                            if (id !== channel?.id) selectChannel(id);
-                            setView('chat');
-                            // Once the channel's conversation is on screen.
-                            let tries = 0;
-                            const find = () => {
-                              if (
-                                document.getElementById('message-' + messageId)
-                              )
-                                showMessage(messageId);
-                              else if ((tries += 1) < 20) setTimeout(find, 100);
-                            };
-                            setTimeout(find, 0);
-                          }}
+                          openMessage={openMessageIn}
                           openAgent={openAgent}
                         />
                       )}
@@ -1667,6 +1722,17 @@ export function App() {
                           <div className="empty">
                             <p>先建一个频道，再创建任务。</p>
                           </div>
+                        )}
+                      </Tabs.Content>
+                      <Tabs.Content value="files">
+                        {channel && (
+                          <section className="channel-files" aria-label="文件">
+                            <Files
+                              data={data}
+                              channelId={channel.id}
+                              openMessage={openMessageIn}
+                            />
+                          </section>
                         )}
                       </Tabs.Content>
                       <Tabs.Content value="team">
