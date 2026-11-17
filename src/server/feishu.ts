@@ -30,22 +30,54 @@ export interface Feishu {
   /** A person's picture from where the profile says it is; at most AVATAR_LIMIT bytes. */
   picture(url: string): Promise<Buffer>;
   /**
-   * A message from the app's bot to one person, by their union_id
-   * (im:message:send_as_bot): a title, a line, and a link to open.
+   * A card from the app's bot to one person, by their union_id
+   * (im:message:send_as_bot): a title, a line, and 查看 to open its place.
+   * Answers the message's id, to update the card later.
    */
-  message(
-    union: string,
-    post: { title: string; text: string; url: string },
-  ): Promise<void>;
+  message(union: string, post: CardPost): Promise<string>;
+  /** Turns a card sent before into its settled form (已处理). */
+  settle(messageId: string, post: CardPost): Promise<void>;
 }
 
+/** What a card says: a title, one line, and where 查看 opens. */
+export interface CardPost {
+  title: string;
+  text: string;
+  url: string;
+}
+/**
+ * A notification as a Feishu card (schema 2.0): its title in the header,
+ * its line as plain text, and 查看 to open its place. Settled, the header
+ * turns grey and the button says 已处理, still opening the place.
+ */
+export function card(post: CardPost, settled = false) {
+  return {
+    schema: '2.0',
+    config: { update_multi: true },
+    header: {
+      title: { tag: 'plain_text', content: post.title },
+      template: settled ? 'grey' : 'green',
+    },
+    body: {
+      elements: [
+        { tag: 'div', text: { tag: 'plain_text', content: post.text } },
+        {
+          tag: 'button',
+          text: { tag: 'plain_text', content: settled ? '已处理' : '查看' },
+          type: settled ? 'default' : 'primary',
+          behaviors: [{ type: 'open_url', default_url: post.url }],
+        },
+      ],
+    },
+  };
+}
 /**
  * A failure is named by stage and status only: nothing Feishu sent, no code
  * and no token, ever reaches an error message or a log.
  */
 export class FeishuFailure extends Error {
   constructor(
-    stage: 'token' | 'profile' | 'tenant' | 'picture' | 'message',
+    stage: 'token' | 'profile' | 'tenant' | 'picture' | 'message' | 'settle',
     status: number,
   ) {
     super(`feishu_${stage}_${String(status)}`);
@@ -58,6 +90,10 @@ const Envelope = z.looseObject({
   error: z.string().optional(),
   access_token: z.string().optional(),
   data: z.looseObject({ access_token: z.string().optional() }).optional(),
+});
+const Sent = z.looseObject({
+  code: z.number().optional(),
+  data: z.looseObject({ message_id: z.string().optional() }).optional(),
 });
 const Tenant = z.looseObject({
   code: z.number().optional(),
@@ -93,7 +129,7 @@ export function feishuClient(config: Config['feishu']): Feishu {
     }
   };
   /** The app's own token (tenant_access_token), asked for each time. */
-  const tenantToken = async (stage: 'tenant' | 'message') => {
+  const tenantToken = async (stage: 'tenant' | 'message' | 'settle') => {
     const issued = await fetch(
       new URL('/open-apis/auth/v3/tenant_access_token/internal', open),
       {
@@ -213,27 +249,47 @@ export function feishuClient(config: Config['feishu']): Feishu {
         },
         body: JSON.stringify({
           receive_id: union,
-          msg_type: 'post',
-          content: JSON.stringify({
-            zh_cn: {
-              title: post.title,
-              content: [
-                [{ tag: 'text', text: post.text }],
-                [{ tag: 'a', text: '在 Kinmesh 中打开', href: post.url }],
-              ],
-            },
-          }),
+          msg_type: 'interactive',
+          content: JSON.stringify(card(post)),
         }),
         redirect: 'error',
         signal: AbortSignal.timeout(8000),
       });
+      const body = Sent.safeParse(await read(response));
+      if (
+        !response.ok ||
+        !body.success ||
+        (body.data.code !== undefined && body.data.code !== 0) ||
+        !body.data.data?.message_id
+      )
+        throw new FeishuFailure('message', response.status);
+      return body.data.data.message_id;
+    },
+    async settle(messageId, post) {
+      const token = await tenantToken('settle');
+      const response = await fetch(
+        new URL(
+          '/open-apis/im/v1/messages/' + encodeURIComponent(messageId),
+          open,
+        ),
+        {
+          method: 'PATCH',
+          headers: {
+            Authorization: `Bearer ${token}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ content: JSON.stringify(card(post, true)) }),
+          redirect: 'error',
+          signal: AbortSignal.timeout(8000),
+        },
+      );
       const body = Envelope.safeParse(await read(response));
       if (
         !response.ok ||
         !body.success ||
         (body.data.code !== undefined && body.data.code !== 0)
       )
-        throw new FeishuFailure('message', response.status);
+        throw new FeishuFailure('settle', response.status);
     },
     async picture(address) {
       // Only Feishu's own HTTPS, or the stand-in a test runs; nothing it

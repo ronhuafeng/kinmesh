@@ -572,6 +572,29 @@ export function notificationRepository(d: Database) {
         .where(eq(s.pushSubscriptions.endpoint, row.endpoint));
       return true;
     },
+    /** A notification went to Feishu as this card, saying this. */
+    async cardSent(id: string, cardId: string, card: unknown) {
+      await q()
+        .update(s.notifications)
+        .set({ cardId, card: JSON.stringify(card), cardOpen: true })
+        .where(eq(s.notifications.id, id));
+    },
+    /** Cards still showing 查看, oldest first. */
+    async openCards(limit: number) {
+      return await q()
+        .select()
+        .from(s.notifications)
+        .where(eq(s.notifications.cardOpen, true))
+        .orderBy(s.notifications.createdAt)
+        .limit(limit);
+    },
+    /** A card is settled (or too old to follow): nothing more to do. */
+    async cardClosed(id: string) {
+      await q()
+        .update(s.notifications)
+        .set({ cardOpen: false })
+        .where(eq(s.notifications.id, id));
+    },
     /** Whether what stays unread goes to the person in Feishu. */
     async forwardsTo(humanId: string) {
       const row = (

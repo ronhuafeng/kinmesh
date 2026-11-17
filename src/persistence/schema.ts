@@ -848,12 +848,17 @@ export const notifications = pgTable(
     dueAt: millis('due_at').notNull(),
     /** When it goes to Feishu if it still concerns them; null once taken. */
     forwardAt: millis('forward_at'),
+    /** The Feishu card it was sent as, and what it said, while it is open. */
+    cardId: text('card_id'),
+    card: text('card'),
+    cardOpen: boolean('card_open').notNull().default(false),
     createdAt: millis('created_at').notNull(),
   },
   (t) => [
     unique('notification_once').on(t.humanId, t.source),
     index('notification_due').on(t.state, t.dueAt),
     index('notification_forward').on(t.forwardAt),
+    index('notification_card').on(t.cardOpen),
     check(
       'notification_kind',
       sql`${t.kind} IN ('reply','blocked','decide','task','mention','message')`,

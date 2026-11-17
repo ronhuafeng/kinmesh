@@ -18,6 +18,14 @@ import { describeFailure } from '../diagnostics.js';
 import { FeishuFailure, type Feishu } from './feishu.js';
 import { principal } from './principals.js';
 
+/** How often cards are looked at, and how long one is followed at most. */
+const SETTLE_EVERY_MS = 10_000;
+const CARD_FOLLOWED_MS = 7 * 24 * 60 * 60 * 1000;
+const CardPost = z.strictObject({
+  title: z.string(),
+  text: z.string(),
+  url: z.string(),
+});
 type Due = Awaited<ReturnType<Store['notifications']['take']>>[number];
 type About = NonNullable<
   Awaited<ReturnType<Store['notifications']['describe']>>
@@ -311,12 +319,15 @@ export function registerNotifications(
     if (about === null) return;
     if (await held(n, 'forward')) return;
     const payload = payloadOf(n, about);
+    const post = {
+      title: payload.title,
+      text: payload.body,
+      url: new URL(payload.url, origin).href,
+    };
     try {
-      await feishu.message(union, {
-        title: payload.title,
-        text: payload.body,
-        url: new URL(payload.url, origin).href,
-      });
+      const cardId = await feishu.message(union, post);
+      // Followed until what it is about is settled.
+      await store.notifications.cardSent(n.id, cardId, post);
     } catch (error) {
       // Only the stage and status: nothing of the message or the person.
       app.log.error(
@@ -325,10 +336,39 @@ export function registerNotifications(
       );
     }
   }
+  /**
+   * A card whose cause is settled (read, decided, unblocked, or no longer
+   * the person's) turns into 已处理, once. One older than a week is let go.
+   */
+  async function settleCards() {
+    for (const n of await store.notifications.openCards(50)) {
+      if (closed()) return;
+      if (n.cardId === null || n.card === null) {
+        await store.notifications.cardClosed(n.id);
+        continue;
+      }
+      if (Date.now() - n.createdAt > CARD_FOLLOWED_MS) {
+        await store.notifications.cardClosed(n.id);
+        continue;
+      }
+      if ((await store.notifications.describe(n)) !== null) continue;
+      const post = CardPost.parse(JSON.parse(n.card));
+      try {
+        await feishu.settle(n.cardId, post);
+        await store.notifications.cardClosed(n.id);
+      } catch (error) {
+        app.log.error(
+          { error: error instanceof FeishuFailure ? error.message : 'Error' },
+          'feishu_settle_failed',
+        );
+      }
+    }
+  }
   // What is due goes out within a second, each notification once.
   // One round at a time; closing waits for the one under way, and says
   // nothing of a database it closed under it.
   let sending: Promise<void> | null = null;
+  let lastSettled = 0;
   let closing = false;
   // Read anew each time: it changes while a round awaits.
   const closed = () => closing;
@@ -350,6 +390,11 @@ export function registerNotifications(
       for (const humanId of await store.notifications.heldPeople()) {
         if (closed()) return;
         await summarise(humanId);
+      }
+      // Settled cards are looked for less often than what is due.
+      if (Date.now() - lastSettled > SETTLE_EVERY_MS) {
+        lastSettled = Date.now();
+        await settleCards();
       }
     } catch (error) {
       if (!closed())

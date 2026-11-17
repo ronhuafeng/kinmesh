@@ -34,6 +34,13 @@ export const feishuPerson = (mailbox: string) => ({
   email: mailbox.trim().toLowerCase(),
 });
 
+/** The cards the stand-in's bot turned into 已处理, in order. */
+export const standInSettled: {
+  messageId: string;
+  title: string;
+  text: string;
+  url: string;
+}[] = [];
 /** What the stand-in's bot sent, in order, for a test to read. */
 export const standInMessages: {
   union: string;
@@ -61,6 +68,10 @@ export const standInFeishu: Feishu = {
   picture: () => Promise.reject(new Error('no picture')),
   message(union, post) {
     standInMessages.push({ union, ...post });
+    return Promise.resolve('om_' + String(standInMessages.length));
+  },
+  settle(messageId, post) {
+    standInSettled.push({ messageId, ...post });
     return Promise.resolve();
   },
   profile(token) {

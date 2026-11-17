@@ -450,6 +450,11 @@ fallback.
   itself. Then the channels you made louder or quieter, a channel's icon, its name
   and its level, **恢复默认** at the end. Signing out, in 账户与设备, ends that section in
   **退出登录** and **在所有设备上退出登录**, quiet rows in the danger colour.
+- **Feishu card**: what reaches you in Feishu is a card from the app's bot: the
+  title in a green header, the line as plain text, and **查看** (the primary button)
+  to open its place. Once it is settled the same card turns grey and the button
+  says **已处理**, still opening the place. A summary after quiet time is a card too
+  ("免打扰期间有 3 件事等你").
 - **Notice**: while you are in Kinmesh, what would have notified you comes as a
   notice at the foot of the screen instead — the same title and line, in the toast's
   dark, for eight seconds — and a click opens its place.
