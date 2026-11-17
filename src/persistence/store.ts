@@ -466,6 +466,10 @@ export async function openStore(url: string) {
         return { team, channels };
       },
       ready: d.ready,
+      /** Runs reads as one consistent read (`openDatabase`). */
+      read: d.read,
+      /** How many transactions and queries some work began, for tests. */
+      tally: d.tally,
     };
   }
 }

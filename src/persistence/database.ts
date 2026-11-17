@@ -48,6 +48,19 @@ const codeOf = (error: unknown): string | undefined => {
 };
 
 /**
+ * Runs reads of one transaction together, pipelined on its connection, and
+ * waits for all of them before a failure is passed on, so none outlives the
+ * transaction it belongs to.
+ */
+export async function together<T extends readonly unknown[]>(
+  reads: readonly [...T],
+): Promise<{ -readonly [K in keyof T]: Awaited<T[K]> }> {
+  await Promise.allSettled(reads);
+  // All settled, the first failure in order is the one passed on.
+  return Promise.all(reads);
+}
+
+/**
  * Whether a rule of the database refused the write: a check, a trigger or a
  * missing reference refuses the same write again. A duplicate key is left
  * out, since it may be a race lost to a concurrent transaction, which the
@@ -65,11 +78,29 @@ export function refused(error: unknown) {
  * transaction every query, in any repository, runs on that transaction.
  */
 export async function openDatabase(url: string) {
+  /**
+   * The transaction under way, and which read it is (`read`), null for a
+   * write.
+   */
+  const current = new AsyncLocalStorage<{ tx: Tx; read: object | null }>();
+  /** What `tally` counts, for the work it runs. */
+  const tallies = new AsyncLocalStorage<{
+    transactions: number;
+    queries: number;
+  }>();
   const client = postgres(DatabaseUrl.parse(url), {
     max: 10,
     onnotice: () => undefined,
   });
-  const db = drizzle(client, { schema });
+  const db = drizzle(client, {
+    schema,
+    logger: {
+      logQuery: () => {
+        const tally = tallies.getStore();
+        if (tally && current.getStore()) tally.queries++;
+      },
+    },
+  });
   try {
     await migrate(db, {
       migrationsFolder: fileURLToPath(
@@ -80,24 +111,33 @@ export async function openDatabase(url: string) {
     await client.end({ timeout: 5 });
     throw error;
   }
-  const current = new AsyncLocalStorage<Tx>();
+  const begin = () => {
+    const tally = tallies.getStore();
+    if (tally) tally.transactions++;
+  };
   /** The transaction under way, or the pool. */
-  const q = (): Query => current.getStore() ?? db;
+  const q = (): Query => current.getStore()?.tx ?? db;
   /**
    * Runs `action` atomically. Nested, it is a savepoint of the enclosing
-   * transaction; at the top, a serializable transaction, retried while
-   * concurrent ones make it stale. Broken rules are conflicts.
+   * transaction, or, within a read, simply part of it; at the top, a
+   * serializable transaction, retried while concurrent ones make it stale.
+   * Broken rules are conflicts.
    */
   async function atomic<T>(action: () => Promise<T>): Promise<T> {
     const outer = current.getStore();
+    if (outer?.read) return action();
     try {
       if (outer !== undefined)
-        return await outer.transaction((tx) => current.run(tx, action));
+        return await outer.tx.transaction((tx) =>
+          current.run({ tx, read: null }, action),
+        );
       for (let attempt = 1; ; attempt++) {
         try {
-          return await db.transaction((tx) => current.run(tx, action), {
-            isolationLevel: 'serializable',
-          });
+          begin();
+          return await db.transaction(
+            (tx) => current.run({ tx, read: null }, action),
+            { isolationLevel: 'serializable' },
+          );
         } catch (error) {
           const code = codeOf(error);
           if (code === undefined || !RETRY.has(code) || attempt >= MAX_ATTEMPTS)
@@ -111,10 +151,59 @@ export async function openDatabase(url: string) {
       throw error;
     }
   }
+  /**
+   * Runs `action` as one consistent read: a read-only, repeatable-read
+   * transaction, so every query in it sees the same committed state, and
+   * repository calls within it (`atomic`) are part of it rather than
+   * transactions of their own. Within a write, it is part of that write.
+   */
+  async function read<T>(action: () => Promise<T>): Promise<T> {
+    if (current.getStore() !== undefined) return action();
+    begin();
+    return db.transaction((tx) => current.run({ tx, read: {} }, action), {
+      isolationLevel: 'repeatable read',
+      accessMode: 'read only',
+    });
+  }
+  /**
+   * `check`, asked once per read for the same arguments (named by `key`):
+   * within a read every query sees the same state, so it finds the same
+   * however many reads it guards. Outside a read it is asked every time.
+   */
+  function perRead<A extends unknown[], T>(
+    key: (...args: A) => string,
+    check: (...args: A) => Promise<T>,
+  ) {
+    const asked = new WeakMap<object, Map<string, Promise<T>>>();
+    return (...args: A): Promise<T> => {
+      const read = current.getStore()?.read;
+      if (!read) return check(...args);
+      const found = asked.get(read) ?? new Map<string, Promise<T>>();
+      asked.set(read, found);
+      const name = key(...args);
+      const known = found.get(name);
+      if (known !== undefined) return known;
+      const answer = check(...args);
+      found.set(name, answer);
+      return answer;
+    };
+  }
   return {
     db,
     q,
     atomic,
+    read,
+    perRead,
+    /**
+     * How many transactions (top-level, reads and writes) `action` began,
+     * and queries within them, for tests: only its own, never other work at
+     * the time.
+     */
+    tally: async (action: () => Promise<unknown>) => {
+      const tally = { transactions: 0, queries: 0 };
+      await tallies.run(tally, action);
+      return tally;
+    },
     /** Whether the database answers. */
     ready: async () => {
       try {

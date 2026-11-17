@@ -8,7 +8,9 @@ import {
   desc,
   eq,
   gt,
+  getTableColumns,
   gte,
+  inArray,
   isNotNull,
   lt,
   lte,
@@ -63,12 +65,30 @@ export function communicationRepository(
       ? await agents.teamAccess(p, teamId, 'channels:read', 'channels:write')
       : await agents.teamAccess(p, teamId, 'channels:read');
   }
-  async function access(
+  // Asked once per read (`perRead`): the same caller, channel and need.
+  const access = d.perRead(
+    (
+      p: Principal,
+      teamId: TeamId,
+      channelId: ChannelId,
+      write?: boolean,
+      inactive?: boolean,
+    ) =>
+      JSON.stringify([p, teamId, channelId, write ?? false, inactive ?? false]),
+    (
+      p: Principal,
+      teamId: TeamId,
+      channelId: ChannelId,
+      write?: boolean,
+      inactive?: boolean,
+    ) => checkAccess(p, teamId, channelId, write ?? false, inactive ?? false),
+  );
+  async function checkAccess(
     p: Principal,
     teamId: TeamId,
     channelId: ChannelId,
-    write = false,
-    inactive = false,
+    write: boolean,
+    inactive: boolean,
   ) {
     await team(p, teamId, write);
     const channel = (
@@ -225,7 +245,39 @@ export function communicationRepository(
         .limit(1)
     )[0];
     if (row === undefined) throw new DomainError('not-found');
-    return Topic.parse({ ...row, author: decode(row.author) });
+    return topicOf(row);
+  }
+  /** Messages as read, each with its mentions: one more query for them all. */
+  async function withMentions(rows: (typeof s.messages.$inferSelect)[]) {
+    const mentions = new Map<string, Member[]>();
+    if (rows.length > 0)
+      for (const r of await q()
+        .select({
+          messageId: s.messageMentions.messageId,
+          target: s.messageMentions.target,
+        })
+        .from(s.messageMentions)
+        .where(
+          inArray(
+            s.messageMentions.messageId,
+            rows.map((row) => row.id),
+          ),
+        )
+        .orderBy(
+          asc(s.messageMentions.messageId),
+          asc(s.messageMentions.memberKey),
+        ))
+        mentions.set(r.messageId, [
+          ...(mentions.get(r.messageId) ?? []),
+          Member.parse(decode(r.target)),
+        ]);
+    return rows.map((row) =>
+      Message.parse({
+        ...row,
+        author: decode(row.author),
+        mentions: mentions.get(row.id) ?? [],
+      }),
+    );
   }
   async function message(channelId: ChannelId, id: MessageId) {
     const row = (
@@ -236,15 +288,12 @@ export function communicationRepository(
         .limit(1)
     )[0];
     if (row === undefined) throw new DomainError('not-found');
-    const mentions = (
-      await q()
-        .select()
-        .from(s.messageMentions)
-        .where(eq(s.messageMentions.messageId, id))
-        .orderBy(asc(s.messageMentions.memberKey))
-    ).map((r) => Member.parse(decode(r.target)));
-    return Message.parse({ ...row, author: decode(row.author), mentions });
+    const [found] = await withMentions([row]);
+    if (found === undefined) throw new DomainError('not-found');
+    return found;
   }
+  const topicOf = (row: typeof s.topics.$inferSelect) =>
+    Topic.parse({ ...row, author: decode(row.author) });
   const page = snapshotPage;
   const highest = (value: number | null | undefined) => value ?? 0;
   async function visibleEvent(
@@ -518,20 +567,33 @@ export function communicationRepository(
     latest(p: Principal, teamId: TeamId) {
       return atomic(async () => {
         await team(p, teamId);
-        const rows = await q()
-          .selectDistinctOn([s.messages.channelId], {
-            channelId: s.messages.channelId,
+        // Per joined channel, its newest message along its timeline index.
+        const newest = q()
+          .select({
             id: s.messages.id,
             author: s.messages.author,
             body: s.messages.body,
             createdAt: s.messages.createdAt,
           })
           .from(s.messages)
-          .innerJoin(s.channels, eq(s.channels.id, s.messages.channelId))
+          .where(eq(s.messages.channelId, s.channels.id))
+          .orderBy(desc(s.messages.position))
+          .limit(1)
+          .as('newest');
+        const rows = await q()
+          .select({
+            channelId: s.channels.id,
+            id: newest.id,
+            author: newest.author,
+            body: newest.body,
+            createdAt: newest.createdAt,
+          })
+          .from(s.channels)
           .innerJoin(
             s.channelParticipants,
-            eq(s.channelParticipants.channelId, s.messages.channelId),
+            eq(s.channelParticipants.channelId, s.channels.id),
           )
+          .innerJoinLateral(newest, sql`true`)
           .where(
             and(
               eq(s.channels.teamId, teamId),
@@ -539,7 +601,7 @@ export function communicationRepository(
               eq(s.channelParticipants.state, 'joined'),
             ),
           )
-          .orderBy(s.messages.channelId, desc(s.messages.position));
+          .orderBy(s.channels.id);
         return rows.map((r) =>
           ChannelLatest.parse({
             channelId: r.channelId,
@@ -737,22 +799,20 @@ export function communicationRepository(
               )[0]?.value,
             ),
           async (after, maximum, limit) =>
-            Promise.all(
-              (
-                await q()
-                  .select()
-                  .from(s.topics)
-                  .where(
-                    and(
-                      eq(s.topics.channelId, channelId),
-                      gt(s.topics.position, after),
-                      lte(s.topics.position, maximum),
-                    ),
-                  )
-                  .orderBy(asc(s.topics.position))
-                  .limit(limit)
-              ).map((r) => topic(channelId, TopicId.parse(r.id))),
-            ),
+            (
+              await q()
+                .select()
+                .from(s.topics)
+                .where(
+                  and(
+                    eq(s.topics.channelId, channelId),
+                    gt(s.topics.position, after),
+                    lte(s.topics.position, maximum),
+                  ),
+                )
+                .orderBy(asc(s.topics.position))
+                .limit(limit)
+            ).map(topicOf),
         );
       });
     },
@@ -770,7 +830,7 @@ export function communicationRepository(
         await access(p, teamId, channelId);
         const active = sql<string>`coalesce(max(${s.messages.createdAt}), ${s.topics.createdAt})`;
         const rows = await q()
-          .select({ id: s.topics.id })
+          .select(getTableColumns(s.topics))
           .from(s.topics)
           .leftJoin(
             s.messages,
@@ -785,11 +845,7 @@ export function communicationRepository(
           .orderBy(desc(active), desc(s.topics.position))
           .limit(limit + 1);
         return {
-          items: await Promise.all(
-            rows
-              .slice(0, limit)
-              .map((r) => topic(channelId, TopicId.parse(r.id))),
-          ),
+          items: rows.slice(0, limit).map(topicOf),
           more: rows.length > limit,
         };
       });
@@ -885,23 +941,21 @@ export function communicationRepository(
           ['messages', teamId, channelId, topicId, memberKey(member(p))],
           Message,
           async (before, floor, limit) =>
-            Promise.all(
-              (
-                await q()
-                  .select({ id: s.messages.id })
-                  .from(s.messages)
-                  .where(
-                    and(
-                      condition,
-                      before === null
-                        ? undefined
-                        : lt(s.messages.position, before),
-                      gte(s.messages.position, floor),
-                    ),
-                  )
-                  .orderBy(desc(s.messages.position))
-                  .limit(limit)
-              ).map((r) => message(channelId, MessageId.parse(r.id))),
+            withMentions(
+              await q()
+                .select()
+                .from(s.messages)
+                .where(
+                  and(
+                    condition,
+                    before === null
+                      ? undefined
+                      : lt(s.messages.position, before),
+                    gte(s.messages.position, floor),
+                  ),
+                )
+                .orderBy(desc(s.messages.position))
+                .limit(limit),
             ),
           reach,
         );
