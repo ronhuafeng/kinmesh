@@ -264,3 +264,33 @@ export function Presence({
     </span>
   );
 }
+/**
+ * An on/off switch, iOS's: a track that turns the primary colour and a
+ * thumb that slides. Its row names it (`labelledBy`); a click anywhere on a
+ * label wrapped around it flips it.
+ */
+export function Switch({
+  on,
+  labelledBy,
+  disabled,
+  onChange,
+}: {
+  on: boolean;
+  labelledBy: string;
+  disabled?: boolean;
+  onChange: (on: boolean) => void;
+}) {
+  return (
+    <button
+      type="button"
+      role="switch"
+      className="switch"
+      aria-checked={on}
+      aria-labelledby={labelledBy}
+      disabled={disabled}
+      onClick={() => {
+        onChange(!on);
+      }}
+    />
+  );
+}

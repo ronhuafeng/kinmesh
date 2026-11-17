@@ -78,6 +78,20 @@
       "when": 1794909616265,
       "tag": "0010_quiet",
       "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1794941510178,
+      "tag": "0011_notify_settings",
+      "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "7",
+      "when": 1794941519361,
+      "tag": "0012_drop_notify_level",
+      "breakpoints": true
     }
   ]
 }

@@ -204,12 +204,8 @@ export async function createApp(
       version,
     });
   });
-  registerLogin(
-    app,
-    store,
-    config,
-    options.feishu ?? feishuClient(config.feishu),
-  );
+  const feishu = options.feishu ?? feishuClient(config.feishu);
+  registerLogin(app, store, config, feishu);
   app.post('/api/logout', async (request, reply) => {
     await store.notifications.signedOut(request.session.get('session'));
     await store.sessions.revoke(request.session.get('session'), Date.now());
@@ -306,7 +302,7 @@ export async function createApp(
   expiring.unref();
   registerCommunication(app, store);
   registerTasks(app, store);
-  registerNotifications(app, store, config.origin, hub.directory);
+  registerNotifications(app, store, config.origin, hub.directory, feishu);
   const { snapshot, runs } = registerWorkspace(
     app,
     store,

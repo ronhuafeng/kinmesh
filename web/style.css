@@ -4117,7 +4117,90 @@ button.new-agent-go {
  * the end, set apart from signing out. */
 .you-notify {
   display: grid;
+  /* What notifies you, where it reaches you, when, and what you muted:
+   * each a run of rows, a little apart from the next. */
+  gap: 1rem;
   margin-bottom: 1.5rem;
+}
+.you-rows {
+  display: grid;
+}
+/* A row with a switch is its label: a click anywhere on it flips it. */
+label.you-row {
+  cursor: pointer;
+}
+/* Under 通知时段, its hours and days, on the same edges. */
+.you-row-sub {
+  font-weight: 400;
+}
+.you-hours {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  color: var(--ink-muted);
+}
+/* An hour chosen in place: the time itself, underlined, no box. */
+.hour-picker {
+  appearance: none;
+  padding: 0.2rem 0;
+  border: 0;
+  border-bottom: 1px solid var(--hairline-strong);
+  border-radius: 0;
+  background: none;
+  color: var(--ink);
+  font: inherit;
+  font-variant-numeric: tabular-nums;
+  cursor: pointer;
+}
+.hour-picker:hover:not(:disabled),
+.hour-picker:focus-visible {
+  border-bottom-color: var(--primary);
+  outline: none;
+}
+/* An on/off switch: a grey track that turns the primary colour, and a white
+ * thumb, raised, that slides across. */
+.switch {
+  flex: none;
+  position: relative;
+  width: 51px;
+  height: 31px;
+  padding: 0;
+  border: 0;
+  border-radius: 999px;
+  background: var(--fill);
+  transition: background-color var(--dur-fast) ease;
+}
+.switch::before {
+  content: '';
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 27px;
+  height: 27px;
+  border-radius: 50%;
+  background: #ffffff;
+  box-shadow:
+    0 3px 8px rgb(0 0 0 / 0.15),
+    0 3px 1px rgb(0 0 0 / 0.06);
+  transition: transform var(--dur-fast) ease;
+}
+.switch[aria-checked='true'] {
+  background: var(--primary);
+}
+.switch[aria-checked='true']::before {
+  transform: translateX(20px);
+}
+.switch:hover:not(:disabled) {
+  background: var(--fill);
+}
+.switch[aria-checked='true']:hover:not(:disabled) {
+  background: var(--primary-hover);
+}
+@media (prefers-reduced-motion: reduce) {
+  .switch,
+  .switch::before {
+    transition: none;
+  }
 }
 .you-row {
   display: flex;

@@ -212,31 +212,40 @@ Work that never reached T3 expires after seven days, frozen or not, whether a wo
 
 ## Notifications
 
-A person is notified in their browsers of what concerns them, even with Kinmesh closed, through Web Push. What notifies whom is decided from the facts above, inside the transaction that commits each one (as the [Inbox](#agent-inbox) enqueues), once per cause and person, and never for a person's own act:
+A person is notified in their browsers of what concerns them, even with Kinmesh closed, through Web Push, and, if they ask, in Feishu. What notifies whom is decided from the facts above, inside the transaction that commits each one (as the [Inbox](#agent-inbox) enqueues), once per cause and person, and never for a person's own act:
 
-| Cause                                                                                                    | Kind      | Level |
-| -------------------------------------------------------------------------------------------------------- | --------- | ----- |
-| An agent's message whose causal chain starts with the person's act (it answers what they asked)          | `reply`   | Mine  |
-| A delivery whose causal chain starts with the person's act becomes `blocked` (each time it does)         | `blocked` | Mine  |
-| A task reaches `awaiting-human` with the person as acceptor                                              | `decide`  | Mine  |
-| A task is created, handed, sent for review or back for rework, and the person now works on or reviews it | `task`    | Mine  |
-| A message mentions the person                                                                            | `mention` | Mine  |
-| Any other message in a channel the person is joined to                                                   | `message` | All   |
+| Cause                                                                                                    | Kind      | By default |
+| -------------------------------------------------------------------------------------------------------- | --------- | ---------- |
+| An agent's message whose causal chain starts with the person's act (it answers what they asked)          | `reply`   | On         |
+| A delivery whose causal chain starts with the person's act becomes `blocked` (each time it does)         | `blocked` | On         |
+| A task reaches `awaiting-human` with the person as acceptor                                              | `decide`  | On         |
+| A task is created, handed, sent for review or back for rework, and the person now works on or reviews it | `task`    | On         |
+| A message mentions the person                                                                            | `mention` | On         |
+| Any other message in a channel the person is joined to                                                   | `message` | Off        |
 
-Each person chooses a level for themselves: `all`, `mine` (the default) or `off`, kept on the server and carried in the snapshot as `notify`. A notification is due five seconds after its cause, then sent at most once, and only if it still concerns the person: they are still joined to the channel, the message is still unread for them ([read position](#channels-topics-and-messages)), the task still at the version that caused it, the delivery still blocked. So nothing is sent about what a tab open on it has already read.
+Each person chooses, kind by kind, what notifies them (`notify` in the snapshot); choosing none turns notifications off. A notification is due five seconds after its cause, then sent at most once, and only if it still concerns the person: they are still joined to the channel, the message is still unread for them ([read position](#channels-topics-and-messages)), the task still at the version that caused it, the delivery still blocked. So nothing is sent about what a tab open on it has already read.
 
 A browser is notified once a person turns notifications on in it, held by the session they did that in: signing out of that session, or everywhere, ends it, and it lasts no longer than that session could (seven days from its sign-in, [security](security.md#sign-in-and-sessions)). Opening the workspace hands a browser already notifying that person to the session in use. A push carries a title and one line (who wrote or what changed, and where), the address of the place, and what it is about.
 
 | Method/path                  | Input / policy                                                                                                                                 |
 | ---------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------- |
-| `PUT /api/me/notify`         | `{level}`; the person's own; 204                                                                                                               |
+| `PUT /api/me/notify`         | `{kinds}`, the kinds above, each at most once; the person's own; 204                                                                           |
 | `GET /api/push/key`          | The hub's Web Push (VAPID) public key                                                                                                          |
 | `PUT /api/push/subscription` | The browser's `PushSubscription.toJSON()`, an `https` endpoint; this browser now notifies the caller                                           |
 | `POST /api/push/renew`       | `{endpoint}`; held by this session from now, only if it already notifies the caller; 204                                                       |
 | `POST /api/push/unsubscribe` | `{endpoint}`; this browser no longer notifies the caller; 204                                                                                  |
 | `POST /api/push/test`        | `{endpoint}`; one notification to that browser, if it notifies the caller now (410 otherwise); 502 when its push service can't be reached; 204 |
 
-A person may also **mute** a channel they are joined to, or an agent of the team: a muted channel's activity, or a muted agent's messages, then neither notify them nor make channels unread for them. Muting never silences what waits on them (`decide`, `task`, `blocked`); only level `off` or a **pause** does. A pause lasts until a time at most a week ahead, and ends by itself; what falls due while it lasts is dropped, not sent later. The snapshot carries what the person muted (`muted.channels`, `muted.agents`) and `pausedUntil` (null when not paused).
+**Feishu.** A person may also have what stays unread reach them in Feishu, from the app's bot: `forwardAfter` minutes (5, 15 or 60; null, the default, never) after a notification falls due, if it still concerns them by the same checks and they still want it then, it is sent to them once (by their Feishu `union_id`) with its title, line and a link to its place, whether or not a browser of theirs was notified. It is never retried as another message.
+
+**Hours.** A person may choose the hours notifications may reach them: from one time of day to another (past midnight when the second is earlier), every day or on weekdays only, in the time zone their browser had when they chose them (`hours` in the snapshot; null, the default, is any time). Outside them a notification due to be pushed or sent to Feishu waits, and goes when they open, if it still concerns them then. A pause, by contrast, drops what falls due while it lasts.
+
+| Method/path           | Input / policy                                                                                               |
+| --------------------- | ------------------------------------------------------------------------------------------------------------ |
+| `PUT /api/me/forward` | `{minutes}`: 5, 15, 60 or null; 204                                                                          |
+| `PUT /api/me/hours`   | `{hours}`: `{from,to,weekdays,timeZone}` (minutes of the day, `from` ≠ `to`, an IANA time zone) or null; 204 |
+
+A person may also **mute** a channel they are joined to, or an agent of the team: a muted channel's activity, or a muted agent's messages, then neither notify them nor make channels unread for them. Muting never silences what waits on them (`decide`, `task`, `blocked`); only turning that kind off, or a **pause**, does. A pause lasts until a time at most a week ahead, and ends by itself; what falls due while it lasts is dropped, not sent later. The snapshot carries what the person muted (`muted.channels`, `muted.agents`) and `pausedUntil` (null when not paused).
 
 | Method/path                               | Input / policy                                                                     |
 | ----------------------------------------- | ---------------------------------------------------------------------------------- |

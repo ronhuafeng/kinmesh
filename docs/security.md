@@ -50,6 +50,7 @@ Avatars are served with their detected type, `nosniff` and a sandboxing CSP.
 - The hub signs pushes with its own VAPID key pair, made once and kept as `push-keys.json` in `managed/` (below). Losing it ends every browser's notifications until each is turned on again.
 - A browser's endpoint and keys are kept with the session that turned it on, and deleted when that session signs out or the person signs out everywhere; one whose session was revoked or is past its lifetime receives nothing. An endpoint is a credential: it is never logged, only a push service's status code is.
 - The service worker (`/sw.js`) shows what is pushed and opens its place; it caches nothing and handles no other request.
+- A notification goes to Feishu only for a person who turned that on, after the same checks, from the app's own bot (a `tenant_access_token` asked for each time): its title, its line and a link to its place, to that person alone by their `union_id`. A failure is logged by stage and status only.
 
 ## Hub-held worker secrets
 

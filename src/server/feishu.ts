@@ -29,6 +29,14 @@ export interface Feishu {
   organization(): Promise<string>;
   /** A person's picture from where the profile says it is; at most AVATAR_LIMIT bytes. */
   picture(url: string): Promise<Buffer>;
+  /**
+   * A message from the app's bot to one person, by their union_id
+   * (im:message:send_as_bot): a title, a line, and a link to open.
+   */
+  message(
+    union: string,
+    post: { title: string; text: string; url: string },
+  ): Promise<void>;
 }
 
 /**
@@ -37,7 +45,7 @@ export interface Feishu {
  */
 export class FeishuFailure extends Error {
   constructor(
-    stage: 'token' | 'profile' | 'tenant' | 'picture',
+    stage: 'token' | 'profile' | 'tenant' | 'picture' | 'message',
     status: number,
   ) {
     super(`feishu_${stage}_${String(status)}`);
@@ -83,6 +91,25 @@ export function feishuClient(config: Config['feishu']): Feishu {
     } catch {
       return null;
     }
+  };
+  /** The app's own token (tenant_access_token), asked for each time. */
+  const tenantToken = async (stage: 'tenant' | 'message') => {
+    const issued = await fetch(
+      new URL('/open-apis/auth/v3/tenant_access_token/internal', open),
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          app_id: config.appId,
+          app_secret: config.appSecret,
+        }),
+        signal: AbortSignal.timeout(8000),
+      },
+    );
+    const token = Tenant.safeParse(await read(issued));
+    if (!issued.ok || !token.success || !token.data.tenant_access_token)
+      throw new FeishuFailure(stage, issued.status);
+    return token.data.tenant_access_token;
   };
   return {
     authorizeUrl(state, redirectUri) {
@@ -152,26 +179,12 @@ export function feishuClient(config: Config['feishu']): Feishu {
       };
     },
     async organization() {
-      const issued = await fetch(
-        new URL('/open-apis/auth/v3/tenant_access_token/internal', open),
-        {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            app_id: config.appId,
-            app_secret: config.appSecret,
-          }),
-          signal: AbortSignal.timeout(8000),
-        },
-      );
-      const token = Tenant.safeParse(await read(issued));
-      if (!issued.ok || !token.success || !token.data.tenant_access_token)
-        throw new FeishuFailure('tenant', issued.status);
+      const token = await tenantToken('tenant');
       const response = await fetch(
         new URL('/open-apis/tenant/v2/tenant/query', open),
         {
           headers: {
-            Authorization: `Bearer ${token.data.tenant_access_token}`,
+            Authorization: `Bearer ${token}`,
             Accept: 'application/json',
           },
           signal: AbortSignal.timeout(8000),
@@ -187,6 +200,40 @@ export function feishuClient(config: Config['feishu']): Feishu {
       )
         throw new FeishuFailure('tenant', response.status);
       return name;
+    },
+    async message(union, post) {
+      const token = await tenantToken('message');
+      const url = new URL('/open-apis/im/v1/messages', open);
+      url.searchParams.set('receive_id_type', 'union_id');
+      const response = await fetch(url, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          receive_id: union,
+          msg_type: 'post',
+          content: JSON.stringify({
+            zh_cn: {
+              title: post.title,
+              content: [
+                [{ tag: 'text', text: post.text }],
+                [{ tag: 'a', text: '在 Kinmesh 中打开', href: post.url }],
+              ],
+            },
+          }),
+        }),
+        redirect: 'error',
+        signal: AbortSignal.timeout(8000),
+      });
+      const body = Envelope.safeParse(await read(response));
+      if (
+        !response.ok ||
+        !body.success ||
+        (body.data.code !== undefined && body.data.code !== 0)
+      )
+        throw new FeishuFailure('message', response.status);
     },
     async picture(address) {
       // Only Feishu's own HTTPS, or the stand-in a test runs; nothing it

@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { NotifyLevel } from '../domain/notify.js';
+import { NotifyHours, NotifyKinds } from '../domain/notify.js';
 import { EventType, PROTOCOL_VERSION } from '@ag-ui/core';
 import { StateSnapshotEventSchema } from '@ag-ui/core/schemas';
 import { Agent, Correlation, RuntimeEvent } from '../domain/agents.js';
@@ -63,14 +63,18 @@ export const WorkspaceSnapshot = z.strictObject({
     .refine((origin) => new URL(origin).origin === origin)
     .nullable(),
   human: Person,
-  /** What notifies you, on every browser you turned notifications on in. */
-  notify: NotifyLevel,
+  /** The kinds of notification you want, on every way they reach you. */
+  notify: NotifyKinds,
   /** Channels and agents you muted, and until when you paused notifications. */
   muted: z.strictObject({
     channels: z.array(ChannelId).max(100),
     agents: z.array(AgentId).max(100),
   }),
   pausedUntil: z.iso.datetime().nullable(),
+  /** Minutes unread before a notification also goes to Feishu; null: never. */
+  forwardAfter: z.number().int().positive().nullable(),
+  /** The hours notifications may reach you; null: any time. */
+  hours: NotifyHours.nullable(),
   team: Team,
   /**
    * Everyone of the team, you included, and who is online now. A picture is
