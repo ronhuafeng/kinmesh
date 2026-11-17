@@ -1092,7 +1092,10 @@ a.link-button {
   column-gap: 0.75rem;
   margin-inline: -0.5rem;
   margin-top: 0.75rem;
-  padding: 0.375rem 0.5rem;
+  /* The same space under every message, grouped or not: joining a group
+     changes only what is above its text, so a conversation read back holds
+     still as older messages fold into it. */
+  padding: 0.375rem 0.5rem 0.25rem;
   border-radius: var(--radius);
   transition: background-color var(--dur-fast) ease;
 }
@@ -1107,7 +1110,7 @@ a.link-button {
  * name are said once. */
 .messages > li[data-continued] {
   margin-top: 0;
-  padding-block: 0.125rem;
+  padding-top: 0.125rem;
 }
 .messages > li[data-continued] > .message-body {
   grid-column: 2;

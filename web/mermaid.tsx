@@ -161,16 +161,18 @@ function draw(source: string, dark: boolean): Promise<Drawing> {
   queue = next.catch(() => undefined);
   return next;
 }
-const scheme = window.matchMedia('(prefers-color-scheme: dark)');
+const scheme = () => window.matchMedia('(prefers-color-scheme: dark)');
 /** Whether the page is drawn dark, following the system as it changes. */
 function useDark() {
   return useSyncExternalStore(
     (changed) => {
-      scheme.addEventListener('change', changed);
+      const query = scheme();
+      query.addEventListener('change', changed);
       return () => {
-        scheme.removeEventListener('change', changed);
+        query.removeEventListener('change', changed);
       };
     },
-    () => scheme.matches,
+    () => scheme().matches,
+    () => false,
   );
 }
