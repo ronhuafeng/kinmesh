@@ -85,7 +85,7 @@ await test('configuration rejects absent secrets, invalid ports and non-loopback
   assert.equal(loadConfig({ ...env, KINMESH_HOST: '0.0.0.0' }).host, '0.0.0.0');
   assert.throws(() => loadConfig({ ...env, KINMESH_HOST: 'localhost' }));
   assert.equal(loadConfig(env).secureCookie, false);
-  assert.equal(loadConfig(env).rateLimit, 60);
+  assert.equal(loadConfig(env).rateLimit, 300);
   assert.equal(
     loadConfig({ ...env, KINMESH_RATE_LIMIT: '600' }).rateLimit,
     600,
