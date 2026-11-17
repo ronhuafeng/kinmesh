@@ -17,7 +17,7 @@ import { Agent } from '../src/domain/agents.js';
 import { TopicId } from '../src/domain/communication.js';
 import { WorkspaceSnapshot } from '../src/workspace/contracts.js';
 import { Auth } from './auth.js';
-import { api, HttpError, MutationPermission, Offline, request } from './api.js';
+import { api, HttpError, MutationPermission, Offline } from './api.js';
 import { ActionForm, AddButton, InlineField } from './forms.js';
 import { AgentPage, Team } from './agents.js';
 import { OwnWorkerPage } from './setup.js';
@@ -50,13 +50,16 @@ import { SearchPage, SidebarSearch } from './palette.js';
 import { useSidebar } from './sidebar.js';
 import { InboxPage, attentionCount } from './inbox.js';
 import { FIRST, SettingsNav, SettingsPage } from './settings-map.js';
-import { AccountMenu, Mark, TeamMenu } from './menus.js';
+import { AccountMenu, ChannelMenu, Mark, TeamMenu } from './menus.js';
+import { levelOf, setLevel } from './levels.js';
+import type { ChannelLevel } from '../src/domain/notify.js';
 import { closeSettled, pushSupported, renew, unsubscribe } from './push.js';
 import {
   BackIcon,
   HashIcon,
   InboxIcon,
   SearchIcon,
+  SettingsIcons,
   SidebarIcon,
 } from './icons.js';
 import type { Command } from './palette.js';
@@ -310,14 +313,23 @@ export function App() {
   useEffect(() => {
     keepDraft(draft);
   }, [draft]);
-  const [toast, setToast] = useState<{ id: number; message: string } | null>(
-    null,
-  );
+  // A short word at the foot of the screen; a notice also opens its place.
+  const [toast, setToast] = useState<{
+    id: number;
+    message: string;
+    detail?: string;
+    url?: string;
+  } | null>(null);
+  // In-page notices shown already, so a refresh doesn't show them again.
+  const noticed = useRef(new Set<string>());
   useEffect(() => {
     if (!toast) return;
-    const timer = setTimeout(() => {
-      setToast(null);
-    }, 4000);
+    const timer = setTimeout(
+      () => {
+        setToast(null);
+      },
+      toast.url ? 8000 : 4000,
+    );
     return () => {
       clearTimeout(timer);
     };
@@ -669,6 +681,20 @@ export function App() {
   useEffect(() => {
     if (data) void closeSettled(data).catch(() => undefined);
   }, [data]);
+  // What concerned you while you were here comes as a notice on the page
+  // instead of a notification; each once.
+  const notices = data?.notices;
+  useEffect(() => {
+    const fresh = notices?.find((n) => !noticed.current.has(n.id));
+    if (!fresh) return;
+    for (const n of notices ?? []) noticed.current.add(n.id);
+    setToast({
+      id: Date.now(),
+      message: fresh.title,
+      detail: fresh.body,
+      url: fresh.url,
+    });
+  }, [notices]);
   // ⌘, (Ctrl+, elsewhere) opens settings, as in any Mac app.
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
@@ -846,17 +872,28 @@ export function App() {
         notify('没能退出频道，请再试一次。');
       });
   };
-  // Muting the open channel, or unmuting it, from search.
-  const channelMuted = channel
-    ? data.muted.channels.includes(channel.id)
-    : false;
-  const muteChannel = () => {
-    if (!canAct || !channelPath) return;
-    void request(channelPath + '/mute', { muted: !channelMuted }).catch(() => {
-      notify(
-        channelMuted ? '没能取消静音，请再试一次。' : '没能静音，请再试一次。',
-      );
+  // How loud the open channel is for you, changed from search.
+  const channelLevel = channel ? levelOf(data, channel.id) : 'default';
+  const changeLevel = (level: ChannelLevel) => {
+    if (!canAct || !channel) return;
+    void setLevel(data.team.id, channel.id, level).catch(() => {
+      notify('没能改好，请再试一次。');
     });
+  };
+  /** Leaves any channel you are in, from its row's menu. */
+  const leaveChannelById = (id: string) => {
+    if (!canAct) return;
+    void api(`/api/teams/${data.team.id}/channels/${id}/leave`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ operationKey: crypto.randomUUID() }),
+    })
+      .then(() => {
+        if (id === channel?.id) selectChannel('');
+      })
+      .catch(() => {
+        notify('没能退出频道，请再试一次。');
+      });
   };
   const goHome = () => {
     selectChannel('');
@@ -976,8 +1013,23 @@ export function App() {
           {
             id: 'action-mute',
             group: '操作',
-            label: (channelMuted ? '取消静音 #' : '静音 #') + channel.name,
-            run: muteChannel,
+            label:
+              (channelLevel === 'mute' ? '取消静音 #' : '静音 #') +
+              channel.name,
+            run: () => {
+              changeLevel(channelLevel === 'mute' ? 'default' : 'mute');
+            },
+          },
+          {
+            id: 'action-follow',
+            group: '操作',
+            label:
+              (channelLevel === 'follow'
+                ? '只通知与我有关的 #'
+                : '每条消息都通知 #') + channel.name,
+            run: () => {
+              changeLevel(channelLevel === 'follow' ? 'default' : 'follow');
+            },
           },
           {
             id: 'action-leave',
@@ -1075,73 +1127,91 @@ export function App() {
                         : data.channels.items
                       ).map((c) => (
                         <Fragment key={c.id}>
-                          <button
-                            // On a phone the row also shows the newest message,
-                            // which describes it rather than naming it.
-                            {...(phone
-                              ? {
-                                  'aria-label': c.name,
-                                  'aria-describedby': 'latest-' + c.id,
-                                }
-                              : {})}
-                            data-muted={
-                              data.muted.channels.includes(c.id)
-                                ? 'true'
-                                : undefined
-                            }
-                            data-unread={
-                              data.latest.find((l) => l.channelId === c.id)
-                                ?.unread
-                                ? 'true'
-                                : undefined
-                            }
-                            aria-current={
-                              // Only one place is current: a channel while you are
-                              // in its chat or board.
-                              channel?.id === c.id &&
-                              (tabValue === 'chat' || tabValue === 'board') &&
-                              !(phone && screen === 'home')
-                                ? 'page'
-                                : undefined
-                            }
-                            onClick={() => {
-                              selectChannel(c.id);
-                            }}
+                          <ChannelMenu
+                            data={data}
+                            channelId={c.id}
+                            channelName={c.name}
+                            onLeave={leaveChannelById}
                           >
-                            {phone ? (
-                              <ChannelRow
-                                data={data}
-                                channelId={c.id}
-                                name={c.name}
-                                latest={data.latest.find(
-                                  (l) => l.channelId === c.id,
-                                )}
-                                id={'latest-' + c.id}
-                              />
-                            ) : (
-                              <>
-                                <ChannelIcon id={c.id} name={c.name} />
-                                <span className="channel-name" title={c.name}>
-                                  {c.name}
-                                </span>
-                              </>
-                            )}
-                            {/* Something in this channel waits on you; once
-                            nothing does, the dot fades out. */}
-                            <span
-                              className="waiting-dot"
-                              data-on={waitingIn.has(c.id) ? 'true' : undefined}
-                              {...(waitingIn.has(c.id)
-                                ? { title: '等你处理' }
-                                : { 'aria-hidden': true })}
+                            <button
+                              // On a phone the row also shows the newest message,
+                              // which describes it rather than naming it.
+                              {...(phone
+                                ? {
+                                    'aria-label': c.name,
+                                    'aria-describedby': 'latest-' + c.id,
+                                  }
+                                : {})}
+                              data-muted={
+                                levelOf(data, c.id) === 'mute'
+                                  ? 'true'
+                                  : undefined
+                              }
+                              data-unread={
+                                data.latest.find((l) => l.channelId === c.id)
+                                  ?.unread
+                                  ? 'true'
+                                  : undefined
+                              }
+                              aria-current={
+                                // Only one place is current: a channel while you are
+                                // in its chat or board.
+                                channel?.id === c.id &&
+                                (tabValue === 'chat' || tabValue === 'board') &&
+                                !(phone && screen === 'home')
+                                  ? 'page'
+                                  : undefined
+                              }
+                              onClick={() => {
+                                selectChannel(c.id);
+                              }}
                             >
-                              {waitingIn.has(c.id) && (
-                                <span className="visually-hidden">
-                                  等你处理
+                              {phone ? (
+                                <ChannelRow
+                                  data={data}
+                                  channelId={c.id}
+                                  name={c.name}
+                                  latest={data.latest.find(
+                                    (l) => l.channelId === c.id,
+                                  )}
+                                  id={'latest-' + c.id}
+                                />
+                              ) : (
+                                <>
+                                  <ChannelIcon id={c.id} name={c.name} />
+                                  <span className="channel-name" title={c.name}>
+                                    {c.name}
+                                  </span>
+                                </>
+                              )}
+                              {/* You follow it: every message notifies you. */}
+                              {levelOf(data, c.id) === 'follow' && (
+                                <span
+                                  className="channel-follow"
+                                  title="每条消息都通知你"
+                                >
+                                  <SettingsIcons.bell size={16} />
                                 </span>
                               )}
-                            </span>
-                          </button>
+                              {/* Something in this channel waits on you; once
+                            nothing does, the dot fades out. */}
+                              <span
+                                className="waiting-dot"
+                                data-on={
+                                  waitingIn.has(c.id) ? 'true' : undefined
+                                }
+                                {...(waitingIn.has(c.id)
+                                  ? { title: '等你处理' }
+                                  : { 'aria-hidden': true })}
+                              >
+                                {waitingIn.has(c.id) && (
+                                  <span className="visually-hidden">
+                                    等你处理
+                                  </span>
+                                )}
+                              </span>
+                            </button>
+                          </ChannelMenu>
                           {channel?.id === c.id && channelPath && (
                             <ChannelTopics
                               data={data}
@@ -1628,11 +1698,30 @@ export function App() {
                   </button>
                 </nav>
               )}
-              {toast && (
-                <div className="toast" key={toast.id} role="status">
-                  {toast.message}
-                </div>
-              )}
+              {toast &&
+                (toast.url ? (
+                  // A notice opens what it is about.
+                  <button
+                    type="button"
+                    className="toast toast-notice"
+                    key={toast.id}
+                    role="status"
+                    onClick={() => {
+                      const url = toast.url;
+                      setToast(null);
+                      if (!url) return;
+                      window.history.pushState(null, '', url);
+                      window.dispatchEvent(new PopStateEvent('popstate'));
+                    }}
+                  >
+                    <strong>{toast.message}</strong>
+                    {toast.detail && <span>{toast.detail}</span>}
+                  </button>
+                ) : (
+                  <div className="toast" key={toast.id} role="status">
+                    {toast.message}
+                  </div>
+                ))}
             </div>
           </Offline>
         </AvatarImages.Provider>

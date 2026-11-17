@@ -1,4 +1,3 @@
-import * as SwitchPrimitive from '@radix-ui/react-switch';
 import {
   createContext,
   useContext,
@@ -263,33 +262,5 @@ export function Presence({
     >
       {dot ? <span className="visually-hidden">{word}</span> : word}
     </span>
-  );
-}
-/**
- * An on/off switch, iOS's (Radix Switch): a track that turns the primary
- * colour and a thumb that slides. Its row names it (`labelledBy`); a click
- * anywhere on a label wrapped around it flips it.
- */
-export function Switch({
-  on,
-  labelledBy,
-  disabled,
-  onChange,
-}: {
-  on: boolean;
-  labelledBy: string;
-  disabled?: boolean;
-  onChange: (on: boolean) => void;
-}) {
-  return (
-    <SwitchPrimitive.Root
-      className="switch"
-      checked={on}
-      aria-labelledby={labelledBy}
-      {...(disabled ? { disabled } : {})}
-      onCheckedChange={onChange}
-    >
-      <SwitchPrimitive.Thumb className="switch-thumb" />
-    </SwitchPrimitive.Root>
   );
 }

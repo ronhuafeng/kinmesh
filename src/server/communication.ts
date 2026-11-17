@@ -12,7 +12,7 @@ import {
   TopicId,
   TopicInput,
 } from '../domain/communication.js';
-import { MuteInput } from '../domain/notify.js';
+import { LevelInput } from '../domain/notify.js';
 import type { Store } from '../persistence/store.js';
 import { principal } from './principals.js';
 const TeamPath = z.object({ teamId: TeamId });
@@ -167,13 +167,13 @@ export function registerCommunication(app: FastifyInstance, store: Store) {
         ),
       );
   });
-  app.post(channel + '/mute', async (request, reply) => {
+  app.post(channel + '/level', async (request, reply) => {
     const { teamId, channelId } = ChannelPath.parse(request.params);
-    await store.communication.mute(
+    await store.communication.level(
       principal(request),
       teamId,
       channelId,
-      MuteInput.parse(request.body).muted,
+      LevelInput.parse(request.body).level,
     );
     return reply.code(204).send();
   });

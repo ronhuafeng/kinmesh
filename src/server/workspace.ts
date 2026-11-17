@@ -11,6 +11,7 @@ import { together } from '../persistence/database.js';
 import { fingerprint } from '../persistence/transactional.js';
 import type { Credential } from '../adapters/t3/oauth.js';
 import type { Changes } from './changes.js';
+import { payloadOf } from './notify.js';
 import { readNativeExecution } from '../workspace/native.js';
 import {
   ExecutionSnapshot,
@@ -22,6 +23,8 @@ import {
 type Person = Extract<Principal, { kind: 'human' }>;
 /** How long a snapshot is reused at most, with no change announced. */
 const REUSE_MS = 10_000;
+/** How long an in-page notice stays in the snapshot after its cause. */
+const NOTICE_MS = 2 * 60 * 1000;
 /** How many person-and-place snapshots are kept at once. */
 const SHARED_LIMIT = 256;
 /**
@@ -213,10 +216,10 @@ export function registerWorkspace(
     return entry.snapshot;
   };
   const build = async (principal: Person, query: WorkspaceQuery) => {
-    const [human, membership, notify] = await together([
+    const [human, membership, noticed] = await together([
       store.human(principal.humanId),
       store.teamFor(principal.humanId),
-      store.notifications.kindsOf(principal.humanId),
+      store.notifications.recentInApp(principal.humanId, NOTICE_MS),
     ]);
     if (!human || !membership) throw new DomainError('forbidden');
     const teamId = membership.team.id;
@@ -392,13 +395,26 @@ export function registerWorkspace(
     };
     const t3Origin = t3 ? new URL(t3.endpoint).origin : null;
     const listed = new Set<string>(channels.items.map((c) => c.id));
+    // What just concerned the person while they were here, as it reads now.
+    const notices = [];
+    for (const n of noticed) {
+      const about = await store.notifications.describe(n);
+      if (about === null) continue;
+      const shown = payloadOf(n, about);
+      notices.push({
+        id: n.id,
+        title: shown.title,
+        body: shown.body,
+        url: shown.url,
+      });
+    }
     return WorkspaceSnapshot.parse(
       withRevision({
         observedAt: new Date(now).toISOString(),
         nativeT3Origin: t3Origin,
         human,
-        notify,
-        muted: { channels: quiet.channels, agents: quiet.agents },
+        levels: quiet.levels,
+        notices,
         pausedUntil: quiet.pausedUntil,
         forwardAfter: quiet.forwardAfter,
         hours: quiet.hours,

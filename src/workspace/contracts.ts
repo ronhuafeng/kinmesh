@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { NotifyHours, NotifyKinds } from '../domain/notify.js';
+import { ChannelLevel, NotifyHours } from '../domain/notify.js';
 import { EventType, PROTOCOL_VERSION } from '@ag-ui/core';
 import { StateSnapshotEventSchema } from '@ag-ui/core/schemas';
 import { Agent, Correlation, RuntimeEvent } from '../domain/agents.js';
@@ -63,13 +63,24 @@ export const WorkspaceSnapshot = z.strictObject({
     .refine((origin) => new URL(origin).origin === origin)
     .nullable(),
   human: Person,
-  /** The kinds of notification you want, on every way they reach you. */
-  notify: NotifyKinds,
-  /** Channels and agents you muted, and until when you paused notifications. */
-  muted: z.strictObject({
-    channels: z.array(ChannelId).max(100),
-    agents: z.array(AgentId).max(100),
-  }),
+  /** The channels you muted or follow; every other is at the default. */
+  levels: z
+    .array(z.strictObject({ channelId: ChannelId, level: ChannelLevel }))
+    .max(100),
+  /**
+   * What just concerned you while you were in Kinmesh, shown here instead
+   * of being pushed: what it says and where it opens.
+   */
+  notices: z
+    .array(
+      z.strictObject({
+        id: z.string(),
+        title: z.string(),
+        body: z.string(),
+        url: z.string(),
+      }),
+    )
+    .max(5),
   pausedUntil: z.iso.datetime().nullable(),
   /** Minutes unread before a notification also goes to Feishu; null: never. */
   forwardAfter: z.number().int().positive().nullable(),

@@ -7,6 +7,7 @@ import { BackIcon, SettingsIcons } from './icons.js';
 import { ChoiceRow, NotificationSettings, SignOuts } from './settings.js';
 import { MODE_NAMES, t3Where, useT3 } from './setup.js';
 import { applyTheme, readTheme, type Theme } from './theme.js';
+import { LEVEL_LABELS, levelOf } from './levels.js';
 import {
   Avatar,
   ChannelIcon,
@@ -438,7 +439,9 @@ function Channels({
             <ChannelIcon id={c.id} name={c.name} />
             <span className="settings-people-name">{c.name}</span>
             <span className="muted">
-              {data.muted.channels.includes(c.id) ? '已静音' : ''}
+              {levelOf(data, c.id) === 'default'
+                ? ''
+                : LEVEL_LABELS[levelOf(data, c.id)]}
             </span>
           </button>
         </li>

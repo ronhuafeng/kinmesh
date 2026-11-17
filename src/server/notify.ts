@@ -2,14 +2,10 @@ import type { FastifyInstance, FastifyRequest } from 'fastify';
 import webpush from 'web-push';
 import { z } from 'zod';
 import { DomainError } from '../domain/errors.js';
-import { AgentId, TeamId } from '../domain/contracts.js';
 import {
   ForwardInput,
   HoursInput,
-  nextOpening,
   withinHours,
-  MuteInput,
-  NotifyKinds,
   PAUSE_MOST_MS,
   PauseInput,
   PushPayload,
@@ -147,24 +143,6 @@ export function registerNotifications(
     await store.notifications.pause(humanId, team.team.id, at);
     return reply.code(204).send();
   });
-  app.post(
-    '/api/teams/:teamId/agents/:agentId/mute',
-    async (request, reply) => {
-      const humanId = human(request);
-      const { teamId, agentId } = z
-        .strictObject({ teamId: TeamId, agentId: AgentId })
-        .parse(request.params);
-      const team = await store.teamFor(humanId);
-      if (team?.team.id !== teamId) throw new DomainError('not-found');
-      await store.notifications.muteAgent(
-        humanId,
-        teamId,
-        agentId,
-        MuteInput.parse(request.body).muted,
-      );
-      return reply.code(204).send();
-    },
-  );
   app.put('/api/me/hours', async (request, reply) => {
     const humanId = human(request);
     const { hours } = HoursInput.parse(request.body);
@@ -179,16 +157,6 @@ export function registerNotifications(
     const team = await store.teamFor(humanId);
     if (!team) throw new DomainError('forbidden');
     await store.notifications.forwardAfter(humanId, team.team.id, minutes);
-    return reply.code(204).send();
-  });
-  app.put('/api/me/notify', async (request, reply) => {
-    const humanId = human(request);
-    const { kinds } = z
-      .strictObject({ kinds: NotifyKinds })
-      .parse(request.body);
-    const team = await store.teamFor(humanId);
-    if (!team) throw new DomainError('forbidden');
-    await store.notifications.kinds(humanId, team.team.id, kinds);
     return reply.code(204).send();
   });
 
@@ -231,16 +199,71 @@ export function registerNotifications(
     }
   }
   /** Outside the person's hours: kept for when they open. */
+  /** In the person's quiet time: paused, or outside their hours. */
+  async function quiet(humanId: string) {
+    const [paused, hours] = await Promise.all([
+      store.notifications.pausedUntilOf(humanId),
+      store.notifications.hoursOf(humanId),
+    ]);
+    return paused !== null || !withinHours(new Date(), hours);
+  }
+  /** Using Kinmesh now: a session of theirs in use within the last 90 s. */
+  async function present(humanId: string) {
+    return (await store.online(Date.now())).some((id) => id === humanId);
+  }
+  /**
+   * Whether this notification waits instead of going out now: held in the
+   * person's quiet time (summed up when it ends), or, while they are in
+   * Kinmesh, shown there as an in-page notice instead.
+   */
   async function held(n: Due, what: 'push' | 'forward') {
-    const hours = await store.notifications.hoursOf(n.humanId);
-    const now = new Date();
-    if (withinHours(now, hours)) return false;
-    await store.notifications.hold(
-      n.id,
-      nextOpening(now, hours).getTime(),
-      what,
+    if (await quiet(n.humanId)) {
+      await store.notifications.hold(n.id, what);
+      return true;
+    }
+    if (await present(n.humanId)) {
+      if (what === 'push') await store.notifications.shownInApp(n.id);
+      return true;
+    }
+    return false;
+  }
+  /**
+   * Once a person's quiet time ends, what was held while it lasted and
+   * still concerns them goes out as one summary, not as a backlog.
+   */
+  async function summarise(humanId: string) {
+    if (await quiet(humanId)) return;
+    const held = await store.notifications.takeHeld(humanId);
+    let waiting = 0;
+    for (const n of held)
+      if ((await store.notifications.describe(n)) !== null) waiting += 1;
+    if (waiting === 0) return;
+    const title = `免打扰期间有 ${String(waiting)} 件事等你`;
+    const body = '打开 Kinmesh 查看';
+    const payload = JSON.stringify(
+      PushPayload.parse({
+        title,
+        body,
+        url: '/',
+        tag: 'summary',
+        kind: 'test',
+        channelId: null,
+        taskId: null,
+        deliveryId: null,
+      }),
     );
-    return true;
+    for (const browser of await store.notifications.browsers(humanId))
+      await push(browser, payload);
+    const union = await store.notifications.unionOf(humanId);
+    if (union !== null && (await store.notifications.forwardsTo(humanId)))
+      await feishu
+        .message(union, { title, text: body, url: new URL('/', origin).href })
+        .catch((error: unknown) => {
+          app.log.error(
+            { error: error instanceof FeishuFailure ? error.message : 'Error' },
+            'feishu_forward_failed',
+          );
+        });
   }
   async function deliver(n: Due) {
     const about = await store.notifications.describe(n);
@@ -323,6 +346,10 @@ export function registerNotifications(
         if (due.length === 0) break;
         for (const { notification, union, forwarding } of due)
           if (forwarding) await forward(notification, union);
+      }
+      for (const humanId of await store.notifications.heldPeople()) {
+        if (closed()) return;
+        await summarise(humanId);
       }
     } catch (error) {
       if (!closed())

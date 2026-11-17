@@ -1,3 +1,4 @@
+import * as ContextMenu from '@radix-ui/react-context-menu';
 import * as Menu from '@radix-ui/react-dropdown-menu';
 import { useState, type ReactNode } from 'react';
 import type { WorkspaceSnapshot } from '../src/workspace/contracts.js';
@@ -5,6 +6,12 @@ import { request } from './api.js';
 import { SettingsIcons } from './icons.js';
 import { tomorrowMorning } from './settings.js';
 import { applyTheme, readTheme, type Theme } from './theme.js';
+import {
+  ChannelLevel,
+  nextOpening,
+  withinHours,
+} from '../src/domain/notify.js';
+import { LEVEL_LABELS, levelOf, setLevel } from './levels.js';
 
 /**
  * A person's mark: their initials in a round of the primary colour, not
@@ -91,7 +98,10 @@ export function AccountMenu({
 }) {
   const [theme, setTheme] = useState<Theme>(readTheme);
   const paused = until(data.pausedUntil);
-  const off = data.notify.length === 0;
+  // Outside your hours, when they open again.
+  const opens = withinHours(new Date(), data.hours)
+    ? null
+    : nextOpening(new Date(), data.hours);
   const pause = (at: Date | null) =>
     void request(
       '/api/me/pause',
@@ -101,7 +111,10 @@ export function AccountMenu({
   return (
     <Menu.Root>
       <Menu.Trigger className="account-row" aria-label="你的账户">
-        <Mark name={data.human.name} quiet={paused !== null || off} />
+        <Mark
+          name={data.human.name}
+          quiet={paused !== null || opens !== null}
+        />
         <span className="account-name">{data.human.name}</span>
       </Menu.Trigger>
       <Menu.Portal>
@@ -120,42 +133,41 @@ export function AccountMenu({
             </span>
           </div>
           <p className="menu-state">
-            {off
-              ? '通知已关'
-              : paused
-                ? `通知暂停到 ${clockOf(paused)}`
+            {paused
+              ? `通知暂停到 ${clockOf(paused)}`
+              : opens
+                ? `通知时段外，${clockOf(opens)} 恢复`
                 : '通知已开'}
           </p>
-          {!off &&
-            (paused ? (
+          {paused ? (
+            <Item
+              icon={<SettingsIcons.bell size={16} />}
+              onSelect={() => {
+                pause(null);
+              }}
+            >
+              恢复通知
+            </Item>
+          ) : (
+            <>
               <Item
-                icon={<SettingsIcons.bell size={16} />}
+                icon={<SettingsIcons.moon size={16} />}
                 onSelect={() => {
-                  pause(null);
+                  pause(new Date(Date.now() + 60 * 60 * 1000));
                 }}
               >
-                恢复通知
+                暂停 1 小时
               </Item>
-            ) : (
-              <>
-                <Item
-                  icon={<SettingsIcons.moon size={16} />}
-                  onSelect={() => {
-                    pause(new Date(Date.now() + 60 * 60 * 1000));
-                  }}
-                >
-                  暂停 1 小时
-                </Item>
-                <Item
-                  icon={<span />}
-                  onSelect={() => {
-                    pause(tomorrowMorning(new Date()));
-                  }}
-                >
-                  暂停到明早
-                </Item>
-              </>
-            ))}
+              <Item
+                icon={<span />}
+                onSelect={() => {
+                  pause(tomorrowMorning(new Date()));
+                }}
+              >
+                暂停到明早
+              </Item>
+            </>
+          )}
           <Menu.Separator className="menu-separator" />
           <Menu.RadioGroup
             value={theme}
@@ -289,5 +301,78 @@ export function TeamMenu({
         </Menu.Content>
       </Menu.Portal>
     </Menu.Root>
+  );
+}
+/**
+ * A channel's own menu, on its row in the sidebar (right-click, or a long
+ * press on a phone): how loud it is for you, and leaving it.
+ */
+export function ChannelMenu({
+  data,
+  channelId,
+  channelName,
+  onLeave,
+  children,
+}: {
+  data: WorkspaceSnapshot;
+  channelId: string;
+  channelName: string;
+  onLeave: (channelId: string) => void;
+  children: ReactNode;
+}) {
+  const level = levelOf(data, channelId);
+  return (
+    <ContextMenu.Root>
+      <ContextMenu.Trigger asChild>{children}</ContextMenu.Trigger>
+      <ContextMenu.Portal>
+        <ContextMenu.Content className="menu" collisionPadding={8}>
+          <p className="menu-state">#{channelName}</p>
+          <ContextMenu.RadioGroup
+            value={level}
+            onValueChange={(value) => {
+              const next = ChannelLevel.safeParse(value);
+              if (next.success)
+                void setLevel(data.team.id, channelId, next.data).catch(
+                  () => undefined,
+                );
+            }}
+          >
+            {/* Loudest first. */}
+            {(['follow', 'default', 'mute'] as const).map((option) => (
+              <ContextMenu.RadioItem
+                key={option}
+                value={option}
+                className="menu-item"
+              >
+                <span className="menu-icon">
+                  {option === 'follow' ? (
+                    <SettingsIcons.bell size={16} />
+                  ) : option === 'mute' ? (
+                    <SettingsIcons.moon size={16} />
+                  ) : null}
+                </span>
+                <span className="menu-label">{LEVEL_LABELS[option]}</span>
+                <ContextMenu.ItemIndicator className="menu-check">
+                  <SettingsIcons.check size={16} />
+                </ContextMenu.ItemIndicator>
+              </ContextMenu.RadioItem>
+            ))}
+          </ContextMenu.RadioGroup>
+          <ContextMenu.Separator className="menu-separator" />
+          <ContextMenu.Item
+            className="menu-item"
+            data-danger="true"
+            onSelect={() => {
+              onLeave(channelId);
+            }}
+          >
+            <span className="menu-icon">
+              <SettingsIcons.logOut size={16} />
+            </span>
+            <span className="menu-label">退出 #{channelName}</span>
+          </ContextMenu.Item>
+        </ContextMenu.Content>
+      </ContextMenu.Portal>
+    </ContextMenu.Root>
   );
 }
