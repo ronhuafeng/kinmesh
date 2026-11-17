@@ -83,9 +83,12 @@ Check a change against these before it ships.
 16. Alignment is exact and measured, not eyeballed: siblings on a row share size,
     padding and line height; content aligns to its anchor; shared edges are truly
     shared; icons are truly centred.
-17. Balance: reading views (a conversation, a page) are one centred column, the
-    composer on its edges; the board uses the whole width; equal-height board
-    columns; no dead areas.
+17. Position follows the eye; width follows the content. Every view starts on the
+    gutter beside the navigation — never centred for symmetry, which leaves the
+    space between the two to nothing. Prose keeps a 720 px measure; a conversation
+    is up to 960 px, so a code block, a table or a diagram may use that; a page is
+    720 px (an agent's wider); the board uses the whole width, in equal-height
+    columns; the composer is on the conversation's edges. No dead areas.
 18. Hierarchy and material express structure — grouping, layering, focus — never
     decoration. Depth comes from the elevation scale (see **Elevation and material**)
     and only where something truly sits on or over something else: a card on its
@@ -160,10 +163,12 @@ button text.
 
 ## Layout
 
-- **Reading column**: a conversation, its composer and a page (a task, the Inbox,
-  Settings) are one column of `--reading` (720 px) centred in the main area, fluid
-  below it; an agent's page, which has a side column, is at most 72rem. The board
-  takes the whole width.
+- **Columns**: every view starts on the main area's gutter, beside the navigation.
+  A conversation and its composer are one column of `--conversation` (960 px), its
+  prose held to `--reading` (720 px) while code, tables and diagrams may use the
+  rest; a page (a task, the Inbox, a settings section) is one column of
+  `--reading`; all are fluid below it. An agent's page, which has a side column, is
+  at most 72rem. The board takes the whole width.
 - **Top bar**: the views' segmented control on the content's left edge (after the
   sidebar icon when the sidebar is closed), 38 px tall, 12 px above and below; its
   right end holds only "正在刷新…" when a refresh is slow.
