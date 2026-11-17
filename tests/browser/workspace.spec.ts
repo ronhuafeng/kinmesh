@@ -2260,11 +2260,18 @@ test('a phone channel: targets a finger can hit, fields that don’t zoom, a com
     await expect(send).toBeDisabled();
     await field.fill('Ship the release notes');
     await expect(send).toBeEnabled();
-    const [fieldBox, formBox] = await Promise.all([
-      field.boundingBox(),
-      composer.boundingBox(),
+    // Only "@" and Send sit beside it: the rest is the field's, but for the
+    // composer's padding and gaps. Widths are laid out, not drawn, so Send
+    // growing in doesn't count.
+    const width = (target: typeof field) =>
+      target.evaluate((el) => (el instanceof HTMLElement ? el.offsetWidth : 0));
+    const [fieldWidth, formWidth, atWidth, sendWidth] = await Promise.all([
+      width(field),
+      width(composer),
+      width(composer.getByRole('button', { name: '提及成员' })),
+      width(send),
     ]);
-    expect((fieldBox?.width ?? 0) / (formBox?.width ?? 1)).toBeGreaterThan(0.7);
+    expect(fieldWidth + atWidth + sendWidth).toBeGreaterThan(formWidth - 48);
     expect(await takesTaps(page, '.composer button[type="submit"]')).toEqual([
       true,
       true,
@@ -2456,14 +2463,15 @@ test('one author’s run of messages is one group: the face and name once, each 
   }
   await page.reload();
   const composer = page.getByRole('form', { name: '给团队发消息' });
-  for (const body of ['First of a group', 'Second of a group']) {
-    await composer.getByLabel('消息', { exact: true }).fill(body);
-    await composer.getByRole('button', { name: '发送消息' }).click();
-  }
   const messages = page.getByRole('list', { name: '频道消息' });
   const item = (text: string) =>
     messages.getByRole('listitem').filter({ hasText: text });
-  await expect(item('Second of a group')).toBeVisible();
+  // Each is sent once the one before has arrived.
+  for (const body of ['First of a group', 'Second of a group']) {
+    await composer.getByLabel('消息', { exact: true }).fill(body);
+    await composer.getByRole('button', { name: '发送消息' }).click();
+    await expect(item(body)).toBeVisible();
+  }
   // The days are separators, in order; yesterday's message is not grouped
   // with today's.
   const days = messages.getByRole('separator');

@@ -157,9 +157,18 @@ await test(
       });
       assert.equal(revoked.statusCode, 204);
       assert.deepEqual(await worker.next(), { grants: await grants() });
-      // A message changes the workspace alone.
+      // A message changes the workspace alone. The run's own change to the
+      // workspace may still be on its way: read through to this one.
       await post('Only the workspace');
-      assert.deepEqual(await agent.next(), { workspace: await workspace() });
+      const posted = await workspace();
+      let change = await agent.next();
+      while (
+        change !== null &&
+        Object.keys(change).join() === 'workspace' &&
+        change.workspace !== posted
+      )
+        change = await agent.next();
+      assert.deepEqual(change, { workspace: posted });
 
       // Streams are bounded per person.
       const more = [];
