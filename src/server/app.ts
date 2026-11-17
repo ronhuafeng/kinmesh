@@ -5,6 +5,7 @@ import { registerWeb } from './web.js';
 import { registerTasks } from './tasks.js';
 import { registerCommunication } from './communication.js';
 import { registerNotifications } from './notify.js';
+import { registerMe } from './me.js';
 import { registerAgents } from './agents.js';
 import {
   WORKER_GRANT,
@@ -303,6 +304,7 @@ export async function createApp(
   registerCommunication(app, store);
   registerTasks(app, store);
   registerNotifications(app, store, config.origin, hub.directory, feishu);
+  registerMe(app, store, config.origin, feishu);
   const { snapshot, runs } = registerWorkspace(
     app,
     store,

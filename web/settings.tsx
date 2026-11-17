@@ -13,7 +13,7 @@ import {
   subscribe,
   unsubscribe,
 } from './push.js';
-import { Avatar, ChannelIcon, Page, Switch } from './ui.js';
+import { Avatar, ChannelIcon, Switch } from './ui.js';
 
 /** What can notify you, most pressing first, as your page lists it. */
 const KINDS: { kind: NotificationKind; label: string }[] = [
@@ -28,7 +28,7 @@ const KINDS: { kind: NotificationKind; label: string }[] = [
  * A row with its choice at the end: the segmented control. `title` says on
  * hover what the row does, when its label alone may not.
  */
-function ChoiceRow<T extends string>({
+export function ChoiceRow<T extends string>({
   label,
   title,
   options,
@@ -355,7 +355,7 @@ function Hours({ hours }: { hours: NotifyHours | null }) {
   );
 }
 /** Eight in the morning after now, by this browser's clock. */
-function tomorrowMorning(now: Date) {
+export function tomorrowMorning(now: Date) {
   const at = new Date(now);
   at.setDate(at.getDate() + (now.getHours() < 8 ? 0 : 1));
   at.setHours(8, 0, 0, 0);
@@ -471,18 +471,34 @@ function Muted({ data }: { data: WorkspaceSnapshot }) {
   );
 }
 /**
- * Your own page, opened from your tile on Team (a phone's You tab): what
- * notifies you, and signing out, here or everywhere. The team's name is the
- * organization's, shown at the top of the sidebar.
+ * 通知 in settings: what can notify you, where it reaches you, when, and
+ * what you muted, each a run of rows.
  */
-export function SettingsPage({
-  data,
-  onClose,
+export function NotificationSettings({ data }: { data: WorkspaceSnapshot }) {
+  return (
+    <section className="you-notify" aria-label="通知">
+      <Kinds kinds={data.notify} />
+      {data.notify.length > 0 && (
+        <>
+          <div className="you-rows">
+            <ThisDevice />
+            <Forward minutes={data.forwardAfter} />
+          </div>
+          <div className="you-rows">
+            <Hours hours={data.hours} />
+            <Pause until={data.pausedUntil} />
+          </div>
+        </>
+      )}
+      <Muted data={data} />
+    </section>
+  );
+}
+/** Signing out, here or everywhere: quiet rows in the danger colour. */
+export function SignOuts({
   onSignOut,
   onSignOutEverywhere,
 }: {
-  data: WorkspaceSnapshot;
-  onClose: () => void;
   onSignOut: () => void;
   /** Ends every session of yours, on every device, this one included. */
   onSignOutEverywhere: () => void;
@@ -490,45 +506,25 @@ export function SettingsPage({
   // Out of reach, signing out waits like every other action.
   const permitted = useContext(MutationPermission);
   return (
-    <Page label="设置" onClose={onClose} bar={false}>
-      <div className="page-body you">
-        <section className="you-notify" aria-label="通知">
-          <Kinds kinds={data.notify} />
-          {data.notify.length > 0 && (
-            <>
-              <div className="you-rows">
-                <ThisDevice />
-                <Forward minutes={data.forwardAfter} />
-              </div>
-              <div className="you-rows">
-                <Hours hours={data.hours} />
-                <Pause until={data.pausedUntil} />
-              </div>
-            </>
-          )}
-          <Muted data={data} />
-        </section>
-        <div className="you-sign-outs">
-          <button
-            type="button"
-            className="you-sign-out"
-            disabled={!permitted}
-            onClick={onSignOut}
-          >
-            <PowerIcon size={20} />
-            退出登录
-          </button>
-          <button
-            type="button"
-            className="you-sign-out"
-            disabled={!permitted}
-            onClick={onSignOutEverywhere}
-          >
-            <PowerIcon size={20} />
-            在所有设备上退出登录
-          </button>
-        </div>
-      </div>
-    </Page>
+    <div className="you-sign-outs">
+      <button
+        type="button"
+        className="you-sign-out"
+        disabled={!permitted}
+        onClick={onSignOut}
+      >
+        <PowerIcon size={20} />
+        退出登录
+      </button>
+      <button
+        type="button"
+        className="you-sign-out"
+        disabled={!permitted}
+        onClick={onSignOutEverywhere}
+      >
+        <PowerIcon size={20} />
+        在所有设备上退出登录
+      </button>
+    </div>
   );
 }

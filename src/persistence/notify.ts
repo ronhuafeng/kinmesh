@@ -537,6 +537,52 @@ export function notificationRepository(d: Database) {
         .delete(s.pushSubscriptions)
         .where(eq(s.pushSubscriptions.humanId, humanId));
     },
+    /**
+     * A person's browsers receiving notifications: a short id made from the
+     * endpoint (which is a credential and never leaves the hub), the push
+     * service's host, and when it was turned on.
+     */
+    async browserList(humanId: HumanId) {
+      const rows = await browsersOf(humanId);
+      const when = await q()
+        .select({
+          endpoint: s.pushSubscriptions.endpoint,
+          createdAt: s.pushSubscriptions.createdAt,
+        })
+        .from(s.pushSubscriptions)
+        .where(eq(s.pushSubscriptions.humanId, humanId));
+      return rows.map((b) => ({
+        id: digest(b.endpoint).slice(0, 16),
+        service: new URL(b.endpoint).host,
+        createdAt: new Date(
+          when.find((w) => w.endpoint === b.endpoint)?.createdAt ?? 0,
+        ).toISOString(),
+      }));
+    },
+    /** Removes one of a person's browsers, by the id `browserList` gave it. */
+    async forgetBrowser(humanId: HumanId, id: string) {
+      const rows = await q()
+        .select({ endpoint: s.pushSubscriptions.endpoint })
+        .from(s.pushSubscriptions)
+        .where(eq(s.pushSubscriptions.humanId, humanId));
+      const row = rows.find((r) => digest(r.endpoint).slice(0, 16) === id);
+      if (!row) return false;
+      await q()
+        .delete(s.pushSubscriptions)
+        .where(eq(s.pushSubscriptions.endpoint, row.endpoint));
+      return true;
+    },
+    /** A person's Feishu identity, once they signed in with Feishu. */
+    async unionOf(humanId: string) {
+      const row = (
+        await q()
+          .select({ union: s.humans.feishuId })
+          .from(s.humans)
+          .where(eq(s.humans.id, humanId))
+          .limit(1)
+      )[0];
+      return row?.union ?? null;
+    },
     /** A browser its push service no longer knows. */
     async gone(endpoint: string) {
       await q()

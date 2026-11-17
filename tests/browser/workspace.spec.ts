@@ -332,10 +332,12 @@ test('real workspace onboarding, mentions and reconnect on a phone', async ({
     .evaluateAll((elements) => elements.map((e) => e.id));
   expect(new Set(ids).size).toBe(ids.length);
   expect(errors).toEqual([]);
-  // Back leads Home; signing out is the last row of You.
+  // Back leads Home; 我 opens the settings map, where signing out is in
+  // 账户与设备.
   await page.getByRole('button', { name: '返回', exact: true }).click();
   await expect(places).toBeVisible();
   await places.getByRole('button', { name: '我' }).click();
+  await page.getByRole('button', { name: '账户与设备', exact: true }).click();
   await page.getByRole('button', { name: '退出登录', exact: true }).click();
   await expect(page.getByRole('link', { name: '使用飞书登录' })).toBeVisible();
 });
@@ -1736,18 +1738,37 @@ test('the organization names the team at the top of the sidebar; nobody renames 
   await expect(
     page.getByRole('region', { name: '本频道成员' }).getByText('browser_owner'),
   ).toHaveCount(0);
-  // Your tile on Team opens your page, which has nothing to type: only
-  // signing out.
+  // Your tile on Team is one of the team's, not a way in: what is about you
+  // is your mark at the foot of the sidebar.
   await page.getByRole('tab', { name: '团队', exact: true }).click();
-  await page
-    .getByRole('list', { name: '团队' })
-    .getByRole('button', { name: /^browser_owner/ })
-    .click();
-  const settings = page.getByRole('region', { name: '设置' });
   await expect(
-    settings.getByRole('button', { name: '在所有设备上退出登录' }),
+    page
+      .getByRole('list', { name: '团队' })
+      .getByRole('button', { name: /^browser_owner/ }),
+  ).toHaveCount(0);
+  await page.getByRole('button', { name: '你的账户' }).click();
+  await expect(
+    page.getByRole('menuitem', { name: '在所有设备上退出登录' }),
   ).toBeVisible();
-  await expect(settings.getByRole('textbox')).toHaveCount(0);
+  // 设置 turns the sidebar into the settings map, with no channel views.
+  await page.getByRole('menuitem', { name: /^设置/ }).click();
+  const map = page.getByRole('navigation', { name: '设置' });
+  await expect(map.getByRole('button', { name: '通知' })).toHaveAttribute(
+    'aria-current',
+    'page',
+  );
+  await expect(
+    page.getByRole('tab', { name: '聊天', exact: true }),
+  ).toHaveCount(0);
+  await map.getByRole('button', { name: '账户与设备' }).click();
+  await expect(
+    page.getByRole('button', { name: '在所有设备上退出登录' }),
+  ).toBeVisible();
+  // Back returns to the channel.
+  await map.getByRole('button', { name: '返回' }).click();
+  await expect(
+    page.getByRole('tab', { name: '聊天', exact: true }),
+  ).toBeVisible();
 });
 
 test('someone outside the organization is turned back, and a reload starts clean', async ({

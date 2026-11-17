@@ -1,3 +1,11 @@
+// The appearance a person chose here (外观), before anything is drawn.
+try {
+  const theme = localStorage.getItem('kinmesh-theme');
+  if (theme === 'light' || theme === 'dark')
+    document.documentElement.dataset.theme = theme;
+} catch {
+  // Storage refused: the system's choice holds.
+}
 /**
  * Runs as the page starts, before the workspace's code has arrived: opens
  * the event stream for the place the address names, so the workspace is

@@ -227,14 +227,20 @@ Each person chooses, kind by kind, what notifies them (`notify` in the snapshot)
 
 A browser is notified once a person turns notifications on in it, held by the session they did that in: signing out of that session, or everywhere, ends it, and it lasts no longer than that session could (seven days from its sign-in, [security](security.md#sign-in-and-sessions)). Opening the workspace hands a browser already notifying that person to the session in use. A push carries a title and one line (who wrote or what changed, and where), the address of the place, and what it is about.
 
-| Method/path                  | Input / policy                                                                                                                                 |
-| ---------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------- |
-| `PUT /api/me/notify`         | `{kinds}`, the kinds above, each at most once; the person's own; 204                                                                           |
-| `GET /api/push/key`          | The hub's Web Push (VAPID) public key                                                                                                          |
-| `PUT /api/push/subscription` | The browser's `PushSubscription.toJSON()`, an `https` endpoint; this browser now notifies the caller                                           |
-| `POST /api/push/renew`       | `{endpoint}`; held by this session from now, only if it already notifies the caller; 204                                                       |
-| `POST /api/push/unsubscribe` | `{endpoint}`; this browser no longer notifies the caller; 204                                                                                  |
-| `POST /api/push/test`        | `{endpoint}`; one notification to that browser, if it notifies the caller now (410 otherwise); 502 when its push service can't be reached; 204 |
+| Method/path                  | Input / policy                                                                                                                                                        |
+| ---------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `PUT /api/me/notify`         | `{kinds}`, the kinds above, each at most once; the person's own; 204                                                                                                  |
+| `GET /api/push/key`          | The hub's Web Push (VAPID) public key                                                                                                                                 |
+| `PUT /api/push/subscription` | The browser's `PushSubscription.toJSON()`, an `https` endpoint; this browser now notifies the caller                                                                  |
+| `POST /api/push/renew`       | `{endpoint}`; held by this session from now, only if it already notifies the caller; 204                                                                              |
+| `POST /api/push/unsubscribe` | `{endpoint}`; this browser no longer notifies the caller; 204                                                                                                         |
+| `POST /api/push/test`        | `{endpoint}`; one notification to that browser, if it notifies the caller now (410 otherwise); 502 when its push service can't be reached; 204                        |
+| `GET /api/push/browsers`     | The caller's browsers receiving notifications: a short id made from each endpoint (the endpoint never leaves the hub), the push service's host, when it was turned on |
+| `POST /api/push/forget`      | `{id}`; that browser no longer notifies the caller; 404 if it isn't theirs; 204                                                                                       |
+| `GET /api/me/profile`        | The caller's handle, name and mailbox as Feishu last gave them, and the team's name                                                                                   |
+| `GET /api/me/sessions`       | The caller's sessions that still let them in, newest use first: a short id made from each stored hash, whether it is the one asking, when it began and was last used  |
+| `POST /api/me/session/end`   | `{id}`; ends that session of the caller's; 404 if it isn't one; 204                                                                                                   |
+| `POST /api/feishu/test`      | The team's Feishu bot sends the caller one message: 204 when Feishu took it, 502 when it refused or couldn't be reached, 409 before they signed in with Feishu        |
 
 **Feishu.** A person may also have what stays unread reach them in Feishu, from the app's bot: `forwardAfter` minutes (5, 15 or 60; null, the default, never) after a notification falls due, if it still concerns them by the same checks and they still want it then, it is sent to them once (by their Feishu `union_id`) with its title, line and a link to its place, whether or not a browser of theirs was notified. It is never retried as another message.
 
