@@ -568,54 +568,61 @@ const toBottom = () => {
 function useReadingPosition(place: string, messages: ChatMessage[]) {
   const held = useRef<{
     place: string;
-    first: string | undefined;
-    last: string | undefined;
     /**
-     * Where the first message ended in the viewport. Its end, not its top:
-     * older messages from the same author fold its header into theirs, and
-     * what follows must not move when they do.
+     * The message read from: the first whose end is in view, and where that
+     * end was. Older messages folding its header into theirs change only
+     * what is above its text, so its end is what holds still.
      */
+    anchor: string | undefined;
     end: number;
     bottom: boolean;
   } | null>(null);
-  const endOf = (id: string | undefined) =>
-    id === undefined
-      ? 0
-      : (document.getElementById('message-' + id)?.getBoundingClientRect()
-          .bottom ?? 0);
-  useLayoutEffect(() => {
-    const previous = held.current;
-    const first = messages[0]?.id;
-    const last = messages.at(-1)?.id;
-    if (previous?.place !== place) toBottom();
-    else {
-      // Older messages above: what was on screen stays where it was.
-      if (first !== previous.first && previous.first !== undefined) {
-        const anchor = document.getElementById('message-' + previous.first);
-        if (anchor)
-          window.scrollBy({
-            top: anchor.getBoundingClientRect().bottom - previous.end,
-          });
+  /** Notes what is read from, as the reader left it. */
+  const note = () => {
+    const h = held.current;
+    if (!h) return;
+    h.anchor = undefined;
+    h.end = 0;
+    for (const row of document.querySelectorAll<HTMLElement>(
+      '.messages > li[id^="message-"]',
+    )) {
+      const end = row.getBoundingClientRect().bottom;
+      if (end > 0) {
+        h.anchor = row.id.slice('message-'.length);
+        h.end = end;
+        break;
       }
-      // At the bottom, it stays there whatever grew (a message, a reply's
-      // line).
-      if (previous.bottom) toBottom();
     }
-    held.current = {
-      place,
-      first,
-      last,
-      end: endOf(first),
-      bottom: atBottom(),
-    };
+    h.bottom = atBottom();
+  };
+  /**
+   * What the conversation shows changed or grew: at the bottom it stays
+   * there; read back, what was read from stays where it was, whatever was
+   * added or drawn above it (older messages, a diagram, an image).
+   */
+  const hold = () => {
+    const h = held.current;
+    if (!h) return;
+    if (h.bottom) {
+      toBottom();
+      return;
+    }
+    const row =
+      h.anchor === undefined
+        ? null
+        : document.getElementById('message-' + h.anchor);
+    const moved = row ? row.getBoundingClientRect().bottom - h.end : 0;
+    if (moved !== 0) window.scrollBy({ top: moved });
+  };
+  useLayoutEffect(() => {
+    if (held.current?.place !== place) {
+      held.current = { place, anchor: undefined, end: 0, bottom: true };
+      toBottom();
+    } else hold();
+    note();
   }, [place, messages]);
   // Reading moves the position; so does the window changing size.
   useEffect(() => {
-    const note = () => {
-      if (!held.current) return;
-      held.current.end = endOf(held.current.first);
-      held.current.bottom = atBottom();
-    };
     // A window that changes size keeps you at the bottom if you were.
     const resized = () => {
       if (held.current?.bottom) toBottom();
@@ -628,13 +635,11 @@ function useReadingPosition(place: string, messages: ChatMessage[]) {
       window.removeEventListener('resize', resized);
     };
   }, []);
-  // A message that grows once shown (a diagram drawn, an image loaded)
-  // keeps the bottom in view when you were there.
+  // Something that grows once shown (a diagram drawn, an image loaded)
+  // keeps the place: the bottom, or what was read from.
   const list = useCallback((element: HTMLOListElement | null) => {
     if (!element) return;
-    const grown = new ResizeObserver(() => {
-      if (held.current?.bottom) toBottom();
-    });
+    const grown = new ResizeObserver(hold);
     grown.observe(element);
     return () => {
       grown.disconnect();
