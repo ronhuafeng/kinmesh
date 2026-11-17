@@ -9,6 +9,7 @@ const said: Partial<Record<number, string>> = {
   401: '请重新登录。',
   403: '你没有权限这样做。',
   409: '情况已经变了，页面上是最新的内容。',
+  413: '文件太大，或团队的文件空间已满。',
   429: '操作太频繁，请稍等一分钟再试。',
 };
 export class HttpError extends Error {

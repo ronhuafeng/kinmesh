@@ -4,6 +4,11 @@ import { watchChanges } from './changes.js';
 import { registerWeb } from './web.js';
 import { registerTasks } from './tasks.js';
 import { registerCommunication } from './communication.js';
+import {
+  directoryBytes,
+  registerAttachments,
+  sweepAttachments,
+} from './attachments.js';
 import { registerNotifications } from './notify.js';
 import { registerMe } from './me.js';
 import { registerAgents } from './agents.js';
@@ -44,12 +49,13 @@ declare module '@fastify/secure-session' {
   }
 }
 /** The HTTP status of each refusal; every route answers with these. */
-const STATUS: Record<Refusal, 400 | 401 | 403 | 404 | 409> = {
+const STATUS: Record<Refusal, 400 | 401 | 403 | 404 | 409 | 413> = {
   invalid: 400,
   unauthenticated: 401,
   forbidden: 403,
   'not-found': 404,
   conflict: 409,
+  'too-large': 413,
 };
 export async function createApp(
   config: Config,
@@ -123,10 +129,12 @@ export async function createApp(
   app.addHook('onSend', async (_request, reply) => {
     reply.header('X-Content-Type-Options', 'nosniff');
     reply.header('Referrer-Policy', 'no-referrer');
-    reply.header(
-      'Content-Security-Policy',
-      "default-src 'self'; script-src 'self'; style-src 'self'; connect-src 'self'; img-src 'self' data:; object-src 'none'; base-uri 'none'; frame-ancestors 'none'; form-action 'self'",
-    );
+    // A response with a stricter policy of its own (a file) keeps it.
+    if (!reply.hasHeader('Content-Security-Policy'))
+      reply.header(
+        'Content-Security-Policy',
+        "default-src 'self'; script-src 'self'; style-src 'self'; connect-src 'self'; img-src 'self' data:; object-src 'none'; base-uri 'none'; frame-ancestors 'none'; form-action 'self'",
+      );
   });
   app.setErrorHandler((error, request, reply) => {
     if (error instanceof z.ZodError)
@@ -302,6 +310,15 @@ export async function createApp(
   const expiring = setInterval(() => void expire(), 60_000);
   expiring.unref();
   registerCommunication(app, store);
+  const attachmentBytes = directoryBytes(config.state);
+  registerAttachments(app, store, attachmentBytes, config.attachmentsRoom);
+  const stopSweeping = sweepAttachments(store, attachmentBytes, (error) => {
+    app.log.error(describeFailure(error), 'attachment_sweep_failed');
+  });
+  app.addHook('onClose', () => {
+    stopSweeping();
+    return Promise.resolve();
+  });
   registerTasks(app, store);
   registerNotifications(app, store, config.origin, hub.directory, feishu);
   registerMe(app, store, config.origin, feishu);

@@ -13,8 +13,10 @@ export const postInput = (overrides: Partial<PostInput> = {}) =>
     sourceEventId: null,
     ...overrides,
   });
-export async function communicationFixture() {
-  const f = await agentFixture();
+export async function communicationFixture(
+  overrides: Parameters<typeof agentFixture>[0] = {},
+) {
+  const f = await agentFixture(overrides);
   const credential = await f.store.agents.issue(
     f.principal,
     f.teamId,

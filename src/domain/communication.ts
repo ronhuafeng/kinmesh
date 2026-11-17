@@ -3,6 +3,11 @@ import { TaskId } from './contracts.js';
 import { z } from 'zod';
 import { AgentId, HumanId, TeamId, ChannelId, Channel } from './contracts.js';
 import { Author } from './agents.js';
+import {
+  Attachment,
+  AttachmentId,
+  ATTACHMENTS_PER_MESSAGE,
+} from './attachments.js';
 export const TopicId = z.uuid().brand<'TopicId'>();
 export const MessageId = z.uuid().brand<'MessageId'>();
 export type TopicId = z.infer<typeof TopicId>;
@@ -26,11 +31,14 @@ export const ParticipantInput = Mutation.extend({ member: Member });
 export const TopicInput = Mutation.extend({
   title: z.string().trim().min(1).max(160),
 });
+/**
+ * A message: text, files a person uploaded to the channel (`attachments`),
+ * or both. Text may be empty only when there are files.
+ */
 export const PostInput = Mutation.extend({
   body: z
     .string()
     .trim()
-    .min(1)
     .max(8000)
     .refine((v) => !v.includes('\u0000')),
   topicId: TopicId.nullable(),
@@ -40,6 +48,11 @@ export const PostInput = Mutation.extend({
     .refine((v) => new Set(v.map(memberKey)).size === v.length),
   sourceMessageId: MessageId.nullable(),
   sourceEventId: z.uuid().nullable(),
+  attachments: z
+    .array(AttachmentId)
+    .max(ATTACHMENTS_PER_MESSAGE)
+    .refine((v) => new Set(v).size === v.length)
+    .default([]),
 });
 export type PostInput = z.infer<typeof PostInput>;
 /**
@@ -80,12 +93,14 @@ export const Message = z.strictObject({
   channelId: ChannelId,
   topicId: TopicId.nullable(),
   position: z.number().int().positive(),
-  body: z.string().min(1).max(8000),
+  /** Empty only for a message of files alone. */
+  body: z.string().max(8000),
   author: Author,
   createdAt: z.iso.datetime(),
   mentions: z.array(Member).max(20),
   sourceMessageId: MessageId.nullable(),
   sourceEventId: z.uuid().nullable(),
+  attachments: z.array(Attachment).max(ATTACHMENTS_PER_MESSAGE),
 });
 export const Participant = z.strictObject({
   channelId: ChannelId,

@@ -8,6 +8,7 @@ import {
   ChevronLeft,
   CircleUserRound,
   Download,
+  File,
   FolderOpen,
   Hash,
   Inbox,
@@ -16,6 +17,7 @@ import {
   MonitorSmartphone,
   Moon,
   PanelLeft,
+  Paperclip,
   Plug,
   Plus,
   Power,
@@ -62,6 +64,10 @@ export const PlusIcon = icon(Plus);
 export const ArrowIcon = icon(ArrowRight);
 /** Send a message: up, into the conversation. */
 export const SendIcon = icon(ArrowUp);
+/** Attach a file to a message. */
+export const AttachIcon = icon(Paperclip);
+/** A file that downloads. */
+export const FileIcon = icon(File);
 /** Back to the place above, on a phone. */
 export const BackIcon = icon(ChevronLeft);
 /** A phone's channels tab: the channels and the team. */

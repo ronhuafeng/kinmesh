@@ -95,12 +95,14 @@ Let `C = /api/teams/:teamId/channels` and `P = C/:channelId`. Every write but re
 | `GET P/messages/:messageId/mentions` | Structured mentions; same authorization as the message                  |
 | `GET P/events`                       | Page of outbox facts for this channel                                   |
 | `POST P/read`                        | `{messageId,topicId}`; a joined person; 204; read position below        |
+| `POST P/attachments`                 | A file's bytes as the body, `?operationKey&name`; a joined person; 201  |
+| `GET P/attachments/:attachmentId`    | The file; a message's for anyone joined, else only its uploader's       |
 
 Reads require human team membership or an active agent grant with `channels:read`, **plus** joined channel membership; nobody has an implicit bypass. Agent writes also need `channels:write`. A person creates channels and manages the participants of channels they are in; agents never can. Unknown and inaccessible channels return the same 404 and never appear in lists. Status codes: 401 invalid credentials, 403 missing scope or team, 400 schema or cursor error, 409 idempotency or uniqueness conflict. Errors never echo input.
 
 Membership states are `joined`, `left` (the member may resubscribe) and `removed` (only an invite restores it). Nobody removes themselves; they leave. Joining `general` on first sign-in is the one exception to: no public channel discovery and no self-join.
 
-Post input (every field required; null means absent):
+Post input (every field but `attachments` required; null means absent):
 
 ```json
 {
@@ -109,11 +111,14 @@ Post input (every field required; null means absent):
   "topicId": null,
   "mentions": [{ "kind": "agent", "id": "<AgentId>" }],
   "sourceMessageId": null,
-  "sourceEventId": null
+  "sourceEventId": null,
+  "attachments": ["<AttachmentId>"]
 }
 ```
 
-A mention target must be an active, joined participant of this channel; duplicates and disabled agents are rejected. `@text` is never parsed. Mentions grant no access. Topic and causal IDs must belong to the same channel. Messages have a stable ID, server-derived author and time, channel/topic IDs, a persisted position, structured mentions and causal IDs; they cannot be edited or deleted. Limits: body 1–8000 characters, title 160, channel name 80, 20 mentions, HTTP body 16 KiB. Bodies are plain text in the API.
+A mention target must be an active, joined participant of this channel; duplicates and disabled agents are rejected. `@text` is never parsed. Mentions grant no access. Topic and causal IDs must belong to the same channel. Messages have a stable ID, server-derived author and time, channel/topic IDs, a persisted position, structured mentions and causal IDs; they cannot be edited or deleted. Limits: body up to 8000 characters, title 160, channel name 80, 20 mentions, 10 attachments, HTTP body 16 KiB. A body may be empty only when the message has attachments. Bodies are plain text in the API.
+
+**Attachments.** A person uploads a file to a channel they joined, then posts a message with it: `POST P/attachments` takes the file's bytes as the request body and its name and an `operationKey` in the query (the same key again answers the same attachment; with other bytes, 409), and answers `{id,name,type,size,width,height}`. `type` is decided from the content (PNG, JPEG, GIF, WebP, PDF, else `application/octet-stream`), never from the name or the request; `width` and `height` are an image's pixels, else null. The post's `attachments` (up to 10, default `[]`) binds them to the message in its transaction: each must be the poster's own upload to this channel that no message took yet, else 400; agents attach none. A message's attachments are read with it, in upload order, and never change. `GET P/attachments/:id` rechecks joined membership each time; an upload no message took is readable only by its uploader, and is removed a day after it was made. Unknown and inaccessible files are the same 404. Limits and serving rules: [security](security.md#attachments). A message of files alone reads as their names wherever a text stands for it (a channel's latest message, a notification, an agent's turn).
 
 Each person keeps a **read position** in each channel they joined: the newest message of its timeline they have seen, the same on every device. A channel is unread for them while someone else wrote after it; their own messages never make it unread, and a channel they muted never is ([notifications](#notifications)). `POST P/read` says they have seen the channel up to `messageId`, reading the whole channel (`topicId` null) or that topic (the message must be in it, else 404): the whole channel moves the position to the message; a topic moves it only as far as everything someone else wrote after the position is in that topic, so what they haven't seen elsewhere stays unread. The position never moves back, and reading again changes nothing, so the route takes no `operationKey`. Agents have none (403). A person who joins a channel has read nothing in it yet.
 

@@ -14,6 +14,7 @@ import {
 } from '../domain/notify.js';
 import { actingMember } from '../domain/tasks.js';
 import * as s from './schema.js';
+import { messageText } from './attachments.js';
 import {
   dbNow,
   digest,
@@ -724,7 +725,7 @@ export function notificationRepository(d: Database) {
             author.kind === 'human'
               ? await nameOf('human', author.humanId)
               : await nameOf('agent', author.agentId),
-          text: message.body,
+          text: await messageText(q(), n.messageId, message.body),
         };
       }
       if (n.taskId !== null) {
@@ -759,13 +760,17 @@ export function notificationRepository(d: Database) {
         const asked =
           delivery.messageId === null
             ? ''
-            : ((
-                await q()
-                  .select({ body: s.messages.body })
-                  .from(s.messages)
-                  .where(eq(s.messages.id, delivery.messageId))
-                  .limit(1)
-              )[0]?.body ?? '');
+            : await messageText(
+                q(),
+                delivery.messageId,
+                (
+                  await q()
+                    .select({ body: s.messages.body })
+                    .from(s.messages)
+                    .where(eq(s.messages.id, delivery.messageId))
+                    .limit(1)
+                )[0]?.body ?? '',
+              );
         return {
           ...where,
           author: await nameOf('agent', delivery.agentId),

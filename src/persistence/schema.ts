@@ -419,7 +419,52 @@ export const messages = pgTable(
     unique('message_channel_identity').on(t.id, t.channelId),
     index('message_channel_timeline').on(t.channelId, t.position),
     index('message_topic_timeline').on(t.channelId, t.topicId, t.position),
-    check('message_body_bound', sql`length(${t.body}) BETWEEN 1 AND 8000`),
+    // Empty only for a message of files alone (the post checks it has some).
+    check('message_body_bound', sql`length(${t.body}) BETWEEN 0 AND 8000`),
+  ],
+);
+/**
+ * A file a person uploaded to a channel: what it is, and where its bytes are
+ * (by SHA-256, so the same bytes are kept once). It belongs to a message once
+ * one is posted with it; unbound, it goes after a day.
+ */
+export const attachments = pgTable(
+  'attachments',
+  {
+    id: text('id').primaryKey(),
+    teamId: text('team_id')
+      .notNull()
+      .references(() => teams.id),
+    channelId: text('channel_id')
+      .notNull()
+      .references(() => channels.id),
+    messageId: text('message_id'),
+    uploader: text('uploader')
+      .notNull()
+      .references(() => humans.id),
+    /** The uploader's key for this upload, so a retry gives the same one. */
+    operationKey: text('operation_key').notNull(),
+    name: text('name').notNull(),
+    type: text('type').notNull(),
+    size: integer('size').notNull(),
+    sha256: text('sha256').notNull(),
+    width: integer('width'),
+    height: integer('height'),
+    createdAt: millis('created_at').notNull(),
+  },
+  (t) => [
+    unique('attachment_upload').on(t.uploader, t.channelId, t.operationKey),
+    foreignKey({
+      columns: [t.messageId, t.channelId],
+      foreignColumns: [messages.id, messages.channelId],
+    }),
+    index('attachment_message').on(t.messageId),
+    index('attachment_team').on(t.teamId),
+    index('attachment_sha256').on(t.sha256),
+    index('attachment_unbound')
+      .on(t.createdAt)
+      .where(sql`${t.messageId} IS NULL`),
+    check('attachment_size', sql`${t.size} >= 0`),
   ],
 );
 export const messageMentions = pgTable(

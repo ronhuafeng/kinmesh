@@ -10,10 +10,19 @@ import {
 } from 'react';
 import { z } from 'zod';
 import { Message, REACH } from '../src/domain/communication.js';
+import { Attachment } from '../src/domain/attachments.js';
 import type { WorkspaceSnapshot } from '../src/workspace/contracts.js';
 import { MutationPermission, api, request, value } from './api.js';
 import { ActionForm, AddButton, Field, InlineField } from './forms.js';
-import { SendIcon } from './icons.js';
+import { AttachIcon, SendIcon } from './icons.js';
+import {
+  MessageFiles,
+  fileSize,
+  inline,
+  pendingOf,
+  upload,
+  type Pending,
+} from './attachments.js';
 import { joinedAgents, memberName, otherPeople } from './names.js';
 import {
   Avatar,
@@ -31,6 +40,8 @@ import { ReplyOrigin, answerOnly, type ReplyView } from './replies.js';
 import type { DeliveryView } from './deliveries.js';
 
 type ChatMessage = z.infer<typeof Message>;
+/** Which files a message carries, to tell two of the same text apart. */
+const filesOf = (m: ChatMessage) => m.attachments.map((a) => a.id).join(' ');
 const mentionQuery = /(?:^|\s)@([\p{L}\p{N}\p{M}_.-]{0,40})$/u;
 /** Someone the `@` popover offers: the channel's agents and other people. */
 interface Mentionable {
@@ -78,6 +89,50 @@ function Composer({
   onDone: () => void;
 }) {
   const [chips, setChips] = useState<Mentionable[]>([]);
+  // Files dropped, pasted or chosen: each uploads at once, and the message
+  // goes once they all have.
+  const [files, setFiles] = useState<Pending[]>([]);
+  const [dragging, setDragging] = useState(false);
+  const picker = useRef<HTMLInputElement>(null);
+  function send(pending: Pending) {
+    upload(channelPath, pending).then(
+      (attachment) => {
+        setFiles((old) =>
+          old.map((f) =>
+            f.key === pending.key ? { ...f, state: 'ready', attachment } : f,
+          ),
+        );
+      },
+      (cause: unknown) => {
+        setFiles((old) =>
+          old.map((f) =>
+            f.key === pending.key
+              ? {
+                  ...f,
+                  state: 'failed',
+                  problem:
+                    cause instanceof Error ? cause.message : '没有传上去',
+                }
+              : f,
+          ),
+        );
+      },
+    );
+  }
+  function attach(list: Iterable<File>) {
+    const added = pendingOf(list, files.length);
+    if (added.length === 0) return;
+    setFiles((old) => [...old, ...added]);
+    for (const pending of added)
+      if (pending.state === 'uploading') send(pending);
+    input.current?.focus();
+  }
+  function detach(key: string) {
+    setFiles((old) => old.filter((f) => f.key !== key));
+  }
+  const filesReady =
+    files.length > 0 && files.every((f) => f.state === 'ready');
+  const filesWaiting = files.some((f) => f.state !== 'ready');
   const [query, setQuery] = useState<string | null>(null);
   const [active, setActive] = useState(0);
   const input = useRef<HTMLTextAreaElement>(null);
@@ -126,18 +181,40 @@ function Composer({
     () => typeof unsent === 'string' && unsent.trim() !== '',
   );
   return (
-    <div className="composer">
+    <div
+      className="composer"
+      data-dragging={dragging ? 'true' : undefined}
+      onDragOver={(e) => {
+        if (!e.dataTransfer.types.includes('Files')) return;
+        e.preventDefault();
+        setDragging(true);
+      }}
+      onDragLeave={(e) => {
+        if (
+          !(e.relatedTarget instanceof Node) ||
+          !e.currentTarget.contains(e.relatedTarget)
+        )
+          setDragging(false);
+      }}
+      onDrop={(e) => {
+        if (e.dataTransfer.files.length === 0) return;
+        e.preventDefault();
+        setDragging(false);
+        attach(e.dataTransfer.files);
+      }}
+    >
       <ActionForm
         title="给团队发消息"
         path={channelPath + '/messages'}
         submit="发送消息"
         icon={<SendIcon size={20} />}
-        ready={ready}
+        ready={(ready || filesReady) && !filesWaiting}
         handOff={onSend}
         onDone={() => {
           // The field is free for the next message at once; what was sent
           // shows in the conversation until the server has it.
           if (input.current) input.current.value = '';
+          setFiles([]);
           setChips([]);
           setQuery(null);
           setReady(false);
@@ -146,7 +223,11 @@ function Composer({
         }}
         build={(f) => {
           const body = value(f, 'body').trim();
-          if (body === '') throw new Error('Nothing to send');
+          const attached = files.flatMap((p) =>
+            p.attachment === null ? [] : [p.attachment],
+          );
+          if (body === '' && attached.length === 0)
+            throw new Error('Nothing to send');
           const mentioned = [...chips];
           for (const member of mentionedIn(body, members))
             if (!mentioned.some((m) => m.id === member.id))
@@ -159,9 +240,51 @@ function Composer({
               .map((m) => ({ kind: m.kind, id: z.uuid().parse(m.id) })),
             sourceMessageId: null,
             sourceEventId: null,
+            attachments: attached,
           };
         }}
       >
+        {files.length > 0 && (
+          <ul className="composer-files" aria-label="附件">
+            {files.map((p) => (
+              <li
+                key={p.key}
+                data-state={p.state}
+                title={p.problem ?? undefined}
+              >
+                {p.image && p.state !== 'failed' ? (
+                  // The server's copy, once it has it: the square holds
+                  // its place until then.
+                  p.attachment !== null && inline(p.attachment.type) ? (
+                    <img
+                      src={`${channelPath}/attachments/${p.attachment.id}`}
+                      alt=""
+                    />
+                  ) : (
+                    <span className="composer-image" />
+                  )
+                ) : (
+                  <span className="composer-file">
+                    <span className="file-name">{p.file.name}</span>
+                    <span className="file-size">
+                      {p.problem ?? fileSize(p.file.size)}
+                    </span>
+                  </span>
+                )}
+                <button
+                  type="button"
+                  className="composer-file-remove"
+                  aria-label={'移除 ' + p.file.name}
+                  onClick={() => {
+                    detach(p.key);
+                  }}
+                >
+                  ×
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
         {chips.length > 0 && (
           <ul className="mention-chips" aria-label="提及">
             {chips.map((member) => (
@@ -219,7 +342,7 @@ function Composer({
               ref={input}
               name="body"
               rows={2}
-              required
+              required={files.length === 0}
               maxLength={8000}
               role="combobox"
               aria-autocomplete="list"
@@ -244,6 +367,11 @@ function Composer({
                 track();
               }}
               onClick={track}
+              onPaste={(e) => {
+                if (e.clipboardData.files.length === 0) return;
+                e.preventDefault();
+                attach(e.clipboardData.files);
+              }}
               onBlur={() => {
                 setQuery(null);
               }}
@@ -276,6 +404,24 @@ function Composer({
               }}
             />
           </Field>
+          <input
+            ref={picker}
+            type="file"
+            multiple
+            hidden
+            onChange={(e) => {
+              if (e.currentTarget.files) attach(e.currentTarget.files);
+              e.currentTarget.value = '';
+            }}
+          />
+          <button
+            type="button"
+            className="quiet composer-attach"
+            aria-label="添加文件"
+            onClick={() => picker.current?.click()}
+          >
+            <AttachIcon size={20} />
+          </button>
           <button
             type="button"
             className="quiet mention-trigger"
@@ -879,9 +1025,17 @@ const MessageRow = memo(function MessageRow({
               {quote.text}
             </button>
           )}
-          <div className="message-text">
-            <MessageText text={answerOnly(m.body, reply)} />
-          </div>
+          {m.body !== '' && (
+            <div className="message-text">
+              <MessageText text={answerOnly(m.body, reply)} />
+            </div>
+          )}
+          {m.attachments.length > 0 && (
+            <MessageFiles
+              files={m.attachments}
+              base={`/api/teams/${data.team.id}/channels/${m.channelId}/attachments`}
+            />
+          )}
           {reply && <ReplyOrigin reply={reply} />}
           {mentions.length > 0 && (
             <ul className="mentions" aria-label="已提及">
@@ -1042,6 +1196,7 @@ export function Chat({
           mine(m, data.human.id) &&
           m.position > o.after &&
           m.body === o.message.body &&
+          filesOf(m) === filesOf(o.message) &&
           m.topicId === o.message.topicId,
       )?.id;
     if (id === undefined) continue;
@@ -1094,7 +1249,11 @@ export function Chat({
   const replySource = (id: string) => {
     const source = messages.find((m) => m.id === id);
     if (!source) return '之前的一条消息';
-    const flat = source.body.replace(/\s+/g, ' ').trim();
+    const flat = (
+      source.body || source.attachments.map((a) => a.name).join('、')
+    )
+      .replace(/\s+/g, ' ')
+      .trim();
     const text = flat.length > 80 ? flat.slice(0, 77) + '…' : flat;
     return `${memberName(source.author, data)}：${text}`;
   };
@@ -1246,12 +1405,19 @@ export function Chat({
         onSend={(path, body) => {
           const key = crypto.randomUUID();
           const after = messages.at(-1)?.position ?? 0;
+          // The files go as their IDs; what shows meanwhile has them whole.
+          const attachments = z.array(Attachment).parse(body.attachments ?? []);
           outbox.send({
             key,
             path,
-            request: JSON.stringify({ ...body, operationKey: key }),
+            request: JSON.stringify({
+              ...body,
+              attachments: attachments.map((a) => a.id),
+              operationKey: key,
+            }),
             message: Message.parse({
               ...body,
+              attachments,
               id: key,
               channelId: channel.id,
               position: after + 1,

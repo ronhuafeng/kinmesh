@@ -24,6 +24,10 @@ import type { Principal } from '../domain/agents.js';
 import { DomainError } from '../domain/errors.js';
 import { AgentId, ChannelId, TeamId } from '../domain/contracts.js';
 import { MessageId, OutboxFact, memberKey } from '../domain/communication.js';
+import { filesText } from '../domain/attachments.js';
+/** A message's text, or for a message of files alone, their names. */
+const textOf = (m: { body: string; attachments: { name: string }[] }) =>
+  m.body === '' ? filesText(m.attachments.map((a) => a.name)) : m.body;
 import {
   Claim,
   Delivery,
@@ -408,8 +412,8 @@ export function inboxRepository(
               message === null
                 ? null
                 : {
-                    body: clip(message.body, 4000),
-                    truncated: message.body.length > 4000,
+                    body: clip(textOf(message), 4000),
+                    truncated: textOf(message).length > 4000,
                   },
             task:
               task === null

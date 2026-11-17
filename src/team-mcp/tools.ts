@@ -54,6 +54,7 @@ function failure(error: unknown): z.infer<typeof Failure> {
   if (error instanceof DomainError) {
     switch (error.kind) {
       case 'invalid':
+      case 'too-large':
         return { code: 'invalid_input', message: 'Invalid input' };
       case 'unauthenticated':
         return { code: 'unauthenticated', message: 'Authentication required' };
