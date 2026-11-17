@@ -97,7 +97,8 @@ Check a change against these before it ships.
     board's columns — and the white on it is the content itself (a list, a task card),
     never a frame around a section.
 19. Order by importance: the decision waiting on you comes first; long lists (runs)
-    come last. Views are tabs on the left; there is no page title above them.
+    come last. Views are tabs in the middle of the top bar; there is no page title
+    above them.
 
 **Process**
 
@@ -170,9 +171,12 @@ button text.
   rest; a page (a task, the Inbox, a settings section) is one column of
   `--reading`; all are fluid below it. An agent's page, which has a side column, is
   at most 72rem. The board takes the whole width.
-- **Top bar**: the views' segmented control on the content's left edge (after the
-  sidebar icon when the sidebar is closed), 38 px tall, 12 px above and below; its
-  right end holds only "正在刷新…" when a refresh is slow.
+- **Top bar**: three parts beside the sidebar. Its start holds the way back from a
+  page on a tablet (‹, its stroke on the content's edge; a task's way back is its
+  看板 tab) and the sidebar icon when the sidebar is closed; the views' segmented
+  control is in its middle, 38 px tall, 12 px above and below; its end holds only
+  "正在刷新…" when a refresh is slow. A page has no back row of its own there. On a
+  phone the bar is the way back, the place's name and the views, as before.
 
 ## Elevation and material
 

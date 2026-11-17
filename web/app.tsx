@@ -40,6 +40,7 @@ import {
   ChannelIcon,
   Avatar,
   AvatarImages,
+  HeaderStart,
   Page,
   Presence,
   listTime,
@@ -314,6 +315,8 @@ export function App() {
     keepDraft(draft);
   }, [draft]);
   // A short word at the foot of the screen; a notice also opens its place.
+  // Where a page beside the sidebar puts its way back.
+  const [headerStart, setHeaderStart] = useState<HTMLElement | null>(null);
   const [toast, setToast] = useState<{
     id: number;
     message: string;
@@ -1348,329 +1351,346 @@ export function App() {
                 )}
               </aside>
               <main className="workspace-main">
-                <Tabs.Root
-                  className="workspace-tabs"
-                  value={tabValue}
-                  // Focus returning from a page or the palette must not switch views.
-                  activationMode="manual"
-                  onValueChange={(v) => {
-                    if (v === 'inbox') return;
-                    setView(v === 'board' || v === 'team' ? v : 'chat');
-                  }}
-                >
-                  <header
-                    className="workspace-header"
-                    // Settings beside their map hold nothing up here: no
-                    // views, no title, the sidebar's control in the map.
-                    data-bare={
-                      inSettings && !phone && !(sidebar.pad && sidebar.state)
-                        ? 'true'
-                        : undefined
-                    }
+                <HeaderStart.Provider value={headerStart}>
+                  <Tabs.Root
+                    className="workspace-tabs"
+                    value={tabValue}
+                    // Focus returning from a page or the palette must not switch views.
+                    activationMode="manual"
+                    onValueChange={(v) => {
+                      if (v === 'inbox') return;
+                      setView(v === 'board' || v === 'team' ? v : 'chat');
+                    }}
                   >
-                    {/* A phone shows no sidebar beside a channel: its bar leads
+                    <header
+                      className="workspace-header"
+                      // Settings beside their map hold nothing up here: no
+                      // views, no title, the sidebar's control in the map.
+                      data-bare={
+                        inSettings && !phone && !(sidebar.pad && sidebar.state)
+                          ? 'true'
+                          : undefined
+                      }
+                    >
+                      {/* The start: the way back (a phone's, or a page's on a
+                        tablet, put here by the page) and the sidebar's
+                        control; the views sit in the middle. */}
+                      <div className="header-start" ref={setHeaderStart}>
+                        {/* A phone shows no sidebar beside a channel: its bar leads
                       back Home and says where you are. */}
-                    {phone && (
-                      <button
-                        type="button"
-                        className="quiet icon-button header-back"
-                        aria-label="返回"
-                        onClick={goHome}
-                      >
-                        <BackIcon size={20} />
-                      </button>
-                    )}
-                    {/* Beside the sidebar the page never repeats where you are:
+                        {phone && (
+                          <button
+                            type="button"
+                            className="quiet icon-button header-back"
+                            aria-label="返回"
+                            onClick={goHome}
+                          >
+                            <BackIcon size={20} />
+                          </button>
+                        )}
+                        {/* Beside the sidebar the page never repeats where you are:
                       the title is there for screen readers only. */}
-                    <h1 className={phone ? 'header-title' : 'visually-hidden'}>
-                      {pageAgent
-                        ? pageAgent.name
-                        : view === 'team' && !phone
-                          ? '团队'
-                          : shownChannelName
-                            ? '# ' + shownChannelName
-                            : switching
-                              ? '正在打开频道…'
-                              : '欢迎来到你的团队'}
-                    </h1>
-                    {/* Closed, the sidebar opens from here; open, the same
+                        <h1
+                          className={phone ? 'header-title' : 'visually-hidden'}
+                        >
+                          {pageAgent
+                            ? pageAgent.name
+                            : view === 'team' && !phone
+                              ? '团队'
+                              : shownChannelName
+                                ? '# ' + shownChannelName
+                                : switching
+                                  ? '正在打开频道…'
+                                  : '欢迎来到你的团队'}
+                        </h1>
+                        {/* Closed, the sidebar opens from here; open, the same
                         control ends the team name's row. A floating sidebar
                         covers this one, which keeps the header still. */}
-                    {sidebar.pad && sidebar.state && (
-                      <button
-                        type="button"
-                        ref={sidebar.headerToggle}
-                        className="quiet icon-button sidebar-toggle"
-                        aria-label="展开侧栏"
-                        title="展开侧栏"
-                        aria-expanded={sidebar.open}
-                        aria-controls="sidebar"
-                        aria-keyshortcuts="Meta+Backslash Control+Backslash"
-                        onClick={sidebar.toggle}
-                      >
-                        <SidebarIcon size={20} />
-                      </button>
-                    )}
-                    {/* Views stay in reach however far the conversation scrolls;
-                        they belong to a channel, so settings show none. */}
-                    {!inSettings && (
-                      <Tabs.List
-                        ref={viewTabs}
-                        aria-label="工作区视图"
-                        className="view-switch"
-                      >
-                        <Tabs.Trigger value="chat" onClick={leavePage}>
-                          聊天
-                        </Tabs.Trigger>
-                        <Tabs.Trigger value="board" onClick={leavePage}>
-                          看板
-                        </Tabs.Trigger>
-                        <Tabs.Trigger value="team" onClick={leavePage}>
-                          团队
-                        </Tabs.Trigger>
-                        {/* What waits on you across the team; an empty inbox
-                        needs no number. On a phone it is a bottom tab. */}
-                        {!phone && (
-                          <Tabs.Trigger
-                            value="inbox"
-                            onClick={() => {
-                              setDraft(null);
-                              setFocus({ kind: 'inbox' });
-                            }}
+                        {sidebar.pad && sidebar.state && (
+                          <button
+                            type="button"
+                            ref={sidebar.headerToggle}
+                            className="quiet icon-button sidebar-toggle"
+                            aria-label="展开侧栏"
+                            title="展开侧栏"
+                            aria-expanded={sidebar.open}
+                            aria-controls="sidebar"
+                            aria-keyshortcuts="Meta+Backslash Control+Backslash"
+                            onClick={sidebar.toggle}
                           >
-                            收件箱
-                            {waiting > 0 && (
-                              <span className="count">{waiting}</span>
-                            )}
-                          </Tabs.Trigger>
+                            <SidebarIcon size={20} />
+                          </button>
                         )}
-                      </Tabs.List>
-                    )}
-                    <div className="header-end">
-                      {/* Healthy is silent; a refresh asked for, or a slow
-                          one, says so. */}
-                      {refreshing && (
-                        <div className="connection">
-                          <span className="connection-dot" aria-hidden="true" />
-                          <span role="status">正在刷新…</span>
-                        </div>
+                      </div>
+                      {/* Views stay in reach however far the conversation scrolls;
+                        they belong to a channel, so settings show none. */}
+                      {!inSettings && (
+                        <Tabs.List
+                          ref={viewTabs}
+                          aria-label="工作区视图"
+                          className="view-switch"
+                        >
+                          <Tabs.Trigger value="chat" onClick={leavePage}>
+                            聊天
+                          </Tabs.Trigger>
+                          <Tabs.Trigger value="board" onClick={leavePage}>
+                            看板
+                          </Tabs.Trigger>
+                          <Tabs.Trigger value="team" onClick={leavePage}>
+                            团队
+                          </Tabs.Trigger>
+                          {/* What waits on you across the team; an empty inbox
+                        needs no number. On a phone it is a bottom tab. */}
+                          {!phone && (
+                            <Tabs.Trigger
+                              value="inbox"
+                              onClick={() => {
+                                setDraft(null);
+                                setFocus({ kind: 'inbox' });
+                              }}
+                            >
+                              收件箱
+                              {waiting > 0 && (
+                                <span className="count">{waiting}</span>
+                              )}
+                            </Tabs.Trigger>
+                          )}
+                        </Tabs.List>
                       )}
-                    </div>
-                  </header>
-                  {/* One line, and nothing to press: it comes back by itself. */}
-                  {stale && (
-                    <p className="stale-line" role="status">
-                      连不上 Kinmesh。先显示之前的内容，恢复连接前暂停发送。
-                    </p>
-                  )}
-                  <fieldset
-                    className="view-content"
-                    data-switching={switching ? 'true' : undefined}
-                    data-page={onPage ? 'true' : undefined}
-                    // A wide tablet keeps the board beside a task's page.
-                    data-beside={onBoardPage ? 'board' : undefined}
-                  >
-                    {/* A task, a new task, the Inbox, Settings or a hand-run
+                      <div className="header-end">
+                        {/* Healthy is silent; a refresh asked for, or a slow
+                          one, says so. */}
+                        {refreshing && (
+                          <div className="connection">
+                            <span
+                              className="connection-dot"
+                              aria-hidden="true"
+                            />
+                            <span role="status">正在刷新…</span>
+                          </div>
+                        )}
+                      </div>
+                    </header>
+                    {/* One line, and nothing to press: it comes back by itself. */}
+                    {stale && (
+                      <p className="stale-line" role="status">
+                        连不上 Kinmesh。先显示之前的内容，恢复连接前暂停发送。
+                      </p>
+                    )}
+                    <fieldset
+                      className="view-content"
+                      data-switching={switching ? 'true' : undefined}
+                      data-page={onPage ? 'true' : undefined}
+                      // A wide tablet keeps the board beside a task's page.
+                      data-beside={onBoardPage ? 'board' : undefined}
+                    >
+                      {/* A task, a new task, the Inbox, Settings or a hand-run
                       worker opens here, in place of the view. Unsent text
                       survives in session storage, not in the hidden view. */}
-                    {focusedTask && channelPath && (
-                      <TaskPage
-                        key={focusedTask.id}
-                        task={focusedTask}
-                        data={data}
-                        path={channelPath + '/tasks/' + focusedTask.id}
-                        onDone={refresh}
-                        onClose={closeFocus}
-                        onDecided={notify}
-                        onReply={(id) => {
-                          // The reply is in the chat; open it there and point to it.
-                          leavePage();
-                          setView('chat');
-                          setTimeout(() => {
-                            showMessage(id);
-                          }, 60);
-                        }}
-                        openAgent={openAgent}
-                      />
-                    )}
-                    {workerAgent && (
-                      <OwnWorkerPage
-                        key={workerAgent.id}
-                        agent={workerAgent}
-                        data={data}
-                        onClose={closeFocus}
-                        onDone={refresh}
-                      />
-                    )}
-                    {focus?.kind === 'inbox' && (
-                      <InboxPage
-                        data={data}
-                        onClose={closeFocus}
-                        openTask={openTaskIn}
-                        openChannel={(id) => {
-                          if (id !== channel?.id) selectChannel(id);
-                          setView('chat');
-                          setFocus(null);
-                        }}
-                        openAgent={openAgent}
-                        onDone={refresh}
-                      />
-                    )}
-                    {newTask && channelPath && (
-                      <NewTaskPage
-                        draft={newTask}
-                        data={data}
-                        channelPath={channelPath}
-                        onClose={() => {
-                          setDraft(null);
-                        }}
-                        onCreated={(id) => {
-                          // The new task stays on screen, now as itself.
-                          setDraft(null);
-                          setView('board');
-                          setFocus({ kind: 'task', id });
-                          refresh();
-                        }}
-                        onNotify={notify}
-                      />
-                    )}
-                    {phone && focus?.kind === 'search' && (
-                      <Page label="搜索" onClose={closeFocus} bar={false}>
-                        <SearchPage commands={commands} onClose={closeFocus} />
-                      </Page>
-                    )}
-                    {focus?.kind === 'settings' && (
-                      <SettingsPage
-                        key={settingsSection}
-                        section={settingsSection}
-                        phone={phone}
-                        data={data}
-                        onSection={openSettings}
-                        onClose={closeFocus}
-                        onSignOut={signOut}
-                        onSignOutEverywhere={signOutEverywhere}
-                        openChannel={(id) => {
-                          setFocus(null);
-                          selectChannel(id);
-                          setView('chat');
-                        }}
-                        openMessage={(id, messageId) => {
-                          setFocus(null);
-                          if (id !== channel?.id) selectChannel(id);
-                          setView('chat');
-                          // Once the channel's conversation is on screen.
-                          let tries = 0;
-                          const find = () => {
-                            if (document.getElementById('message-' + messageId))
-                              showMessage(messageId);
-                            else if ((tries += 1) < 20) setTimeout(find, 100);
-                          };
-                          setTimeout(find, 0);
-                        }}
-                        openAgent={openAgent}
-                      />
-                    )}
-
-                    {switching && (
-                      <div className="view-skeleton" aria-hidden="true">
-                        <span className="skeleton-card" />
-                        <span className="skeleton-card" />
-                        <span className="skeleton-card" />
-                      </div>
-                    )}
-                    <Tabs.Content
-                      value="chat"
-                      key={channel?.id ?? 'no-channel'}
-                    >
-                      {channel && channelPath ? (
-                        <Chat
+                      {focusedTask && channelPath && (
+                        <TaskPage
+                          key={focusedTask.id}
+                          task={focusedTask}
                           data={data}
-                          channelPath={channelPath}
-                          topic={selection.topic}
-                          shownTopic={
-                            new URLSearchParams(loadedPlace ?? '').get(
-                              'topicId',
-                            ) ?? ''
-                          }
-                          onTopic={(topic) => {
-                            setSelection((old) => ({ ...old, topic }));
-                            setCursors({});
-                          }}
+                          path={channelPath + '/tasks/' + focusedTask.id}
                           onDone={refresh}
-                          next={next}
-                          onEarlier={(cursor) => {
-                            next('messagesCursor', cursor);
-                          }}
-                          onMakeTask={(message) => {
-                            setDraft(draftFromMessage(message, data));
-                            setFocus(null);
-                            setView('board');
-                          }}
-                          openAgent={openAgent}
-                          onLeave={() => {
-                            selectChannel('');
-                          }}
-                        />
-                      ) : (
-                        <div className="empty">
-                          <h3>没有打开的频道</h3>
-                          <p>选一个已加入的频道来查看和发消息。</p>
-                        </div>
-                      )}
-                    </Tabs.Content>
-                    <Tabs.Content value="board">
-                      {channelPath ? (
-                        <Board
-                          data={data}
-                          openTask={openTask}
-                          onNewTask={startNewTask}
-                          openId={focus?.kind === 'task' ? focus.id : null}
-                        />
-                      ) : (
-                        <div className="empty">
-                          <p>先建一个频道，再创建任务。</p>
-                        </div>
-                      )}
-                    </Tabs.Content>
-                    <Tabs.Content value="team">
-                      <Team
-                        data={data}
-                        channelPath={channelPath}
-                        channelName={channel?.name ?? ''}
-                        onDone={refresh}
-                        openAgent={openAgent}
-                      />
-                    </Tabs.Content>
-                    <Tabs.Content value="agent">
-                      {pageAgent ? (
-                        <AgentPage
-                          key={pageAgent.id}
-                          agent={pageAgent}
-                          data={data}
-                          channelPath={channelPath}
-                          onBack={() => {
-                            setView(backTo);
-                          }}
-                          onOwnWorker={() => {
-                            setFocus({ kind: 'worker', id: pageAgent.id });
-                          }}
+                          onClose={closeFocus}
+                          onDecided={notify}
                           onReply={(id) => {
                             // The reply is in the chat; open it there and point to it.
+                            leavePage();
                             setView('chat');
                             setTimeout(() => {
                               showMessage(id);
                             }, 60);
                           }}
+                          openAgent={openAgent}
+                        />
+                      )}
+                      {workerAgent && (
+                        <OwnWorkerPage
+                          key={workerAgent.id}
+                          agent={workerAgent}
+                          data={data}
+                          onClose={closeFocus}
                           onDone={refresh}
                         />
-                      ) : (
-                        <div className="empty">
-                          <p>这个智能体不在你的团队里。</p>
+                      )}
+                      {focus?.kind === 'inbox' && (
+                        <InboxPage
+                          data={data}
+                          onClose={closeFocus}
+                          openTask={openTaskIn}
+                          openChannel={(id) => {
+                            if (id !== channel?.id) selectChannel(id);
+                            setView('chat');
+                            setFocus(null);
+                          }}
+                          openAgent={openAgent}
+                          onDone={refresh}
+                        />
+                      )}
+                      {newTask && channelPath && (
+                        <NewTaskPage
+                          draft={newTask}
+                          data={data}
+                          channelPath={channelPath}
+                          onClose={() => {
+                            setDraft(null);
+                          }}
+                          onCreated={(id) => {
+                            // The new task stays on screen, now as itself.
+                            setDraft(null);
+                            setView('board');
+                            setFocus({ kind: 'task', id });
+                            refresh();
+                          }}
+                          onNotify={notify}
+                        />
+                      )}
+                      {phone && focus?.kind === 'search' && (
+                        <Page label="搜索" onClose={closeFocus} bar={false}>
+                          <SearchPage
+                            commands={commands}
+                            onClose={closeFocus}
+                          />
+                        </Page>
+                      )}
+                      {focus?.kind === 'settings' && (
+                        <SettingsPage
+                          key={settingsSection}
+                          section={settingsSection}
+                          phone={phone}
+                          data={data}
+                          onSection={openSettings}
+                          onClose={closeFocus}
+                          onSignOut={signOut}
+                          onSignOutEverywhere={signOutEverywhere}
+                          openChannel={(id) => {
+                            setFocus(null);
+                            selectChannel(id);
+                            setView('chat');
+                          }}
+                          openMessage={(id, messageId) => {
+                            setFocus(null);
+                            if (id !== channel?.id) selectChannel(id);
+                            setView('chat');
+                            // Once the channel's conversation is on screen.
+                            let tries = 0;
+                            const find = () => {
+                              if (
+                                document.getElementById('message-' + messageId)
+                              )
+                                showMessage(messageId);
+                              else if ((tries += 1) < 20) setTimeout(find, 100);
+                            };
+                            setTimeout(find, 0);
+                          }}
+                          openAgent={openAgent}
+                        />
+                      )}
+
+                      {switching && (
+                        <div className="view-skeleton" aria-hidden="true">
+                          <span className="skeleton-card" />
+                          <span className="skeleton-card" />
+                          <span className="skeleton-card" />
                         </div>
                       )}
-                    </Tabs.Content>
-                  </fieldset>
-                </Tabs.Root>
+                      <Tabs.Content
+                        value="chat"
+                        key={channel?.id ?? 'no-channel'}
+                      >
+                        {channel && channelPath ? (
+                          <Chat
+                            data={data}
+                            channelPath={channelPath}
+                            topic={selection.topic}
+                            shownTopic={
+                              new URLSearchParams(loadedPlace ?? '').get(
+                                'topicId',
+                              ) ?? ''
+                            }
+                            onTopic={(topic) => {
+                              setSelection((old) => ({ ...old, topic }));
+                              setCursors({});
+                            }}
+                            onDone={refresh}
+                            next={next}
+                            onEarlier={(cursor) => {
+                              next('messagesCursor', cursor);
+                            }}
+                            onMakeTask={(message) => {
+                              setDraft(draftFromMessage(message, data));
+                              setFocus(null);
+                              setView('board');
+                            }}
+                            openAgent={openAgent}
+                            onLeave={() => {
+                              selectChannel('');
+                            }}
+                          />
+                        ) : (
+                          <div className="empty">
+                            <h3>没有打开的频道</h3>
+                            <p>选一个已加入的频道来查看和发消息。</p>
+                          </div>
+                        )}
+                      </Tabs.Content>
+                      <Tabs.Content value="board">
+                        {channelPath ? (
+                          <Board
+                            data={data}
+                            openTask={openTask}
+                            onNewTask={startNewTask}
+                            openId={focus?.kind === 'task' ? focus.id : null}
+                          />
+                        ) : (
+                          <div className="empty">
+                            <p>先建一个频道，再创建任务。</p>
+                          </div>
+                        )}
+                      </Tabs.Content>
+                      <Tabs.Content value="team">
+                        <Team
+                          data={data}
+                          channelPath={channelPath}
+                          channelName={channel?.name ?? ''}
+                          onDone={refresh}
+                          openAgent={openAgent}
+                        />
+                      </Tabs.Content>
+                      <Tabs.Content value="agent">
+                        {pageAgent ? (
+                          <AgentPage
+                            key={pageAgent.id}
+                            agent={pageAgent}
+                            data={data}
+                            channelPath={channelPath}
+                            onBack={() => {
+                              setView(backTo);
+                            }}
+                            onOwnWorker={() => {
+                              setFocus({ kind: 'worker', id: pageAgent.id });
+                            }}
+                            onReply={(id) => {
+                              // The reply is in the chat; open it there and point to it.
+                              setView('chat');
+                              setTimeout(() => {
+                                showMessage(id);
+                              }, 60);
+                            }}
+                            onDone={refresh}
+                          />
+                        ) : (
+                          <div className="empty">
+                            <p>这个智能体不在你的团队里。</p>
+                          </div>
+                        )}
+                      </Tabs.Content>
+                    </fieldset>
+                  </Tabs.Root>
+                </HeaderStart.Provider>
               </main>
               {/* A phone's three places at the bottom of Home and of the pages
                   they open; a channel or a pushed page has the screen. */}

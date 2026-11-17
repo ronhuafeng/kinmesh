@@ -6,6 +6,7 @@ import {
   useRef,
   useSyncExternalStore,
 } from 'react';
+import { createPortal } from 'react-dom';
 import { BackIcon } from './icons.js';
 import type { ReactNode } from 'react';
 import type { Task } from '../src/domain/tasks.js';
@@ -172,8 +173,15 @@ export function usePad(): 'narrow' | 'wide' | null {
   return narrow ? 'narrow' : wide ? 'wide' : null;
 }
 /**
+ * The start of the top bar, where a page beside the sidebar puts its way
+ * back: left of the views, which sit in the middle.
+ */
+export const HeaderStart = createContext<HTMLElement | null>(null);
+/**
  * A page in the main area. On a phone it opens under a bar with a way back
- * and what it is (`bar`); a page reached from the bottom tabs has none.
+ * and what it is (`bar`); a page reached from the bottom tabs has none. On a
+ * tablet the way back is at the start of the top bar, unless a view's tab
+ * already leads back (`tabLeadsBack`, a task under 看板).
  */
 export function Page({
   label,
@@ -181,13 +189,17 @@ export function Page({
   children,
   className,
   bar = label,
+  tabLeadsBack = false,
 }: {
   label: string;
   onClose: () => void;
   children: ReactNode;
   className?: string;
   bar?: ReactNode | false;
+  tabLeadsBack?: boolean;
 }) {
+  const headerStart = useContext(HeaderStart);
+  const tablet = useMedia('(min-width: 576px) and (max-width: 1279px)');
   const page = useRef<HTMLElement>(null);
   useEffect(() => {
     page.current?.focus({ preventScroll: true });
@@ -222,7 +234,24 @@ export function Page({
       aria-label={label}
       tabIndex={-1}
     >
-      {bar !== false && (
+      {bar !== false &&
+        tablet &&
+        !tabLeadsBack &&
+        headerStart !== null &&
+        createPortal(
+          <button
+            type="button"
+            className="quiet icon-button header-page-back"
+            aria-label="返回"
+            onClick={() => {
+              close.current();
+            }}
+          >
+            <BackIcon size={20} />
+          </button>,
+          headerStart,
+        )}
+      {bar !== false && !tablet && (
         <div className="page-bar">
           <button
             type="button"

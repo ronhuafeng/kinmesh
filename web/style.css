@@ -2603,6 +2603,26 @@ a.button-link {
   gap: 0.5rem;
   margin-left: auto;
 }
+/* The start of the bar: the way back and the sidebar's control. */
+.header-start {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  min-width: 0;
+}
+@media (max-width: 575px) {
+  .header-start {
+    display: contents;
+  }
+}
+/* A page's way back, at the start of the bar (a tablet's): its stroke on
+ * the content's edge, as the sidebar's control is. */
+.workspace-header button.header-page-back {
+  width: 38px;
+  height: 38px;
+  margin-left: -16px;
+  padding: 0;
+}
 /* The top bar: translucent material over a hairline, its one row the
  * height of the views' segmented control (38 px) with 12 px above and
  * below. Every control in it is that tall: the sidebar icon, the views,
@@ -2634,6 +2654,21 @@ a.button-link {
 }
 .workspace-header > .view-switch {
   height: 38px;
+}
+/* Beside the sidebar the bar is three parts: the way back at the start,
+ * the views in the middle, what is under way at the end. */
+@media (min-width: 576px) {
+  .workspace-header {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+  }
+  .workspace-header > .view-switch {
+    justify-self: center;
+  }
+  .workspace-header > .header-end {
+    justify-self: end;
+    margin-left: 0;
+  }
 }
 /* The views' thumb is one piece that slides to the chosen tab as its
  * content appears (web/app.tsx places it); without motion it moves at once.
@@ -4995,21 +5030,10 @@ button.list-row-main:hover:not(:disabled) .list-row-title {
 }
 /* ------------------------------------------------------------------
  * Tablet (576–1279 px): the sidebar beside the content (touch sizes are
- * by pointer, above). Touch has no Esc, so a page leads back from its bar; the sidebar
- * already says where you are, so the bar holds only the way back.
+ * by pointer, above). Touch has no Esc, so a page's way back is at the start
+ * of the top bar (`Page` puts it there); a task's is its 看板 tab.
  * ------------------------------------------------------------------ */
 @media (min-width: 576px) and (max-width: 1279px) {
-  .page-bar {
-    display: flex;
-    margin: 0 0 0.25rem;
-  }
-  .page-bar-title {
-    display: none;
-  }
-  /* A task sits on the board: its 看板 tab, lit above it, leads back. */
-  .task-page > .page-bar {
-    display: none;
-  }
   /* The screen goes to the content: narrow edges around the sidebar and the
    * main column, a header no taller than its tabs need. */
   .sidebar {
@@ -5037,9 +5061,6 @@ button.list-row-main:hover:not(:disabled) .list-row-title {
   /* Its glyph's left edge on the content's edge. */
   .workspace-header button.sidebar-toggle {
     margin: 0 0 0 calc(-9px - 2.5px);
-  }
-  .sidebar-toggle + .view-switch {
-    margin-right: auto;
   }
   .team-row button.sidebar-toggle {
     position: relative;
