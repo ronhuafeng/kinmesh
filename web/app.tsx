@@ -600,6 +600,21 @@ export function App() {
         notify('Sign out didn’t go through. Try again.');
       });
   };
+  /** Leaves the open channel, from the command palette. */
+  const leaveChannel = () => {
+    if (!canAct || !channelPath) return;
+    void api(channelPath + '/leave', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ operationKey: crypto.randomUUID() }),
+    })
+      .then(() => {
+        selectChannel('');
+      })
+      .catch(() => {
+        notify('Leaving didn’t go through. Try again.');
+      });
+  };
   const goHome = () => {
     selectChannel('');
     setView('chat');
@@ -668,6 +683,18 @@ export function App() {
             label: 'New task',
             hint: channel ? '#' + channel.name : undefined,
             run: startNewTask,
+          },
+        ]
+      : []),
+    // Only the channel on screen can be left: never the one a switch is
+    // leaving behind.
+    ...(channel && channelPath && onScreen
+      ? [
+          {
+            id: 'action-leave',
+            group: 'Actions',
+            label: 'Leave #' + channel.name,
+            run: leaveChannel,
           },
         ]
       : []),
@@ -772,9 +799,6 @@ export function App() {
                             setCursors({});
                           }}
                           next={next}
-                          onLeave={() => {
-                            selectChannel('');
-                          }}
                         />
                       )}
                     </Fragment>
@@ -820,6 +844,9 @@ export function App() {
                       channelPath={null}
                       onDone={refresh}
                       openAgent={openAgent}
+                      openSettings={() => {
+                        setFocus({ kind: 'settings' });
+                      }}
                     />
                   </div>
                 )}
@@ -831,28 +858,9 @@ export function App() {
                       the channel above. */}
                   <hr className="nav-separator" />
                   <ul>
-                    <li>
-                      {/* You are one of the people; your row opens your
-                        settings, so the account is not shown twice. */}
-                      <button
-                        className="person"
-                        aria-pressed={focus?.kind === 'settings'}
-                        onClick={() => {
-                          setFocus({ kind: 'settings' });
-                        }}
-                      >
-                        <Avatar
-                          kind="human"
-                          name={data.human.name}
-                          id={data.human.id}
-                          size="sm"
-                        />
-                        <span className="person-name">{data.human.name}</span>
-                        <Presence online dot />
-                      </button>
-                    </li>
-                    {/* Someone else has no page of their own: their row
-                        is their face, name and presence. */}
+                    {/* You know you are here: the list is the others. A
+                        person has no page of their own: their row is their
+                        face, name and presence. */}
                     {otherPeople(data).map((person) => (
                       <li key={person.id}>
                         <span className="person">
@@ -1144,6 +1152,9 @@ export function App() {
                         channelPath={channelPath}
                         onDone={refresh}
                         openAgent={openAgent}
+                        openSettings={() => {
+                          setFocus({ kind: 'settings' });
+                        }}
                       />
                     </Tabs.Content>
                     <Tabs.Content value="agent">

@@ -47,13 +47,11 @@ function mentionedIn(body: string, members: Mentionable[]) {
   );
 }
 function Composer({
-  channelName,
   channelPath,
   topicId,
   members,
   onDone,
 }: {
-  channelName: string;
   channelPath: string;
   topicId: string;
   members: Mentionable[];
@@ -207,12 +205,10 @@ function Composer({
                   ? listId + '-' + candidates[active].id
                   : undefined
               }
-              // The shortcuts belong in the placeholder; a phone gets just
-              // the channel, which fits.
+              // The hints belong in the placeholder; the sidebar already
+              // names the channel, and a phone has no shortcut keys.
               placeholder={
-                'Message #' +
-                channelName +
-                (narrow ? '' : ' — @ to mention, ⌘/Ctrl+Enter to send')
+                narrow ? '@ to mention' : '@ to mention, ⌘/Ctrl+Enter to send'
               }
               defaultValue={typeof unsent === 'string' ? unsent : ''}
               onInput={(e) => {
@@ -292,7 +288,6 @@ export function ChannelTopics({
   current: here,
   onTopic,
   next,
-  onLeave,
 }: {
   data: WorkspaceSnapshot;
   channelPath: string;
@@ -300,7 +295,6 @@ export function ChannelTopics({
   current: boolean;
   onTopic: (topic: string) => void;
   next: (key: string, cursor: string | null) => void;
-  onLeave: () => void;
 }) {
   const [all, setAll] = useState(false);
   const recent = data.activeTopics.items;
@@ -328,11 +322,12 @@ export function ChannelTopics({
   return (
     <div className="channel-topics">
       <ul aria-label="Topics">
+        {/* "All" leads back to the whole channel, which its own row
+            already marks as current; only a topic is pressed. */}
         {recent.length > 0 && (
           <li>
             <button
               type="button"
-              aria-pressed={here && topic === ''}
               onClick={() => {
                 onTopic('');
               }}
@@ -376,15 +371,6 @@ export function ChannelTopics({
           <NewTopic channelPath={channelPath} onCreated={onTopic} />
         </li>
       </ul>
-      <div className="leave-channel">
-        <ActionForm
-          title="Channel membership"
-          path={channelPath + '/leave'}
-          build={() => ({})}
-          submit="Leave channel"
-          onDone={onLeave}
-        />
-      </div>
     </div>
   );
 }
@@ -834,7 +820,6 @@ export function Chat({
       )}
       <Composer
         key={channel.id}
-        channelName={channel.name}
         channelPath={channelPath}
         topicId={topic}
         members={[

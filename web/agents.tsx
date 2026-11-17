@@ -586,11 +586,14 @@ export function Team({
   channelPath,
   onDone,
   openAgent,
+  openSettings,
 }: {
   data: WorkspaceSnapshot;
   channelPath: string | null;
   onDone: () => void;
   openAgent: (id: string) => void;
+  /** Your own tile opens your page, as an agent's opens theirs. */
+  openSettings: () => void;
 }) {
   const [registering, setRegistering] = useState(false);
   return (
@@ -600,7 +603,11 @@ export function Team({
           tile adds an agent. */}
       <ul className="roster" aria-label="Team">
         <li className="roster-tile" data-kind="human">
-          <span className="roster-person">
+          <button
+            type="button"
+            className="roster-person"
+            onClick={openSettings}
+          >
             <Avatar
               kind="human"
               name={data.human.name}
@@ -610,7 +617,7 @@ export function Team({
             <span className="roster-name">{data.human.name}</span>
             {/* You are the one looking. */}
             <Presence online />
-          </span>
+          </button>
         </li>
         {data.people
           .filter((person) => person.id !== data.human.id)
