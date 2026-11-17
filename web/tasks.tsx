@@ -14,6 +14,7 @@ import type { Task } from '../src/domain/tasks.js';
 import { Member, memberKey, pageOf } from '../src/domain/communication.js';
 import type { Message } from '../src/domain/communication.js';
 import type { WorkspaceSnapshot } from '../src/workspace/contracts.js';
+import { threadLink } from '../src/workspace/links.js';
 import { api, Offline, value } from './api.js';
 import { ActionForm, Field, Notice, SubmitGroup } from './forms.js';
 import { DeliveryLine, taskDeliveries } from './deliveries.js';
@@ -122,13 +123,12 @@ function Lifecycle({ status }: { status: Status }) {
       {stages.map((stage, index) => (
         <li
           key={stage.id}
+          // Behind the task is passed, not finished; where it is wears its
+          // board column's colour.
           data-step={
-            index < current || status === 'accepted'
-              ? 'done'
-              : index === current
-                ? 'current'
-                : 'todo'
+            index < current ? 'past' : index === current ? 'current' : 'todo'
           }
+          data-status={stage.tone}
           aria-current={index === current ? 'step' : undefined}
         >
           <span title={stage.label}>{stage.short ?? stage.label}</span>
@@ -239,12 +239,9 @@ export function historySentence(
   return cjk(said(e, data));
 }
 function said(e: z.infer<typeof TaskEvent>, data: WorkspaceSnapshot): string {
-  const who =
-    e.author.kind === 'human' && e.author.humanId === data.human.id
-      ? '你'
-      : memberName(e.author, data);
-  const name = (m: Member) =>
-    m.kind === 'human' && m.id === data.human.id ? '你' : memberName(m, data);
+  // Everyone, you included, is their name: the record reads the same to all.
+  const who = memberName(e.author, data);
+  const name = (m: Member) => memberName(m, data);
   const c = e.command;
   switch (c.type) {
     case 'create':
@@ -291,75 +288,79 @@ function TaskHistory({
 }) {
   const [history, setHistory] = useState<z.infer<typeof TaskEvent>[]>([]);
   const [links, setLinks] = useState<z.infer<typeof TaskExecution>[]>([]);
-  const [error, setError] = useState('');
-  const [refresh, setRefresh] = useState(0);
+  const [failing, setFailing] = useState(false);
+  // Read again whenever the task moves on; a failed read retries by itself,
+  // a little later each time, and says so only once it keeps failing.
   useEffect(() => {
     const controller = new AbortController();
-    void Promise.all([
-      api(path + '/history', { signal: controller.signal }),
-      api(path + '/executions', { signal: controller.signal }),
-    ])
-      .then(([events, refs]) => {
-        setHistory(pageOf(TaskEvent).parse(events).items);
-        setLinks(pageOf(TaskExecution).parse(refs).items);
-        setError('');
-      })
-      .catch(() => {
-        if (!controller.signal.aborted)
-          setError('暂时读不到记录，点“刷新”重试。');
-      });
+    let retry: ReturnType<typeof setTimeout> | undefined;
+    const read = (attempt: number) => {
+      void Promise.all([
+        api(path + '/history', { signal: controller.signal }),
+        api(path + '/executions', { signal: controller.signal }),
+      ])
+        .then(([events, refs]) => {
+          setHistory(pageOf(TaskEvent).parse(events).items);
+          setLinks(pageOf(TaskExecution).parse(refs).items);
+          setFailing(false);
+        })
+        .catch(() => {
+          if (controller.signal.aborted) return;
+          if (attempt >= 2) setFailing(true);
+          retry = setTimeout(
+            () => {
+              read(attempt + 1);
+            },
+            Math.min(1000 * 2 ** attempt, 30000),
+          );
+        });
+    };
+    read(0);
     return () => {
       controller.abort();
+      clearTimeout(retry);
     };
-  }, [path, task.version, refresh]);
+  }, [path, task.version]);
   const avatarOf = (author: z.infer<typeof TaskEvent>['author']) => (
     <MemberAvatar member={someoneOf(author)} data={data} />
   );
-  // Decisions and linked T3 runs, one timeline, oldest first.
+  const origin = data.nativeT3Origin;
+  // Decisions and linked T3 runs, one timeline, oldest first. A linked run
+  // is said once, by its link, which opens its thread on the team's T3.
   const lines = [
-    ...history.map((e) => ({
-      key: e.id,
-      at: e.createdAt,
-      who: avatarOf(e.author),
-      text: historySentence(e, data),
-      refs: null as null | { thread: string; run: string | null },
-    })),
+    ...history
+      .filter((e) => e.command.type !== 'link-execution')
+      .map((e) => ({
+        key: e.id,
+        at: e.createdAt,
+        who: avatarOf(e.author),
+        text: historySentence(e, data),
+        href: null as string | null,
+      })),
     ...links.map((link) => ({
       key: link.id,
       at: link.createdAt,
       who: avatarOf(link.author),
-      text: '关联了一次 T3 运行',
-      refs: { thread: link.reference.threadId, run: link.reference.runId },
+      text: cjk(`${memberName(link.author, data)} 关联了一次 T3 运行`),
+      href: origin ? threadLink(origin, link.reference) : null,
     })),
   ].sort((x, y) => x.at.localeCompare(y.at));
   return (
     <section className="task-history" aria-label="记录">
-      <div className="page-heading">
-        <h3>记录</h3>
-        <button
-          type="button"
-          className="quiet"
-          onClick={() => {
-            setRefresh((value) => value + 1);
-          }}
-        >
-          刷新
-        </button>
-      </div>
-      {error && <Notice>{error}</Notice>}
+      <h3>记录</h3>
+      {failing && <Notice>暂时读不到记录。</Notice>}
       <ol className="history">
         {lines.map((line) => (
           <li key={line.key}>
             <time dateTime={line.at}>{shortTime(line.at)}</time>
             {line.who}
             <span>
-              {line.text}
-              {line.refs && (
-                <code className="run-ref" title={line.refs.thread}>
-                  {' '}
-                  {line.refs.thread}
-                  {line.refs.run ? ' ' + line.refs.run : ''}
-                </code>
+              {line.href ? (
+                <a href={line.href} target="_blank" rel="noopener noreferrer">
+                  {line.text}
+                </a>
+              ) : (
+                line.text
               )}
             </span>
           </li>
@@ -378,7 +379,6 @@ type Intent =
   | 'handoff'
   | 'rework'
   | 'cancel';
-type Route = 'request-review' | 'handoff' | 'cancel';
 const intentLabels: Record<Intent, string> = {
   claim: '认领任务',
   progress: '发布进展',
@@ -402,244 +402,203 @@ const intentDone: Record<Intent, string> = {
   rework: '已退回修改。',
   cancel: '任务已取消。',
 };
-/** Moving on is the plain (green) button; sending back or away is danger. */
-const intentTone: Partial<Record<Intent, string>> = {
-  progress: 'secondary',
-  rework: 'danger',
-  'review-rework': 'danger',
-  cancel: 'danger',
-};
-/** Explicit buttons per decision; the note is always written by the human. */
-function DecisionPanel({
+/**
+ * What you may do with a task, mirroring the server's rules so no button
+ * leads to a certain 409/403: what waits on you leads the page; the rest is
+ * one quiet row at its end, cancelling last.
+ */
+function taskActions(task: Task, data: WorkspaceSnapshot) {
+  const human = { kind: 'human', id: data.human.id } satisfies Member;
+  const { status, owner, reviewer } = task.state;
+  const owns = owner !== null && memberKey(owner) === memberKey(human);
+  const reviews = reviewer !== null && memberKey(reviewer) === memberKey(human);
+  const final = task.acceptorHumanId === data.human.id;
+  const done = status === 'accepted' || status === 'cancelled';
+  const working = status === 'in-progress' || status === 'rework-requested';
+  const lead: Intent[] = [];
+  const rest: Intent[] = [];
+  if (
+    status === 'proposed' &&
+    (reviewer === null || memberKey(reviewer) !== memberKey(human))
+  )
+    lead.push('claim');
+  if (final && status === 'awaiting-human') lead.push('accept');
+  if (reviews && status === 'review-requested')
+    lead.push('approve', 'review-rework');
+  // Work sent back to you waits on you; otherwise reporting is up to you.
+  if (owns && working)
+    (status === 'rework-requested' ? lead : rest).push('progress');
+  if (owns && status === 'in-progress') rest.push('request-review');
+  if ((final && !done && owner !== null) || (owns && working))
+    rest.push('handoff');
+  if (final && !done && owner !== null) rest.push('rework');
+  if (final && !done) rest.push('cancel');
+  return { lead, rest, done };
+}
+/**
+ * One decision: who it goes to when it hands the task on, the note, and its
+ * buttons. The note is always written by the human; claiming needs none.
+ */
+function DecisionForm({
   task,
   data,
   path,
+  title,
+  intents,
+  held,
+  onBack,
+  onSettled,
   onDone,
   onDecided,
 }: {
   task: Task;
   data: WorkspaceSnapshot;
   path: string;
+  title: string;
+  intents: Intent[];
+  /** Buttons wait for the new task version after a decision lands. */
+  held: boolean;
+  /** Puts back the row of actions this one was chosen from. */
+  onBack?: () => void;
+  onSettled: () => void;
   onDone: () => void;
   onDecided: (message: string) => void;
 }) {
   const offline = useContext(Offline);
-  const [routing, setRouting] = useState<Route | null>(null);
   const chosen = useRef<Intent | null>(null);
-  // After a decision lands, buttons wait for the new task version so a second
-  // click can never re-send against the old one.
-  const [decidedAt, setDecidedAt] = useState<number | null>(null);
-  const held = decidedAt === task.version;
   const human = { kind: 'human', id: data.human.id } satisfies Member;
-  const owns =
-    task.state.owner !== null &&
-    memberKey(task.state.owner) === memberKey(human);
-  const reviews =
-    task.state.reviewer !== null &&
-    memberKey(task.state.reviewer) === memberKey(human);
-  const final = task.acceptorHumanId === data.human.id;
-  const status = task.state.status;
-  const done = status === 'accepted' || status === 'cancelled';
-  const working = status === 'in-progress' || status === 'rework-requested';
-  // Mirrors the server's task rules so no button leads to a certain 409/403.
-  const intents: Intent[] = [];
-  if (final && status === 'awaiting-human') intents.push('accept');
-  if (reviews && status === 'review-requested')
-    intents.push('approve', 'review-rework');
-  if (!done && task.state.owner !== null && final) intents.push('rework');
-  if (owns && working) intents.push('progress');
-  const canClaim =
-    status === 'proposed' &&
-    (task.state.reviewer === null ||
-      memberKey(task.state.reviewer) !== memberKey(human));
-  const routes: Route[] = [];
-  if (owns && status === 'in-progress') routes.push('request-review');
-  if ((final && !done && task.state.owner !== null) || (owns && working))
-    routes.push('handoff');
-  if (final && !done) routes.push('cancel');
-  // Nothing to do here: say so only when the task is over.
-  if (!canClaim && intents.length === 0 && routes.length === 0)
-    return done ? <p className="muted decision-none">任务已关闭。</p> : null;
-  const ask = humanAsk(task, data);
+  const routed = intents.find(
+    (intent) => intent === 'handoff' || intent === 'request-review',
+  );
   // A recipient must differ from the current owner (work) or from you (review).
   const exclude =
-    routing === 'handoff'
+    routed === 'handoff'
       ? task.state.owner
-      : routing === 'request-review'
+      : routed === 'request-review'
         ? human
         : null;
   return (
-    <div className="decision-panel" data-ask={ask ? 'true' : undefined}>
-      <ActionForm
-        key={task.id}
-        title={ask ? '等你决定' : '任务操作'}
-        path={(f) => {
-          const intent = value(f, 'intent');
-          return (
-            path +
-            '/' +
-            (intent === 'approve' || intent === 'review-rework'
-              ? 'review'
-              : intent)
-          );
-        }}
-        onDone={() => {
-          setRouting(null);
-          setDecidedAt(task.version);
-          if (chosen.current) onDecided(intentDone[chosen.current]);
-          onDone();
-        }}
-        build={(f) => {
-          const intent = value(f, 'intent');
-          const base = {
-            operationKey: crypto.randomUUID(),
-            expectedVersion: task.version,
-          };
-          const command = TaskCommand.parse(
-            intent === 'claim'
-              ? { ...base, type: 'claim' }
-              : intent === 'request-review'
+    <ActionForm
+      key={task.id}
+      title={title}
+      path={(f) => {
+        const intent = value(f, 'intent');
+        return (
+          path +
+          '/' +
+          (intent === 'approve' || intent === 'review-rework'
+            ? 'review'
+            : intent)
+        );
+      }}
+      onDone={() => {
+        onSettled();
+        if (chosen.current) onDecided(intentDone[chosen.current]);
+        onDone();
+      }}
+      build={(f) => {
+        const intent = value(f, 'intent');
+        const base = {
+          operationKey: crypto.randomUUID(),
+          expectedVersion: task.version,
+        };
+        const command = TaskCommand.parse(
+          intent === 'claim'
+            ? { ...base, type: 'claim' }
+            : intent === 'request-review'
+              ? {
+                  ...base,
+                  type: intent,
+                  note: value(f, 'note'),
+                  reviewer: memberFrom(value(f, 'recipient')),
+                }
+              : intent === 'handoff'
                 ? {
                     ...base,
                     type: intent,
                     note: value(f, 'note'),
-                    reviewer: memberFrom(value(f, 'recipient')),
+                    mode: 'work',
+                    recipient: memberFrom(value(f, 'recipient')),
                   }
-                : intent === 'handoff'
+                : intent === 'approve' || intent === 'review-rework'
                   ? {
                       ...base,
-                      type: intent,
+                      type: 'review',
+                      decision: intent === 'approve' ? 'approve' : 'rework',
                       note: value(f, 'note'),
-                      mode: 'work',
-                      recipient: memberFrom(value(f, 'recipient')),
                     }
-                  : intent === 'approve' || intent === 'review-rework'
-                    ? {
-                        ...base,
-                        type: 'review',
-                        decision: intent === 'approve' ? 'approve' : 'rework',
-                        note: value(f, 'note'),
-                      }
-                    : { ...base, type: intent, note: value(f, 'note') },
-          );
-          return Object.fromEntries(
-            Object.entries(command).filter(
-              ([key]) => key !== 'type' && key !== 'operationKey',
-            ),
-          );
-        }}
-      >
-        {canClaim && !routing && (
-          <SubmitGroup className="decision-buttons" held={held}>
-            <button
-              type="submit"
-              name="intent"
-              value="claim"
-              formNoValidate
-              onClick={() => {
-                chosen.current = 'claim';
-              }}
-            >
-              {intentLabels.claim}
-            </button>
-          </SubmitGroup>
+                  : { ...base, type: intent, note: value(f, 'note') },
+        );
+        return Object.fromEntries(
+          Object.entries(command).filter(
+            ([key]) => key !== 'type' && key !== 'operationKey',
+          ),
+        );
+      }}
+    >
+      {routed && (
+        <Field label="接收人">
+          <MemberSelect
+            name="recipient"
+            data={data}
+            required
+            empty="选择频道里的成员"
+            exclude={exclude}
+          />
+        </Field>
+      )}
+      {intents.includes('cancel') && (
+        <p className="decision-warning">
+          取消会不经验收直接关闭任务，之后无法重新打开。
+        </p>
+      )}
+      {intents.some((intent) => intent !== 'claim') && (
+        <Field label="决定备注">
+          <textarea
+            name="note"
+            className="decision-note"
+            required
+            maxLength={2000}
+            rows={1}
+            placeholder="写下备注"
+            // Chosen from the row, the note is the next thing to write.
+            autoFocus={onBack !== undefined && !routed}
+          />
+        </Field>
+      )}
+      <SubmitGroup className="decision-buttons" held={held}>
+        {intents.map((intent, index) => (
+          <button
+            key={intent}
+            type="submit"
+            name="intent"
+            value={intent}
+            // The way forward is green; cancelling is the one red.
+            className={
+              intent === 'cancel'
+                ? 'danger'
+                : index > 0
+                  ? 'secondary'
+                  : undefined
+            }
+            formNoValidate={intent === 'claim'}
+            onClick={() => {
+              chosen.current = intent;
+            }}
+          >
+            {intentLabels[intent]}
+          </button>
+        ))}
+        {onBack && (
+          <button type="button" className="secondary" onClick={onBack}>
+            返回
+          </button>
         )}
-        {(routing === 'handoff' || routing === 'request-review') && (
-          <Field label="接收人">
-            <MemberSelect
-              name="recipient"
-              data={data}
-              required
-              empty="选择频道里的成员"
-              exclude={exclude}
-            />
-          </Field>
-        )}
-        {routing === 'cancel' && (
-          <p className="decision-warning">
-            取消会不经验收直接关闭任务，之后无法重新打开。
-          </p>
-        )}
-        {(routing !== null || intents.length > 0) && (
-          <Field label="决定备注">
-            <textarea
-              name="note"
-              className="decision-note"
-              required
-              maxLength={2000}
-              rows={1}
-              placeholder="写下备注"
-            />
-          </Field>
-        )}
-        {routing ? (
-          <SubmitGroup className="decision-buttons" held={held}>
-            <button
-              type="submit"
-              name="intent"
-              value={routing}
-              className={intentTone[routing]}
-              onClick={() => {
-                chosen.current = routing;
-              }}
-            >
-              {intentLabels[routing]}
-            </button>
-            <button
-              type="button"
-              className="secondary"
-              onClick={() => {
-                setRouting(null);
-              }}
-            >
-              返回
-            </button>
-          </SubmitGroup>
-        ) : (
-          <>
-            {intents.length > 0 && (
-              <SubmitGroup className="decision-buttons" held={held}>
-                {intents.map((intent) => (
-                  <button
-                    key={intent}
-                    type="submit"
-                    name="intent"
-                    value={intent}
-                    className={intentTone[intent]}
-                    onClick={() => {
-                      chosen.current = intent;
-                    }}
-                  >
-                    {intentLabels[intent]}
-                  </button>
-                ))}
-              </SubmitGroup>
-            )}
-            {routes.length > 0 && (
-              <div className="route-buttons">
-                {routes.map((route) => (
-                  <button
-                    key={route}
-                    type="button"
-                    className={
-                      route === 'cancel' ? 'quiet subtle-danger' : 'quiet'
-                    }
-                    onClick={() => {
-                      setRouting(route);
-                    }}
-                  >
-                    {intentLabels[route]}…
-                  </button>
-                ))}
-              </div>
-            )}
-          </>
-        )}
-        {offline && (
-          <p className="decision-help">工作区重新连上之前，操作暂停。</p>
-        )}
-      </ActionForm>
-    </div>
+      </SubmitGroup>
+      {offline && (
+        <p className="decision-help">工作区重新连上之前，操作暂停。</p>
+      )}
+    </ActionForm>
   );
 }
 /**
@@ -977,18 +936,24 @@ function TaskLayout({
 }
 /**
  * The decision that waits on you, marked in orange, led by the latest note
- * that brought it here. Without one, only the actions you may take.
+ * that brought it here.
  */
 function TaskDecision({
   task,
   data,
   path,
+  intents,
+  held,
+  onSettled,
   onDone,
   onDecided,
 }: {
   task: Task;
   data: WorkspaceSnapshot;
   path: string;
+  intents: Intent[];
+  held: boolean;
+  onSettled: () => void;
   onDone: () => void;
   onDecided: (message: string) => void;
 }) {
@@ -1002,13 +967,19 @@ function TaskDecision({
           <q>{task.state.note}</q>
         </p>
       )}
-      <DecisionPanel
-        task={task}
-        data={data}
-        path={path}
-        onDone={onDone}
-        onDecided={onDecided}
-      />
+      <div className="decision-panel">
+        <DecisionForm
+          task={task}
+          data={data}
+          path={path}
+          title={ask ? '等你决定' : intentLabels[intents[0] ?? 'claim']}
+          intents={intents}
+          held={held}
+          onSettled={onSettled}
+          onDone={onDone}
+          onDecided={onDecided}
+        />
+      </div>
     </div>
   );
 }
@@ -1023,6 +994,7 @@ export function TaskPage({
   onDone,
   onClose,
   onDecided,
+  onReply,
   openAgent,
 }: {
   task: Task;
@@ -1031,12 +1003,30 @@ export function TaskPage({
   onDone: () => void;
   onClose: () => void;
   onDecided: (message: string) => void;
+  /** Opens an agent's reply in the conversation. */
+  onReply: (messageId: string) => void;
   openAgent: (agentId: string) => void;
 }) {
   const topic = task.topicId
     ? data.topics.items.find((t) => t.id === task.topicId)
     : undefined;
   const acceptor = { kind: 'human', id: task.acceptorHumanId } satisfies Member;
+  const { lead, rest, done } = taskActions(task, data);
+  // One of the row's actions, chosen: its note opens in place of the row.
+  const [picked, setPicked] = useState<Intent | null>(null);
+  const chosen = picked !== null && rest.includes(picked) ? picked : null;
+  // After a decision lands, buttons wait for the new task version so a second
+  // click can never re-send against the old one.
+  const [decidedAt, setDecidedAt] = useState<number | null>(null);
+  const held = decidedAt === task.version;
+  const settled = () => {
+    setPicked(null);
+    setDecidedAt(task.version);
+  };
+  const deliveries = withAgents(task.state.status)
+    ? taskDeliveries(data, task.id)
+    : [];
+  const decision = { task, data, path, held, onDone, onDecided };
   return (
     <Page
       label={task.title}
@@ -1050,7 +1040,9 @@ export function TaskPage({
           status={task.state.status}
           title={<h2>{task.title}</h2>}
           description={
-            task.description ? (
+            // A task made from a message is often titled by all of it.
+            task.description &&
+            task.description.trim() !== task.title.trim() ? (
               <p className="task-description">{task.description}</p>
             ) : null
           }
@@ -1066,32 +1058,67 @@ export function TaskPage({
           acceptor={<MemberChip member={acceptor} data={data} />}
           topic={topic?.title ?? null}
           decision={
-            <TaskDecision
-              task={task}
-              data={data}
-              path={path}
-              onDone={onDone}
-              onDecided={onDecided}
-            />
+            <>
+              {/* What waits on you leads; then where the task is now. */}
+              {lead.length > 0 && (
+                <TaskDecision
+                  {...decision}
+                  intents={lead}
+                  onSettled={settled}
+                />
+              )}
+              {deliveries.length > 0 && (
+                <ul className="deliveries" aria-label="智能体响应">
+                  {deliveries.map((d) => (
+                    <DeliveryLine
+                      key={d.id}
+                      delivery={d}
+                      data={data}
+                      channelId={task.channelId}
+                      onReply={onReply}
+                      openAgent={openAgent}
+                      onDone={onDone}
+                    />
+                  ))}
+                </ul>
+              )}
+              {done && <p className="muted decision-none">任务已关闭。</p>}
+            </>
           }
         >
-          {/* Agent wake-ups matter only while the task is with an agent. */}
-          {withAgents(task.state.status) &&
-            taskDeliveries(data, task.id).length > 0 && (
-              <ul className="deliveries" aria-label="智能体响应">
-                {taskDeliveries(data, task.id).map((d) => (
-                  <DeliveryLine
-                    key={d.id}
-                    delivery={d}
-                    data={data}
-                    channelId={task.channelId}
-                    openAgent={openAgent}
-                    onDone={onDone}
-                  />
-                ))}
-              </ul>
-            )}
           <TaskHistory task={task} path={path} data={data} />
+          {chosen ? (
+            <div className="task-actions">
+              <DecisionForm
+                {...decision}
+                title={intentLabels[chosen]}
+                intents={[chosen]}
+                onBack={() => {
+                  setPicked(null);
+                }}
+                onSettled={settled}
+              />
+            </div>
+          ) : (
+            rest.length > 0 && (
+              <div className="task-actions route-buttons">
+                {rest.map((intent) => (
+                  <button
+                    key={intent}
+                    type="button"
+                    className={
+                      intent === 'cancel' ? 'quiet subtle-danger' : 'quiet'
+                    }
+                    onClick={() => {
+                      setPicked(intent);
+                    }}
+                  >
+                    {intentLabels[intent]}
+                  </button>
+                ))}
+              </div>
+            )
+          )}
         </TaskLayout>
       </div>
     </Page>

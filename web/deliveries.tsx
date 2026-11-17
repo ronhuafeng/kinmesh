@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import type { ReactNode } from 'react';
 import { z } from 'zod';
 import type { WorkspaceSnapshot } from '../src/workspace/contracts.js';
 import { trustedLinkOrigin } from '../src/workspace/links.js';
@@ -215,7 +216,7 @@ export function Outcome({
   teamId: string;
   t3Origin: string | null;
   className?: string;
-  children: string;
+  children: ReactNode;
 }) {
   const approve = useApproval(delivery, teamId, t3Origin);
   return (
@@ -231,6 +232,37 @@ export function Outcome({
         </a>
       ) : (
         children
+      )}
+    </span>
+  );
+}
+/**
+ * A line's words. A new state cross-fades over the one it replaces instead
+ * of jumping; while the agent works, a slow light passes over them (CSS).
+ */
+function Words({ text }: { text: string }) {
+  const [shown, setShown] = useState(text);
+  const [was, setWas] = useState<string | null>(null);
+  if (text !== shown) {
+    setWas(shown);
+    setShown(text);
+  }
+  useEffect(() => {
+    if (was === null) return;
+    const gone = setTimeout(() => {
+      setWas(null);
+    }, 200);
+    return () => {
+      clearTimeout(gone);
+    };
+  }, [was]);
+  return (
+    <span className="delivery-words">
+      <span key={shown}>{shown}</span>
+      {was !== null && (
+        <span key={'was:' + was} className="was" aria-hidden="true">
+          {was}
+        </span>
       )}
     </span>
   );
@@ -273,7 +305,7 @@ export function DeliveryLine({
             onReply(reply);
           }}
         >
-          {text} ↓
+          <Words text={text} /> ↓
         </button>
       ) : (
         <Outcome
@@ -281,7 +313,7 @@ export function DeliveryLine({
           teamId={data.team.id}
           t3Origin={data.nativeT3Origin}
         >
-          {text}
+          <Words text={text} />
         </Outcome>
       )}
       {stoppable(delivery) && (

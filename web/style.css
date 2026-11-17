@@ -92,6 +92,7 @@
   /* Motion: hover, press and selection ease in 150 ms; things that move
    * or appear take 200 ms. */
   --dur-fast: 150ms;
+  --dur-press: 100ms;
   --dur: 200ms;
   /* The reading column: a conversation, a page, its composer. */
   --reading: 45rem;
@@ -101,6 +102,10 @@
   --mono: ui-monospace, 'SF Mono', SFMono-Regular, Menlo, Consolas, monospace;
   --ease-out: cubic-bezier(0.2, 0.8, 0.2, 1);
   --spring: cubic-bezier(0.34, 1.3, 0.64, 1);
+  /* A pressed control's fill: darker on light, lighter on dark. */
+  --pressed: brightness(0.92);
+  /* The light that passes over words while an agent works. */
+  --sheen: #c7c7cc;
 
   font-family: var(--font);
   color: var(--ink);
@@ -132,6 +137,8 @@
     --ink: #ffffff;
     --ink-muted: #98989f;
     --ink-subtle: #8e8e93;
+    --pressed: brightness(1.25);
+    --sheen: #ffffff;
     --hairline: #38383a;
     --hairline-strong: #48484a;
     --primary: #3fc587;
@@ -327,19 +334,52 @@ a.button {
     border-color var(--dur-fast) ease,
     color var(--dur-fast) ease,
     box-shadow var(--dur-fast) ease,
-    opacity var(--dur-fast) ease;
+    opacity var(--dur-fast) ease,
+    filter var(--dur-press) var(--ease-out),
+    scale var(--dur-press) var(--ease-out);
 }
 button:hover:not(:disabled),
 a.button:hover {
   background: var(--primary-hover);
   border-color: var(--primary-hover);
 }
+/* Pressed, a control darkens its fill and gives a little, as on iOS; a row
+ * or a link in a sentence only darkens. Without motion only the colour
+ * changes. iOS's own grey tap box is not drawn: this is the press state. */
+:root {
+  -webkit-tap-highlight-color: transparent;
+}
 button:active:not(:disabled),
 a.button:active {
-  opacity: 0.7;
+  filter: var(--pressed);
+  scale: 0.97;
+}
+:is(
+    .sidebar nav button,
+    .sidebar .person,
+    button.inbox-main,
+    .link-button,
+    [role='tab']
+  ):active:not(:disabled) {
+  scale: none;
+}
+/* A card gives as a whole; its title is only the target. */
+button.card-link:active:not(:disabled) {
+  filter: none;
+  scale: none;
+}
+.task-card:has(button.card-link:active) {
+  filter: var(--pressed);
+  scale: 0.97;
+}
+@media (prefers-reduced-motion: reduce) {
+  button:active:not(:disabled),
+  a.button:active,
+  .task-card:has(button.card-link:active) {
+    scale: none;
+  }
 }
 button:disabled {
-  cursor: not-allowed;
   opacity: 0.5;
 }
 /* A secondary action is a grey filled button, like iOS's. */
@@ -703,7 +743,8 @@ textarea {
   transition:
     background-color var(--dur) var(--ease-out),
     box-shadow var(--dur) var(--ease-out),
-    color var(--dur-fast) ease;
+    color var(--dur-fast) ease,
+    filter var(--dur-press) var(--ease-out);
 }
 [role='tab']:hover:not(:disabled) {
   background: transparent;
@@ -810,8 +851,10 @@ textarea {
   flex: 1;
   min-width: 0;
   overflow: hidden;
-  text-overflow: ellipsis;
   white-space: nowrap;
+  /* A name too long for the row fades out at its edge; hovered, it is
+   * said in full. */
+  mask-image: linear-gradient(to right, #000 calc(100% - 1.5rem), transparent);
 }
 .sidebar nav button span.waiting-dot {
   flex: none;
@@ -822,6 +865,17 @@ textarea {
   margin-right: 0.05rem;
   border-radius: 50%;
   background: var(--decision);
+  transition:
+    opacity var(--dur-fast) ease,
+    width var(--dur-fast) ease,
+    margin var(--dur-fast) ease;
+}
+/* Once nothing waits there, the dot fades and gives its room back. */
+.sidebar nav button span.waiting-dot:not([data-on]) {
+  width: 0;
+  margin-left: -0.625rem;
+  margin-right: 0;
+  opacity: 0;
 }
 /* The current channel's topics hang under it like a tree: a hairline trunk,
  * the topic you are in in ink, the others quieter. */
@@ -1138,6 +1192,24 @@ a.link-button {
     animation: fade-rise var(--dur) var(--ease-out);
   }
 }
+/* A message on its way is shown faded, where it will stay; once the server
+ * has it, the same message comes to full strength. A fade only says the
+ * state changed, so it stays with reduced motion. */
+.messages > li > .avatar,
+.messages > li > .message-body > :is(header, .message-text, .mentions) {
+  transition: opacity var(--dur) ease;
+}
+.messages > li[data-pending] > .avatar,
+.messages
+  > li[data-pending]
+  > .message-body
+  > :is(header, .message-text, .mentions) {
+  opacity: 0.5;
+}
+/* One that didn't go says so under it, like a delivery line. */
+.message-failed {
+  margin: 0.35rem 0 0;
+}
 /* A new day: its date, centred between hairlines. */
 .messages > li.day-divider {
   display: flex;
@@ -1423,7 +1495,7 @@ button.author-link:hover:not(:disabled) {
   border-left: 2px solid var(--agent);
   padding-left: 0.6rem;
 }
-.board-column[data-status='awaiting-human'] .column-heading {
+.board-column[data-status='awaiting-human']:has(> .task-card) .column-heading {
   color: var(--decision-text);
 }
 /* A card: white and rounded on its column, its title, then one line of
@@ -1442,7 +1514,9 @@ button.author-link:hover:not(:disabled) {
     var(--elev-1);
   transition:
     box-shadow var(--dur) var(--ease-out),
-    translate var(--dur) var(--ease-out);
+    translate var(--dur) var(--ease-out),
+    filter var(--dur-press) var(--ease-out),
+    scale var(--dur-press) var(--ease-out);
 }
 /* Pointed at, a card lifts a little off its column. */
 .task-card:hover {
@@ -1525,8 +1599,10 @@ button.card-link:focus-visible::after {
   background: var(--hairline);
   transition: background-color 320ms ease;
 }
-.lifecycle li[data-step='done']::before {
-  background: var(--primary);
+/* Passed steps are neutral, never "done" green; where the task is wears its
+ * board column's colour; what is ahead stays a hairline. */
+.lifecycle li[data-step='past']::before {
+  background: var(--ink-subtle);
 }
 .lifecycle li[data-step='current']::before {
   background: var(--tone, var(--primary));
@@ -1698,6 +1774,23 @@ dd {
   }
   to {
     background-position: 0 0;
+  }
+}
+@keyframes fade-out {
+  from {
+    opacity: 1;
+  }
+}
+@keyframes sheen {
+  from {
+    background-position:
+      100% 0,
+      0 0;
+  }
+  to {
+    background-position:
+      -50% 0,
+      0 0;
   }
 }
 @keyframes tick {
@@ -1921,6 +2014,44 @@ button.quiet.subtle-danger {
 .delivery[data-tone='active']::before {
   animation: pulse 2.4s ease-in-out infinite;
 }
+/* A line's words: a new state cross-fades over the old one. */
+.delivery-words {
+  display: inline-grid;
+}
+.delivery-words > * {
+  grid-area: 1 / 1;
+  animation: fade-in var(--dur) ease;
+}
+.delivery-words > .was {
+  opacity: 0;
+  animation: fade-out var(--dur) ease;
+}
+/* While the agent works, a slow light passes over its words; without
+ * motion they are simply text. */
+@media (prefers-reduced-motion: no-preference) {
+  .delivery[data-tone='active'] .delivery-words > :not(.was) {
+    background:
+      linear-gradient(
+          100deg,
+          transparent 40%,
+          var(--sheen) 50%,
+          transparent 60%
+        )
+        0 0 / 300% 100% no-repeat,
+      linear-gradient(currentColor, currentColor);
+    -webkit-background-clip: text;
+    background-clip: text;
+    -webkit-text-fill-color: transparent;
+    animation:
+      fade-in var(--dur) ease,
+      sheen 2.8s linear infinite;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .delivery-words > .was {
+    display: none;
+  }
+}
 .delivery[data-tone='waiting'] {
   --tone: var(--warn);
 }
@@ -2089,7 +2220,8 @@ a.button-link {
 .composer-input .field label,
 .task-title .field-label,
 .task-page .field:has(.description-input) .field-label,
-.task-decision .field-label {
+.task-decision .field-label,
+.task-actions .field-label {
   position: absolute;
   width: 1px;
   height: 1px;
@@ -2224,20 +2356,51 @@ a.button-link {
 .workspace-header > .view-switch {
   height: 38px;
 }
+/* The views' thumb is one piece that slides to the chosen tab as its
+ * content appears (web/app.tsx places it); without motion it moves at once.
+ * On no tab (an agent, Settings) there is none. */
+.view-switch {
+  position: relative;
+}
+.view-switch::before {
+  content: '';
+  position: absolute;
+  top: 3px;
+  bottom: 3px;
+  left: 0;
+  width: var(--thumb-w, 0);
+  translate: var(--thumb-x, 0) 0;
+  border-radius: 8px;
+  background: var(--selected);
+  box-shadow:
+    0 3px 8px rgb(0 0 0 / 0.12),
+    0 0 0 0.5px rgb(0 0 0 / 0.04);
+  opacity: 0;
+  transition: opacity var(--dur-fast) ease;
+}
+.view-switch[data-thumb]::before {
+  opacity: 1;
+}
+.view-switch[data-thumb='placed']::before {
+  transition:
+    translate var(--dur) var(--ease-out),
+    width var(--dur) var(--ease-out),
+    opacity var(--dur-fast) ease;
+}
+.view-switch [role='tab'] {
+  position: relative;
+  z-index: 1;
+}
+.view-switch [role='tab'][data-state='active'],
+.view-switch [role='tab'][data-state='active']:hover:not(:disabled) {
+  background: transparent;
+  box-shadow: none;
+}
 .workspace-header button.icon-button {
   width: 38px;
   height: 38px;
   padding: 0;
   border-radius: 10px;
-}
-/* Sign out answers the views across the bar: the same height, on the
- * same grey track, round. */
-.header-end button.icon-button {
-  border-radius: 50%;
-  background: var(--fill);
-}
-.header-end button.icon-button:hover:not(:disabled) {
-  background: color-mix(in srgb, var(--fill), var(--ink) 6%);
 }
 .message-text {
   font-size: var(--text-body);
@@ -2427,9 +2590,9 @@ button.icon-button {
 button.icon-button:hover:not(:disabled) {
   color: var(--ink);
 }
-button.icon-button:active:not(:disabled) {
-  opacity: 1;
-  background: color-mix(in srgb, var(--hover), var(--ink) 6%);
+button.icon-button:active:not(:disabled),
+button.quiet:active:not(:disabled) {
+  background: var(--hover);
 }
 /* The one confirm control used inline: a small round green button with an
  * arrow, its icon centred, shown only once there is something to confirm. */
@@ -3243,14 +3406,14 @@ button.roster-person:hover:not(:disabled) {
     flex: 1;
   }
 }
+/* All five share the width (one stage at a time below 1024 px), so the
+ * board never scrolls sideways and reaches the view's bottom gutter. */
 .board {
   display: grid;
-  grid-template-columns: repeat(5, minmax(9.5rem, 1fr));
+  grid-template-columns: repeat(5, minmax(0, 1fr));
   gap: 0.75rem;
   align-items: stretch;
-  padding: 0.25rem 0 0.75rem;
-  overflow-x: auto;
-  scroll-snap-type: x proximity;
+  padding: 0.25rem 0 0;
 }
 .board-column {
   display: grid;
@@ -3261,10 +3424,10 @@ button.roster-person:hover:not(:disabled) {
   padding: 0.75rem;
   border-radius: var(--radius-lg);
   background: var(--canvas);
-  scroll-snap-align: start;
 }
-/* Awaiting your sign-off stands out: an orange edge and a warm tint. */
-.board-column[data-status='awaiting-human'] {
+/* Awaiting your sign-off stands out, while it holds a card: an orange edge
+ * and a warm tint. */
+.board-column[data-status='awaiting-human']:has(> .task-card) {
   background: color-mix(in srgb, var(--decision) 4%, var(--canvas));
   box-shadow: inset 0 0 0 1.5px
     color-mix(in srgb, var(--decision) 50%, transparent);
@@ -3631,25 +3794,50 @@ button.inbox-main:focus-visible::after {
   }
 }
 .task-decision .decision-panel .action-form,
-.task-decision .decision-panel .action-form > fieldset {
+.task-decision .decision-panel .action-form > fieldset,
+.task-actions .action-form,
+.task-actions .action-form > fieldset {
   display: grid;
   gap: 0.6rem;
   margin: 0;
   padding: 0;
   border: 0;
 }
-.task-decision .decision-note {
-  min-height: 2.5rem;
-  resize: vertical;
+/* The note is typed in place, like the title: one underline that turns
+ * green, growing with what is written. */
+.task-page .decision-note {
+  width: 100%;
+  min-height: 0;
+  padding: 0.25rem 0;
+  border: 0;
+  border-bottom: 1px solid var(--hairline);
+  border-radius: 0;
+  background: transparent;
+  color: var(--ink);
+  font: inherit;
+  resize: none;
+  field-sizing: content;
 }
-.task-decision .decision-buttons button {
+.task-page .decision-note:focus,
+.task-page .decision-note:focus-visible {
+  outline: none;
+  box-shadow: none;
+  border-bottom-color: var(--primary);
+}
+.task-decision .decision-buttons button,
+.task-actions .decision-buttons button {
   flex: 0 0 auto;
   padding: 0.55rem 1.1rem;
 }
-.task-decision .route-buttons {
-  border-top: 0;
-  padding-top: 0;
-  margin-left: -0.5rem;
+/* The rest of what you may do: one quiet row at the end, its words on the
+ * column's edge, cancelling last. */
+.task-actions {
+  margin-top: 0.75rem;
+  padding-top: 0.5rem;
+  border-top: var(--hairline-width) solid var(--hairline);
+}
+.task-actions.route-buttons > button:first-child {
+  margin-left: calc(-0.55rem - 1px);
 }
 /* "Done when": a checklist, read or written. */
 .criteria {
@@ -3764,16 +3952,10 @@ button.inbox-main:focus-visible::after {
 .task-side {
   display: grid;
 }
-/* History: time, face, what happened; run references inline. */
+/* History: time, face, what happened; a linked run's sentence is its link. */
 .task-history {
   display: grid;
   gap: 0.4rem;
-}
-.page-heading {
-  display: flex;
-  justify-content: space-between;
-  align-items: baseline;
-  gap: 0.5rem;
   margin-top: 0.75rem;
 }
 .history {
@@ -3794,8 +3976,9 @@ button.inbox-main:focus-visible::after {
   font-size: 13px;
   color: var(--ink-muted);
 }
-.history .run-ref {
-  font-size: 0.72rem;
+.history li > span {
+  min-width: 0;
+  overflow-wrap: anywhere;
 }
 .task-main .create-task {
   justify-self: start;
@@ -4290,7 +4473,6 @@ button.new-agent-go {
   }
   .view-switch [role='tab'],
   .sidebar-toggle,
-  .header-end button.icon-button,
   .page-bar button.icon-button,
   .nav-heading button.add-button,
   .team-row button.search-toggle {
@@ -4298,7 +4480,6 @@ button.new-agent-go {
   }
   .view-switch [role='tab']::after,
   .sidebar-toggle::after,
-  .header-end button.icon-button::after,
   .page-bar button.icon-button::after,
   .nav-heading button.add-button::after,
   .team-row button.search-toggle::after {
@@ -4324,6 +4505,10 @@ button.new-agent-go {
   .page-bar-title {
     display: none;
   }
+  /* A task sits on the board: its 看板 tab, lit above it, leads back. */
+  .task-page > .page-bar {
+    display: none;
+  }
   /* The screen goes to the content: narrow edges around the sidebar and the
    * main column, a header no taller than its tabs need. */
   .sidebar {
@@ -4331,7 +4516,7 @@ button.new-agent-go {
   }
   .workspace-main {
     --gutter: 0.75rem;
-    padding: 0 var(--gutter) 1rem;
+    padding: 0 var(--gutter) var(--gutter);
   }
   .workspace-header {
     min-height: 0;

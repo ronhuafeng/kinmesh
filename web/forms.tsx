@@ -80,6 +80,7 @@ export function ActionForm({
   onResult,
   icon,
   ready = true,
+  handOff,
 }: {
   title: string;
   /** A function path lets one form route each submit button to its own endpoint. */
@@ -103,6 +104,12 @@ export function ActionForm({
   icon?: ReactNode;
   /** False while there is nothing to confirm yet, as in an empty field. */
   ready?: boolean;
+  /**
+   * Takes over sending, for what is written one after another (a message):
+   * the form hands on what it built and is free at once, and `onDone`
+   * clears it. While the workspace is paused nothing is handed on.
+   */
+  handOff?: (path: string, body: Record<string, unknown>) => void;
 }) {
   const action = useAction();
   const formRef = useRef<HTMLFormElement>(null);
@@ -127,6 +134,11 @@ export function ActionForm({
           const data = new FormData(form, submitter);
           const body = build(data);
           const target = typeof path === 'string' ? path : path(data);
+          if (handOff) {
+            handOff(target, body);
+            onDone();
+            return;
+          }
           void action
             .send(target, body, keyed, {}, undefined, method, onResult)
             .then((ok) => {
@@ -153,6 +165,15 @@ export function ActionForm({
               aria-label={submit}
               title={submit}
               disabled={action.disabled || action.busy || !ready}
+              // Handed on, the next one is written at once: pressing Send
+              // leaves the focus, and a touch keyboard, where they were.
+              onMouseDown={
+                handOff
+                  ? (event) => {
+                      event.preventDefault();
+                    }
+                  : undefined
+              }
             >
               {icon}
             </button>

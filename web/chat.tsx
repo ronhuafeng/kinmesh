@@ -1,6 +1,7 @@
 import {
   Fragment,
   useCallback,
+  useContext,
   useEffect,
   useId,
   useLayoutEffect,
@@ -8,9 +9,9 @@ import {
   useState,
 } from 'react';
 import { z } from 'zod';
-import { REACH, type Message } from '../src/domain/communication.js';
+import { Message, REACH } from '../src/domain/communication.js';
 import type { WorkspaceSnapshot } from '../src/workspace/contracts.js';
-import { value } from './api.js';
+import { MutationPermission, api, value } from './api.js';
 import { ActionForm, AddButton, Field, InlineField } from './forms.js';
 import { SendIcon } from './icons.js';
 import { joinedAgents, memberName, otherPeople } from './names.js';
@@ -66,11 +67,14 @@ function Composer({
   channelPath,
   topicId,
   members,
+  onSend,
   onDone,
 }: {
   channelPath: string;
   topicId: string;
   members: Mentionable[];
+  /** Takes a message on its way, so the field is free at once. */
+  onSend: (path: string, body: Record<string, unknown>) => void;
   onDone: () => void;
 }) {
   const [chips, setChips] = useState<Mentionable[]>([]);
@@ -129,7 +133,11 @@ function Composer({
         submit="发送消息"
         icon={<SendIcon size={20} />}
         ready={ready}
+        handOff={onSend}
         onDone={() => {
+          // The field is free for the next message at once; what was sent
+          // shows in the conversation until the server has it.
+          if (input.current) input.current.value = '';
           setChips([]);
           setQuery(null);
           setReady(false);
@@ -137,7 +145,8 @@ function Composer({
           onDone();
         }}
         build={(f) => {
-          const body = value(f, 'body');
+          const body = value(f, 'body').trim();
+          if (body === '') throw new Error('Nothing to send');
           const mentioned = [...chips];
           for (const member of mentionedIn(body, members))
             if (!mentioned.some((m) => m.id === member.id))
@@ -440,6 +449,84 @@ export function showMessage(id: string) {
 const mine = (m: ChatMessage | undefined, me: string) =>
   m?.author.kind === 'human' && m.author.humanId === me;
 /**
+ * A message on its way: shown at once, as it will read, until the server
+ * has it. Its request is kept exactly, operation key and all, so sending it
+ * again can only ever post it once.
+ */
+const Outgoing = z.object({
+  key: z.string(),
+  path: z.string(),
+  request: z.string(),
+  message: Message,
+  /** The newest position on screen when it was sent: it lands after it. */
+  after: z.number(),
+  /** The message the server made, once it has said so. */
+  id: z.string().nullable(),
+  failed: z.boolean(),
+});
+type Outgoing = z.infer<typeof Outgoing>;
+/**
+ * The messages written here that the conversation doesn't show yet, sent
+ * one after another so they land in the order written. What hasn't been
+ * confirmed survives a reload or a switch of channel; its outcome is then
+ * unknown, so it waits to be sent again (or arrives on its own, if it got
+ * through).
+ */
+function useOutbox(channelPath: string, onSent: () => void) {
+  const storeKey = 'outbox:' + channelPath;
+  const [outgoing, setOutgoing] = useState<Outgoing[]>(() => {
+    const saved = z.array(Outgoing).safeParse(kept(storeKey));
+    return saved.success
+      ? saved.data
+          .filter((o) => o.id === null)
+          .map((o) => ({ ...o, failed: true }))
+      : [];
+  });
+  useEffect(() => {
+    const unconfirmed = outgoing.filter((o) => o.id === null);
+    keep(storeKey, unconfirmed.length > 0 ? unconfirmed : null);
+  }, [storeKey, outgoing]);
+  const sent = useRef(onSent);
+  useEffect(() => {
+    sent.current = onSent;
+  }, [onSent]);
+  const queue = useRef(Promise.resolve());
+  const update = (key: string, change: Partial<Outgoing>) => {
+    setOutgoing((old) =>
+      old.map((o) => (o.key === key ? { ...o, ...change } : o)),
+    );
+  };
+  const post = (entry: Outgoing) => {
+    queue.current = queue.current.then(async () => {
+      try {
+        const raw = await api(entry.path, {
+          method: 'POST',
+          body: entry.request,
+          headers: { 'content-type': 'application/json' },
+        });
+        update(entry.key, { id: z.object({ id: z.string() }).parse(raw).id });
+        sent.current();
+      } catch {
+        update(entry.key, { failed: true });
+      }
+    });
+  };
+  return {
+    outgoing,
+    send(entry: Outgoing) {
+      setOutgoing((old) => [...old, entry]);
+      post(entry);
+    },
+    retry(entry: Outgoing) {
+      update(entry.key, { failed: false });
+      post({ ...entry, failed: false });
+    },
+    remove(keys: string[]) {
+      setOutgoing((old) => old.filter((o) => !keys.includes(o.key)));
+    },
+  };
+}
+/**
  * Marks what arrived while the conversation was open: messages newer than
  * any shown before in this place (a channel, or one of its topics). Older
  * ones loaded by scrolling back did not arrive.
@@ -622,7 +709,52 @@ export function Chat({
   const [chosen, setChosen] = useState<string | null>(null);
   const reading = useReadingPosition(shown, messages);
   const earlier = useEarlier(data.messages.nextCursor, onEarlier);
+  const permitted = useContext(MutationPermission);
+  const outbox = useOutbox(channelPath, onDone);
+  // Which message each one sent became: the one the server named, or, when
+  // its answer was lost, the same words of mine arriving after it. A
+  // message keeps the place, and the element, of what was shown for it.
+  const became = useRef(new Map<string, string>());
+  const claimed = new Set(became.current.keys());
+  const keyOf = new Map(became.current);
+  for (const o of outbox.outgoing) if (o.id !== null) claimed.add(o.id);
+  for (const o of outbox.outgoing) {
+    const id =
+      o.id ??
+      messages.find(
+        (m) =>
+          !claimed.has(m.id) &&
+          mine(m, data.human.id) &&
+          m.position > o.after &&
+          m.body === o.message.body &&
+          m.topicId === o.message.topicId,
+      )?.id;
+    if (id === undefined) continue;
+    claimed.add(id);
+    keyOf.set(id, o.key);
+  }
+  const landed = outbox.outgoing.filter((o) =>
+    messages.some((m) => keyOf.get(m.id) === o.key),
+  );
+  const waiting = outbox.outgoing.filter(
+    (o) =>
+      !landed.includes(o) &&
+      (shownTopic === '' || o.message.topicId === shownTopic),
+  );
+  const landedKeys = landed.map((o) => o.key).join(' ');
+  useEffect(() => {
+    if (landedKeys === '') return;
+    const keys = landedKeys.split(' ');
+    for (const [id, key] of keyOf)
+      if (keys.includes(key)) became.current.set(id, key);
+    outbox.remove(keys);
+  }, [landedKeys]);
   if (!channel) return null;
+  // What is on its way is shown after what has arrived, as it will read.
+  const rows = [
+    ...messages.map((m) => ({ m, o: undefined })),
+    ...waiting.map((o) => ({ m: o.message, o })),
+  ];
   // Mention deliveries under each asking message, and the way back from a reply.
   const asked = new Map<string, DeliveryView[]>();
   const replyTo = new Map<string, string>();
@@ -711,8 +843,8 @@ export function Chat({
         </div>
       )}
       <ol className="messages" aria-label="频道消息" ref={reading.list}>
-        {messages.map((m, index) => {
-          const previous = messages[index - 1];
+        {rows.map(({ m, o }, index) => {
+          const previous = rows[index - 1]?.m;
           // A new day opens with its date; a group never crosses one.
           const newDay =
             previous === undefined ||
@@ -739,12 +871,12 @@ export function Chat({
           // nor the "replied" line to say so.
           const answers = replyTo.get(m.id);
           const quoted = answers !== undefined && answers !== previous?.id;
-          const following = messages[index + 1]?.id;
+          const following = rows[index + 1]?.m.id;
           const lines = (asked.get(m.id) ?? []).filter(
             (d) => !(d.state === 'acked' && d.resultMessageId === following),
           );
           return (
-            <Fragment key={m.id}>
+            <Fragment key={o?.key ?? keyOf.get(m.id) ?? m.id}>
               {newDay && (
                 <li className="day-divider" role="separator">
                   <span>{dayLabel(m.createdAt)}</span>
@@ -754,7 +886,16 @@ export function Chat({
                 id={'message-' + m.id}
                 data-kind={m.author.kind}
                 data-continued={sameAuthor ? 'true' : undefined}
-                data-new={fresh.has(m.id) ? 'true' : undefined}
+                // What was sent arrived when it was shown: settling, it
+                // only comes to full strength.
+                data-new={
+                  o !== undefined || fresh.has(m.id) || keyOf.has(m.id)
+                    ? 'true'
+                    : undefined
+                }
+                data-pending={
+                  o === undefined ? undefined : o.failed ? 'failed' : 'sending'
+                }
                 // On touch, a tapped message shows what can be done with it.
                 data-chosen={chosen === m.id ? 'true' : undefined}
                 onClick={(event) => {
@@ -865,24 +1006,56 @@ export function Chat({
                       ))}
                     </ul>
                   )}
-                  <div className="message-actions">
-                    <button
-                      type="button"
-                      className="quiet"
-                      onClick={() => {
-                        onMakeTask(m);
-                      }}
-                    >
-                      转为任务
-                    </button>
-                  </div>
+                  {o === undefined ? (
+                    <div className="message-actions">
+                      <button
+                        type="button"
+                        className="quiet"
+                        onClick={() => {
+                          onMakeTask(m);
+                        }}
+                      >
+                        转为任务
+                      </button>
+                    </div>
+                  ) : (
+                    o.failed && (
+                      // It stays where it was written, to be sent again with
+                      // the same key (posted once, whatever happened) or let go.
+                      <p
+                        className="delivery message-failed"
+                        data-tone="problem"
+                      >
+                        没发出去
+                        <button
+                          type="button"
+                          className="link-button"
+                          disabled={!permitted}
+                          onClick={() => {
+                            outbox.retry(o);
+                          }}
+                        >
+                          重试
+                        </button>
+                        <button
+                          type="button"
+                          className="link-button"
+                          onClick={() => {
+                            outbox.remove([o.key]);
+                          }}
+                        >
+                          删除
+                        </button>
+                      </p>
+                    )
+                  )}
                 </div>
               </li>
             </Fragment>
           );
         })}
       </ol>
-      {messages.length === 0 && (
+      {rows.length === 0 && (
         <p className="board-empty">还没有消息。输入 @ 请智能体加入。</p>
       )}
       <Composer
@@ -905,10 +1078,27 @@ export function Chat({
             online: p.online,
           })),
         ]}
-        onDone={() => {
-          reading.sent();
-          onDone();
+        onSend={(path, body) => {
+          const key = crypto.randomUUID();
+          const after = messages.at(-1)?.position ?? 0;
+          outbox.send({
+            key,
+            path,
+            request: JSON.stringify({ ...body, operationKey: key }),
+            message: Message.parse({
+              ...body,
+              id: key,
+              channelId: channel.id,
+              position: after + 1,
+              author: { kind: 'human', humanId: data.human.id },
+              createdAt: new Date().toISOString(),
+            }),
+            after,
+            id: null,
+            failed: false,
+          });
         }}
+        onDone={reading.sent}
       />
     </div>
   );

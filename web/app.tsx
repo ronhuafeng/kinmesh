@@ -2,6 +2,7 @@ import {
   Fragment,
   useCallback,
   useEffect,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -52,7 +53,6 @@ import {
   BackIcon,
   HashIcon,
   InboxIcon,
-  PowerIcon,
   SearchIcon,
   SidebarIcon,
 } from './icons.js';
@@ -75,6 +75,46 @@ function statusesMoved(
     const status = old.get(t.id);
     return status !== undefined && status !== t.state.status;
   });
+}
+/** Puts the views' one thumb under the chosen tab, or hides it on no tab. */
+function placeThumb(list: HTMLElement | null) {
+  if (!list) return;
+  const tab = list.querySelector<HTMLElement>(
+    '[role="tab"][data-state="active"]',
+  );
+  if (!tab) {
+    delete list.dataset.thumb;
+    return;
+  }
+  list.style.setProperty('--thumb-x', String(tab.offsetLeft) + 'px');
+  list.style.setProperty('--thumb-w', String(tab.offsetWidth) + 'px');
+  if (list.dataset.thumb) return;
+  // Shown where it belongs first; it slides from the next placement on.
+  list.dataset.thumb = 'shown';
+  requestAnimationFrame(() => {
+    if (list.dataset.thumb) list.dataset.thumb = 'placed';
+  });
+}
+/**
+ * The views' thumb moves in the same commit as the content it shows, so the
+ * two change together, and follows the tabs when their size changes.
+ */
+function useThumb() {
+  const list = useRef<HTMLDivElement | null>(null);
+  useLayoutEffect(() => {
+    placeThumb(list.current);
+  });
+  return useCallback((el: HTMLDivElement | null) => {
+    list.current = el;
+    if (!el) return;
+    const resized = new ResizeObserver(() => {
+      placeThumb(el);
+    });
+    resized.observe(el);
+    return () => {
+      resized.disconnect();
+    };
+  }, []);
 }
 function animate(update: () => void) {
   if (
@@ -512,6 +552,7 @@ export function App() {
         old[key] === cursor ? old : { ...old, [key]: cursor },
       );
   };
+  const viewTabs = useThumb();
   const selectChannel = (channel: string) => {
     setSelection({ channel, topic: '' });
     setCursors({});
@@ -896,15 +937,24 @@ export function App() {
                         ) : (
                           <>
                             <ChannelIcon id={c.id} name={c.name} />
-                            <span className="channel-name">{c.name}</span>
+                            <span className="channel-name" title={c.name}>
+                              {c.name}
+                            </span>
                           </>
                         )}
-                        {/* Something in this channel waits on you. */}
-                        {waitingIn.has(c.id) && (
-                          <span className="waiting-dot" title="等你处理">
+                        {/* Something in this channel waits on you; once
+                            nothing does, the dot fades out. */}
+                        <span
+                          className="waiting-dot"
+                          data-on={waitingIn.has(c.id) ? 'true' : undefined}
+                          {...(waitingIn.has(c.id)
+                            ? { title: '等你处理' }
+                            : { 'aria-hidden': true })}
+                        >
+                          {waitingIn.has(c.id) && (
                             <span className="visually-hidden">等你处理</span>
-                          </span>
-                        )}
+                          )}
+                        </span>
                       </button>
                       {channel?.id === c.id && channelPath && (
                         <ChannelTopics
@@ -1075,7 +1125,11 @@ export function App() {
                       </button>
                     )}
                     {/* Views stay in reach however far the conversation scrolls. */}
-                    <Tabs.List aria-label="工作区视图" className="view-switch">
+                    <Tabs.List
+                      ref={viewTabs}
+                      aria-label="工作区视图"
+                      className="view-switch"
+                    >
                       <Tabs.Trigger value="chat" onClick={leavePage}>
                         聊天
                       </Tabs.Trigger>
@@ -1111,17 +1165,6 @@ export function App() {
                           <span role="status">正在刷新…</span>
                         </div>
                       )}
-                      {!phone && (
-                        <button
-                          className="quiet icon-button"
-                          aria-label="退出登录"
-                          title="退出登录"
-                          disabled={!canAct}
-                          onClick={signOut}
-                        >
-                          <PowerIcon size={20} />
-                        </button>
-                      )}
                     </div>
                   </header>
                   {/* One line, and nothing to press: it comes back by itself. */}
@@ -1149,6 +1192,14 @@ export function App() {
                         onDone={refresh}
                         onClose={closeFocus}
                         onDecided={notify}
+                        onReply={(id) => {
+                          // The reply is in the chat; open it there and point to it.
+                          leavePage();
+                          setView('chat');
+                          setTimeout(() => {
+                            showMessage(id);
+                          }, 60);
+                        }}
                         openAgent={openAgent}
                       />
                     )}
@@ -1201,7 +1252,7 @@ export function App() {
                     {focus?.kind === 'settings' && (
                       <SettingsPage
                         onClose={closeFocus}
-                        {...(phone ? { onSignOut: signOut } : {})}
+                        onSignOut={signOut}
                         onSignOutEverywhere={signOutEverywhere}
                       />
                     )}
