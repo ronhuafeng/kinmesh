@@ -21,6 +21,7 @@
     "src/**/*.ts",
     "tests/**/*.ts",
     "scripts/**/*.ts",
+    "deploy/**/*.ts",
     "*.ts",
     "src/**/*.tsx",
     "web/**/*.ts",

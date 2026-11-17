@@ -195,7 +195,7 @@ Delivery, source and result identities are kept forever for idempotency; per-del
 
 ## The space
 
-The space is a directory on the T3 machine where every channel is a T3 project, so agents in a channel share its files ([collaboration](collaboration.md#delivery-states)). Kinmesh never touches it: it asks a **provisioner** beside T3 for a channel's folder, and T3 for the project in it. The provisioner is the deployment's, and does what Kinmesh cannot over MCP ([T3](t3.md#supported-t3)):
+The space is a directory on the T3 machine where every channel is a T3 project, so agents in a channel share its files ([collaboration](collaboration.md#delivery-states)). The hub never touches it: it asks Kinmesh's **space provisioner** (`deploy/t3/space.ts`), which runs beside T3, for a channel's folder, and T3 for the project in it. The provisioner does what the hub cannot over MCP ([T3](t3.md#supported-t3)):
 
 ```http
 POST {KINMESH_SPACE_ENDPOINT}/projects
@@ -206,6 +206,26 @@ Content-Type: application/json
 ```
 
 It answers `200 {"workspaceRoot": "/space/design-3f2a91c0"}` once that folder exists, is a git repository with a first commit, and is a T3 project (`t3 project add --title <title> <folder>`); for a folder that already is one, it answers the same without changing anything. `401` or `403` means the token is wrong. `directory` is lowercase letters, digits and `-`, at most 80 characters; the provisioner refuses anything else and never leaves the space.
+
+The provisioner ships in the `kinmesh-t3` image as `/opt/kinmesh/space.ts` and runs with Node alone, wherever the `t3` CLI reaches T3's state: `node /opt/kinmesh/space.ts` beside T3 in the deployment, or `node deploy/t3/space.ts` on the machine running T3 desktop. It answers one request at a time and is configured by its environment:
+
+| Variable                      | Meaning                                                                                                                                                   |
+| ----------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `KINMESH_SPACE_DIR`           | The space; default `/space`. It must exist.                                                                                                               |
+| `KINMESH_SPACE_HOST`, `_PORT` | Where it listens; default `127.0.0.1:3774`. Beside a remote T3, `0.0.0.0`, with a network policy that admits only the hub.                                |
+| `KINMESH_SPACE_TOKEN_FILE`    | A file holding its token, made once (mode 0600) when missing or empty. Give the hub the same file as its own `KINMESH_SPACE_TOKEN_FILE`.                  |
+| `KINMESH_SPACE_TOKEN_SECRET`  | Instead of a file, a Kubernetes Secret (`namespace/name`) whose `token` it makes once, through the API with the pod's service account; the hub mounts it. |
+| `KINMESH_SPACE_ACCOUNT`       | That service account's directory (`token`, `ca.crt`); default the pod's own.                                                                              |
+| `KINMESH_SPACE_T3`            | T3's CLI; default `t3`.                                                                                                                                   |
+
+A hub on the same machine as T3 desktop gets a space with the provisioner started from the repository and the hub pointed at it:
+
+```sh
+KINMESH_SPACE_DIR=~/kinmesh-space KINMESH_SPACE_TOKEN_FILE=.store/space-token node deploy/t3/space.ts
+# in the hub's .env
+KINMESH_SPACE_ENDPOINT=http://127.0.0.1:3774
+KINMESH_SPACE_TOKEN_FILE=.store/space-token
+```
 
 Every machine that mounts the space uses the same path, since T3 keeps projects by their folder. Back up the space with T3's own state: it holds the channels' work, and T3's projects point into it. Renaming or moving a folder breaks its project; Kinmesh keeps each channel's folder name in `channel_spaces`.
 

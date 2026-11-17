@@ -20,6 +20,9 @@ RUN curl -fsSL https://t3.codes/install.sh \
   && t3 --version && pi --version \
   && mkdir -p /opt/t3/userdata /space /home/node/.pi/agent \
   && chown -R node:node /opt/t3 /space /home/node
+# The space provisioner (space.ts): makes a channel's folder a T3 project for
+# the hub. The deployment runs it beside T3 with `node /opt/kinmesh/space.ts`.
+COPY space.ts /opt/kinmesh/space.ts
 USER node
 WORKDIR /space
 EXPOSE 3773
