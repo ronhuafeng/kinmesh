@@ -2300,6 +2300,59 @@ button.quiet.subtle-danger {
 .delivery[data-tone='active']::before {
   animation: pulse 2.4s ease-in-out infinite;
 }
+/* A team's first steps, at the top of a channel until done: numbered
+ * marks, a check once done, the one control at the end of each. */
+.first-steps {
+  display: grid;
+  gap: 0.5rem;
+  max-width: var(--reading);
+  margin: 1rem 0;
+  padding: 1rem 1.25rem;
+  border-radius: var(--radius-lg);
+  background: var(--raised);
+  box-shadow: 0 0 0 var(--hairline-width) var(--hairline);
+}
+.first-steps h2 {
+  margin: 0;
+  font-size: var(--text-ui);
+  font-weight: 600;
+}
+.first-steps ol {
+  display: grid;
+  gap: 0.25rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.first-steps li {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  min-height: 2.25rem;
+}
+.first-step-mark {
+  display: grid;
+  flex: none;
+  place-items: center;
+  width: 1.5rem;
+  height: 1.5rem;
+  border-radius: 999px;
+  background: var(--fill);
+  color: var(--ink-muted);
+  font-size: 12px;
+  font-weight: 600;
+}
+.first-steps li[data-done] .first-step-mark {
+  background: var(--primary);
+  color: var(--on-primary);
+}
+.first-steps li[data-done] .first-step-label {
+  color: var(--ink-muted);
+  text-decoration: line-through;
+}
+.first-steps li .link-button {
+  margin-left: auto;
+}
 /* What a run is on in T3, after its line: the step, or what waits on an
  * approval, in code, cut to one line. */
 .delivery-step {

@@ -1702,6 +1702,9 @@ export function App() {
                             onLeave={() => {
                               selectChannel('');
                             }}
+                            onTeam={() => {
+                              setView('team');
+                            }}
                           />
                         ) : (
                           <div className="empty">

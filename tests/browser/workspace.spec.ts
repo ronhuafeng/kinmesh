@@ -2885,3 +2885,28 @@ test('a wide tablet keeps the board, one stage, beside the task that is open', a
   await expect(task).toHaveCount(0);
   await expect(board).toBeVisible();
 });
+
+test('a new team is guided through its first steps, each with the control that does it', async ({
+  page,
+  hub,
+}) => {
+  await page.setViewportSize({ width: 1440, height: 1000 });
+  await signIn(page, hub);
+  const guide = page.getByRole('region', { name: '开始使用' });
+  await expect(guide).toBeVisible();
+  // Nothing is done yet: three steps, the first one's control adds an agent.
+  const steps = guide.getByRole('listitem');
+  await expect(steps).toHaveCount(3);
+  await expect(steps.first()).not.toContainText('已完成');
+  await guide.getByRole('button', { name: '添加', exact: true }).click();
+  await expect(
+    page.getByRole('tab', { name: '成员', exact: true }),
+  ).toHaveAttribute('aria-selected', 'true');
+  // It sits in the conversation's column, on its text edge.
+  await page.getByRole('tab', { name: '聊天', exact: true }).click();
+  const [box, list] = await Promise.all([
+    guide.boundingBox(),
+    page.getByRole('list', { name: '频道消息' }).boundingBox(),
+  ]);
+  expect(Math.round(box?.x ?? -1)).toBe(Math.round(list?.x ?? -2));
+});

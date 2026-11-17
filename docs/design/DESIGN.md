@@ -221,7 +221,7 @@ fallback.
   (which stays for screen readers in search); 32 px in the sidebar and on a phone,
   24 px in search. Every name beside it — channels, topics and people — starts
   on one edge, and people's faces in the sidebar are the icon's size.
-- **Segmented control**: the views (聊天 | 看板 | 团队 | 收件箱) and a narrow board's
+- **Segmented control**: a channel's views (聊天 | 看板 | 成员 | 文件) and a narrow board's
   stages: a grey track, the chosen segment a raised white (dark: grey) thumb that
   eases in. In the top bar it is the page's primary control: 38 px tall, 15 px labels.
 - **Menu**: what pops over the page from the control that opens it (Radix
@@ -288,7 +288,9 @@ fallback.
   reply; no line when the reply is the very next message), 卡住了 (what was lost and the
   one fix — re-enable the agent, add it back or open its setup — next to a retry), or
   一直没有接手. Between Chinese words there are no spaces ("小助手正在处理"); a Latin name
-  keeps one ("Ada 正在处理"). The
+  keeps one ("Ada 正在处理"). While its run is under way, what it is on follows in
+  code, cut to one line: "要执行 `pnpm test`" in the decision ink when it waits on an
+  approval, or the step it is taking in the muted ink. The
   machine state is only a tooltip. Until it is answered a line ends in **停止**
   (also beside the request on the agent's page); then it reads "_Ada_ 正在停止" until
   the run's stopped reply ("还没回复就停止了。") arrives, or "_Ada_ 开始前已停止" when
@@ -381,9 +383,12 @@ fallback.
   thread on the team's T3 (plain when there is none); its IDs never show. A read that
   fails retries by itself, a little later each time, and says "暂时读不到记录。" only
   once it keeps failing; it reads again whenever the task changes.
-- **Agent page**: status card with its actions, requests in this channel, About
-  (every fact visible, picture to change, Team MCP credential), runs as a table at the
-  bottom, one T3 reference per run (its thread; the run on hover). A run shows what the agent last reported apart from what T3 confirms on
+- **Agent page**: what the agent is doing comes first, how it is set up last. It opens
+  on the agent: its face, its name (22 px semibold) and one line in the colour of its
+  state — the request it is on and whether that waits on an approval, 空闲, or
+  未运行 — then its requests in this channel and its runs; under a hairline, 设置
+  holds the status card with its actions and About (every fact visible, picture to
+  change, Team MCP credential). Runs are a table, one T3 reference per run (its thread; the run on hover). A run shows what the agent last reported apart from what T3 confirms on
   **在 T3 中查看**; **在 T3 中打开** appears only when T3 supplied the link.
 - **Agent setup**: one next step at a time. First **连接 T3**, once per team: a T3
   on this machine is found on its own, otherwise paste its MCP URL; approve in T3,
@@ -455,11 +460,12 @@ fallback.
   channel's 关注 or 静音). A **list row** (a person, a channel, an
   agent, a file) is 56 px: a 32–40 px face or mark, the name over what to know in
   the secondary size and muted ink, and what can be done at the end; it opens its
-  place. Signing out is the last group, 退出, its rows in the danger colour. A **planned section**
-  (我的助理, 规则, 集成, 用量与成本, 审计记录, 数据与导出) is in the subtle ink
-  in the map and opens as what it will hold: 规划中, then its rows in the subtle
-  ink, each with a quiet rounded bar where its value will be, and no controls —
-  never a loading state. 个人资料 is read-only, as
+  place. Signing out is the last group, 退出, its rows in the danger colour. The
+  map lists only what works; every **planned section** (我的助理, 规则, 集成,
+  用量与成本, 审计记录, 数据与导出) is under one last entry in the subtle ink,
+  即将推出, which opens as what they will hold: each a group under its name, its
+  rows in the subtle ink, each with a quiet rounded bar where its value will be, and
+  no controls — never a loading state; a planned section's address lights it. 个人资料 is read-only, as
   Feishu gives it: your picture and name with the 来自飞书 pill, then 账号 (用户名,
   邮箱, 团队); 账户与设备 lists your sessions ("此浏览器 · 正在使用", or when one
   signed in and was last used, with **退出**) and the browsers receiving
@@ -531,11 +537,23 @@ fallback.
   the row into a field grown from the magnifier (the name hides), and the results
   hang below it, wider than the sidebar; Esc, a click elsewhere or a choice folds it
   back to the name. A closed sidebar opens to hold it. It jumps to
-  views, channels, tasks and agents, and holds the actions that have no place on
+  views, channels, tasks and agents — and, from two characters typed, messages whose
+  text holds them and files whose name does, each opening its message — and holds
+  the actions that have no place on
   screen: **新任务**, **静音 #_name_** (**取消静音 #_name_** once muted), **每条消息都通知
   #_name_** (**只通知与我有关的 #_name_** once followed), **退出 #_name_** and
   **立即刷新**. Places come before actions,
   so a channel's name finds the channel first, not an action that mentions it.
+- **收件箱** in the sidebar: what waits on you across the team is a row above the
+  channels, its icon in the muted ink and how many things wait counted at its end; it
+  is not among a channel's views. On a phone it is a bottom tab.
+- **文件** (a channel's view): the channel's files, newest first, as list rows (see
+  **Settings**, 文件与存储), the reading measure wide.
+- **开始使用**: a new team's first steps at the top of every channel until all are
+  done, on a raised surface with a hairline: 添加一个智能体, 连接 T3, and @ it with a
+  first request — each a numbered mark that turns into a green check, the one control
+  that does it at the end (**添加** opens 成员, **连接** the agent's page); done steps
+  read struck through in the muted ink.
 - **Sidebar**: beside the content on every screen wider than a phone, open or closed
   from one control, the sidebar icon (**展开侧栏** / **收起侧栏**). Closed, the icon
   starts the header, its glyph on the content's edge and centred with the tabs, and
@@ -615,9 +633,11 @@ stage, its card marked by a green edge — instead of replacing it.
 Short and purposeful: 100 ms (`--dur-press`) for a press; 150 ms (`--dur-fast`) for
 hover and selection; 200 ms
 (`--dur`) for what moves or appears — the segmented thumb, the composer's focus,
-popovers, a new message, a card lifting, a page fading in where the view was — up to
+popovers, a new message, a card lifting, a page fading in when it opens — up to
 320 ms for cards travelling between status columns and checklists drawing their ticks
-on acceptance; ease-out or a gentle spring. With reduced motion nothing moves, slides
+on acceptance; ease-out or a gentle spring. Going from one place to another at the
+same level (one view to the next, one settings section to the next) shows the next at
+once; only opening something new eases in. With reduced motion nothing moves, slides
 or scales; colour and fades that only say a state changed keep their short ease.
 
 ## Voice
