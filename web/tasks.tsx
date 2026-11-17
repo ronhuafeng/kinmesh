@@ -743,6 +743,7 @@ export function NewTaskPage({
       label="新任务"
       onClose={onClose}
       className="task-page"
+      tabLeadsBack
       bar={data.channel ? '# ' + data.channel.name : '新任务'}
     >
       <div
@@ -1032,6 +1033,7 @@ export function TaskPage({
       label={task.title}
       onClose={onClose}
       className="task-page"
+      tabLeadsBack
       // The title is the page's own first line; the bar says where it is.
       bar={data.channel ? '# ' + data.channel.name : ''}
     >
