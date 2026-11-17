@@ -96,6 +96,9 @@
   --dur: 200ms;
   /* The reading column: a conversation, a page, its composer. */
   --reading: 45rem;
+  /* A conversation: prose keeps the reading measure; code, tables and
+   * diagrams may use this much. */
+  --conversation: 60rem;
   --font:
     -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'PingFang SC',
     'Hiragino Sans GB', 'Microsoft YaHei', system-ui, sans-serif;
@@ -1135,15 +1138,14 @@ a.link-button {
 /* ------------------------------------------------------------------
  * Chat (P2)
  * ------------------------------------------------------------------ */
-/* A conversation is a reading column, centred, its composer on the same
- * edges. */
+/* A conversation starts on the gutter beside the navigation, where the
+ * eye starts, never centred for symmetry; its composer on the same edges. */
 .conversation {
   display: flex;
   flex-direction: column;
   gap: 0.75rem;
   width: 100%;
-  max-width: var(--reading);
-  margin-inline: auto;
+  max-width: var(--conversation);
 }
 /* The conversation keeps its own reading position (web/chat.tsx); the
  * browser's scroll anchoring would move it a second time. */
@@ -2538,6 +2540,11 @@ a.button-link {
 .message-text p {
   margin: 0 0 0.55em;
 }
+/* Prose keeps the reading measure; a code block, a table or a diagram may
+ * run the conversation's width. */
+.message-text > :is(p, ul, ol, blockquote, h1, h2, h3, h4, h5, h6) {
+  max-width: var(--reading);
+}
 .message-text > :last-child {
   margin-bottom: 0;
 }
@@ -3658,11 +3665,11 @@ button.roster-person:hover:not(:disabled) {
 .view-content[data-page] > .view-skeleton {
   display: none;
 }
-/* A page reads in the centred column, like a conversation. */
+/* A page starts on the gutter, like a conversation, the reading measure
+ * wide. */
 .page {
   width: 100%;
   max-width: var(--reading);
-  margin-inline: auto;
   outline: none;
   animation: fade-rise var(--dur) var(--ease-out);
 }
@@ -5093,10 +5100,6 @@ button.new-agent-go {
 }
 .sidebar nav button.settings-nav-item[data-planned] {
   color: var(--ink-subtle);
-}
-/* A section beside the map: left on the gutter, a form's width. */
-.page.settings-page {
-  margin-inline: 0;
 }
 .settings-body {
   gap: 1rem;
