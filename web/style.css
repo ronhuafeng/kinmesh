@@ -3230,6 +3230,49 @@ span.person {
   font-weight: 500;
   color: var(--ink-muted);
 }
+/* The agent and what it is doing now, first: its face, its name, and one
+ * line in the colour of its state. */
+.agent-head {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+}
+.agent-head-text {
+  display: grid;
+  gap: 0.125rem;
+  min-width: 0;
+}
+.agent-head strong {
+  font-size: 22px;
+  font-weight: 600;
+}
+.agent-head-state {
+  font-size: var(--text-ui);
+  font-weight: 500;
+}
+.agent-head-state[data-tone='active'],
+.agent-head-state[data-tone='done'] {
+  color: var(--primary);
+}
+.agent-head-state[data-tone='waiting'] {
+  color: var(--decision-text);
+}
+.agent-head-state[data-tone='problem'] {
+  color: var(--danger);
+}
+.agent-head-state[data-tone='queued'] {
+  color: var(--ink-muted);
+}
+.agent-head-state .muted {
+  font-weight: 400;
+}
+/* How it is set up comes last, under one heading. */
+.agent-settings {
+  display: grid;
+  gap: 1rem;
+  padding-top: 1.5rem;
+  border-top: var(--hairline-width) solid var(--hairline);
+}
 .agent-layout {
   display: grid;
   grid-template-columns: minmax(0, 1fr) 18rem;

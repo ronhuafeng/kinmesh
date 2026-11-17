@@ -20,6 +20,7 @@ import {
   Recovery,
   Stop,
   stoppable,
+  unanswered,
 } from './deliveries.js';
 import type { DeliveryView } from './deliveries.js';
 import { AgentAbout, AgentSetup, useT3 } from './setup.js';
@@ -328,38 +329,82 @@ export function AgentPage({
   const t3 = useT3(data.team.id);
   return (
     <Page label={agent.name} onClose={onBack} className="agent-page">
-      <div className="agent-layout">
-        <div className="agent-main">
-          <AgentSetup
-            agent={agent}
-            data={data}
-            t3={t3}
-            channelPath={channelPath}
-            onDone={onDone}
-          />
-          <Requests
-            agent={agent}
-            data={data}
-            onReply={onReply}
-            onDone={onDone}
-          />
-        </div>
-        <AgentAbout
-          agent={agent}
-          data={data}
-          t3={t3}
-          onOwnWorker={onOwnWorker}
-          onDone={onDone}
-        />
-      </div>
-      {/* The longest list, so it comes last and takes the full width. */}
+      <AgentHead agent={agent} data={data} />
+      {/* What it is doing and did comes first; how it is set up, last. */}
+      <Requests agent={agent} data={data} onReply={onReply} onDone={onDone} />
       <Activity
         key={agent.id + (data.nativeT3Origin ?? '')}
         agent={agent}
         teamId={data.team.id}
         trustedOrigin={data.nativeT3Origin}
       />
+      <section className="agent-settings" aria-label="设置">
+        <h3>设置</h3>
+        <div className="agent-layout">
+          <div className="agent-main">
+            <AgentSetup
+              agent={agent}
+              data={data}
+              t3={t3}
+              channelPath={channelPath}
+              onDone={onDone}
+            />
+          </div>
+          <AgentAbout
+            agent={agent}
+            data={data}
+            t3={t3}
+            onOwnWorker={onOwnWorker}
+            onDone={onDone}
+          />
+        </div>
+      </section>
     </Page>
+  );
+}
+/**
+ * The agent, and what it is doing now in one line: the request it is on
+ * (and whether that waits on an approval), or that it is free or not
+ * running.
+ */
+function AgentHead({ agent, data }: { agent: Agent; data: WorkspaceSnapshot }) {
+  const connected = workerConnected(data.wake, agent.id);
+  const open = data.deliveries.filter(
+    (d) => d.agentId === agent.id && unanswered(d),
+  );
+  const current = open.at(-1);
+  const state = current
+    ? deliveryText(current, agent.name, connected)
+    : connected
+      ? { text: '空闲', tone: 'done' as const }
+      : { text: '未运行', tone: 'problem' as const };
+  const what =
+    current &&
+    (data.messages.items.find((m) => m.id === current.messageId)?.body ??
+      data.tasks.items.find((t) => t.id === current.taskId)?.title);
+  const line = what ? plainLine(what.trim().split('\n')[0] ?? '') : '';
+  return (
+    <header className="agent-head">
+      <Avatar kind="agent" name={agent.name} id={agent.id} size="xl" />
+      <span className="agent-head-text">
+        <strong>{agent.name}</strong>
+        <span className="agent-head-state" data-tone={state.tone}>
+          {state.text.startsWith(agent.name)
+            ? state.text.slice(agent.name.length).trimStart()
+            : state.text}
+          {line && (
+            <span className="muted">
+              {' · “'}
+              {line.length > 60 ? line.slice(0, 57) + '…' : line}
+              {'”'}
+            </span>
+          )}
+          {open.length > 1 && (
+            <span className="muted">{` · 还有 ${String(open.length - 1)} 个在等`}</span>
+          )}
+        </span>
+      </span>
+    </header>
   );
 }
 /** What was asked of the agent here, what came of it, and where the answer is. */
