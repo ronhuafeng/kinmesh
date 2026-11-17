@@ -34,7 +34,21 @@ export function Group({
     </section>
   );
 }
-/** One row: its label, then its value or control on the value column. */
+/** A state beside what it is about: on (green, with a dot) or quiet. */
+export function Pill({
+  on = false,
+  children,
+}: {
+  on?: boolean;
+  children: ReactNode;
+}) {
+  return (
+    <span className="state-pill" data-tone={on ? 'on' : undefined}>
+      {children}
+    </span>
+  );
+}
+/** One row: its label, then its value or control at the column's end. */
 export function Row({
   label,
   children,
@@ -44,7 +58,7 @@ export function Row({
 }) {
   return (
     <div className="you-row">
-      <span>{label}</span>
+      <span className="you-row-label">{label}</span>
       <span className="you-row-end">{children}</span>
     </div>
   );
@@ -193,7 +207,10 @@ function ThisDevice() {
   return (
     <>
       <div className="you-row">
-        <span>这台设备</span>
+        <span className="you-row-label">
+          这台设备
+          {here === 'on' && <Pill on>已开启</Pill>}
+        </span>
         <span className="you-row-end">
           {here === 'on' ? (
             <>
@@ -455,8 +472,11 @@ function Levels({ data }: { data: WorkspaceSnapshot }) {
           <ListRow
             key={channel.id}
             lead={<ChannelIcon id={channel.id} name={channel.name} />}
-            title={channel.name}
-            detail={LEVEL_LABELS[level]}
+            title={
+              <>
+                {channel.name} <Pill>{LEVEL_LABELS[level]}</Pill>
+              </>
+            }
             end={
               <button
                 type="button"
