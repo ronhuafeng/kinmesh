@@ -1,4 +1,5 @@
 import { managedRepository } from './managed.js';
+import { notificationRepository } from './notify.js';
 import { inboxRepository } from './inbox.js';
 import { inboxViews } from './inbox-views.js';
 import { taskRepository } from './tasks.js';
@@ -9,10 +10,10 @@ import type { Principal } from '../domain/agents.js';
 import { DomainError } from '../domain/errors.js';
 import { operationJournal } from './operations.js';
 import { eq, and, gt, isNull, lte } from 'drizzle-orm';
-import { createHash, randomBytes, randomUUID } from 'node:crypto';
+import { randomBytes, randomUUID } from 'node:crypto';
 import { z } from 'zod';
 import * as tables from './schema.js';
-import { openDatabase } from './database.js';
+import { digest, openDatabase } from './database.js';
 import {
   Human,
   HumanId,
@@ -43,8 +44,6 @@ const personOf = (row: {
   name: string | null;
   avatar: string | null;
 }) => Person.parse({ ...row, name: row.name ?? row.username });
-const digest = (token: string) =>
-  createHash('sha256').update(token).digest('base64url');
 /**
  * The team's store on PostgreSQL. Every method answers asynchronously; writes
  * that belong together run in one serializable transaction.
@@ -89,6 +88,8 @@ export async function openStore(url: string) {
       operations: operationJournal(d),
       agents: agentStore,
       managed: managedRepository(d, agentStore),
+      /** What notifies a person, their browsers, and what is sent to them. */
+      notifications: notificationRepository(d),
       close: d.close,
       /**
        * The person a Feishu identity is. Their first sign-in makes them a
@@ -425,7 +426,10 @@ export async function openStore(url: string) {
       async teamFor(id: HumanId) {
         const membership = (
           await q()
-            .select()
+            .select({
+              humanId: tables.memberships.humanId,
+              teamId: tables.memberships.teamId,
+            })
             .from(tables.memberships)
             .where(eq(tables.memberships.humanId, id))
             .limit(1)

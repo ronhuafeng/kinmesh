@@ -387,8 +387,21 @@ fallback.
   A row leaves when its cause is resolved; there is nothing to dismiss. Expired
   deliveries are not listed; they stay on their message's delivery line.
 - **Settings**: your own tile on Team (on a phone, the 我 tab) opens your page; the
-  page has no face or name of its own. It holds only **退出登录** and
-  **在所有设备上退出登录**, quiet rows in the danger colour, on every device.
+  page has no face or name of its own. It holds what notifies you and signing out.
+  "通知" is a row with the segmented control at its end: 全部 | 与我有关 | 关闭.
+  Choosing 全部 or 与我有关 in a browser that can be notified also turns them on
+  there (the browser asks once); under it a quiet row in the primary colour with a
+  bell, **在此设备上接收通知** or **此设备不再接收通知**, turns this browser on or
+  off. A browser that can't be notified, or has said no, shows no such row. Then
+  **退出登录** and **在所有设备上退出登录**, quiet rows in the danger colour, on
+  every device.
+- **Notifications**: one per place, the latest replacing the one before. The title
+  is who wrote and where ("小助手 · #general · 话题"), or what waits on you and
+  where ("等你验收", "请你评审", "退回给你", "交给你了", "_Ada_ 卡住了"); the line is the
+  message, the task's title, or what the stuck agent was asked, on one line.
+  Clicking one opens its place, in an open workspace if there is one. Once read or
+  settled, the workspace closes what it showed in that browser. Kinmesh can be added
+  to a phone's Home Screen (its icon is the brand mark), where iOS allows them.
 - **Team name**: the organization's name as Feishu gives it, never typed here, heads
   the sidebar in bold — no logo or avatar — sharing its row with search
   and, beside the content, the control that closes the sidebar. One line; a name of more

@@ -1,6 +1,8 @@
 import {
   ArrowRight,
   ArrowUp,
+  Bell,
+  BellOff,
   ChevronLeft,
   Hash,
   Inbox,
@@ -47,3 +49,6 @@ export const SendIcon = icon(ArrowUp);
 export const BackIcon = icon(ChevronLeft);
 /** A phone's channels tab: the channels and the team. */
 export const HashIcon = icon(Hash);
+/** Notifications in this browser: turning them on, and off. */
+export const BellIcon = icon(Bell);
+export const BellOffIcon = icon(BellOff);

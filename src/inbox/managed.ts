@@ -1,7 +1,9 @@
 import {
   existsSync,
+  linkSync,
   lstatSync,
   mkdirSync,
+  readFileSync,
   realpathSync,
   renameSync,
   rmSync,
@@ -9,6 +11,7 @@ import {
 } from 'node:fs';
 import { randomUUID } from 'node:crypto';
 import { dirname, join, resolve } from 'node:path';
+import { z } from 'zod';
 import { AgentId } from '../domain/contracts.js';
 
 /**
@@ -63,4 +66,39 @@ export function writeAgentToken(
 }
 export function removeAgentToken(directory: string, agentId: string) {
   rmSync(agentTokenFile(directory, agentId), { force: true });
+}
+/** The hub's Web Push (VAPID) keys: made once, then kept. */
+export const pushKeysFile = (directory: string) =>
+  join(directory, 'push-keys.json');
+const PushKeys = z.strictObject({
+  publicKey: z.string().regex(/^[A-Za-z0-9_-]{87}$/),
+  privateKey: z.string().regex(/^[A-Za-z0-9_-]{43}$/),
+});
+export function pushKeys(
+  directory: string,
+  make: () => z.infer<typeof PushKeys>,
+) {
+  privateDirectory(directory);
+  const path = pushKeysFile(directory);
+  if (!existsSync(path)) {
+    const temporary = path + '.' + randomUUID() + '.tmp';
+    try {
+      writeFileSync(temporary, JSON.stringify(PushKeys.parse(make())), {
+        mode: 0o600,
+        flag: 'wx',
+      });
+      // Only if none is there yet: keys once made are never replaced.
+      linkSync(temporary, path);
+    } catch (error) {
+      if (!(
+        error instanceof Error &&
+        'code' in error &&
+        error.code === 'EEXIST'
+      ))
+        throw error;
+    } finally {
+      rmSync(temporary, { force: true });
+    }
+  }
+  return PushKeys.parse(JSON.parse(readFileSync(path, 'utf8')));
 }

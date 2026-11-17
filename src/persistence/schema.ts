@@ -116,9 +116,14 @@ export const memberships = pgTable(
     teamId: text('team_id')
       .notNull()
       .references(() => teams.id, { onDelete: 'cascade' }),
+    /** What notifies this person: everything, what concerns them, or nothing. */
+    notify: text('notify').notNull().default('mine'),
   },
   // Everyone in the organization is an equal member: there are no roles.
-  (t) => [primaryKey({ columns: [t.humanId, t.teamId] })],
+  (t) => [
+    primaryKey({ columns: [t.humanId, t.teamId] }),
+    check('membership_notify', sql`${t.notify} IN ('all','mine','off')`),
+  ],
 );
 export const channels = pgTable(
   'channels',
@@ -782,3 +787,63 @@ export const runtimeEventFields = {
   author: agentRuntimeEvents.author,
   createdAt: agentRuntimeEvents.createdAt,
 };
+/**
+ * A browser a person turned notifications on in: its Web Push endpoint and
+ * keys, held by the session that turned them on, so signing out of it ends
+ * them, and they last no longer than that session would.
+ */
+export const pushSubscriptions = pgTable(
+  'push_subscriptions',
+  {
+    endpoint: text('endpoint').primaryKey(),
+    humanId: text('human_id')
+      .notNull()
+      .references(() => humans.id, { onDelete: 'cascade' }),
+    sessionHash: text('session_hash')
+      .notNull()
+      .references(() => sessions.tokenHash, { onDelete: 'cascade' }),
+    p256dh: text('p256dh').notNull(),
+    auth: text('auth').notNull(),
+    createdAt: millis('created_at').notNull(),
+  },
+  (t) => [
+    index('push_subscription_human').on(t.humanId),
+    index('push_subscription_session').on(t.sessionHash),
+  ],
+);
+/**
+ * Something that concerns a person, to be pushed to their browsers once it
+ * is due, if it still does then. Recorded in the transaction of what caused
+ * it, once per cause and person.
+ */
+export const notifications = pgTable(
+  'notifications',
+  {
+    id: text('id').primaryKey(),
+    humanId: text('human_id')
+      .notNull()
+      .references(() => humans.id, { onDelete: 'cascade' }),
+    teamId: text('team_id').notNull(),
+    kind: text('kind').notNull(),
+    /** What caused it: an outbox fact, or a delivery that got stuck. */
+    source: text('source').notNull(),
+    channelId: text('channel_id').notNull(),
+    topicId: text('topic_id'),
+    messageId: text('message_id'),
+    taskId: text('task_id'),
+    taskVersion: integer('task_version'),
+    deliveryId: text('delivery_id'),
+    state: text('state').notNull(),
+    dueAt: millis('due_at').notNull(),
+    createdAt: millis('created_at').notNull(),
+  },
+  (t) => [
+    unique('notification_once').on(t.humanId, t.source),
+    index('notification_due').on(t.state, t.dueAt),
+    check(
+      'notification_kind',
+      sql`${t.kind} IN ('reply','blocked','decide','task','mention','message')`,
+    ),
+    check('notification_state', sql`${t.state} IN ('pending','sent')`),
+  ],
+);

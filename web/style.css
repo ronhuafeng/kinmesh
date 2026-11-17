@@ -1852,17 +1852,25 @@ dd {
 }
 /* A narrow board picks one stage with these pills; they scroll sideways
  * without showing a scrollbar. */
-.column-switcher {
-  display: none;
+/* A segmented control: a narrow board's stages, and your notifications. */
+.column-switcher,
+.segmented {
   gap: 0;
   overflow-x: auto;
   scrollbar-width: none;
-  margin: 0 0 0.75rem;
   padding: 2px;
   border-radius: 9px;
   background: var(--fill);
 }
-.column-switcher button {
+.column-switcher {
+  display: none;
+  margin: 0 0 0.75rem;
+}
+.segmented {
+  display: inline-flex;
+}
+.column-switcher button,
+.segmented button {
   flex: 1 0 auto;
   display: inline-flex;
   align-items: center;
@@ -1876,7 +1884,8 @@ dd {
   font-size: 0.875rem;
   font-weight: 500;
 }
-.column-switcher button:hover:not(:disabled) {
+.column-switcher button:hover:not(:disabled),
+.segmented button:hover:not(:disabled) {
   background: transparent;
   border-color: transparent;
 }
@@ -1888,7 +1897,9 @@ dd {
   background: var(--tone);
 }
 .column-switcher button[aria-pressed='true'],
-.column-switcher button[aria-pressed='true']:hover:not(:disabled) {
+.column-switcher button[aria-pressed='true']:hover:not(:disabled),
+.segmented button[aria-pressed='true'],
+.segmented button[aria-pressed='true']:hover:not(:disabled) {
   color: var(--ink);
   font-weight: 600;
   background: var(--selected);
@@ -2572,7 +2583,7 @@ button.reply-to {
   font-size: 12px;
   color: var(--ink-muted);
 }
-/* Your page: signing out, nothing else. */
+/* Your page: what notifies you, and signing out. */
 .you {
   gap: 0;
 }
@@ -4096,6 +4107,36 @@ button.new-agent-go {
   outline: 2px solid var(--focus);
   outline-offset: 2px;
   border-radius: var(--radius-sm);
+}
+/* What notifies you: a row with its choice at the end, then a quiet row
+ * that turns them on or off in this browser. */
+.you-notify {
+  display: grid;
+  gap: 0.25rem;
+  margin-bottom: 1rem;
+}
+.you-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  min-height: 2.75rem;
+  font-weight: 500;
+}
+.you-action {
+  display: flex;
+  align-items: center;
+  justify-self: start;
+  gap: 0.5rem;
+  padding: 0.6rem 0;
+  border: 0;
+  background: none;
+  color: var(--primary);
+  font-weight: 500;
+}
+.you-action:hover:not(:disabled) {
+  background: none;
+  text-decoration: underline;
 }
 /* Your page ends with signing out: this device on a phone, and every device
  * everywhere. Quiet rows in the danger colour, no boxes. */

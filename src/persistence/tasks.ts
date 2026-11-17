@@ -1,5 +1,6 @@
 import type { Database } from './database.js';
 import { enqueueFact } from './inbox-enqueue.js';
+import { notifyFact } from './notify.js';
 import { randomUUID } from 'node:crypto';
 import {
   and,
@@ -207,6 +208,7 @@ export function taskRepository(
     if (inserted === undefined) throw new Error('Task event not recorded');
     TaskEvent.parse({ ...event, position: inserted.position });
     await enqueueFact(q(), fact);
+    await notifyFact(q(), fact);
     return TaskResult.parse({ task, eventId: id, executionLink });
   }
   /** Whether a person is joined to the channel now. */

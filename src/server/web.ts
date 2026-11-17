@@ -22,6 +22,25 @@ export async function registerWeb(app: FastifyInstance) {
       preCompressed: true,
     });
   }
+  // The service worker, the web app manifest and its icons, at the site's
+  // root where browsers look for them. The worker is always checked anew.
+  const rootFiles: Record<string, string> = {
+    'sw.js': 'text/javascript; charset=utf-8',
+    'manifest.webmanifest': 'application/manifest+json',
+    'icon-192.png': 'image/png',
+    'icon-512.png': 'image/png',
+    'apple-touch-icon.png': 'image/png',
+  };
+  for (const [name, type] of Object.entries(rootFiles))
+    app.get('/' + name, (_request, reply) => {
+      const path = join(root, name);
+      if (!existsSync(path)) return reply.code(404).send();
+      reply.header(
+        'Cache-Control',
+        name === 'sw.js' ? 'no-cache' : 'public, max-age=86400',
+      );
+      return reply.type(type).send(readFileSync(path));
+    });
   app.get('/', (_request, reply) => {
     reply.header('Cache-Control', 'no-store');
     if (!existsSync(join(root, 'index.html')))
