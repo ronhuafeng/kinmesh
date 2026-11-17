@@ -6,7 +6,12 @@ import { MessageId } from '../src/domain/communication.js';
 import { payloadOf } from '../src/server/notify.js';
 import { WorkspaceSnapshot } from '../src/workspace/contracts.js';
 import { communicationFixture, postInput } from './communication-helpers.js';
-import { feishuPerson, signInAs, standInMessages } from './feishu.js';
+import {
+  feishuPerson,
+  signInAs,
+  standInMessages,
+  standInSettled,
+} from './feishu.js';
 import { rawDatabase } from './raw.js';
 import { taskInput } from './task-helpers.js';
 
@@ -400,8 +405,8 @@ await test('while a person is in Kinmesh it shows a notice instead; in their qui
 });
 
 /** Until `check` holds, looking again as soon as the hub's sender may have run. */
-async function until(check: () => Promise<boolean>) {
-  const deadline = Date.now() + 10_000;
+async function until(check: () => Promise<boolean>, within = 10_000) {
+  const deadline = Date.now() + within;
   while (!(await check())) {
     if (Date.now() > deadline) throw new Error('never happened');
     await new Promise((resolve) => setTimeout(resolve, 100));
@@ -445,7 +450,7 @@ await test('what stays unread goes to Feishu after the delay; nothing goes once 
       assert.equal(posted.statusCode, 201);
       return posted.json<{ id: string }>().id;
     };
-    await mention('Can you look?');
+    const first = await mention('Can you look?');
     const wait = await raw
       .prepare('SELECT forward_at - created_at AS wait FROM notifications')
       .get();
@@ -460,6 +465,28 @@ await test('what stays unread goes to Feishu after the delay; nothing goes once 
     assert.equal(sent.union, feishuPerson('grace@example.com').feishuId);
     assert.equal(sent.text, 'Can you look?');
     assert.match(sent.url, /\/\?channel=/);
+    // Once she has read it, its card turns into 已处理, once.
+    standInSettled.length = 0;
+    await f.app.inject({
+      method: 'POST',
+      url: f.channelPath + '/read',
+      cookies: graceCookies,
+      payload: { messageId: first, topicId: null },
+    });
+    await until(() => Promise.resolve(standInSettled.length > 0), 20_000);
+    const settled = standInSettled[0];
+    assert.ok(settled);
+    assert.equal(settled.messageId, 'om_1');
+    assert.equal(settled.text, 'Can you look?');
+    assert.equal(
+      Number(
+        await raw
+          .prepare('SELECT count(*) FROM notifications WHERE card_open')
+          .pluck()
+          .get(),
+      ),
+      0,
+    );
 
     // Read first, nothing goes.
     const read = await mention('Already seen');
