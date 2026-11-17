@@ -20,6 +20,7 @@ import { t3Factory } from '../src/inbox/t3.js';
 import { T3Backend } from '../src/adapters/t3/backend.js';
 import { postInput, key } from './communication-helpers.js';
 import { profileInput } from './agent-helpers.js';
+import { feishuPerson } from './feishu.js';
 import {
   inboxFixture,
   due,
@@ -745,11 +746,20 @@ await test('context is bounded, source-attributed, preserves topic/task/memory r
       })
     ).task;
     const c = await claim(f);
+    // The handle stands in until Feishu gives the person a name.
+    assert.equal(
+      (await f.inbox.context(c, f.workerPrincipal)).context.author,
+      'owner',
+    );
+    await f.store.signIn({
+      ...feishuPerson('owner@example.com'),
+      name: '张华',
+    });
     const { context } = await f.inbox.context(c, f.workerPrincipal);
     assert.equal(context.task?.id, task.id);
     assert.equal(context.topic, topic.title);
     // People by name, as the workspace shows them; no internal identifiers.
-    assert.doesNotMatch(context.author, /^[0-9a-f-]{36}$/);
+    assert.equal(context.author, '张华');
     assert.equal(
       Object.keys(context).some((k) => k.endsWith('Id') && k !== 'channelId'),
       false,

@@ -1,12 +1,11 @@
 import { useEffect, useId, useLayoutEffect, useRef, useState } from 'react';
 import { z } from 'zod';
-import type { Agent } from '../src/domain/agents.js';
 import { REACH, type Message } from '../src/domain/communication.js';
 import type { WorkspaceSnapshot } from '../src/workspace/contracts.js';
 import { value } from './api.js';
 import { ActionForm, AddButton, Field, InlineField } from './forms.js';
 import { ArrowIcon } from './icons.js';
-import { joinedAgents, memberName } from './names.js';
+import { joinedAgents, memberName, otherPeople } from './names.js';
 import { Avatar, Presence, shortTime, workerConnected } from './ui.js';
 import { keep, kept } from './session.js';
 import { DeliveryLine } from './deliveries.js';
@@ -15,44 +14,58 @@ import { ReplyOrigin, answerOnly } from './replies.js';
 import type { DeliveryView } from './deliveries.js';
 
 type ChatMessage = z.infer<typeof Message>;
-const mentionQuery = /(?:^|\s)@([\w.-]{0,40})$/;
-/** `@Name` typed in full counts as a mention even without the popover. */
-function mentionedAgents(body: string, agents: Agent[]) {
-  return agents.filter((a) =>
-    new RegExp(
-      '(?:^|\\s)@' +
-        a.name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') +
-        '(?![\\w-])',
-      'i',
-    ).test(body),
+const mentionQuery = /(?:^|\s)@([\p{L}\p{N}\p{M}_.-]{0,40})$/u;
+/** Someone the `@` popover offers: the channel's agents and other people. */
+interface Mentionable {
+  kind: 'human' | 'agent';
+  id: string;
+  name: string;
+  /** A person's handle, which finds them too; never shown. */
+  handle: string | null;
+  online: boolean;
+}
+/** Whether what follows `@` starts their name, a word of it, or their handle. */
+function matches(member: Mentionable, query: string) {
+  const typed = query.toLowerCase();
+  return [member.name, ...member.name.split(/\s+/), member.handle ?? ''].some(
+    (word) => word !== '' && word.toLowerCase().startsWith(typed),
+  );
+}
+/** `@Name` (or a person's `@handle`) typed in full counts as a mention. */
+function mentionedIn(body: string, members: Mentionable[]) {
+  return members.filter((m) =>
+    [m.name, m.handle].some(
+      (said) =>
+        said !== null &&
+        new RegExp(
+          '(?:^|\\s)@' +
+            said.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') +
+            '(?![\\p{L}\\p{N}_-])',
+          'iu',
+        ).test(body),
+    ),
   );
 }
 function Composer({
   channelName,
   channelPath,
   topicId,
-  agents,
-  connected,
+  members,
   onDone,
 }: {
   channelName: string;
   channelPath: string;
   topicId: string;
-  agents: Agent[];
-  connected: (agentId: string) => boolean;
+  members: Mentionable[];
   onDone: () => void;
 }) {
-  const [chips, setChips] = useState<Agent[]>([]);
+  const [chips, setChips] = useState<Mentionable[]>([]);
   const [query, setQuery] = useState<string | null>(null);
   const [active, setActive] = useState(0);
   const input = useRef<HTMLTextAreaElement>(null);
   const listId = useId();
   const candidates =
-    query === null
-      ? []
-      : agents
-          .filter((a) => a.name.toLowerCase().startsWith(query.toLowerCase()))
-          .slice(0, 8);
+    query === null ? [] : members.filter((m) => matches(m, query)).slice(0, 8);
   const open = candidates.length > 0;
   function track() {
     const el = input.current;
@@ -61,12 +74,12 @@ function Composer({
     setQuery(match ? (match[1] ?? '') : null);
     setActive(0);
   }
-  function choose(agent: Agent) {
+  function choose(member: Mentionable) {
     const el = input.current;
     if (!el || query === null) return;
     const caret = el.selectionStart;
     el.setRangeText(
-      '@' + agent.name + ' ',
+      '@' + member.name + ' ',
       caret - query.length - 1,
       caret,
       'end',
@@ -75,7 +88,7 @@ function Composer({
     setReady(true);
     el.focus();
     setChips((old) =>
-      old.some((c) => c.id === agent.id) ? old : [...old, agent].slice(0, 20),
+      old.some((c) => c.id === member.id) ? old : [...old, member].slice(0, 20),
     );
     setQuery(null);
   }
@@ -112,15 +125,15 @@ function Composer({
         build={(f) => {
           const body = value(f, 'body');
           const mentioned = [...chips];
-          for (const agent of mentionedAgents(body, agents))
-            if (!mentioned.some((m) => m.id === agent.id))
-              mentioned.push(agent);
+          for (const member of mentionedIn(body, members))
+            if (!mentioned.some((m) => m.id === member.id))
+              mentioned.push(member);
           return {
             body,
             topicId: topicId || null,
             mentions: mentioned
               .slice(0, 20)
-              .map((a) => ({ kind: 'agent', id: z.uuid().parse(a.id) })),
+              .map((m) => ({ kind: m.kind, id: z.uuid().parse(m.id) })),
             sourceMessageId: null,
             sourceEventId: null,
           };
@@ -128,15 +141,17 @@ function Composer({
       >
         {chips.length > 0 && (
           <ul className="mention-chips" aria-label="Mentions">
-            {chips.map((agent) => (
-              <li key={agent.id}>
-                <span className="mention-chip">@{agent.name}</span>
+            {chips.map((member) => (
+              <li key={member.id}>
+                <span className="mention-chip" data-kind={member.kind}>
+                  @{member.name}
+                </span>
                 <button
                   type="button"
                   className="quiet"
-                  aria-label={'Remove mention of ' + agent.name}
+                  aria-label={'Remove mention of ' + member.name}
                   onClick={() => {
-                    setChips((old) => old.filter((c) => c.id !== agent.id));
+                    setChips((old) => old.filter((c) => c.id !== member.id));
                   }}
                 >
                   ×
@@ -153,25 +168,25 @@ function Composer({
               role="listbox"
               aria-label="Mention suggestions"
             >
-              {candidates.map((agent, index) => (
+              {candidates.map((member, index) => (
                 <li
-                  key={agent.id}
-                  id={listId + '-' + agent.id}
+                  key={member.id}
+                  id={listId + '-' + member.id}
                   role="option"
                   aria-selected={index === active}
                   onMouseDown={(e) => {
                     e.preventDefault();
-                    choose(agent);
+                    choose(member);
                   }}
                 >
                   <Avatar
-                    kind="agent"
-                    name={agent.name}
-                    id={agent.id}
+                    kind={member.kind}
+                    name={member.name}
+                    id={member.id}
                     size="sm"
                   />
-                  <span className="person-name">{agent.name}</span>
-                  <Presence online={connected(agent.id)} dot />
+                  <span className="person-name">{member.name}</span>
+                  <Presence online={member.online} dot />
                 </li>
               ))}
             </ul>
@@ -225,10 +240,10 @@ function Composer({
                       (old + step + candidates.length) % candidates.length,
                   );
                 } else if (e.key === 'Enter' || e.key === 'Tab') {
-                  const agent = candidates[active];
-                  if (agent) {
+                  const member = candidates[active];
+                  if (member) {
                     e.preventDefault();
-                    choose(agent);
+                    choose(member);
                   }
                 } else if (e.key === 'Escape') {
                   e.preventDefault();
@@ -241,8 +256,8 @@ function Composer({
           <button
             type="button"
             className="quiet mention-trigger"
-            aria-label="Mention an agent"
-            disabled={agents.length === 0}
+            aria-label="Mention someone"
+            disabled={members.length === 0}
             onClick={() => {
               const el = input.current;
               if (!el) return;
@@ -596,11 +611,17 @@ export function Chat({
       replyTo.set(d.resultMessageId, d.messageId);
   }
   const origin = new Map(data.replies.map((r) => [r.messageId, r]));
-  // A mention already written as @Name in the text needs no second chip.
+  // A mention already written as @Name in the text needs no second chip;
+  // nor does a person's written as @handle before they had a name.
+  const handle = (id: string) => data.people.find((p) => p.id === id)?.username;
   const unwritten = (m: ChatMessage) =>
-    m.mentions.filter(
-      (member) => !m.body.includes('@' + memberName(member, data)),
-    );
+    m.mentions.filter((member) => {
+      const old = member.kind === 'human' ? handle(member.id) : undefined;
+      return (
+        !m.body.includes('@' + memberName(member, data)) &&
+        !(old !== undefined && m.body.includes('@' + old))
+      );
+    });
   const replySource = (id: string) => {
     const source = messages.find((m) => m.id === id);
     if (!source) return 'an earlier message';
@@ -718,7 +739,11 @@ export function Chat({
               <Avatar
                 kind={m.author.kind}
                 name={name}
-                {...(m.author.kind === 'agent' ? { id: m.author.agentId } : {})}
+                id={
+                  m.author.kind === 'agent'
+                    ? m.author.agentId
+                    : m.author.humanId
+                }
               />
               <div className="message-body">
                 <header>
@@ -812,8 +837,22 @@ export function Chat({
         channelName={channel.name}
         channelPath={channelPath}
         topicId={topic}
-        agents={joinedAgents(data)}
-        connected={(id) => workerConnected(data.wake, id)}
+        members={[
+          ...joinedAgents(data).map((a): Mentionable => ({
+            kind: 'agent',
+            id: a.id,
+            name: a.name,
+            handle: null,
+            online: workerConnected(data.wake, a.id),
+          })),
+          ...otherPeople(data).map((p): Mentionable => ({
+            kind: 'human',
+            id: p.id,
+            name: p.name,
+            handle: p.username,
+            online: p.online,
+          })),
+        ]}
         onDone={() => {
           reading.sent();
           onDone();

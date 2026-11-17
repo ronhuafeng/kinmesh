@@ -59,7 +59,8 @@ that isn't needed. Check a change against these before it ships.
 **Faces and presence**
 
 13. Icons over labels where the meaning is plain (`+`, inbox, sign out). Every avatar
-    is round, people and agents alike; an agent may have a picture.
+    is round, people and agents alike; a person shows their Feishu picture, and an
+    agent may have one.
 14. Presence reads the same for everyone: "● Online / ○ Offline" under a face, a dot
     beside a name in a list. The team is a gallery of faces; adding is a tile in it.
 
@@ -125,8 +126,12 @@ it is the authority. Use the custom property for its role, never a raw colour.
 
 ## Components
 
-- **Avatar**: round for everyone; an agent's picture when it has one, otherwise the
-  initial on the identity colour (ochre for people, indigo for agents).
+- **Avatar**: round for everyone; a picture when there is one (a person's from
+  Feishu, an agent's set on its page), otherwise the initial on the identity colour
+  (ochre for people, indigo for agents).
+- **Names**: a person is their Feishu name everywhere they appear (messages, the
+  sidebar, Team, tasks, the Inbox, mentions, delivery lines), said once and never
+  beside their handle. Until their next sign-in brings a name, the handle stands in.
 - **Presence**: "● Online / ○ Offline" under a face (Team), a dot beside a name
   (sidebar, mention list). A person is online while a session of theirs was used in
   the last 90 seconds (an open workspace keeps it so); an agent while a worker can
@@ -156,7 +161,9 @@ it is the authority. Use the custom property for its role, never a raw colour.
   the run's stopped reply arrives, or "Stopped before _Ada_ started" when nothing
   had reached T3. A line stuck because _Ada_'s T3 access changed also ends in
   **Stop**, which ends it at once: "Stopped after _Ada_'s T3 access changed".
-- **Composer**: multi-line input with the `@` mention popover, on the bottom edge of
+- **Composer**: multi-line input with the `@` mention popover (the channel's agents
+  and other people, found by a word of their name or a person's handle; a choice is
+  written as @Name), on the bottom edge of
   the chat over a band of paper that hides the conversation scrolling behind it;
   hints in the placeholder. Send is the round confirm button, shown once there is
   something to send. A channel or topic that opens is ready to

@@ -6,8 +6,8 @@ import { Reference } from '../domain/execution.js';
 import { nativeThreadUrl, trustedLinkOrigin } from './links.js';
 import { RUNTIME_MODES, Status, TERMINAL } from '../adapters/t3/contracts.js';
 import {
-  Human,
   HumanId,
+  Person,
   Team,
   AgentId,
   ChannelId,
@@ -60,10 +60,13 @@ export const WorkspaceSnapshot = z.strictObject({
     .url()
     .refine((origin) => new URL(origin).origin === origin)
     .nullable(),
-  human: Human,
+  human: Person,
   team: Team,
-  /** Everyone of the team, you included, and who is online now. */
-  people: z.array(Human.extend({ online: z.boolean() })).max(100),
+  /**
+   * Everyone of the team, you included, and who is online now. A picture is
+   * fetched by its own URL.
+   */
+  people: z.array(Person.extend({ online: z.boolean() })).max(100),
   /** The people in the open channel. */
   joinedHumanIds: z.array(HumanId).max(100),
   channels: pageOf(ChannelView),

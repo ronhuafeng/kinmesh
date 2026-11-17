@@ -924,6 +924,8 @@ a.link-button {
 .author-link {
   font-weight: 650;
   font-size: 0.93rem;
+  /* A person's name and an agent's link share one line height. */
+  line-height: 1.3;
 }
 button.author-link {
   background: none;
@@ -2693,7 +2695,7 @@ button.roster-person:hover:not(:disabled) {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
-/* A picture fills the circle; the initial is only for agents without one. */
+/* A picture fills the circle; the initial is only for those without one. */
 .avatar[data-image] {
   overflow: hidden;
   background: var(--sunken);

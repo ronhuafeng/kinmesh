@@ -71,7 +71,7 @@ export function InboxPage({
         key: 'task-' + task.id,
         tone: 'decide',
         agentId: agent,
-        who: agent ? name(agent) : data.human.username,
+        who: agent ? name(agent) : data.human.name,
         what: task.title,
         where: (humanAsk(task, data) ?? 'Your decision') + ' · #' + channelName,
         at: task.updatedAt,
@@ -155,6 +155,7 @@ export function InboxPage({
                   <Avatar
                     kind={item.key === 't3' ? 'agent' : 'human'}
                     name={item.who}
+                    {...(item.key === 't3' ? {} : { id: data.human.id })}
                   />
                 )}
               </span>

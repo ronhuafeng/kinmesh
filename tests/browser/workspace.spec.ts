@@ -144,17 +144,55 @@ test('a second person of the organization signs in to the same workspace and see
       name: 'People in this channel',
     });
     await expect(people.getByText('ada', { exact: true })).toBeVisible();
-    // And Ada sees Grace arrive, online, without reloading.
+    // And Ada sees Grace arrive, online, without reloading: by the name and
+    // picture Feishu gives her, served from here, never by her handle.
     const here = page.getByRole('region', { name: 'People in this channel' });
-    await expect(here.getByText('grace', { exact: true })).toBeVisible();
+    const graceRow = here
+      .locator('.person')
+      .filter({ hasText: 'Grace Hopper' });
+    await expect(graceRow).toBeVisible();
+    await expect(here.getByText('grace', { exact: true })).toHaveCount(0);
+    await expect(graceRow.locator('.avatar img')).toHaveAttribute(
+      'src',
+      /^\/api\/teams\/[^/]+\/people\/[^/]+\/avatar\?v=/,
+    );
+    // The picture itself loads: the browser decoded it.
+    await expect
+      .poll(() =>
+        graceRow
+          .locator('.avatar img')
+          .evaluate((img: HTMLImageElement) => img.naturalWidth),
+      )
+      .toBe(1);
     // A person is added to a channel the way an agent is: from their tile.
     await createChannel(page, 'design');
-    await expect(here.getByText('grace', { exact: true })).toHaveCount(0);
+    await expect(graceRow).toHaveCount(0);
     await page.getByRole('tab', { name: 'Team', exact: true }).click();
-    const add = page.getByRole('button', { name: 'Add grace to channel' });
+    const add = page.getByRole('button', {
+      name: 'Add Grace Hopper to channel',
+    });
     await add.click();
-    await expect(here.getByText('grace', { exact: true })).toBeVisible();
+    await expect(graceRow).toBeVisible();
     await expect(add).toHaveCount(0);
+    // The @ popover finds her by a word of her name, and the message says
+    // her name once, with no second chip.
+    await page.getByRole('tab', { name: 'Chat', exact: true }).click();
+    const message = composer.getByLabel('Message', { exact: true });
+    await message.pressSequentially('Thanks @Hop');
+    await page
+      .getByRole('listbox', { name: 'Mention suggestions' })
+      .getByRole('option', { name: /Grace Hopper/ })
+      .click();
+    await expect(message).toHaveValue('Thanks @Grace Hopper ');
+    await composer.getByRole('button', { name: 'Send message' }).click();
+    const posted = page
+      .getByRole('list', { name: 'Channel messages' })
+      .getByRole('listitem')
+      .filter({ hasText: 'Thanks @Grace Hopper' });
+    await expect(posted).toBeVisible();
+    await expect(posted.getByRole('list', { name: 'Mentioned' })).toHaveCount(
+      0,
+    );
     // Grace finds the channel in her sidebar without reloading.
     await expect(
       grace

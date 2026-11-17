@@ -16,6 +16,18 @@ function who(code: string) {
 }
 /** The organization the stand-ins say everyone belongs to. */
 export const STAND_IN_ORGANIZATION = 'Stand-in Co';
+/**
+ * People whose Feishu account has a name and a picture over HTTP; everyone
+ * else has neither, so their handle stands in.
+ */
+export const STAND_IN_NAMES: Readonly<Record<string, string>> = {
+  'grace@example.com': 'Grace Hopper',
+};
+/** A real 1×1 PNG, as the HTTP stand-in's picture. */
+export const STAND_IN_PICTURE = Buffer.from(
+  'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==',
+  'base64',
+);
 /** The identity the stand-ins give a mailbox, for writing to the store directly. */
 export const feishuPerson = (mailbox: string) => ({
   feishuId: who(mailbox).union,
@@ -39,6 +51,7 @@ export const standInFeishu: Feishu = {
     return Promise.resolve(`token:${code}`);
   },
   organization: () => Promise.resolve(STAND_IN_ORGANIZATION),
+  picture: () => Promise.reject(new Error('no picture')),
   profile(token) {
     const { union, mailbox } = who(token.slice('token:'.length));
     return Promise.resolve({
@@ -147,17 +160,32 @@ export async function startFeishuStandIn() {
         /^Bearer /,
         '',
       );
+      const { union, mailbox } = who(
+        Buffer.from(token, 'base64url').toString(),
+      );
+      const name = STAND_IN_NAMES[mailbox];
       response.writeHead(200, { 'content-type': 'application/json' }).end(
         JSON.stringify({
           code: 0,
           data: {
-            union_id: who(Buffer.from(token, 'base64url').toString()).union,
-            enterprise_email: who(Buffer.from(token, 'base64url').toString())
-              .mailbox,
+            union_id: union,
+            enterprise_email: mailbox,
             tenant_key: 'stand-in',
+            ...(name === undefined
+              ? {}
+              : {
+                  name,
+                  avatar_middle: `http://${request.headers.host ?? ''}/picture.png`,
+                }),
           },
         }),
       );
+      return;
+    }
+    if (url.pathname === '/picture.png') {
+      response
+        .writeHead(200, { 'content-type': 'image/png' })
+        .end(STAND_IN_PICTURE);
       return;
     }
     response.writeHead(404).end();

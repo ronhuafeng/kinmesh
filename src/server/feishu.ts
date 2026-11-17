@@ -1,5 +1,7 @@
 import { z } from 'zod';
 import type { Config } from './config.js';
+import { personName } from '../domain/contracts.js';
+import { AVATAR_LIMIT } from '../persistence/agents.js';
 
 const SCOPE = 'contact:user.email:readonly contact:user.employee:readonly';
 /** Hosts of Feishu's authorization (accounts) and user info (open) APIs. */
@@ -12,6 +14,10 @@ export interface FeishuProfile {
   /** The enterprise mailbox, which only the organization hands out. */
   enterprise: unknown;
   tenant: unknown;
+  /** The name the organization knows them by. */
+  name?: unknown;
+  /** Where Feishu keeps their picture. */
+  avatar?: unknown;
 }
 /** What Kinmesh asks of Feishu to sign a person in. */
 export interface Feishu {
@@ -21,6 +27,8 @@ export interface Feishu {
   profile(accessToken: string): Promise<FeishuProfile>;
   /** The organization's name, read as the app itself (tenant:tenant:readonly). */
   organization(): Promise<string>;
+  /** A person's picture from where the profile says it is; at most AVATAR_LIMIT bytes. */
+  picture(url: string): Promise<Buffer>;
 }
 
 /**
@@ -28,7 +36,10 @@ export interface Feishu {
  * and no token, ever reaches an error message or a log.
  */
 export class FeishuFailure extends Error {
-  constructor(stage: 'token' | 'profile' | 'tenant', status: number) {
+  constructor(
+    stage: 'token' | 'profile' | 'tenant' | 'picture',
+    status: number,
+  ) {
     super(`feishu_${stage}_${String(status)}`);
     this.name = 'FeishuFailure';
   }
@@ -55,6 +66,10 @@ const Profile = z.looseObject({
       union_id: z.unknown().optional(),
       enterprise_email: z.unknown().optional(),
       tenant_key: z.unknown().optional(),
+      name: z.unknown().optional(),
+      // 240 × 240: sharp on the largest face, well within a picture's limit.
+      avatar_middle: z.unknown().optional(),
+      avatar_url: z.unknown().optional(),
     })
     .optional(),
 });
@@ -132,6 +147,8 @@ export function feishuClient(config: Config['feishu']): Feishu {
         union: body.data.data.union_id,
         enterprise: body.data.data.enterprise_email,
         tenant: body.data.data.tenant_key,
+        name: body.data.data.name,
+        avatar: body.data.data.avatar_middle ?? body.data.data.avatar_url,
       };
     },
     async organization() {
@@ -171,6 +188,35 @@ export function feishuClient(config: Config['feishu']): Feishu {
         throw new FeishuFailure('tenant', response.status);
       return name;
     },
+    async picture(address) {
+      // Only Feishu's own HTTPS, or the stand-in a test runs; nothing it
+      // redirects to, and never more than a picture may hold.
+      const url = new URL(address);
+      const standIn = config.standIn && new URL(config.standIn).origin;
+      if (
+        (url.protocol !== 'https:' && url.origin !== standIn) ||
+        url.username !== '' ||
+        url.password !== ''
+      )
+        throw new FeishuFailure('picture', 0);
+      const response = await fetch(url, {
+        headers: { Accept: 'image/png, image/jpeg, image/webp' },
+        redirect: 'error',
+        signal: AbortSignal.timeout(8000),
+      });
+      if (!response.ok || !response.body)
+        throw new FeishuFailure('picture', response.status);
+      const chunks: Uint8Array[] = [];
+      let size = 0;
+      for await (const chunk of response.body) {
+        size += chunk.byteLength;
+        // Leaving the loop cancels the rest of the download.
+        if (size > AVATAR_LIMIT)
+          throw new FeishuFailure('picture', response.status);
+        chunks.push(chunk);
+      }
+      return Buffer.concat(chunks);
+    },
   };
 }
 
@@ -195,7 +241,7 @@ export function canonicalMailbox(value: unknown): string | null {
 export function organizationMember(
   profile: FeishuProfile,
   domain: string,
-): { feishuId: string; email: string } | null {
+): { feishuId: string; email: string; name: string | null } | null {
   const { union, tenant } = profile;
   const email = canonicalMailbox(profile.enterprise);
   if (
@@ -207,5 +253,5 @@ export function organizationMember(
     email?.slice(email.lastIndexOf('@') + 1) !== domain
   )
     return null;
-  return { feishuId: union, email };
+  return { feishuId: union, email, name: personName(profile.name) };
 }

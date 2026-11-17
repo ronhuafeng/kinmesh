@@ -138,7 +138,9 @@ export function inboxRepository(
       author.kind === 'human'
         ? (
             await q()
-              .select({ name: s.humans.username })
+              .select({
+                name: sql<string>`coalesce(${s.humans.name}, ${s.humans.username})`,
+              })
               .from(s.humans)
               .where(eq(s.humans.id, author.humanId))
               .limit(1)

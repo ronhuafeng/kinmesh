@@ -13,7 +13,10 @@ export function someoneOf(who: Someone | z.infer<typeof Author>): Someone {
     ? { kind: 'human', id: who.humanId }
     : { kind: 'agent', id: who.agentId };
 }
-/** A member's name: yours, an agent's, or the plain word for its kind. */
+/**
+ * A member's name: a person's as Feishu gives it (their handle until then),
+ * an agent's, or the plain word for its kind.
+ */
 export function memberName(
   who: Someone | z.infer<typeof Author> | null,
   data: WorkspaceSnapshot,
@@ -22,7 +25,8 @@ export function memberName(
   const { kind, id } = someoneOf(who);
   if (kind === 'human')
     return (
-      data.people.find((person) => person.id === id)?.username ?? 'Human member'
+      data.people.find((person) => person.id === id)?.name ??
+      (id === data.human.id ? data.human.name : 'Human member')
     );
   return data.agents.find((agent) => agent.id === id)?.name ?? 'Agent member';
 }

@@ -1,6 +1,6 @@
-import type { FastifyInstance } from 'fastify';
+import type { FastifyInstance, FastifyReply } from 'fastify';
 import { z } from 'zod';
-import { AgentId, TeamId } from '../domain/contracts.js';
+import { AgentId, HumanId, TeamId } from '../domain/contracts.js';
 import {
   CorrelationInput,
   GrantInput,
@@ -19,6 +19,20 @@ const TeamPath = z.object({ teamId: TeamId });
 const AgentPath = TeamPath.extend({ agentId: AgentId });
 const GrantPath = AgentPath.extend({ grantId: z.uuid() });
 const ExecutionPath = AgentPath.extend({ executionId: z.uuid() });
+const PersonPath = TeamPath.extend({ humanId: HumanId });
+/** A picture goes out as its detected type, never sniffed or run. */
+const picture = (
+  reply: FastifyReply,
+  image: { mime: string; bytes: Buffer } | null,
+) => {
+  if (image === null) throw new DomainError('not-found');
+  return reply
+    .header('content-type', image.mime)
+    .header('cache-control', 'private, max-age=86400')
+    .header('x-content-type-options', 'nosniff')
+    .header('content-security-policy', "default-src 'none'; sandbox")
+    .send(image.bytes);
+};
 /** `directory` holds the tokens of agents connected from the workspace. */
 export function registerAgents(
   app: FastifyInstance,
@@ -82,19 +96,22 @@ export function registerAgents(
   });
   app.get(base + '/:agentId/avatar', async (request, reply) => {
     const { teamId, agentId } = AgentPath.parse(request.params);
-    const image = await store.agents.avatar(
-      principal(request),
-      teamId,
-      agentId,
+    return picture(
+      reply,
+      await store.agents.avatar(principal(request), teamId, agentId),
     );
-    if (image === null) throw new DomainError('not-found');
-    return reply
-      .header('content-type', image.mime)
-      .header('cache-control', 'private, max-age=86400')
-      .header('x-content-type-options', 'nosniff')
-      .header('content-security-policy', "default-src 'none'; sandbox")
-      .send(image.bytes);
   });
+  // A person's picture, as Feishu last gave it: for the people of the team.
+  app.get(
+    '/api/teams/:teamId/people/:humanId/avatar',
+    async (request, reply) => {
+      const { teamId, humanId } = PersonPath.parse(request.params);
+      return picture(
+        reply,
+        await store.portrait(principal(request), teamId, humanId),
+      );
+    },
+  );
   app.post(base + '/:agentId/lifecycle', async (request) => {
     const { teamId, agentId } = AgentPath.parse(request.params);
     const { lifecycle } = z

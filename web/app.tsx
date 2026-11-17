@@ -530,12 +530,23 @@ export function App() {
     focus?.kind === 'worker'
       ? data.agents.find((a) => a.id === focus.id)
       : undefined;
-  const avatarImages = new Map(
-    data.avatars.map((a) => [
+  // Pictures by member ID: agents' set here, people's from Feishu.
+  const avatarImages = new Map([
+    ...data.avatars.map((a): [string, string] => [
       a.agentId,
       `/api/teams/${data.team.id}/agents/${a.agentId}/avatar?v=${encodeURIComponent(a.updatedAt)}`,
     ]),
-  );
+    ...data.people.flatMap((p): [string, string][] =>
+      p.avatar === null
+        ? []
+        : [
+            [
+              p.id,
+              `/api/teams/${data.team.id}/people/${p.id}/avatar?v=${encodeURIComponent(p.avatar)}`,
+            ],
+          ],
+    ),
+  ]);
   // An open page: a task or a new one (on the board), or the Inbox,
   // Settings or a hand-run worker (on no tab).
   // A task just created is a page already, while its first refresh arrives.
@@ -832,12 +843,11 @@ export function App() {
                       >
                         <Avatar
                           kind="human"
-                          name={data.human.username}
+                          name={data.human.name}
+                          id={data.human.id}
                           size="sm"
                         />
-                        <span className="person-name">
-                          {data.human.username}
-                        </span>
+                        <span className="person-name">{data.human.name}</span>
                         <Presence online dot />
                       </button>
                     </li>
@@ -848,10 +858,11 @@ export function App() {
                         <span className="person">
                           <Avatar
                             kind="human"
-                            name={person.username}
+                            name={person.name}
+                            id={person.id}
                             size="sm"
                           />
-                          <span className="person-name">{person.username}</span>
+                          <span className="person-name">{person.name}</span>
                           <Presence online={person.online} dot />
                         </span>
                       </li>
@@ -1200,7 +1211,12 @@ export function App() {
                       setFocus({ kind: 'settings' });
                     }}
                   >
-                    <Avatar kind="human" name={data.human.username} size="sm" />
+                    <Avatar
+                      kind="human"
+                      name={data.human.name}
+                      id={data.human.id}
+                      size="sm"
+                    />
                     <span>You</span>
                   </button>
                 </nav>
