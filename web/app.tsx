@@ -335,11 +335,16 @@ export function App() {
     };
   }, [toast]);
   const shown = useRef<WorkspaceSnapshot | null>(null);
+  // Once signed out, only signing in again (a new page) shows the workspace:
+  // a snapshot still on its way, from the stream or a board's animation,
+  // never brings it back.
+  const out = useRef(false);
   /**
    * Signed out, or access lost: nothing protected stays on screen, and no
    * channel or page identifiers are left for whoever signs in next.
    */
   const toSignedOut = useCallback((lostAccess = false) => {
+    out.current = true;
     shown.current = null;
     setData(null);
     setFocus(null);
@@ -412,9 +417,11 @@ export function App() {
   /** A snapshot of a place, read or from the stream, put on screen. */
   const show = useCallback(
     (next: WorkspaceSnapshot, readPlace: string, readChannel: string) => {
+      if (out.current) return;
       // Held at once, so the revisions naming it read nothing again.
       settle('workspace', next.revision);
       const apply = () => {
+        if (out.current) return;
         // The same revision of the same place shows the same: nothing to draw.
         if (
           shownPlace.current !== readPlace ||

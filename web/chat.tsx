@@ -332,6 +332,12 @@ function Composer({
                     size="sm"
                   />
                   <span className="person-name">{member.name}</span>
+                  {/* Two of the same name are told apart by handle. */}
+                  {member.handle !== null &&
+                    candidates.some(
+                      (other) =>
+                        other.id !== member.id && other.name === member.name,
+                    ) && <span className="muted">{member.handle}</span>}
                   <Presence online={member.online} dot />
                 </li>
               ))}
