@@ -23,7 +23,7 @@ export function SettingsPage({
         <div className="you-sign-outs">
           {onSignOut && (
             <button type="button" className="you-sign-out" onClick={onSignOut}>
-              <PowerIcon />
+              <PowerIcon size={20} />
               退出登录
             </button>
           )}
@@ -32,7 +32,7 @@ export function SettingsPage({
             className="you-sign-out"
             onClick={onSignOutEverywhere}
           >
-            <PowerIcon />
+            <PowerIcon size={20} />
             在所有设备上退出登录
           </button>
         </div>

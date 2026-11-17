@@ -2429,6 +2429,110 @@ test('a fenced code block is one block, not a box around every line', async ({
   ).toBe('1px');
 });
 
+test('one author’s run of messages is one group: the face and name once, each time on hover, a new day says so', async ({
+  page,
+  context,
+  hub,
+}) => {
+  await signIn(page, hub);
+  const state = await snapshot(context.request, hub.origin);
+  if (!state.channel) throw new Error('Local channel missing');
+  // Something said yesterday, so today opens under its own date.
+  const sql = rawDatabase(hub.database);
+  try {
+    await sql
+      .prepare(
+        `INSERT INTO messages (id, channel_id, topic_id, author, created_at, body)
+         VALUES (gen_random_uuid()::text, ?, NULL, ?,
+           to_char((now() AT TIME ZONE 'utc') - interval '1 day', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'),
+           'Said yesterday')`,
+      )
+      .run(
+        state.channel.id,
+        JSON.stringify({ kind: 'human', humanId: state.human.id }),
+      );
+  } finally {
+    await sql.close();
+  }
+  await page.reload();
+  const composer = page.getByRole('form', { name: '给团队发消息' });
+  for (const body of ['First of a group', 'Second of a group']) {
+    await composer.getByLabel('消息', { exact: true }).fill(body);
+    await composer.getByRole('button', { name: '发送消息' }).click();
+  }
+  const messages = page.getByRole('list', { name: '频道消息' });
+  const item = (text: string) =>
+    messages.getByRole('listitem').filter({ hasText: text });
+  await expect(item('Second of a group')).toBeVisible();
+  // The days are separators, in order; yesterday's message is not grouped
+  // with today's.
+  const days = messages.getByRole('separator');
+  await expect(days.filter({ hasText: '昨天' })).toHaveCount(1);
+  await expect(days.filter({ hasText: '今天' })).toHaveCount(1);
+  await expect(item('First of a group').locator('header')).toHaveCount(1);
+  await expect(item('First of a group').locator('.avatar')).toHaveCount(1);
+  // The second message sits under the first: no face, no name line…
+  const second = item('Second of a group');
+  await expect(second.locator('header')).toHaveCount(0);
+  await expect(second.locator('.avatar')).toHaveCount(0);
+  // …and its text starts on the first one's text edge.
+  const edge = async (text: string) =>
+    (await messages.getByText(text, { exact: true }).boundingBox())?.x;
+  expect(await edge('Second of a group')).toBe(await edge('First of a group'));
+  // Its time is always there for a screen reader, with its author, and
+  // shown only while the message is pointed at.
+  const time = second.locator('time');
+  await expect(time).toHaveAttribute('datetime', /T/);
+  const author = await item('First of a group')
+    .locator('header strong')
+    .textContent();
+  expect(author).toBeTruthy();
+  await expect(time).toContainText(author ?? '');
+  await page.mouse.move(0, 0);
+  await expect
+    .poll(() => time.evaluate((el) => getComputedStyle(el).opacity))
+    .toBe('0');
+  await second.hover();
+  await expect
+    .poll(() => time.evaluate((el) => getComputedStyle(el).opacity))
+    .toBe('1');
+});
+
+test('a mermaid block is drawn as its diagram, and one that can’t be drawn stays its code', async ({
+  page,
+  hub,
+}) => {
+  await signIn(page, hub);
+  const composer = page.getByRole('form', { name: '给团队发消息' });
+  const say = async (body: string) => {
+    await composer.getByLabel('消息', { exact: true }).fill(body);
+    await composer.getByRole('button', { name: '发送消息' }).click();
+  };
+  const messages = page.getByRole('list', { name: '频道消息' });
+  const item = (text: string) =>
+    messages.getByRole('listitem').filter({ hasText: text });
+  await say('Drawn:\n```mermaid\nflowchart LR\n  A[Proposed] --> B[Done]\n```');
+  // An image, drawn from an SVG that runs nothing, where the code was.
+  const drawing = item('Drawn:').getByRole('img', { name: '图表' });
+  await expect(drawing).toBeVisible();
+  await expect(drawing).toHaveAttribute('src', /^data:image\/svg\+xml/);
+  await expect
+    .poll(() => drawing.evaluate((img: HTMLImageElement) => img.naturalWidth))
+    .toBeGreaterThan(0);
+  await expect(item('Drawn:').locator('pre')).toHaveCount(0);
+  // A block that can't be drawn is shown as the code it is, and says
+  // nothing else; a fence keeps its language either way.
+  await say('Broken:\n```mermaid\nflowchart LR\n  A[never closed -->\n```');
+  const code = item('Broken:').locator('pre code.language-mermaid');
+  await expect(code).toHaveText('flowchart LR\n  A[never closed -->');
+  await expect(item('Broken:').getByRole('img')).toHaveCount(0);
+  await expect(item('Broken:')).not.toContainText(/error/i);
+  await say('Typed:\n```ts\nconst x = 1;\n```');
+  await expect(item('Typed:').locator('pre code.language-ts')).toHaveText(
+    'const x = 1;',
+  );
+});
+
 test('a reload keeps the place and unsent work; Back returns to where you were', async ({
   page,
   hub,

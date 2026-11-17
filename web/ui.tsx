@@ -73,6 +73,34 @@ export function shortTime(iso: string) {
       : { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' },
   );
 }
+/** The time of day alone ("09:41"), where the day is said around it. */
+export function clockTime(iso: string) {
+  return new Date(iso).toLocaleTimeString('zh-CN', {
+    hour: '2-digit',
+    minute: '2-digit',
+  });
+}
+/** The local calendar day an instant falls on, to compare two. */
+export function dayOf(iso: string) {
+  return new Date(iso).toDateString();
+}
+/**
+ * A conversation's day: "今天", "昨天", the date this year ("11月13日 周四"),
+ * otherwise with its year.
+ */
+export function dayLabel(iso: string, now = new Date()) {
+  const date = new Date(iso);
+  const yesterday = new Date(now);
+  yesterday.setDate(now.getDate() - 1);
+  if (date.toDateString() === now.toDateString()) return '今天';
+  if (date.toDateString() === yesterday.toDateString()) return '昨天';
+  return date.toLocaleDateString('zh-CN', {
+    ...(date.getFullYear() === now.getFullYear() ? {} : { year: 'numeric' }),
+    month: 'long',
+    day: 'numeric',
+    weekday: 'short',
+  });
+}
 /** In a list: the time today, otherwise the day ("11月14日"). */
 export function listTime(iso: string) {
   const date = new Date(iso);
@@ -204,7 +232,7 @@ export function Page({
               close.current();
             }}
           >
-            <BackIcon />
+            <BackIcon size={20} />
           </button>
           <span className="page-bar-title">{bar}</span>
         </div>

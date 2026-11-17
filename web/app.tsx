@@ -838,7 +838,7 @@ export function App() {
                           aria-keyshortcuts="Meta+Backslash Control+Backslash"
                           onClick={sidebar.toggle}
                         >
-                          <SidebarIcon />
+                          <SidebarIcon size={20} />
                         </button>
                       )
                     }
@@ -1040,7 +1040,7 @@ export function App() {
                         aria-label="返回"
                         onClick={goHome}
                       >
-                        <BackIcon />
+                        <BackIcon size={20} />
                       </button>
                     )}
                     {/* Beside the sidebar the page never repeats where you are:
@@ -1071,7 +1071,7 @@ export function App() {
                         aria-keyshortcuts="Meta+Backslash Control+Backslash"
                         onClick={sidebar.toggle}
                       >
-                        <SidebarIcon />
+                        <SidebarIcon size={20} />
                       </button>
                     )}
                     {/* Views stay in reach however far the conversation scrolls. */}
@@ -1119,7 +1119,7 @@ export function App() {
                           disabled={!canAct}
                           onClick={signOut}
                         >
-                          <PowerIcon />
+                          <PowerIcon size={20} />
                         </button>
                       )}
                     </div>
@@ -1325,7 +1325,7 @@ export function App() {
                       goHome();
                     }}
                   >
-                    <HashIcon />
+                    <HashIcon size={24} />
                   </button>
                   <button
                     type="button"
@@ -1337,7 +1337,7 @@ export function App() {
                       setFocus({ kind: 'search' });
                     }}
                   >
-                    <SearchIcon />
+                    <SearchIcon size={24} />
                   </button>
                   <button
                     type="button"
@@ -1349,7 +1349,7 @@ export function App() {
                       setFocus({ kind: 'inbox' });
                     }}
                   >
-                    <InboxIcon />
+                    <InboxIcon size={24} />
                     {waiting > 0 && <span className="count">{waiting}</span>}
                   </button>
                   <button
