@@ -120,7 +120,7 @@ function sentence(
         : { text: `给 ${name} 的请求已过期`, tone: 'problem' };
   }
 }
-const unanswered = (d: DeliveryView) =>
+export const unanswered = (d: DeliveryView) =>
   d.state === 'ready' || d.state === 'waiting' || d.state === 'uncertain';
 /**
  * Whether a person may stop it: not yet answered, and not already stopping;
