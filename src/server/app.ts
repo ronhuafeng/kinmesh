@@ -23,6 +23,8 @@ import { z } from 'zod';
 import Fastify, { LogController, type FastifyRequest } from 'fastify';
 import secureSession from '@fastify/secure-session';
 import rateLimit from '@fastify/rate-limit';
+import compress from '@fastify/compress';
+import { constants } from 'node:zlib';
 import { randomUUID } from 'node:crypto';
 import { SESSION_LIFETIME_MS } from '../domain/contracts.js';
 import type { Store } from '../persistence/store.js';
@@ -106,6 +108,14 @@ export async function createApp(
     keyGenerator: limitKey,
     allowList: unlimited,
     onExceeded: metrics.limited,
+  });
+  // Answers travel compressed, at a level quick enough for every read; the
+  // web's own files are compressed once, when built (`registerWeb`). The
+  // event stream writes its own response, and goes as it is, at once.
+  await app.register(compress, {
+    encodings: ['br', 'gzip'],
+    brotliOptions: { params: { [constants.BROTLI_PARAM_QUALITY]: 4 } },
+    zlibOptions: { level: 6 },
   });
   app.decorateRequest('principal', null);
   app.addHook('onSend', async (_request, reply) => {

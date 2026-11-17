@@ -240,7 +240,8 @@ fallback.
   React elements, never as HTML. A fenced code block is one rounded block in the
   system monospace, never boxed line by line, and keeps its language. A `mermaid`
   block is drawn as its diagram: Mermaid loads only when a message holds one, at its
-  strict security level, themed from the tokens for light or dark, and the drawing is
+  strict security level, laid out by dagre (ELK is never loaded unless a diagram
+  asks for it), themed from the tokens for light or dark, and the drawing is
   shown as an image, so it runs nothing; its space is kept and it fades in; one that
   can't be drawn stays its code, silently. A table has hairline rows, a heavier head
   and scrolls sideways inside the message when wide. An image from this site is

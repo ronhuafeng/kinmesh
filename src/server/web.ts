@@ -17,6 +17,9 @@ export async function registerWeb(app: FastifyInstance) {
       dotfiles: 'deny',
       maxAge: '1y',
       immutable: true,
+      // Built beside each file (`vite.config.ts`), and sent to a browser
+      // that takes them.
+      preCompressed: true,
     });
   }
   app.get('/', (_request, reply) => {

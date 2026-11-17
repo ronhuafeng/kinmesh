@@ -78,6 +78,9 @@ function draw(source: string, dark: boolean): Promise<Drawing> {
       securityLevel: 'strict',
       // A block that can't be drawn stays code; Mermaid adds nothing.
       suppressErrorRendering: true,
+      // Laid out by dagre, which comes with Mermaid; its default, ELK, is
+      // another 1.5 MB to load.
+      layout: 'dagre',
       theme: 'base',
       darkMode: dark,
       fontFamily: token('--font'),

@@ -116,6 +116,27 @@ function useThumb() {
     };
   }, []);
 }
+/**
+ * The new snapshot, keeping each message as the one before had it when it
+ * is unchanged: a row whose message is the same object is not drawn again.
+ */
+function keepUnchanged(
+  previous: WorkspaceSnapshot | null,
+  next: WorkspaceSnapshot,
+): WorkspaceSnapshot {
+  if (!previous) return next;
+  const kept = new Map(previous.messages.items.map((m) => [m.id, m]));
+  return {
+    ...next,
+    messages: {
+      ...next.messages,
+      items: next.messages.items.map((m) => {
+        const old = kept.get(m.id);
+        return old && JSON.stringify(old) === JSON.stringify(m) ? old : m;
+      }),
+    },
+  };
+}
 /** How long a stream may stay silent before the place is read without it. */
 const SILENT_STREAM_MS = 3000;
 function animate(update: () => void) {
@@ -375,9 +396,10 @@ export function App() {
           shownPlace.current !== readPlace ||
           shown.current?.revision !== next.revision
         ) {
-          shown.current = next;
+          const kept = keepUnchanged(shown.current, next);
+          shown.current = kept;
           shownPlace.current = readPlace;
-          setData(next);
+          setData(kept);
         }
         setStatus('ready');
         setLoadedFor(readChannel);

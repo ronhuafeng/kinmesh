@@ -1,6 +1,6 @@
 import type { WorkspaceSnapshot } from '../src/workspace/contracts.js';
 
-type ReplyView = WorkspaceSnapshot['replies'][number];
+export type ReplyView = WorkspaceSnapshot['replies'][number];
 /**
  * Provenance once appended to agent replies; stripped wherever a reply is
  * read or becomes a task, so older messages read as answers.
