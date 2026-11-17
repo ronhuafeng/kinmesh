@@ -178,7 +178,7 @@ test('a second person of the organization signs in to the same workspace and see
     // A person is added to a channel the way an agent is: from their tile.
     await createChannel(page, 'design');
     await expect(graceRow).toHaveCount(0);
-    await page.getByRole('tab', { name: '团队', exact: true }).click();
+    await page.getByRole('tab', { name: '成员', exact: true }).click();
     const add = page.getByRole('button', {
       name: '把 Grace Hopper 加入 #design',
     });
@@ -226,7 +226,7 @@ test('real workspace onboarding, mentions and reconnect on a phone', async ({
   // its chat and board, as on a wider screen.
   await page.setViewportSize({ width: 375, height: 1000 });
   await expect(
-    page.getByRole('tab', { name: '团队', exact: true }),
+    page.getByRole('tab', { name: '成员', exact: true }),
   ).toHaveAttribute('aria-selected', 'true');
   await expect(agentRow(page, 'Ada')).toBeVisible();
   // Back leads Home: the channels as conversations, and no gallery.
@@ -750,7 +750,9 @@ test('the Inbox gathers what waits on me across channels and leads to the fix', 
   await signIn(page, hub);
   await register(page, 'Ada', 'developer');
   // What the Inbox lists, and when: tests/attention.test.ts.
-  const needs = page.getByRole('tab', { name: /^收件箱/ });
+  const needs = page
+    .getByRole('navigation', { name: '收件箱' })
+    .getByRole('button', { name: /^收件箱/ });
   await page.getByRole('tab', { name: '聊天', exact: true }).click();
   const composer = page.getByRole('form', { name: '给团队发消息' });
   await composer
@@ -994,7 +996,9 @@ test('a week before T3’s sign-in ends anyone reconnects it from the Inbox; onc
   } finally {
     await sql.close();
   }
-  const needs = page.getByRole('tab', { name: /^收件箱/ });
+  const needs = page
+    .getByRole('navigation', { name: '收件箱' })
+    .getByRole('button', { name: /^收件箱/ });
   const inbox = page.getByRole('region', { name: '收件箱' });
   const sign = inbox.getByRole('listitem').filter({ hasText: /T3 的登录/ });
   // A month to go: nothing to do.
@@ -1409,7 +1413,7 @@ test('lost message response retries the same committed operation; real conflict 
   await page.unroute('**/api/workspace?*');
   await register(page, 'Duplicate check', 'assistant');
   // Real server uniqueness conflict, not an intercepted/fabricated error response.
-  await page.getByRole('tab', { name: '团队', exact: true }).click();
+  await page.getByRole('tab', { name: '成员', exact: true }).click();
   await page
     .getByRole('list', { name: '团队', exact: true })
     .getByRole('button', { name: '添加智能体', exact: true })
@@ -1740,7 +1744,7 @@ test('the organization names the team at the top of the sidebar; nobody renames 
   ).toHaveCount(0);
   // Your tile on Team is one of the team's, not a way in: what is about you
   // is your mark at the foot of the sidebar.
-  await page.getByRole('tab', { name: '团队', exact: true }).click();
+  await page.getByRole('tab', { name: '成员', exact: true }).click();
   await expect(
     page
       .getByRole('list', { name: '团队' })
@@ -2544,7 +2548,7 @@ test('said once: a topic’s messages carry no tag for it, and one place is curr
   // On Team the place is Team: neither the channel nor a topic is current,
   // and the row keeps its height.
   await billing.click();
-  await page.getByRole('tab', { name: '团队', exact: true }).click();
+  await page.getByRole('tab', { name: '成员', exact: true }).click();
   await expect(billing).toHaveAttribute('aria-pressed', 'false');
   await expect(
     page.locator('nav[aria-label="频道"] [aria-current="page"]'),
@@ -2799,7 +2803,10 @@ test('a reload keeps the place and unsent work; Back returns to where you were',
   await page.reload();
   await expect(task).toBeVisible();
   // The Inbox is a place too, and Back leaves it for the task again.
-  await page.getByRole('tab', { name: /^收件箱/ }).click();
+  await page
+    .getByRole('navigation', { name: '收件箱' })
+    .getByRole('button', { name: /^收件箱/ })
+    .click();
   await expect(page).toHaveURL(/inbox/);
   await page.goBack();
   await expect(task).toBeVisible();
