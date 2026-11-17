@@ -53,6 +53,8 @@ const T3Status = z.object({
   pasteCallback: z.boolean(),
   /** The deployment connects T3; a person may still sign in to it. */
   provisioned: z.boolean(),
+  /** A pairing code for this T3 can be had from the hub. */
+  pairing: z.boolean().default(false),
   revision: z.string(),
 });
 type T3Status = z.infer<typeof T3Status>;

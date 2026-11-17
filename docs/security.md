@@ -78,7 +78,7 @@ The hub's worker grant ends 90 days after the hub last renewed it, and the hub r
 
 ## The space
 
-- The provisioner's token (`KINMESH_SPACE_TOKEN_FILE`) is a bearer credential: the deployment keeps it secret, readable only by the hub, and the provisioner compares it in constant time. It allows only making a folder in the space a T3 project and placing or removing a message's files in that folder's `attachments/`, never reading files, or writing or removing anything else.
+- The provisioner's token (`KINMESH_SPACE_TOKEN_FILE`) is a bearer credential: the deployment keeps it secret, readable only by the hub, and the provisioner compares it in constant time. It allows only making a folder in the space a T3 project, placing or removing a message's files in that folder's `attachments/`, and minting a five-minute T3 pairing code; never reading files, or writing or removing anything else. A pairing code lets a browser into T3 with T3's default access: the hub gives one only to a signed-in person of the team (`POST /api/teams/:teamId/t3/pair`, never to an agent), never logs it, and T3 lists each pairing it makes, labelled Kinmesh, under **Settings → Sharing & access**, where it can be revoked.
 - The worker reads it for each request and sends it only to `KINMESH_SPACE_ENDPOINT`, refusing redirects. Plain HTTP is for a private network the deployment controls, such as a cluster network whose policy admits only the hub to the provisioner.
 - The provisioner takes a folder name, never a path: lowercase letters, digits and `-`, inside the space.
 

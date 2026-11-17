@@ -195,3 +195,51 @@ await test('the provisioner places a message’s file in the channel’s attachm
     rmSync(dir, { recursive: true, force: true });
   }
 });
+
+await test('the provisioner mints a five-minute T3 pairing code, labelled, for the hub alone', async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'kinmesh-space-'));
+  const space = join(dir, 'space');
+  const t3 = join(dir, 't3');
+  const asked = join(dir, 'asked');
+  // T3's own output, as 0.1.9 prints it.
+  writeFileSync(
+    t3,
+    [
+      '#!/bin/sh',
+      `echo "$@" > "${asked}"`,
+      'echo "Pairing with fixture (http://127.0.0.1:3773)."',
+      'echo "Pairing URL: http://10.0.0.1:3773/pair#token=ABCD1234WXYZ"',
+      'echo "Token: ABCD1234WXYZ"',
+      'echo "Expires: 2026-11-17T22:08:13.101Z"',
+    ].join('\n'),
+  );
+  chmodSync(t3, 0o755);
+  execFileSync('mkdir', ['-p', space]);
+  const server = spaceServer({ space, token: 'right', t3 });
+  server.listen(0, '127.0.0.1');
+  await once(server, 'listening');
+  const address = server.address();
+  assert.ok(address !== null && typeof address === 'object');
+  const pair = (token: string) =>
+    fetch(`http://127.0.0.1:${String(address.port)}/pair`, {
+      method: 'POST',
+      headers: { authorization: `Bearer ${token}` },
+      body: JSON.stringify({ label: 'Kinmesh\nforged line' }),
+    });
+  try {
+    assert.equal((await pair('wrong')).status, 401);
+    const paired = await pair('right');
+    assert.equal(paired.status, 200);
+    assert.deepEqual(await paired.json(), {
+      token: 'ABCD1234WXYZ',
+      expiresAt: '2026-11-17T22:08:13.101Z',
+    });
+    assert.equal(
+      readFileSync(asked, 'utf8').trim(),
+      'pair --ttl 5m --label Kinmesh forged line',
+    );
+  } finally {
+    server.close();
+    rmSync(dir, { recursive: true, force: true });
+  }
+});

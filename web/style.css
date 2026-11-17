@@ -5311,6 +5311,27 @@ button.new-agent-go {
 .settings-people li[data-left] {
   color: var(--ink-muted);
 }
+/* A T3 pairing code: the code large enough to read out or type, when it
+ * stops working, and the link that pairs at once. */
+.pairing {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.5rem 1rem;
+  padding: 0.25rem 0 0.75rem;
+}
+.pairing-code {
+  font-size: 1.25rem;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  user-select: all;
+}
+.pairing .muted {
+  font-size: var(--text-small);
+}
+.pairing a {
+  margin-left: auto;
+}
 /* The team's files: a picture or a file's mark, its name, and where it is
  * from, with 删除 at the row's end. */
 .settings-files {

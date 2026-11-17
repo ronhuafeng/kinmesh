@@ -36,6 +36,7 @@ import {
 } from '../inbox/managed.js';
 import type { Changes } from './changes.js';
 import type { Store } from '../persistence/store.js';
+import type { Pairer } from '../inbox/space.js';
 import { fingerprint } from '../persistence/transactional.js';
 import { principal } from './principals.js';
 
@@ -122,6 +123,8 @@ export function registerConnect(
   store: Store,
   hub: Hub,
   changes: Changes,
+  /** Mints T3 pairing codes from beside T3; null without a provisioner. */
+  pair: Pairer | null = null,
 ) {
   // One sign-in at a time: the OAuth callback port is fixed.
   let flow:
@@ -176,6 +179,8 @@ export function registerConnect(
       signIn: flow?.teamId === teamId ? flow.state : null,
       pasteCallback: hub.pasteCallback,
       provisioned: hub.provisioned,
+      // A pairing code can be had here for the connected T3.
+      pairing: pair !== null && connection !== null,
     };
     return { ...status, revision: fingerprint(status) };
   };
@@ -212,6 +217,25 @@ export function registerConnect(
     reply.header('Cache-Control', 'no-store');
     const { teamId } = TeamPath.parse(request.params);
     return t3Status(principal(request), teamId);
+  });
+  /**
+   * A pairing code for a person's browser to reach the team's T3 (to
+   * approve a sign-in, or open a run), with the link that pairs at once.
+   * It lasts five minutes and is never logged.
+   */
+  app.post('/api/teams/:teamId/t3/pair', async (request, reply) => {
+    reply.header('Cache-Control', 'no-store');
+    const p = principal(request);
+    const { teamId } = TeamPath.parse(request.params);
+    if (p.kind !== 'human') throw new DomainError('forbidden');
+    const connection = await store.managed.connection(p, teamId);
+    if (pair === null || connection === null)
+      return reply.code(409).send({ error: 'No pairing here' });
+    const paired = await pair('Kinmesh', AbortSignal.timeout(30_000));
+    return {
+      ...paired,
+      url: `${new URL(connection.endpoint).origin}/pair#token=${encodeURIComponent(paired.token)}`,
+    };
   });
   /** The T3 desktop app on this machine, if one is running: no URL to find. */
   app.get('/api/teams/:teamId/t3/local', async (request, reply) => {

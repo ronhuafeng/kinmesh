@@ -201,8 +201,10 @@ export function spaceServer(options: SpaceOptions): Server {
       return;
     }
     const placing = PLACE.exec(req.url ?? '');
+    const pairing = req.method === 'POST' && req.url === '/pair';
     if (
       !(req.method === 'POST' && req.url === '/projects') &&
+      !pairing &&
       !(placing && (req.method === 'PUT' || req.method === 'DELETE'))
     ) {
       answer(404, { error: 'not found' });
@@ -222,7 +224,9 @@ export function spaceServer(options: SpaceOptions): Server {
     });
     req.on('end', () => {
       const body = Buffer.concat(chunks);
-      const work = route(options, req.method ?? '', placing, req.headers, body);
+      const work = pairing
+        ? pairRoute(options, body)
+        : route(options, req.method ?? '', placing, req.headers, body);
       if ('status' in work) {
         answer(work.status, work.body);
         return;
@@ -241,6 +245,41 @@ export function spaceServer(options: SpaceOptions): Server {
       });
     });
   });
+}
+/**
+ * A pairing code for a browser to reach T3: `t3 pair`, for five minutes,
+ * labelled with who asked, so T3's connections list says whose it is.
+ */
+function pairRoute(
+  options: SpaceOptions,
+  body: Buffer,
+): Answer | { run: () => Promise<Answer> } {
+  let label = '';
+  try {
+    const input: unknown = JSON.parse(body.toString('utf8'));
+    if (input !== null && typeof input === 'object' && 'label' in input)
+      label = String(input.label)
+        .replace(/[\r\n\t]+/g, ' ')
+        .trim()
+        .slice(0, 60);
+  } catch {
+    // An empty body asks without a label.
+  }
+  return {
+    run: async () => {
+      const { stdout } = await run(options.t3, [
+        'pair',
+        '--ttl',
+        '5m',
+        ...(label === '' ? [] : ['--label', label]),
+      ]);
+      const token = /^Token: (\S+)$/m.exec(stdout)?.[1];
+      const expiresAt = /^Expires: (\S+)$/m.exec(stdout)?.[1];
+      if (token === undefined || expiresAt === undefined)
+        throw new Error('t3 pair answered nothing to read');
+      return { status: 200, body: { token, expiresAt } };
+    },
+  };
 }
 interface Answer {
   status: number;
