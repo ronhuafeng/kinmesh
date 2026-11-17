@@ -2134,6 +2134,19 @@ test('a long conversation opens at its newest message, follows new ones, holds s
   await page.evaluate(() => {
     window.scrollTo({ top: 0 });
   });
+  // Measured at rest: the view rises into place as it opens, so read before
+  // that ends, Message 71 is still on its way up.
+  await expect
+    .poll(() =>
+      page.evaluate(
+        () =>
+          document
+            .getAnimations()
+            .filter((a) => a.effect?.getTiming().iterations !== Infinity)
+            .length,
+      ),
+    )
+    .toBe(0);
   const first = await topOf(page, 'Message 71');
   release();
   await expect(say('Message 70')).toBeAttached();
