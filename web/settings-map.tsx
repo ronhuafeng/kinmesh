@@ -1,11 +1,18 @@
-import { useEffect, useState, type ReactNode } from 'react';
+import { useEffect, useState } from 'react';
 import { z } from 'zod';
 import type { WorkspaceSnapshot } from '../src/workspace/contracts.js';
 import { api, useRequest } from './api.js';
 import { Notice } from './forms.js';
 import { Files } from './files.js';
 import { BackIcon, SettingsIcons } from './icons.js';
-import { ChoiceRow, NotificationSettings, SignOuts } from './settings.js';
+import {
+  ChoiceRow,
+  Group,
+  ListRow,
+  NotificationSettings,
+  Row,
+  SignOuts,
+} from './settings.js';
 import { MODE_NAMES, t3Where, useT3 } from './setup.js';
 import { applyTheme, readTheme, type Theme } from './theme.js';
 import { LEVEL_LABELS, levelOf } from './levels.js';
@@ -123,6 +130,11 @@ const GROUPS = [
 /** Where each entry opens: your menu on 通知, the team's on 成员. */
 export const FIRST = { personal: 'notifications', team: 'members' } as const;
 export const sectionOf = (id: string) => SECTIONS.find((s) => s.id === id);
+/** A group's sections as the map lists them: what works, then what is planned. */
+const inOrder = (group: Section['group']) => {
+  const all = SECTIONS.filter((s) => s.group === group);
+  return [...all.filter((s) => !s.planned), ...all.filter((s) => s.planned)];
+};
 
 /**
  * In settings the sidebar is the map: back to where you were, then the
@@ -156,7 +168,7 @@ export function SettingsNav({
           <div className="nav-heading">
             <h2>{group.label}</h2>
           </div>
-          {SECTIONS.filter((s) => s.group === group.id).map((s) => (
+          {inOrder(group.id).map((s) => (
             <button
               key={s.id}
               type="button"
@@ -184,7 +196,7 @@ export function SettingsList({ onSelect }: { onSelect: (id: string) => void }) {
         <section key={group.id} aria-label={group.label}>
           <h2>{group.label}</h2>
           <ul>
-            {SECTIONS.filter((s) => s.group === group.id).map((s) => (
+            {inOrder(group.id).map((s) => (
               <li key={s.id}>
                 <button
                   type="button"
@@ -204,36 +216,26 @@ export function SettingsList({ onSelect }: { onSelect: (id: string) => void }) {
     </div>
   );
 }
-/** One row: a label, and its value or control at the end. */
-function Row({ label, children }: { label: ReactNode; children?: ReactNode }) {
-  return (
-    <div className="you-row">
-      <span>{label}</span>
-      <span className="you-row-end">{children}</span>
-    </div>
-  );
-}
 /** A planned section: the rows it will hold, quiet, and that it is coming. */
 function Planned({ rows }: { rows: string[] }) {
   return (
     <section className="settings-planned">
-      <p className="muted">规划中</p>
-      <div className="you-rows">
+      <Group title="规划中">
         {rows.map((row) => (
           <Row key={row} label={row}>
-            —
+            <span className="skeleton" aria-hidden="true" />
           </Row>
         ))}
-      </div>
+      </Group>
     </section>
   );
 }
 function Appearance() {
   const [theme, setTheme] = useState<Theme>(readTheme);
   return (
-    <div className="you-rows">
+    <Group>
       <ChoiceRow
-        label="外观"
+        label="配色"
         options={[
           { id: 'system', label: '跟随系统' },
           { id: 'light', label: '浅色' },
@@ -246,7 +248,7 @@ function Appearance() {
           setTheme(next);
         }}
       />
-    </div>
+    </Group>
   );
 }
 const Profile = z.object({
@@ -274,13 +276,16 @@ function ProfileSection({ data }: { data: WorkspaceSnapshot }) {
           id={data.human.id}
           size="xl"
         />
-        <strong>{data.human.name}</strong>
+        <span>
+          <strong>{data.human.name}</strong>
+          <span className="muted">来自飞书</span>
+        </span>
       </div>
-      <div className="you-rows">
-        <Row label="账号">{profile?.username ?? data.human.username}</Row>
+      <Group title="账号">
+        <Row label="用户名">{profile?.username ?? data.human.username}</Row>
         <Row label="邮箱">{profile?.email ?? '—'}</Row>
         <Row label="团队">{profile?.team ?? data.team.name}</Row>
-      </div>
+      </Group>
     </>
   );
 }
@@ -335,7 +340,7 @@ function AccountSection({
     });
   return (
     <>
-      <section className="you-rows" aria-label="登录">
+      <Group title="登录的设备">
         {sessions.map((s) => (
           <Row
             key={s.id}
@@ -360,9 +365,9 @@ function AccountSection({
             )}
           </Row>
         ))}
-      </section>
+      </Group>
       {browsers.length > 0 && (
-        <section className="you-rows" aria-label="接收通知的浏览器">
+        <Group title="接收通知的浏览器">
           {browsers.map((b) => (
             <Row key={b.id} label={`${browserName(b.service)} 接收通知`}>
               <button
@@ -377,7 +382,7 @@ function AccountSection({
               </button>
             </Row>
           ))}
-        </section>
+        </Group>
       )}
       {action.error && <Notice>{action.error}</Notice>}
       <SignOuts
@@ -396,25 +401,33 @@ const SHORTCUTS = [
 ] as const;
 function Shortcuts() {
   return (
-    <div className="you-rows">
+    <Group>
       {SHORTCUTS.map(([label, keys]) => (
         <Row key={label} label={label}>
           <kbd>{keys}</kbd>
         </Row>
       ))}
-    </div>
+    </Group>
   );
 }
 function Members({ data }: { data: WorkspaceSnapshot }) {
   return (
-    <ul className="settings-people" aria-label="成员">
+    <ul className="list-rows" aria-label="成员">
       {data.people.map((person) => (
-        <li key={person.id}>
-          <Avatar kind="human" name={person.name} id={person.id} size="md" />
-          <span className="settings-people-name">{person.name}</span>
-          <span className="muted">{person.username}</span>
-          <Presence online={person.id === data.human.id || person.online} dot />
-        </li>
+        <ListRow
+          key={person.id}
+          lead={
+            <Avatar kind="human" name={person.name} id={person.id} size="md" />
+          }
+          title={person.name}
+          detail={person.username}
+          end={
+            <Presence
+              online={person.id === data.human.id || person.online}
+              dot
+            />
+          }
+        />
       ))}
     </ul>
   );
@@ -426,34 +439,42 @@ function Channels({
   data: WorkspaceSnapshot;
   openChannel: (id: string) => void;
 }) {
-  return (
-    <ul className="settings-people" aria-label="频道">
-      {data.channels.items.map((c) => (
-        <li key={c.id}>
-          <button
-            type="button"
-            onClick={() => {
+  const joined = (
+    <ul className="list-rows" aria-label="已加入的频道">
+      {data.channels.items.map((c) => {
+        const level = levelOf(data, c.id);
+        return (
+          <ListRow
+            key={c.id}
+            lead={<ChannelIcon id={c.id} name={c.name} />}
+            title={c.name}
+            detail={level === 'default' ? undefined : LEVEL_LABELS[level]}
+            onOpen={() => {
               openChannel(c.id);
             }}
-          >
-            <ChannelIcon id={c.id} name={c.name} />
-            <span className="settings-people-name">{c.name}</span>
-            <span className="muted">
-              {levelOf(data, c.id) === 'default'
-                ? ''
-                : LEVEL_LABELS[levelOf(data, c.id)]}
-            </span>
-          </button>
-        </li>
-      ))}
-      {data.leftChannels.map((c) => (
-        <li key={c.id} data-left="true">
-          <ChannelIcon id={c.id} name={c.name} />
-          <span className="settings-people-name">{c.name}</span>
-          <span className="muted">已退出</span>
-        </li>
-      ))}
+          />
+        );
+      })}
     </ul>
+  );
+  // Channels you left are a group of their own; with none, one list.
+  if (data.leftChannels.length === 0) return joined;
+  return (
+    <>
+      <Group title="已加入">{joined}</Group>
+      <Group title="已退出">
+        <ul className="list-rows" aria-label="已退出的频道">
+          {data.leftChannels.map((c) => (
+            <ListRow
+              key={c.id}
+              quiet
+              lead={<ChannelIcon id={c.id} name={c.name} />}
+              title={c.name}
+            />
+          ))}
+        </ul>
+      </Group>
+    </>
   );
 }
 function Agents({
@@ -464,31 +485,28 @@ function Agents({
   openAgent: (id: string) => void;
 }) {
   return (
-    <ul className="settings-people" aria-label="智能体">
+    <ul className="list-rows" aria-label="智能体">
       {data.agents.map((agent) => {
         const managed = data.managed.some((m) => m.agentId === agent.id);
         const awake = workerConnected(data.wake, agent.id);
         return (
-          <li key={agent.id}>
-            <button
-              type="button"
-              onClick={() => {
-                openAgent(agent.id);
-              }}
-            >
+          <ListRow
+            key={agent.id}
+            lead={
               <Avatar kind="agent" name={agent.name} id={agent.id} size="md" />
-              <span className="settings-people-name">{agent.name}</span>
-              <span className="muted">
-                {[
-                  agent.preferences.modelId,
-                  managed ? '由 Kinmesh 运行' : awake ? '由你运行' : '未运行',
-                ]
-                  .filter(Boolean)
-                  .join(' · ')}
-              </span>
-              <Presence online={awake} dot />
-            </button>
-          </li>
+            }
+            title={agent.name}
+            detail={[
+              agent.preferences.modelId,
+              managed ? '由 Kinmesh 运行' : awake ? '由你运行' : '未运行',
+            ]
+              .filter(Boolean)
+              .join(' · ')}
+            end={<Presence online={awake} dot />}
+            onOpen={() => {
+              openAgent(agent.id);
+            }}
+          />
         );
       })}
     </ul>
@@ -505,8 +523,8 @@ function Connections({ data }: { data: WorkspaceSnapshot }) {
   const [sent, setSent] = useState(false);
   return (
     <>
-      <section className="you-rows" aria-label="T3">
-        <Row label="T3">
+      <Group title="T3">
+        <Row label="地址">
           {where ? where.host : <span className="muted">未连接</span>}
         </Row>
         {connection && (
@@ -528,9 +546,9 @@ function Connections({ data }: { data: WorkspaceSnapshot }) {
             {t3.status?.pairing && <Pairing teamId={data.team.id} />}
           </>
         )}
-      </section>
-      <section className="you-rows" aria-label="飞书">
-        <Row label="飞书机器人">
+      </Group>
+      <Group title="飞书">
+        <Row label="机器人">
           <button
             type="button"
             className="link-button"
@@ -544,7 +562,7 @@ function Connections({ data }: { data: WorkspaceSnapshot }) {
             {sent ? '已发送，去飞书看看' : '给我发一条测试消息'}
           </button>
         </Row>
-      </section>
+      </Group>
       {action.error && <Notice>{action.error}</Notice>}
     </>
   );
