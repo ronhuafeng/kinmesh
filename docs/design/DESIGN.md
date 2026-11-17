@@ -446,7 +446,10 @@ fallback.
   signed in and was last used, with **退出**) and the browsers receiving
   notifications (**移除**), then signing out; 成员, 频道 and 智能体 are rows of a face
   or icon, a name and what to know, a channel or an agent opening its place; 连接
-  shows T3 and tries the Feishu bot (**给我发一条测试消息**); 文件与存储 lists the files of
+  shows T3 and tries the Feishu bot (**给我发一条测试消息**), and, where the deployment can
+  mint one, 配对码: **生成配对码** shows the code in 20 px semibold with "14:14 前有效"
+  beside it and **在 T3 中配对** at the row's end, gone once it has expired; **换一个**
+  replaces it; 文件与存储 lists the files of
   every channel you are in, newest first, each a 40 px square of the picture (or a
   file mark), its name, and "who · #channel · when · size" in the secondary size;
   the row opens its message, and **删除** at its end becomes a red **确认删除** for a

@@ -135,3 +135,30 @@ export function spaceRemover(space: SpaceProvisioner): FileRemover {
       throw new Error(`provisioner ${String(response.status)}`);
   };
 }
+/** A pairing code for a browser to reach T3, from beside it. */
+export type Pairer = (
+  label: string,
+  signal: AbortSignal,
+) => Promise<{ token: string; expiresAt: string }>;
+const Paired = z.object({
+  token: z.string().regex(/^[A-Za-z0-9_-]{4,128}$/),
+  expiresAt: z.iso.datetime(),
+});
+/** The provisioner's `POST /pair`. */
+export function spacePairer(space: SpaceProvisioner): Pairer {
+  return async (label, signal) => {
+    const token = readFileSync(space.tokenFile, 'utf8').trim();
+    const response = await fetch(new URL('/pair', space.endpoint), {
+      method: 'POST',
+      headers: {
+        authorization: `Bearer ${token}`,
+        'content-type': 'application/json',
+      },
+      body: JSON.stringify({ label }),
+      redirect: 'error',
+      signal: AbortSignal.any([signal, AbortSignal.timeout(30_000)]),
+    });
+    if (!response.ok) throw new Error(`provisioner ${String(response.status)}`);
+    return Paired.parse(await response.json());
+  };
+}

@@ -9,7 +9,7 @@ import {
   sweepAttachments,
   unplaceAttachments,
 } from './attachments.js';
-import { spaceRemover } from '../inbox/space.js';
+import { spacePairer, spaceRemover } from '../inbox/space.js';
 import { directoryBytes } from '../persistence/attachment-bytes.js';
 import { registerNotifications } from './notify.js';
 import { registerMe } from './me.js';
@@ -252,6 +252,7 @@ export async function createApp(
     store,
     hub,
     changes,
+    config.space === null ? null : spacePairer(config.space),
   );
   try {
     separateDeploymentSession(hub.directory);
