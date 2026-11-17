@@ -9,12 +9,15 @@ import {
   type ReactNode,
 } from 'react';
 import { SearchIcon } from './icons.js';
+import { ChannelIcon } from './ui.js';
 
 export interface Command {
   id: string;
   group: string;
   label: string;
   hint?: string | undefined;
+  /** A channel shows its icon in place of the "#" its label starts with. */
+  channel?: { id: string; name: string };
   run: () => void;
 }
 /** Every word typed must appear somewhere in the label, hint or group. */
@@ -123,7 +126,17 @@ function Results({
                 run(command);
               }}
             >
-              <span className="palette-label">{command.label}</span>
+              {command.channel ? (
+                <span className="palette-label with-icon">
+                  <ChannelIcon {...command.channel} />
+                  <span>
+                    <span className="visually-hidden"># </span>
+                    {command.channel.name}
+                  </span>
+                </span>
+              ) : (
+                <span className="palette-label">{command.label}</span>
+              )}
               {command.hint && <small>{command.hint}</small>}
             </li>,
           ];

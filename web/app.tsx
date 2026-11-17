@@ -35,6 +35,7 @@ import type { TaskDraft } from './tasks.js';
 import { joinedAgents, memberName, otherPeople } from './names.js';
 import { plainText } from './markdown.js';
 import {
+  ChannelIcon,
   Avatar,
   AvatarImages,
   Page,
@@ -735,6 +736,8 @@ export function App() {
       id: 'channel-' + c.id,
       group: '频道',
       label: '# ' + c.name,
+      // Its icon says it is a channel; the "#" stays for screen readers.
+      channel: { id: c.id, name: c.name },
       run: () => {
         selectChannel(c.id);
       },
@@ -883,6 +886,7 @@ export function App() {
                         {phone ? (
                           <ChannelRow
                             data={data}
+                            channelId={c.id}
                             name={c.name}
                             latest={data.latest.find(
                               (l) => l.channelId === c.id,
@@ -891,7 +895,8 @@ export function App() {
                           />
                         ) : (
                           <>
-                            <span aria-hidden="true">#</span> {c.name}
+                            <ChannelIcon id={c.id} name={c.name} />
+                            <span className="channel-name">{c.name}</span>
                           </>
                         )}
                         {/* Something in this channel waits on you. */}
@@ -1430,20 +1435,21 @@ function byActivity(
 /** A channel on a phone's Home: its name and time, then "作者：正文". */
 function ChannelRow({
   data,
+  channelId,
   name,
   latest,
   id,
 }: {
   data: WorkspaceSnapshot;
+  channelId: string;
   name: string;
   latest: WorkspaceSnapshot['latest'][number] | undefined;
   id: string;
 }) {
   return (
     <span className="channel-row">
-      <span className="channel-row-name">
-        <span aria-hidden="true">#</span> {name}
-      </span>
+      <ChannelIcon id={channelId} name={name} />
+      <span className="channel-row-name">{name}</span>
       {latest && (
         <>
           <time className="channel-row-time" dateTime={latest.createdAt}>
