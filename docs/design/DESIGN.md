@@ -2,9 +2,9 @@
 
 ## Character
 
-A calm, precise workroom where people and AI agents work side by side. Warm paper and
-deep ink, one confident green, and a slight tool-like edge: hairline ink borders,
-monospaced labels for identifiers and status. Agents feel like teammates with
+A calm, precise workroom where people and AI agents work side by side, built like a
+native iOS and macOS app: a grey grouped canvas, white content, hairline separators,
+the system's own type and one deep green. Agents feel like teammates with
 personality, never like settings. The human decision is always the most prominent
 thing on the screen.
 
@@ -22,8 +22,9 @@ that isn't needed. Check a change against these before it ships.
    designed surface; a control looks like what it creates — a new agent is a tile
    whose face fills in as you type its name.
 2. One element per job, reused everywhere: `icon-button`, its round `confirm`
-   variant, the `+` add button, `Avatar`, `Presence`. No one-off variants; keep
-   selectors narrow so styles don't leak into shared elements.
+   variant, the `+` add button, the segmented control, `Avatar`, `ChannelIcon`,
+   `Presence`. No one-off variants; keep selectors narrow so styles don't leak into
+   shared elements.
 
 **Remove, don't explain**
 
@@ -79,8 +80,10 @@ that isn't needed. Check a change against these before it ships.
     padding and line height; content aligns to its anchor; shared edges are truly
     shared; icons are truly centred.
 17. Balance: the composer at the bottom, equal-height board columns, no dead areas.
-    No white cards for layout — content sits on the paper, grouped by space and
-    hairlines.
+    No cards for layout: content sits on the page, grouped by space and hairlines.
+    The grey canvas holds only what iOS groups on it — the sidebar, a phone's Home
+    list, the board's columns — and the white on it is the content itself (a list, a
+    task card), never a frame around a section.
 18. Order by importance: the decision waiting on you comes first; long lists (runs)
     come last. Views are tabs on the left; there is no page title above them.
 
@@ -96,41 +99,69 @@ that isn't needed. Check a change against these before it ships.
 Values live in [web/style.css](../../web/style.css) (`:root`, redefined for dark mode);
 it is the authority. Use the custom property for its role, never a raw colour.
 
-| Token                                        | Role                                                  |
-| -------------------------------------------- | ----------------------------------------------------- |
-| `--paper`                                    | App background; content sits on it                    |
-| `--surface`, `--raised`                      | Controls, popovers and inputs; a hovered row          |
-| `--sunken`, `--hover`                        | Board columns, empty tiles; hover fill                |
-| `--ink`, `--ink-muted`, `--ink-subtle`       | Primary, secondary and quiet text                     |
-| `--hairline`, `--hairline-strong`            | Dividers; control borders                             |
-| `--primary` (+ `-hover`, `-soft`), `--focus` | Primary actions, selection, links; focus ring         |
-| `--human`, `--agent` (+ `-soft`, `-text`)    | Identity colour of people (ochre) and agents (indigo) |
-| `--decision` (+ `-soft`, `-text`)            | The decision waiting on you, Inbox; used sparingly    |
-| `--danger`, `--ok`, `--warn` (+ `-soft`)     | A problem; done; offline or stale                     |
-| `--s-<status>`                               | Task status dot and its stage column, one per status  |
+The palette is iOS's, light and dark, following `prefers-color-scheme`:
+
+| Token                                         | Light / dark                     | Role                                                                           |
+| --------------------------------------------- | -------------------------------- | ------------------------------------------------------------------------------ |
+| `--canvas`                                    | #F2F2F7 / #000000                | Grouped background: sidebar, phone Home, board columns, sign-in                |
+| `--paper`                                     | #FFFFFF / #1C1C1E                | Content: the main column, lists and cards on the canvas                        |
+| `--surface`, `--raised`                       | #FFF, #F7F7F9 / #2C2C2E          | Popovers and controls; a hovered row, the composer field                       |
+| `--fill`, `--sunken`, `--hover`, `--selected` | grey at 12% / 24%                | Fields, segmented track, grey buttons; code; a current row; the chosen segment |
+| `--ink`, `--ink-muted`, `--ink-subtle`        | #1C1C1E, #6C6C70 / #FFF, #98989F | Primary and secondary text; tertiary (#8E8E93) for glyphs only, never text     |
+| `--hairline`, `--hairline-strong`             | #E5E5EA, #D1D1D6 / #38383A       | Separators, 0.5 px on a 2x screen (`--hairline-width`); control edges          |
+| `--primary` (+ `-hover`, `-soft`), `--focus`  | #1D7A4F / #3FC587                | Primary actions, the current tab, links, focus                                 |
+| `--human`, `--agent` (+ `-soft`, `-text`)     | ochre, indigo                    | Identity colour of people and agents (avatar grounds)                          |
+| `--decision` (+ `-soft`, `-text`), `--badge`  | orange                           | The decision waiting on you, the Inbox; used sparingly                         |
+| `--danger`, `--ok`, `--warn` (+ `-soft`)      | system red, green, amber         | A problem; done; offline or stale                                              |
+| `--s-<status>`                                | one hue per status               | Task status dot and its stage column; 待验收 is orange                         |
+| `--tint-<hue>` (+ `-text`)                    | six soft pastels                 | Channel icons                                                                  |
+
+Every text colour reaches 4.5:1 on the surface it sits on, light and dark: secondary
+text is at least 4.69:1 on the grey canvas, the green 5.32:1 as text and under white
+button text.
 
 ## Typography
 
-- UI and headings: **Geist**. Headline weights 600–700 with slight negative tracking.
-- Labels, IDs, timestamps, status text, counts: **JetBrains Mono**, 11–12 px, uppercase
-  for column headers.
-- Body 14–15 px, line height 1.55. Message text 15 px.
-- The team name only: the system's **Song** serif (Songti SC, then Source Han / Noto
-  Serif CJK), 700, slightly open tracking, 18 px (15 px when long). Nothing else uses
-  it.
+- One face, the system's: `-apple-system, BlinkMacSystemFont, "SF Pro Text",
+"PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", system-ui, sans-serif`.
+  Headings 600–700 with slight negative tracking; no serif, no uppercase labels.
+- Monospace (the system's `ui-monospace` / SF Mono) only for code and identifiers
+  (T3 references, IDs); times and labels are set in the UI face, times with
+  tabular figures.
+- Body 15 px on a wide screen, 16 px on a phone (messages, names and fields);
+  secondary text (times, where, presence, section labels) 13 px in `--ink-muted`.
+- The team name: the UI face, 700, 18 px (15 px when long). On a phone's Home it is
+  small and muted above the large title.
+- A phone's Home has an iOS large title, "频道", 34 px bold.
 
 ## Shape and spacing
 
-- Radius: 8 px cards and inputs, 999 px pills, 50% for every avatar.
-- Borders: 1 px hairline; selected or focused items use a 1.5 px ink or primary border.
-- Shadows: almost none. Elevation comes from borders and surface contrast.
+- Radius: 10 px fields, buttons and cards; 12 px lists, board columns and popovers;
+  22 px the composer; 999 px pills; channel icons a rounded square (26% of their
+  size); 50% for every avatar.
+- Borders: hairline separators (0.5 px on a 2x screen, otherwise 1 px). Fields are
+  filled grey with no border until focused (then green).
+- Shadows: only what iOS uses — a card's faint lift, the chosen segment, popovers.
+- Bars: a sticky header and a phone's bars are translucent, blurring what scrolls
+  under them (`backdrop-filter: saturate(180%) blur(20px)`), over a hairline; never an
+  opaque slab. On a phone they run edge to edge.
 - Spacing scale: 4, 8, 12, 16, 24, 32, 48.
 
 ## Components
 
 - **Avatar**: round for everyone; a picture when there is one (a person's from
-  Feishu, an agent's set on its page), otherwise the initial on the identity colour
-  (ochre for people, indigo for agents).
+  Feishu, an agent's set on its page), otherwise the initial on a soft ground of the
+  identity colour (ochre for people, indigo for agents) inside a hairline ring of it.
+- **Channel icon**: a channel's face, in sidebar rows, phone Home rows and search
+  results: a rounded square in one of six soft tints, picked from the channel's ID
+  so it never changes, with the first character of its name. It replaces the "#"
+  (which stays for screen readers in search); 28 px in the sidebar, 32 px on a
+  phone, 24 px in search. Every name beside it — channels, topics and people — starts
+  on one edge, and people's faces in the sidebar are the icon's size.
+- **Segmented control**: the views (聊天 | 看板 | 团队 | 收件箱) and a narrow board's
+  stages: a grey track, the chosen segment a raised white (dark: grey) thumb.
+- **Buttons**: primary is filled green; secondary a grey fill; destructive red text
+  on the grey fill; a quiet one has no fill until hovered.
 - **Names**: a person is their Feishu name everywhere they appear (messages, the
   sidebar, Team, tasks, the Inbox, mentions, delivery lines), said once and never
   beside their handle. Until their next sign-in brings a name, the handle stands in.
@@ -142,12 +173,12 @@ it is the authority. Use the custom property for its role, never a raw colour.
 - **Message**: avatar, name, time, topic pill (none while the view is that topic);
   consecutive messages from the same author are grouped. Bodies render a safe
   Markdown subset (paragraphs, lists, quotes, headings, code, emphasis, http(s) links
-  opening in a new tab); a fenced code block is one sunken block, never boxed line by
-  line. A mention already written as `@Name` gets no second chip. An
+  opening in a new tab); a fenced code block is one rounded block in the system
+  monospace, never boxed line by line. A mention already written as `@Name` gets no second chip. An
   agent's reply shows the message it answers, unless it is the very next message,
   and carries a line only for an exception (failed, stopped, shortened); what ran it
   lives with the run on the agent's page. **转为任务** shows on hover, and on touch
-  once the message is tapped.
+  once the message is tapped. A mention chip is a soft green tag.
 - **Conversation**: opens at the newest message and stays at the bottom as messages
   arrive while you are there (and after you send); scrolled up, nothing moves under
   you. Scrolling up reads older messages in place; there are no page buttons. A "_time_ 以来的新消息"
@@ -168,9 +199,10 @@ it is the authority. Use the custom property for its role, never a raw colour.
 - **Composer**: multi-line input with the `@` mention popover (the channel's agents
   and other people, found by a word of their name or a person's handle; a choice is
   written as @Name), on the bottom edge of
-  the chat over a band of paper that hides the conversation scrolling behind it;
-  hints in the placeholder. Send is the round confirm button, shown once there is
-  something to send. A channel or topic that opens is ready to
+  the chat over a band of the page that hides the conversation scrolling behind it.
+  It is one large rounded field, a single line until more is written, with "@" and
+  Send sharing its centre; hints in the placeholder. Send is the round green confirm
+  button, drawn larger here, shown once there is something to send. A channel or topic that opens is ready to
   type in (a touch keyboard waits to be asked for), and sending keeps the keyboard.
   The placeholder never repeats the channel: "输入 @ 提及成员，⌘/Ctrl+Enter 发送"
   ("输入 @ 提及成员" on a phone).
@@ -180,18 +212,22 @@ it is the authority. Use the custom property for its role, never a raw colour.
   it like a tree on a hairline trunk: "全部", the ten most recently active, "更多话题"
   for the rest, and a `+` that starts one. The current place carries the
   quiet hover fill, never a card: the channel, or the topic when one is open (its
-  channel then keeps only ink); "全部" is never highlighted. A topic is highlighted
+  channel then keeps only ink); "全部" is never highlighted. The tree's trunk hangs
+  from the channel icon's centre, and topics start on the channel names' edge. A topic is highlighted
   only while its channel's chat or board is the current place. Leaving is **退出 #_name_** in search; on a phone the topics are pills
   above the conversation, and "退出频道" waits where the conversation begins. A channel
   or topic just created is opened.
 - **Board**: five stage columns, the stages of the lifecycle: 待开始 (proposed) →
   进行中 (working) → 审核中 (review) → 待验收 (human sign-off) → 已完成 (done). Rework
   stays in 进行中 (marked "已退回"); cancelled work goes to 已完成 (marked "已取消",
-  hidden until asked for). Columns sit
-  on the paper with a hairline under each name, no boxes or counts; a card's column is
-  its status. A card shows its title, what it asks of you, and owner/reviewer faces;
-  those two markers are its only labels. A new task starts from the dashed
-  `+` card at the end of 待开始.
+  hidden until asked for). Columns are rounded panels of the grey canvas, one
+  equal height to the bottom of the view, each headed by a coloured dot and its name
+  (the dot on the cards' text edge), no counts; 待验收 stands out with an orange edge
+  and a warm tint. A card's column is its status. A card is white and rounded: its
+  title, then one line — what it asks of you — beside its owner/reviewer faces; a
+  decision or rework is marked by an orange or red rule on its left. A new task
+  starts from the dashed `+` card at the end of 待开始. Below 1024 px the stages are a
+  segmented control.
 - **Task page** (new or existing, one layout): lifecycle bar; large title;
   description; on the left the decision waiting on you (orange rule), "完成标准" as a
   checklist, then history as one timeline with faces and run references inline; on the
@@ -248,12 +284,13 @@ it is the authority. Use the custom property for its role, never a raw colour.
   only **在所有设备上退出登录**, a quiet row in the danger colour (and **退出登录** on
   a phone).
 - **Team name**: the organization's name as Feishu gives it, never typed here, heads
-  the sidebar as a wordmark — no logo or avatar — sharing its row with search
+  the sidebar in bold — no logo or avatar — sharing its row with search
   and, beside the content, the control that closes the sidebar. One line; a name of more
   than 12 characters is set smaller and wraps onto a second line, cut there with an
   ellipsis, its full name on hover. Its text starts on the headings' edge.
-- **Sign in**: the brand and the team's promise beside one card, **欢迎** and a
-  single **使用飞书登录** button (a link drawn as the primary button). When
+- **Sign in**: on the grey canvas, the brand and the team's promise beside one white
+  card, **欢迎** and a single **使用飞书登录** button (a link drawn as the primary
+  button). When
   Feishu sends someone back unsigned, the card says why in one line — not part of
   this organization, took too long, or Feishu couldn't be reached — and the reason
   leaves the address, so a reload starts clean. Turning back at Feishu returns here
@@ -300,19 +337,21 @@ it is the authority. Use the custom property for its role, never a raw colour.
 Below 576 px the places stack instead of sitting side by side (from 576 px the
 sidebar sits beside a content column of at least 360 px):
 
-- **Home** (the 频道 tab) is the sidebar: the team name alone on its row, then the
-  channels as conversations, the most recently written in first (by name among the
-  silent ones). A row is the channel's name and the time of its newest message (the
-  time today, otherwise the day), then "author：text" on one line — the text without
-  its Markdown, cut with an ellipsis — and the waiting dot. No channel is current
+- **Home** (the 频道 tab) is the sidebar as an iOS grouped page: the team name small
+  and muted, the large title "频道" with its `+`, then the channels as one inset white
+  list on the grey canvas, the most recently written in first (by name among the
+  silent ones). A row is the channel's icon, its name and the time of its newest
+  message (the time today, otherwise the day), then "author：text" on one line — the
+  text without its Markdown, cut with an ellipsis — and the waiting dot; hairlines
+  between rows start at the text. No channel is current
   here, and the team is not here: it is a view of each channel.
 - **Opening**: an address with no place in it opens on 收件箱 when something waits on
   you, otherwise on Home; an address that names a place always opens there.
 - **Bottom tabs**: icons only, each named for a screen reader — 频道 (`#`, Home), 搜索
   (the magnifier), 收件箱 (with how many things wait on you) and 我 (your face) — four
   equal 44 px tabs with 22 px icons, the current one in the primary colour and a
-  heavier stroke (your face gets a primary ring). They sit under Home and the pages
-  they open.
+  heavier stroke (your face gets a primary ring), on a translucent bar. They sit under
+  Home and the pages they open.
 - **Search** is the 搜索 tab, a page at `?search` (⌘K on a keyboard): the field at
   the bottom, just above the keyboard (or the tabs, with none) and ready to type in,
   the results above it with the best match nearest the thumb — the same results,

@@ -1134,9 +1134,9 @@ function TaskCard({
           {task.title}
         </button>
       </h3>
-      {ask && <p className="ask-label">{ask}</p>}
-      {(task.state.owner ?? task.state.reviewer) && (
+      {(ask ?? task.state.owner ?? task.state.reviewer) && (
         <footer>
+          {ask && <p className="ask-label">{ask}</p>}
           <span className="card-people">
             <MemberAvatar member={task.state.owner} data={data} />
             <MemberAvatar member={task.state.reviewer} data={data} />
@@ -1224,7 +1224,7 @@ export function draftFromMessage(
 }
 /**
  * Five stages side by side and nothing else: no title (the tab says it), no
- * counts (the cards do), no boxes. A new task starts as the last card of
+ * counts (the cards do). A new task starts as the last card of
  * Proposed; what needs you is gathered in the Inbox.
  */
 export function Board({
@@ -1270,7 +1270,6 @@ export function Board({
             }}
           >
             {s.label}
-            <span className="count">{byStage.get(s.id)?.length ?? 0}</span>
           </button>
         ))}
       </div>
