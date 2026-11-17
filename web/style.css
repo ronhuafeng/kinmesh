@@ -1175,6 +1175,11 @@ a.link-button {
   grid-column: 1;
   align-self: start;
   justify-self: end;
+  /* It sits on the text's first line and never sets the row's height: a
+     smaller font on that line height can make its line box taller than the
+     text's, and a message joining a group would then grow under its text. */
+  height: 0;
+  overflow: visible;
   font-size: 11px;
   line-height: calc(var(--text-body) * 1.6);
   color: var(--ink-muted);
