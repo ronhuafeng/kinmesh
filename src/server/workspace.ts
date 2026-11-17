@@ -344,6 +344,7 @@ export function registerWorkspace(
       updatedAt: number | null;
       resultMessageId: string | null;
       stopRequested: boolean;
+      step: { waiting: boolean; text: string } | null;
     }) => ({
       id: d.id,
       agentId: d.agentId,
@@ -355,6 +356,7 @@ export function registerWorkspace(
       updatedAt: iso(d.updatedAt),
       resultMessageId: d.resultMessageId,
       stopRequested: d.stopRequested,
+      step: d.step,
     });
     const messageIds = messages.items.map((m) => m.id);
     const [deliveries, replies] = channel

@@ -64,7 +64,11 @@ export async function assistantResult(
 ): Promise<
   | { kind: 'result'; result: Result }
   | { kind: 'terminal-notice'; notice: NativeTerminalNotice }
-  | { kind: 'waiting' | 'uncertain'; reason: DeliveryReason }
+  | {
+      kind: 'waiting' | 'uncertain';
+      reason: DeliveryReason;
+      step?: Observation['step'];
+    }
 > {
   let after = from;
   let selected: Observation['history'][number] | undefined;
@@ -93,6 +97,7 @@ export async function assistantResult(
           observation.state === 'waiting' || observation.pendingRequests > 0
             ? 'human-or-approval-wait'
             : 'execution-active',
+        step: observation.step ?? null,
       };
     const state = observation.state;
     if (state !== 'succeeded' && state !== 'failed' && state !== 'stopped')
@@ -563,7 +568,12 @@ export async function deliver(
       }
     }
     if ('reason' in result) {
-      await store.inbox.defer(claim, result.kind, result.reason);
+      await store.inbox.defer(
+        claim,
+        result.kind,
+        result.reason,
+        'step' in result ? (result.step ?? null) : null,
+      );
       return;
     }
     stage = 'publication';

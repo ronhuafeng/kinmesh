@@ -683,6 +683,12 @@ export const agentInbox = pgTable(
     stopRequestedAt: millis('stop_requested_at'),
     /** Its message steered a run another message started. */
     steered: boolean('steered').notNull().default(false),
+    /**
+     * While its run is under way in T3, what it is on: the step it is
+     * taking, or what waits on a person's approval (`waiting`).
+     */
+    step: text('step'),
+    stepWaiting: boolean('step_waiting').notNull().default(false),
   },
   (t) => [
     foreignKey({

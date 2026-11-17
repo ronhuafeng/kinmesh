@@ -19,6 +19,7 @@ const delivery = (
   updatedAt: new Date().toISOString(),
   resultMessageId: null,
   stopRequested: false,
+  step: null,
 });
 
 await test('every delivery state reads as a plain sentence about the agent', () => {

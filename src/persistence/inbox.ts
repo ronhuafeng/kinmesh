@@ -713,6 +713,8 @@ export function inboxRepository(
       c: Claim,
       state: 'ready' | 'waiting' | 'uncertain' | 'blocked',
       reason: string,
+      /** What its run is on, while it waits on T3; anything else clears it. */
+      step: { waiting: boolean; text: string } | null = null,
     ) {
       await atomic(async () => {
         z.enum(['ready', 'waiting', 'uncertain', 'blocked']).parse(state);
@@ -729,6 +731,8 @@ export function inboxRepository(
         await update(c, {
           state,
           reason,
+          step: state === 'waiting' && step ? step.text.slice(0, 300) : null,
+          stepWaiting: state === 'waiting' && (step?.waiting ?? false),
           claimToken: null,
           leaseUntil: 0,
           nextAttempt: sql`${dbNow}+${delay}`,

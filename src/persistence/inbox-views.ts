@@ -41,7 +41,13 @@ export function inboxViews(
   }
   /** First and last recorded transition, for "queued 2 h ago" copy. */
   async function withTimes<
-    R extends { id: string; state: string; stopRequestedAt: number | null },
+    R extends {
+      id: string;
+      state: string;
+      stopRequestedAt: number | null;
+      step: string | null;
+      stepWaiting: boolean;
+    },
   >(rows: R[]) {
     if (rows.length === 0) return [];
     const times = new Map(
@@ -62,9 +68,10 @@ export function inboxViews(
           .groupBy(s.inboxHistory.deliveryId)
       ).map((r) => [r.id, r]),
     );
-    return rows.map(({ stopRequestedAt, ...r }) => ({
+    return rows.map(({ stopRequestedAt, step, stepWaiting, ...r }) => ({
       ...r,
       stopRequested: stopRequestedAt !== null,
+      step: step === null ? null : { waiting: stepWaiting, text: step },
       state: InboxState.parse(r.state),
       queuedAt: times.get(r.id)?.first ?? null,
       updatedAt: times.get(r.id)?.last ?? null,
@@ -99,6 +106,8 @@ export function inboxViews(
             reason: t.reason,
             resultMessageId: t.resultMessageId,
             stopRequestedAt: t.stopRequestedAt,
+            step: t.step,
+            stepWaiting: t.stepWaiting,
           })
           .from(t)
           .where(
@@ -138,6 +147,8 @@ export function inboxViews(
             reason: t.reason,
             resultMessageId: t.resultMessageId,
             stopRequestedAt: t.stopRequestedAt,
+            step: t.step,
+            stepWaiting: t.stepWaiting,
           })
           .from(t)
           .innerJoin(s.channels, eq(s.channels.id, t.channelId))

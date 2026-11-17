@@ -54,6 +54,11 @@ export const Dispatch = z.discriminatedUnion('kind', [
   }),
 ]);
 export type Dispatch = z.infer<typeof Dispatch>;
+/** What a run under way is on: what waits on a person, or its last step. */
+export interface Step {
+  waiting: boolean;
+  text: string;
+}
 export interface Observation {
   reference: Reference;
   state:
@@ -70,6 +75,11 @@ export interface Observation {
   acceptance: 'not-evaluated';
   /** Requests waiting on a person: the run's, or the thread's when none is named. */
   pendingRequests: number;
+  /**
+   * While the run is under way, what it is on, in T3's words: what waits on
+   * a person's approval, or the step it is taking. Null when not known.
+   */
+  step?: Step | null;
   history: {
     id: string;
     position: number;

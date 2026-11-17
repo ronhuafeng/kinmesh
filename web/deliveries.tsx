@@ -316,6 +316,17 @@ export function DeliveryLine({
           <Words text={text} />
         </Outcome>
       )}
+      {unanswered(delivery) && delivery.step && (
+        // What its run is on in T3: what waits on your approval there, or
+        // the step it is taking.
+        <span
+          className="delivery-step"
+          data-waiting={delivery.step.waiting ? 'true' : undefined}
+        >
+          {delivery.step.waiting ? '要执行 ' : ''}
+          <code>{delivery.step.text}</code>
+        </span>
+      )}
       {stoppable(delivery) && (
         <Stop delivery={delivery} teamId={data.team.id} onDone={onDone} />
       )}
