@@ -4377,8 +4377,8 @@ button.new-agent-go {
   border-radius: var(--radius-sm);
 }
 /* Settings: groups of rows, each under a small heading, hairlines between
- * the rows. A row is two columns: its label, then its value or control on
- * one shared edge, so each value sits beside what it is. */
+ * the rows. A row is its label, and its value or control ending on the
+ * column's right edge; the hairline carries the eye across. */
 .settings-group {
   display: grid;
 }
@@ -4389,37 +4389,61 @@ button.new-agent-go {
   font-weight: 600;
 }
 .you-row {
-  display: grid;
-  grid-template-columns: var(--label-column) minmax(0, 1fr);
+  display: flex;
   align-items: center;
-  justify-items: start;
-  column-gap: 1rem;
+  justify-content: space-between;
+  gap: 1rem;
   min-height: 2.75rem;
   font-weight: 500;
+}
+/* A label with its state beside it: 这台设备 ● 已开启. */
+.you-row-label {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
 }
 .you-row + .you-row,
 .list-row + .list-row {
   border-top: var(--hairline-width) solid var(--hairline);
 }
-.settings-body {
-  --label-column: 11rem;
-}
-@media (max-width: 575px) {
-  .settings-body {
-    --label-column: 6.5rem;
-  }
-}
 .you-row-end {
   display: flex;
   flex-wrap: wrap;
+  justify-content: flex-end;
   align-items: center;
   column-gap: 1rem;
   min-width: 0;
   font-weight: 400;
+  text-align: right;
 }
-/* A link starts on the value edge, its padding outside it. */
+/* A link ends on the column's edge, its padding outside it. */
 .you-row-end .link-button {
   padding-inline: 0;
+}
+/* A state, beside what it is about: a soft pill, with a dot when it is on. */
+.state-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  padding: 0.0625rem 0.5rem;
+  border-radius: 999px;
+  background: var(--fill);
+  color: var(--ink-muted);
+  font-size: var(--text-small);
+  font-weight: 500;
+  line-height: 1.4;
+  white-space: nowrap;
+}
+.state-pill[data-tone='on'] {
+  background: var(--primary-soft);
+  color: var(--primary-soft-text);
+}
+.state-pill[data-tone='on']::before {
+  content: '';
+  width: 0.375rem;
+  height: 0.375rem;
+  border-radius: 999px;
+  background: currentColor;
 }
 /* Under 通知时段, its hours and days, on the same edges. */
 .you-row-sub {
@@ -4449,11 +4473,9 @@ button.new-agent-go {
   border-bottom-color: var(--primary);
   outline: none;
 }
-/* Under 通知时段, its hours and days in the value column, one row. */
+/* Under 通知时段, its hours and days, ending on the same edge. */
 .you-row.you-row-sub {
-  display: flex;
-  gap: 1rem;
-  padding-left: calc(var(--label-column) + 1rem);
+  justify-content: flex-end;
   border-top: 0;
 }
 /* A page's last group is signing out: rows in the danger colour. */
@@ -5339,21 +5361,14 @@ button.list-row-main:hover:not(:disabled) .list-row-title {
   /* The first heading centres on the map's 设置 row beside it. */
   padding-top: 0.75rem;
 }
-/* 个人资料 opens on who you are: your picture, your name, where it is from. */
+/* 个人资料 opens on who you are: your picture, your name, 来自飞书 beside it. */
 .settings-identity {
   display: flex;
   align-items: center;
   gap: 1rem;
 }
-.settings-identity > span {
-  display: grid;
-  gap: 0.125rem;
-}
 .settings-identity strong {
   font-size: 20px;
-}
-.settings-identity .muted {
-  font-size: var(--text-small);
 }
 .danger-text {
   color: var(--danger);
@@ -5384,7 +5399,8 @@ button.list-row-main:hover:not(:disabled) .list-row-title {
   flex-wrap: wrap;
   align-items: baseline;
   gap: 0.5rem 1rem;
-  padding: 0 0 0.75rem calc(var(--label-column) + 1rem);
+  justify-content: flex-end;
+  padding: 0 0 0.75rem;
 }
 .pairing-code {
   font-size: 1.25rem;

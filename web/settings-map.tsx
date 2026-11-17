@@ -10,6 +10,7 @@ import {
   Group,
   ListRow,
   NotificationSettings,
+  Pill,
   Row,
   SignOuts,
 } from './settings.js';
@@ -276,10 +277,8 @@ function ProfileSection({ data }: { data: WorkspaceSnapshot }) {
           id={data.human.id}
           size="xl"
         />
-        <span>
-          <strong>{data.human.name}</strong>
-          <span className="muted">来自飞书</span>
-        </span>
+        <strong>{data.human.name}</strong>
+        <Pill on>来自飞书</Pill>
       </div>
       <Group title="账号">
         <Row label="用户名">{profile?.username ?? data.human.username}</Row>
@@ -344,11 +343,17 @@ function AccountSection({
         {sessions.map((s) => (
           <Row
             key={s.id}
-            label={s.current ? '此浏览器' : `${ago(s.createdAt)}登录`}
+            label={
+              s.current ? (
+                <>
+                  此浏览器 <Pill on>正在使用</Pill>
+                </>
+              ) : (
+                `${ago(s.createdAt)}登录`
+              )
+            }
           >
-            {s.current ? (
-              <span className="muted">正在使用</span>
-            ) : (
+            {s.current ? null : (
               <>
                 <span className="muted">{ago(s.lastSeenAt)}用过</span>
                 <button
@@ -447,8 +452,17 @@ function Channels({
           <ListRow
             key={c.id}
             lead={<ChannelIcon id={c.id} name={c.name} />}
-            title={c.name}
-            detail={level === 'default' ? undefined : LEVEL_LABELS[level]}
+            title={
+              <>
+                {c.name}
+                {level !== 'default' && (
+                  <>
+                    {' '}
+                    <Pill>{LEVEL_LABELS[level]}</Pill>
+                  </>
+                )}
+              </>
+            }
             onOpen={() => {
               openChannel(c.id);
             }}
