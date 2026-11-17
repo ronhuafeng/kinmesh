@@ -285,6 +285,68 @@ export async function openStore(url: string) {
             .set({ revokedAt: now })
             .where(eq(tables.sessions.tokenHash, digest(token)));
         },
+        /**
+         * A person's sessions that still let them in, newest use first,
+         * each named by a short id made from its stored hash (never the
+         * token or the hash itself), and whether it is the one asking.
+         */
+        async list(humanId: HumanId, token: unknown, now: number) {
+          const rows = await q()
+            .select()
+            .from(tables.sessions)
+            .where(
+              and(
+                eq(tables.sessions.humanId, humanId),
+                isNull(tables.sessions.revokedAt),
+                gt(tables.sessions.lastSeenAt, now - SESSION_IDLE_MS),
+                gt(tables.sessions.createdAt, now - SESSION_LIFETIME_MS),
+              ),
+            );
+          const current =
+            typeof token === 'string' && token !== '' ? digest(token) : null;
+          return rows
+            .sort((a, b) => b.lastSeenAt - a.lastSeenAt)
+            .map((row) => ({
+              id: digest(row.tokenHash).slice(0, 16),
+              current: row.tokenHash === current,
+              createdAt: new Date(row.createdAt).toISOString(),
+              lastSeenAt: new Date(row.lastSeenAt).toISOString(),
+            }));
+        },
+        /** Ends one of a person's sessions, by the id `list` gave it. */
+        async end(humanId: HumanId, id: string, now: number) {
+          const rows = await q()
+            .select({ tokenHash: tables.sessions.tokenHash })
+            .from(tables.sessions)
+            .where(
+              and(
+                eq(tables.sessions.humanId, humanId),
+                isNull(tables.sessions.revokedAt),
+              ),
+            );
+          const row = rows.find((r) => digest(r.tokenHash).slice(0, 16) === id);
+          if (!row) return false;
+          await q()
+            .update(tables.sessions)
+            .set({ revokedAt: now })
+            .where(eq(tables.sessions.tokenHash, row.tokenHash));
+          return true;
+        },
+        /** What a person's own page shows of them, from Feishu. */
+        async profile(humanId: HumanId) {
+          const row = (
+            await q()
+              .select({
+                username: tables.humans.username,
+                name: tables.humans.name,
+                email: tables.humans.email,
+              })
+              .from(tables.humans)
+              .where(eq(tables.humans.id, humanId))
+              .limit(1)
+          )[0];
+          return row ?? null;
+        },
         /** Every session of one person, as on "Sign out everywhere". */
         async revokeAll(humanId: HumanId, now: number) {
           await q()

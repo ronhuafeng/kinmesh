@@ -69,7 +69,7 @@ export const MODE_NAMES = {
   'full-access': '完全访问',
 } as const;
 /** Where the team's T3 is, and how agents run there, when that is known. */
-function t3Where(connection: T3Connection) {
+export function t3Where(connection: T3Connection) {
   return {
     host: new URL(connection.endpoint).host,
     access:

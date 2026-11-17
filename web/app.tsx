@@ -49,7 +49,8 @@ import {
 import { SearchPage, SidebarSearch } from './palette.js';
 import { useSidebar } from './sidebar.js';
 import { InboxPage, attentionCount } from './inbox.js';
-import { SettingsPage } from './settings.js';
+import { FIRST, SettingsNav, SettingsPage } from './settings-map.js';
+import { AccountMenu, Mark, TeamMenu } from './menus.js';
 import { closeSettled, pushSupported, renew, unsubscribe } from './push.js';
 import {
   BackIcon,
@@ -64,7 +65,9 @@ type View = 'chat' | 'board' | 'team' | 'agent';
 type Tab = Exclude<View, 'agent'>;
 type Focus =
   | { kind: 'task' | 'worker'; id: string }
-  | { kind: 'inbox' | 'settings' | 'search' }
+  | { kind: 'inbox' | 'search' }
+  /** A settings section by id; '' is the map (a phone's list). */
+  | { kind: 'settings'; section: string }
   | null;
 /** True when a refresh moved at least one visible task to another status. */
 function statusesMoved(
@@ -191,7 +194,8 @@ function readRoute() {
     agent = worker;
     focus = { kind: 'worker', id: worker };
   } else if (query.has('inbox')) focus = { kind: 'inbox' };
-  else if (query.has('settings')) focus = { kind: 'settings' };
+  else if (query.has('settings'))
+    focus = { kind: 'settings', section: query.get('settings') ?? '' };
   else if (query.has('search')) focus = { kind: 'search' };
   if (agent && !worker) view = 'agent';
   return { channel, topic, view, agent, focus, draft };
@@ -217,7 +221,8 @@ function routeUrl(place: {
   else if (place.newTask) query.set('task', 'new');
   else if (place.focus?.kind === 'worker') query.set('worker', place.focus.id);
   else if (place.focus?.kind === 'inbox') query.set('inbox', '');
-  else if (place.focus?.kind === 'settings') query.set('settings', '');
+  else if (place.focus?.kind === 'settings')
+    query.set('settings', place.focus.section);
   else if (place.focus?.kind === 'search') query.set('search', '');
   else if (place.view === 'agent' && place.agent)
     query.set('agent', place.agent);
@@ -664,6 +669,18 @@ export function App() {
   useEffect(() => {
     if (data) void closeSettled(data).catch(() => undefined);
   }, [data]);
+  // ⌘, (Ctrl+, elsewhere) opens settings, as in any Mac app.
+  useEffect(() => {
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key !== ',' || !(event.metaKey || event.ctrlKey)) return;
+      event.preventDefault();
+      setFocus({ kind: 'settings', section: '' });
+    };
+    window.addEventListener('keydown', onKey);
+    return () => {
+      window.removeEventListener('keydown', onKey);
+    };
+  }, []);
   // The app's badge (where the browser shows one) says whether anything is
   // unread.
   const anyUnread = data?.latest.some((l) => l.unread) ?? false;
@@ -780,7 +797,7 @@ export function App() {
    */
   const screen =
     focus?.kind === 'inbox' ||
-    focus?.kind === 'settings' ||
+    (focus?.kind === 'settings' && focus.section === '') ||
     focus?.kind === 'search'
       ? 'tab'
       : onPage || view === 'agent'
@@ -855,6 +872,16 @@ export function App() {
   const closeFocus = () => {
     setFocus(null);
   };
+  /** Settings at a section; on a phone '' is the map. Esc comes back here. */
+  const openSettings = (section: string) => {
+    setDraft(null);
+    setFocus({ kind: 'settings', section });
+  };
+  const inSettings = focus?.kind === 'settings';
+  const settingsSection =
+    focus?.kind === 'settings'
+      ? focus.section || (phone ? '' : FIRST.personal)
+      : '';
   /** An agent opens as its own page; Esc returns to the tab it came from. */
   const openAgent = (id: string) => {
     if (view !== 'agent') setBackTo(view);
@@ -968,13 +995,15 @@ export function App() {
     },
   ];
   const teamName = (
-    <p
-      className="team-name"
-      title={data.team.name}
-      data-long={data.team.name.length > 12 || undefined}
-    >
-      {data.team.name}
-    </p>
+    <TeamMenu data={data} onSettings={openSettings}>
+      <span
+        className="team-name"
+        title={data.team.name}
+        data-long={data.team.name.length > 12 || undefined}
+      >
+        {data.team.name}
+      </span>
+    </TeamMenu>
   );
   return (
     <MutationPermission value={canAct}>
@@ -992,228 +1021,254 @@ export function App() {
                 ref={sidebar.sidebarRef}
                 aria-label="侧栏"
               >
-                {/* The organization, as Feishu names it, set as a wordmark,
+                {inSettings && !phone ? (
+                  <SettingsNav
+                    current={settingsSection}
+                    onSelect={openSettings}
+                    onBack={closeFocus}
+                  />
+                ) : (
+                  <>
+                    {/* The organization, as Feishu names it, set as a wordmark,
                     with search at the end of its row. A long name wraps to
                     two lines, smaller. */}
-                {phone ? (
-                  // A phone's search is its own tab: the row is the name.
-                  <div className="team-row">{teamName}</div>
-                ) : (
-                  <SidebarSearch
-                    commands={commands}
-                    onOpen={sidebar.onSearch}
-                    end={
-                      sidebar.pad && (
-                        <button
-                          type="button"
-                          ref={sidebar.rowToggle}
-                          className="quiet icon-button sidebar-toggle"
-                          aria-label="收起侧栏"
-                          title="收起侧栏"
-                          aria-expanded="true"
-                          aria-controls="sidebar"
-                          aria-keyshortcuts="Meta+Backslash Control+Backslash"
-                          onClick={sidebar.toggle}
-                        >
-                          <SidebarIcon size={20} />
-                        </button>
-                      )
-                    }
-                  >
-                    {teamName}
-                  </SidebarSearch>
-                )}
-                <nav aria-label="频道">
-                  <div className="nav-heading">
-                    <h2>频道</h2>
-                    <AddButton
-                      label="新建频道"
-                      onClick={() => {
-                        setAddingChannel(true);
-                      }}
-                    />
-                  </div>
-                  {(phone
-                    ? byActivity(data.channels.items, data.latest)
-                    : data.channels.items
-                  ).map((c) => (
-                    <Fragment key={c.id}>
-                      <button
-                        // On a phone the row also shows the newest message,
-                        // which describes it rather than naming it.
-                        {...(phone
-                          ? {
-                              'aria-label': c.name,
-                              'aria-describedby': 'latest-' + c.id,
-                            }
-                          : {})}
-                        data-muted={
-                          data.muted.channels.includes(c.id)
-                            ? 'true'
-                            : undefined
+                    {phone ? (
+                      // A phone's search is its own tab: the row is the name.
+                      <div className="team-row">{teamName}</div>
+                    ) : (
+                      <SidebarSearch
+                        commands={commands}
+                        onOpen={sidebar.onSearch}
+                        end={
+                          sidebar.pad && (
+                            <button
+                              type="button"
+                              ref={sidebar.rowToggle}
+                              className="quiet icon-button sidebar-toggle"
+                              aria-label="收起侧栏"
+                              title="收起侧栏"
+                              aria-expanded="true"
+                              aria-controls="sidebar"
+                              aria-keyshortcuts="Meta+Backslash Control+Backslash"
+                              onClick={sidebar.toggle}
+                            >
+                              <SidebarIcon size={20} />
+                            </button>
+                          )
                         }
-                        data-unread={
-                          data.latest.find((l) => l.channelId === c.id)?.unread
-                            ? 'true'
-                            : undefined
-                        }
-                        aria-current={
-                          // Only one place is current: a channel while you are
-                          // in its chat or board.
-                          channel?.id === c.id &&
-                          (tabValue === 'chat' || tabValue === 'board') &&
-                          !(phone && screen === 'home')
-                            ? 'page'
-                            : undefined
-                        }
-                        onClick={() => {
-                          selectChannel(c.id);
-                        }}
                       >
-                        {phone ? (
-                          <ChannelRow
-                            data={data}
-                            channelId={c.id}
-                            name={c.name}
-                            latest={data.latest.find(
-                              (l) => l.channelId === c.id,
-                            )}
-                            id={'latest-' + c.id}
-                          />
-                        ) : (
-                          <>
-                            <ChannelIcon id={c.id} name={c.name} />
-                            <span className="channel-name" title={c.name}>
-                              {c.name}
-                            </span>
-                          </>
-                        )}
-                        {/* Something in this channel waits on you; once
-                            nothing does, the dot fades out. */}
-                        <span
-                          className="waiting-dot"
-                          data-on={waitingIn.has(c.id) ? 'true' : undefined}
-                          {...(waitingIn.has(c.id)
-                            ? { title: '等你处理' }
-                            : { 'aria-hidden': true })}
-                        >
-                          {waitingIn.has(c.id) && (
-                            <span className="visually-hidden">等你处理</span>
-                          )}
-                        </span>
-                      </button>
-                      {channel?.id === c.id && channelPath && (
-                        <ChannelTopics
-                          data={data}
-                          channelPath={channelPath}
-                          topic={selection.topic}
-                          current={tabValue === 'chat' || tabValue === 'board'}
-                          onTopic={(topic) => {
-                            leavePage();
-                            setView('chat');
-                            setSelection((old) => ({ ...old, topic }));
-                            setCursors({});
+                        {teamName}
+                      </SidebarSearch>
+                    )}
+                    <nav aria-label="频道">
+                      <div className="nav-heading">
+                        <h2>频道</h2>
+                        <AddButton
+                          label="新建频道"
+                          onClick={() => {
+                            setAddingChannel(true);
                           }}
-                          next={next}
+                        />
+                      </div>
+                      {(phone
+                        ? byActivity(data.channels.items, data.latest)
+                        : data.channels.items
+                      ).map((c) => (
+                        <Fragment key={c.id}>
+                          <button
+                            // On a phone the row also shows the newest message,
+                            // which describes it rather than naming it.
+                            {...(phone
+                              ? {
+                                  'aria-label': c.name,
+                                  'aria-describedby': 'latest-' + c.id,
+                                }
+                              : {})}
+                            data-muted={
+                              data.muted.channels.includes(c.id)
+                                ? 'true'
+                                : undefined
+                            }
+                            data-unread={
+                              data.latest.find((l) => l.channelId === c.id)
+                                ?.unread
+                                ? 'true'
+                                : undefined
+                            }
+                            aria-current={
+                              // Only one place is current: a channel while you are
+                              // in its chat or board.
+                              channel?.id === c.id &&
+                              (tabValue === 'chat' || tabValue === 'board') &&
+                              !(phone && screen === 'home')
+                                ? 'page'
+                                : undefined
+                            }
+                            onClick={() => {
+                              selectChannel(c.id);
+                            }}
+                          >
+                            {phone ? (
+                              <ChannelRow
+                                data={data}
+                                channelId={c.id}
+                                name={c.name}
+                                latest={data.latest.find(
+                                  (l) => l.channelId === c.id,
+                                )}
+                                id={'latest-' + c.id}
+                              />
+                            ) : (
+                              <>
+                                <ChannelIcon id={c.id} name={c.name} />
+                                <span className="channel-name" title={c.name}>
+                                  {c.name}
+                                </span>
+                              </>
+                            )}
+                            {/* Something in this channel waits on you; once
+                            nothing does, the dot fades out. */}
+                            <span
+                              className="waiting-dot"
+                              data-on={waitingIn.has(c.id) ? 'true' : undefined}
+                              {...(waitingIn.has(c.id)
+                                ? { title: '等你处理' }
+                                : { 'aria-hidden': true })}
+                            >
+                              {waitingIn.has(c.id) && (
+                                <span className="visually-hidden">
+                                  等你处理
+                                </span>
+                              )}
+                            </span>
+                          </button>
+                          {channel?.id === c.id && channelPath && (
+                            <ChannelTopics
+                              data={data}
+                              channelPath={channelPath}
+                              topic={selection.topic}
+                              current={
+                                tabValue === 'chat' || tabValue === 'board'
+                              }
+                              onTopic={(topic) => {
+                                leavePage();
+                                setView('chat');
+                                setSelection((old) => ({ ...old, topic }));
+                                setCursors({});
+                              }}
+                              next={next}
+                            />
+                          )}
+                        </Fragment>
+                      ))}
+                      {addingChannel && (
+                        <InlineField
+                          name="name"
+                          label="频道名称"
+                          placeholder="频道名称"
+                          maxLength={80}
+                          path={`/api/teams/${data.team.id}/channels`}
+                          className="channel-new"
+                          taken="这个名称已被占用"
+                          onClose={() => {
+                            setAddingChannel(false);
+                          }}
+                          // The channel just made is where you meant to go.
+                          onCreated={selectChannel}
                         />
                       )}
-                    </Fragment>
-                  ))}
-                  {addingChannel && (
-                    <InlineField
-                      name="name"
-                      label="频道名称"
-                      placeholder="频道名称"
-                      maxLength={80}
-                      path={`/api/teams/${data.team.id}/channels`}
-                      className="channel-new"
-                      taken="这个名称已被占用"
-                      onClose={() => {
-                        setAddingChannel(false);
-                      }}
-                      // The channel just made is where you meant to go.
-                      onCreated={selectChannel}
-                    />
-                  )}
-                  {/* Channels you left, only when there are any: one click back. */}
-                  <LeftChannels
-                    teamId={data.team.id}
-                    channels={data.leftChannels}
-                    onDone={selectChannel}
-                  />
-                </nav>
-                {data.channels.nextCursor && (
-                  <button
-                    className="quiet"
-                    onClick={() => {
-                      next('channelsCursor', data.channels.nextCursor);
-                    }}
-                  >
-                    更多频道
-                  </button>
-                )}
-                <section
-                  className="people"
-                  aria-label={channel ? '本频道成员' : '成员'}
-                >
-                  {/* A line, not a heading: what follows plainly belongs to
+                      {/* Channels you left, only when there are any: one click back. */}
+                      <LeftChannels
+                        teamId={data.team.id}
+                        channels={data.leftChannels}
+                        onDone={selectChannel}
+                      />
+                    </nav>
+                    {data.channels.nextCursor && (
+                      <button
+                        className="quiet"
+                        onClick={() => {
+                          next('channelsCursor', data.channels.nextCursor);
+                        }}
+                      >
+                        更多频道
+                      </button>
+                    )}
+                    <section
+                      className="people"
+                      aria-label={channel ? '本频道成员' : '成员'}
+                    >
+                      {/* A line, not a heading: what follows plainly belongs to
                       the channel above. */}
-                  <hr className="nav-separator" />
-                  <ul>
-                    {/* You know you are here: the list is the others. A
+                      <hr className="nav-separator" />
+                      <ul>
+                        {/* You know you are here: the list is the others. A
                         person has no page of their own: their row is their
                         face, name and presence. */}
-                    {otherPeople(data).map((person) => (
-                      <li key={person.id}>
-                        <span className="person">
-                          <Avatar
-                            kind="human"
-                            name={person.name}
-                            id={person.id}
-                            size="sm"
-                          />
-                          <span className="person-name">{person.name}</span>
-                          <Presence online={person.online} dot />
-                        </span>
-                      </li>
-                    ))}
-                    {channelAgents.map((agent) => (
-                      <li key={agent.id}>
+                        {otherPeople(data).map((person) => (
+                          <li key={person.id}>
+                            <span className="person">
+                              <Avatar
+                                kind="human"
+                                name={person.name}
+                                id={person.id}
+                                size="sm"
+                              />
+                              <span className="person-name">{person.name}</span>
+                              <Presence online={person.online} dot />
+                            </span>
+                          </li>
+                        ))}
+                        {channelAgents.map((agent) => (
+                          <li key={agent.id}>
+                            <button
+                              className="person"
+                              aria-pressed={
+                                view === 'agent' && agentId === agent.id
+                              }
+                              onClick={() => {
+                                openAgent(agent.id);
+                              }}
+                            >
+                              <Avatar
+                                kind="agent"
+                                name={agent.name}
+                                id={agent.id}
+                                size="sm"
+                              />
+                              <span className="person-name">{agent.name}</span>
+                              <Presence
+                                online={workerConnected(data.wake, agent.id)}
+                                dot
+                              />
+                            </button>
+                          </li>
+                        ))}
+                      </ul>
+                      {channel && channelAgents.length === 0 && (
                         <button
-                          className="person"
-                          aria-pressed={
-                            view === 'agent' && agentId === agent.id
-                          }
+                          className="link-button"
                           onClick={() => {
-                            openAgent(agent.id);
+                            setView('team');
                           }}
                         >
-                          <Avatar
-                            kind="agent"
-                            name={agent.name}
-                            id={agent.id}
-                            size="sm"
-                          />
-                          <span className="person-name">{agent.name}</span>
-                          <Presence
-                            online={workerConnected(data.wake, agent.id)}
-                            dot
-                          />
+                          添加智能体
                         </button>
-                      </li>
-                    ))}
-                  </ul>
-                  {channel && channelAgents.length === 0 && (
-                    <button
-                      className="link-button"
-                      onClick={() => {
-                        setView('team');
-                      }}
-                    >
-                      添加智能体
-                    </button>
-                  )}
-                </section>
+                      )}
+                    </section>
+                  </>
+                )}
+                {/* You, at the foot: your mark opens what is about you. */}
+                {!phone && (
+                  <div className="sidebar-foot">
+                    <AccountMenu
+                      data={data}
+                      onSettings={openSettings}
+                      onSignOut={signOut}
+                      onSignOutEverywhere={signOutEverywhere}
+                    />
+                  </div>
+                )}
               </aside>
               <main className="workspace-main">
                 <Tabs.Root
@@ -1270,38 +1325,41 @@ export function App() {
                         <SidebarIcon size={20} />
                       </button>
                     )}
-                    {/* Views stay in reach however far the conversation scrolls. */}
-                    <Tabs.List
-                      ref={viewTabs}
-                      aria-label="工作区视图"
-                      className="view-switch"
-                    >
-                      <Tabs.Trigger value="chat" onClick={leavePage}>
-                        聊天
-                      </Tabs.Trigger>
-                      <Tabs.Trigger value="board" onClick={leavePage}>
-                        看板
-                      </Tabs.Trigger>
-                      <Tabs.Trigger value="team" onClick={leavePage}>
-                        团队
-                      </Tabs.Trigger>
-                      {/* What waits on you across the team; an empty inbox
-                        needs no number. On a phone it is a bottom tab. */}
-                      {!phone && (
-                        <Tabs.Trigger
-                          value="inbox"
-                          onClick={() => {
-                            setDraft(null);
-                            setFocus({ kind: 'inbox' });
-                          }}
-                        >
-                          收件箱
-                          {waiting > 0 && (
-                            <span className="count">{waiting}</span>
-                          )}
+                    {/* Views stay in reach however far the conversation scrolls;
+                        they belong to a channel, so settings show none. */}
+                    {!inSettings && (
+                      <Tabs.List
+                        ref={viewTabs}
+                        aria-label="工作区视图"
+                        className="view-switch"
+                      >
+                        <Tabs.Trigger value="chat" onClick={leavePage}>
+                          聊天
                         </Tabs.Trigger>
-                      )}
-                    </Tabs.List>
+                        <Tabs.Trigger value="board" onClick={leavePage}>
+                          看板
+                        </Tabs.Trigger>
+                        <Tabs.Trigger value="team" onClick={leavePage}>
+                          团队
+                        </Tabs.Trigger>
+                        {/* What waits on you across the team; an empty inbox
+                        needs no number. On a phone it is a bottom tab. */}
+                        {!phone && (
+                          <Tabs.Trigger
+                            value="inbox"
+                            onClick={() => {
+                              setDraft(null);
+                              setFocus({ kind: 'inbox' });
+                            }}
+                          >
+                            收件箱
+                            {waiting > 0 && (
+                              <span className="count">{waiting}</span>
+                            )}
+                          </Tabs.Trigger>
+                        )}
+                      </Tabs.List>
+                    )}
                     <div className="header-end">
                       {/* Healthy is silent; a refresh asked for, or a slow
                           one, says so. */}
@@ -1397,10 +1455,20 @@ export function App() {
                     )}
                     {focus?.kind === 'settings' && (
                       <SettingsPage
+                        key={settingsSection}
+                        section={settingsSection}
+                        phone={phone}
                         data={data}
+                        onSection={openSettings}
                         onClose={closeFocus}
                         onSignOut={signOut}
                         onSignOutEverywhere={signOutEverywhere}
+                        openChannel={(id) => {
+                          setFocus(null);
+                          selectChannel(id);
+                          setView('chat');
+                        }}
+                        openAgent={openAgent}
                       />
                     )}
 
@@ -1472,9 +1540,6 @@ export function App() {
                         channelName={channel?.name ?? ''}
                         onDone={refresh}
                         openAgent={openAgent}
-                        openSettings={() => {
-                          setFocus({ kind: 'settings' });
-                        }}
                       />
                     </Tabs.Content>
                     <Tabs.Content value="agent">
@@ -1554,20 +1619,12 @@ export function App() {
                     type="button"
                     aria-label="我"
                     title="我"
-                    aria-current={
-                      focus?.kind === 'settings' ? 'page' : undefined
-                    }
+                    aria-current={inSettings ? 'page' : undefined}
                     onClick={() => {
-                      setDraft(null);
-                      setFocus({ kind: 'settings' });
+                      openSettings('');
                     }}
                   >
-                    <Avatar
-                      kind="human"
-                      name={data.human.name}
-                      id={data.human.id}
-                      size="sm"
-                    />
+                    <Mark name={data.human.name} />
                   </button>
                 </nav>
               )}

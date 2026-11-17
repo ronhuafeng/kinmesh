@@ -14,7 +14,9 @@ Words: trustworthy, legible, alive, unhurried, honest about what is verified.
 ## Principles
 
 Every screen is judged by one standard: don't make people think, and show nothing
-that isn't needed. Check a change against these before it ships.
+that isn't needed now. The one exception is the settings map, which shows where
+Kinmesh is going: its planned sections are listed, quietly (see **Settings**).
+Check a change against these before it ships.
 
 **Overall**
 
@@ -42,8 +44,9 @@ that isn't needed. Check a change against these before it ships.
 
 7. No disclosure widgets (`<details>`, "Add details", "More", "Technical details").
    Folds hide information; show it or leave it out.
-8. No drawers or overlays for content. A task, a new task, the Inbox, Settings and an
-   agent open as pages in the main area. Creating is the same page as viewing: a new
+8. No drawers or overlays for content. A task, a new task, the Inbox, a settings
+   section and an agent open as pages in the main area; menus are the one thing that
+   pops over the page. Creating is the same page as viewing: a new
    task is its task page, empty; once created it stays on screen as that task. The one
    exception is navigation: below 900 px the open sidebar floats over the content's
    edge (see **Sidebar**).
@@ -211,7 +214,13 @@ fallback.
 - **Segmented control**: the views (聊天 | 看板 | 团队 | 收件箱) and a narrow board's
   stages: a grey track, the chosen segment a raised white (dark: grey) thumb that
   eases in. In the top bar it is the page's primary control: 38 px tall, 15 px labels.
-- **Switch**: on or off, iOS's: a 51 × 31 px track, grey off and the primary colour
+- **Menu**: what pops over the page from the control that opens it (Radix
+  DropdownMenu): a white surface at the third elevation, rounded 12 px, rows of 36 px
+  with a 16 px icon in the muted ink and the words, a shortcut or tick at the end in
+  the muted ink, hairline separators between groups, a danger row in the danger
+  colour. A pointer or the arrow keys light a row with the hover fill; Esc or a
+  click elsewhere closes it, focus returning to what opened it.
+- **Switch**: on or off, iOS's (Radix Switch): a 51 × 31 px track, grey off and the primary colour
   on, and a white raised thumb that slides across (at once without motion). It
   ends its row, which names it; a click anywhere on the row flips it, and what
   it turns on takes effect at once.
@@ -373,8 +382,8 @@ fallback.
   the `npm run t3:auth` step and an `inbox.json` binding without secrets.
 - **Credential once**: a newly issued token appears once, with copy and download,
   and is gone when dismissed.
-- **Team**: a gallery of faces with names and presence — you (your tile opens your
-  page), the other people, then the agents; the last tile adds an agent. Faces are
+- **Team**: a gallery of faces with names and presence — you (a tile like everyone's;
+  what is about you is your mark at the foot of the sidebar), the other people, then the agents; the last tile adds an agent. Faces are
   56 px in tiles of at least 7rem, as many to a row as fit; the add tile is simply the
   next cell. Someone who isn't in the open
   channel, person or agent, carries **加入 #_channel_** on their tile (their name is
@@ -395,10 +404,36 @@ fallback.
   or holds the fix under it.
   A row leaves when its cause is resolved; there is nothing to dismiss. Expired
   deliveries are not listed; they stay on their message's delivery line.
-- **Settings**: your own tile on Team (on a phone, the 我 tab) opens your page; the
-  page has no face or name of its own. It holds what notifies you and signing out.
-  What notifies you is one group of 44 px rows, each a label and, at the end on
-  the column's edge, its control, in runs a little apart. First what can notify
+- **Your mark and your menu**: at the foot of the sidebar, a row like a person's —
+  your **mark** (your initials, the last two characters of a Chinese name, on the
+  primary colour, round, 32 px; never your picture) and your name. A small moon on
+  the mark's edge says notifications are paused or off. It opens your menu (a
+  **Menu**, above it): your mark, name and team; the state of notifications ("通知已开",
+  "通知暂停到 08:00", "通知已关") and, one choice away, 暂停 1 小时 / 暂停到明早 or
+  恢复通知; 跟随系统 / 浅色 / 深色, ticked, which stays open to show it; 个人资料; 设置 ⌘,;
+  then 退出登录 and 在所有设备上退出登录 in the danger colour.
+- **Team menu**: the team's name at the head of the sidebar opens it: 成员, 智能体, 连接
+  and 团队设置. Later, switching teams belongs here.
+- **Settings**: a mode, not a page. ⌘, or either menu opens it on a section, and
+  the sidebar becomes the settings map: ‹ 设置 where the team's name was (‹ or Esc
+  returns to where you were), then 个人 — 通知, 我的助理, 外观, 个人资料, 账户与设备, 快捷键
+  — and 团队 — 成员, 频道, 智能体, 规则, 连接, 集成, 文件与存储, 用量与成本, 审计记录,
+  数据与导出 — each a row with its icon, the current one lit as a channel is; your
+  row stays at the foot. The channel's views are not shown. The section opens in
+  the main area on the gutter, with no title (the map says where you are), a
+  form's width; each has its address (`?settings=<id>`). A **planned section**
+  (我的助理, 规则, 集成, 文件与存储, 用量与成本, 审计记录, 数据与导出) is in the subtle ink
+  in the map and opens as what it will hold: 规划中, then its rows in the subtle
+  ink, each "—", and no controls — never a loading state. 个人资料 is read-only, as
+  Feishu gives it; 账户与设备 lists your sessions ("此浏览器 · 正在使用", or when one
+  signed in and was last used, with **退出**) and the browsers receiving
+  notifications (**移除**), then signing out; 成员, 频道 and 智能体 are rows of a face
+  or icon, a name and what to know, a channel or an agent opening its place; 连接
+  shows T3 and tries the Feishu bot (**给我发一条测试消息**). On a phone, 我 opens the
+  map as two iOS inset lists on the grey canvas (subtle ink for planned ones), and a
+  section opens under a bar naming it, which leads back to the map.
+- **通知** (the section): what notifies you is one group of 44 px rows, each a
+  label and, at the end on the column's edge, its control, in runs a little apart. First what can notify
   you, most pressing first, a **Switch** each: 等我验收, 交给我的任务, 我的请求卡住了,
   智能体回复我, @我, 频道里的其他消息 (all on but the last); a click anywhere on a row
   flips it. With none on, the rest of the group is left out. Then where they
@@ -411,8 +446,8 @@ fallback.
   this browser's time zone) and 每天 | 工作日 at its end. "暂停通知": 不暂停 | 1 小时 |
   到明早 (the next 8:00), the pause in force chosen and its end on hover; it ends
   by itself. Then what you muted, a channel's icon or an agent's face and its
-  name, **取消静音** at the end. Apart from the group, **退出登录** and
-  **在所有设备上退出登录**, quiet rows in the danger colour, on every device.
+  name, **取消静音** at the end. Signing out, in 账户与设备, ends that section in
+  **退出登录** and **在所有设备上退出登录**, quiet rows in the danger colour.
 - **Notifications**: one per place, the latest replacing the one before. The title
   is who wrote and where ("小助手 · #general · 话题"), or what waits on you and
   where ("等你验收", "请你评审", "退回给你", "交给你了", "_Ada_ 卡住了"); the line is the
@@ -421,7 +456,7 @@ fallback.
   settled, the workspace closes what it showed in that browser. Kinmesh can be added
   to a phone's Home Screen (its icon is the brand mark), where iOS allows them.
 - **Team name**: the organization's name as Feishu gives it, never typed here, heads
-  the sidebar in bold — no logo or avatar — sharing its row with search
+  the sidebar in bold — the button that opens the **Team menu** — no logo or avatar — sharing its row with search
   and, beside the content, the control that closes the sidebar. One line; a name of more
   than 12 characters is set smaller and wraps onto a second line, cut there with an
   ellipsis, its full name on hover. Its text starts on the headings' edge.
@@ -432,7 +467,7 @@ fallback.
   this organization, took too long, or Feishu couldn't be reached — and the reason
   leaves the address, so a reload starts clean. Turning back at Feishu returns here
   silently.
-- **Sign out**: on your own page (see **Settings**); nothing in the top bar.
+- **Sign out**: in your menu and in 账户与设备; nothing in the top bar.
 - **Opening the workspace**: quiet. A load that is quick shows nothing; one that takes
   more than 0.6 s fades in the brand, "正在打开工作区…" and a skeleton board
   (at once without motion). Only a failure says "工作区打不开" and offers
@@ -489,9 +524,9 @@ sidebar sits beside a content column of at least 360 px):
 - **Opening**: an address with no place in it opens on 收件箱 when something waits on
   you, otherwise on Home; an address that names a place always opens there.
 - **Bottom tabs**: icons only, each named for a screen reader — 频道 (`#`, Home), 搜索
-  (the magnifier), 收件箱 (with how many things wait on you) and 我 (your face) — four
+  (the magnifier), 收件箱 (with how many things wait on you) and 我 (your mark) — four
   equal 44 px tabs with 24 px icons, the current one in the primary colour and a
-  heavier stroke (your face gets a primary ring), on a translucent bar. They sit under
+  heavier stroke (your mark is already the primary colour), on a translucent bar. They sit under
   Home and the pages they open.
 - **Search** is the 搜索 tab, a page at `?search` (⌘K on a keyboard): the field at
   the bottom, just above the keyboard (or the tabs, with none) and ready to type in,
@@ -505,7 +540,7 @@ sidebar sits beside a content column of at least 360 px):
   is; fields are 16 px, so nothing zooms.
 - **A page** (agent, task, a worker you run) opens under its own bar: back, then what it
   is — the agent's name, or a task's channel since its title leads the page.
-- **我** is your page (see **Settings**), ending with 退出登录 in the danger colour.
+- **我** is the settings map (see **Settings**); 退出登录 is in 账户与设备.
 
 ## Tablet
 
