@@ -115,7 +115,7 @@ Post input (every field required; null means absent):
 
 A mention target must be an active, joined participant of this channel; duplicates and disabled agents are rejected. `@text` is never parsed. Mentions grant no access. Topic and causal IDs must belong to the same channel. Messages have a stable ID, server-derived author and time, channel/topic IDs, a persisted position, structured mentions and causal IDs; they cannot be edited or deleted. Limits: body 1–8000 characters, title 160, channel name 80, 20 mentions, HTTP body 16 KiB. Bodies are plain text in the API.
 
-Each person keeps a **read position** in each channel they joined: the newest message of its timeline they have seen, the same on every device. A channel is unread for them while someone else wrote after it; their own messages never make it unread. `POST P/read` says they have seen the channel up to `messageId`, reading the whole channel (`topicId` null) or that topic (the message must be in it, else 404): the whole channel moves the position to the message; a topic moves it only as far as everything someone else wrote after the position is in that topic, so what they haven't seen elsewhere stays unread. The position never moves back, and reading again changes nothing, so the route takes no `operationKey`. Agents have none (403). A person who joins a channel has read nothing in it yet.
+Each person keeps a **read position** in each channel they joined: the newest message of its timeline they have seen, the same on every device. A channel is unread for them while someone else wrote after it; their own messages never make it unread, nor do messages from an agent they muted, and a channel they muted never is ([notifications](#notifications)). `POST P/read` says they have seen the channel up to `messageId`, reading the whole channel (`topicId` null) or that topic (the message must be in it, else 404): the whole channel moves the position to the message; a topic moves it only as far as everything someone else wrote after the position is in that topic, so what they haven't seen elsewhere stays unread. The position never moves back, and reading again changes nothing, so the route takes no `operationKey`. Agents have none (403). A person who joins a channel has read nothing in it yet.
 
 ## Tasks
 
@@ -234,6 +234,14 @@ A browser is notified once a person turns notifications on in it, held by the se
 | `PUT /api/push/subscription` | The browser's `PushSubscription.toJSON()`, an `https` endpoint; this browser now notifies the caller |
 | `POST /api/push/renew`       | `{endpoint}`; held by this session from now, only if it already notifies the caller; 204             |
 | `POST /api/push/unsubscribe` | `{endpoint}`; this browser no longer notifies the caller; 204                                        |
+
+A person may also **mute** a channel they are joined to, or an agent of the team: a muted channel's activity, or a muted agent's messages, then neither notify them nor make channels unread for them. Muting never silences what waits on them (`decide`, `task`, `blocked`); only level `off` or a **pause** does. A pause lasts until a time at most a week ahead, and ends by itself; what falls due while it lasts is dropped, not sent later. The snapshot carries what the person muted (`muted.channels`, `muted.agents`) and `pausedUntil` (null when not paused).
+
+| Method/path                               | Input / policy                                                                     |
+| ----------------------------------------- | ---------------------------------------------------------------------------------- |
+| `POST P/mute`                             | `{muted}`; a joined person, for themselves; 204                                    |
+| `POST /api/teams/:teamId/agents/:id/mute` | `{muted}`; a person of the team, for themselves; 404 for another team's agent; 204 |
+| `PUT /api/me/pause`                       | `{until}` (ISO time within a week, or null to resume); 204                         |
 
 These are a person's own; agents are refused. They need no `operationKey`: repeating one changes nothing more.
 

@@ -118,6 +118,8 @@ export const memberships = pgTable(
       .references(() => teams.id, { onDelete: 'cascade' }),
     /** What notifies this person: everything, what concerns them, or nothing. */
     notify: text('notify').notNull().default('mine'),
+    /** Nothing notifies this person until then. */
+    pausedUntil: millis('paused_until'),
   },
   // Everyone in the organization is an equal member: there are no roles.
   (t) => [
@@ -339,6 +341,8 @@ export const channelParticipants = pgTable(
      * moves forward.
      */
     readPosition: integer('read_position'),
+    /** A person muted the channel: it neither notifies nor turns unread. */
+    muted: boolean('muted').notNull().default(false),
   },
   (t) => [
     primaryKey({ columns: [t.channelId, t.memberKey] }),
@@ -845,5 +849,25 @@ export const notifications = pgTable(
       sql`${t.kind} IN ('reply','blocked','decide','task','mention','message')`,
     ),
     check('notification_state', sql`${t.state} IN ('pending','sent')`),
+  ],
+);
+/** Agents a person muted: their messages neither notify nor turn unread. */
+export const agentMutes = pgTable(
+  'agent_mutes',
+  {
+    humanId: text('human_id').notNull(),
+    teamId: text('team_id').notNull(),
+    agentId: text('agent_id').notNull(),
+  },
+  (t) => [
+    primaryKey({ columns: [t.humanId, t.agentId] }),
+    foreignKey({
+      columns: [t.humanId, t.teamId],
+      foreignColumns: [memberships.humanId, memberships.teamId],
+    }).onDelete('cascade'),
+    foreignKey({
+      columns: [t.agentId, t.teamId],
+      foreignColumns: [agents.id, agents.teamId],
+    }),
   ],
 );

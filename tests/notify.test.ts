@@ -260,3 +260,143 @@ await test('a browser notifies the person who turned it on, until they sign out 
     await f.dispose();
   }
 });
+
+await test('muting silences a channel or an agent, never what waits on you; a pause silences everything', async () => {
+  const f = await communicationFixture();
+  const raw = rawDatabase(f.dbPath);
+  try {
+    await f.invite();
+    const graceCookies = await signInAs(f.app, 'grace@example.com');
+    const grace = await f.store.signIn(feishuPerson('grace@example.com'));
+    const kinds = async () =>
+      (
+        await raw
+          .prepare(
+            'SELECT kind FROM notifications WHERE human_id = ? ORDER BY created_at',
+          )
+          .pluck()
+          .all(grace.id)
+      ).map(String);
+    const seen = async () =>
+      WorkspaceSnapshot.parse(
+        (
+          await f.app.inject({ url: '/api/workspace', cookies: graceCookies })
+        ).json<unknown>(),
+      );
+    const unread = async () =>
+      (await seen()).latest.find((l) => l.channelId === f.channelId)?.unread;
+    const post = async (as: 'owner' | 'agent') => {
+      const posted = await f.app.inject({
+        method: 'POST',
+        url: f.channelPath + '/messages',
+        ...(as === 'owner' ? { cookies: f.cookies } : { headers: f.headers }),
+        payload: postInput({ mentions: [{ kind: 'human', id: grace.id }] }),
+      });
+      assert.equal(posted.statusCode, 201);
+    };
+    // Everything she had seen is read: only what follows can be new.
+    const latest = (await seen()).latest.find(
+      (l) => l.channelId === f.channelId,
+    );
+    if (latest)
+      await f.app.inject({
+        method: 'POST',
+        url: f.channelPath + '/read',
+        cookies: graceCookies,
+        payload: { messageId: latest.messageId, topicId: null },
+      });
+
+    // A muted agent's mention neither notifies her nor makes the channel unread.
+    const agentMute = `/api/teams/${f.teamId}/agents/${f.agent.id}/mute`;
+    const muted = await f.app.inject({
+      method: 'POST',
+      url: agentMute,
+      cookies: graceCookies,
+      payload: { muted: true },
+    });
+    assert.equal(muted.statusCode, 204);
+    await post('agent');
+    assert.deepEqual(await kinds(), []);
+    assert.equal(await unread(), false);
+    // An agent can't mute anyone.
+    const byAgent = await f.app.inject({
+      method: 'POST',
+      url: agentMute,
+      headers: f.headers,
+      payload: { muted: true },
+    });
+    assert.equal(byAgent.statusCode, 403);
+
+    // A muted channel: a person's mention is silent and never unread.
+    const channelMute = await f.app.inject({
+      method: 'POST',
+      url: f.channelPath + '/mute',
+      cookies: graceCookies,
+      payload: { muted: true },
+    });
+    assert.equal(channelMute.statusCode, 204);
+    await post('owner');
+    assert.deepEqual(await kinds(), []);
+    assert.equal(await unread(), false);
+    const quiet = await seen();
+    assert.deepEqual(quiet.muted, {
+      channels: [f.channelId],
+      agents: [f.agent.id],
+    });
+
+    // What waits on her still notifies in a muted channel.
+    const handed = await f.app.inject({
+      method: 'POST',
+      url: f.channelPath + '/tasks',
+      cookies: f.cookies,
+      payload: taskInput({
+        owner: { kind: 'human', id: HumanId.parse(grace.id) },
+      }),
+    });
+    assert.equal(handed.statusCode, 201);
+    assert.deepEqual(await kinds(), ['task']);
+
+    // Paused, nothing is sent, that included.
+    const pause = (until: string | null) =>
+      f.app.inject({
+        method: 'PUT',
+        url: '/api/me/pause',
+        cookies: graceCookies,
+        payload: { until },
+      });
+    assert.equal(
+      (await pause(new Date(Date.now() - 1000).toISOString())).statusCode,
+      400,
+      'a pause in the past is refused',
+    );
+    assert.equal(
+      (await pause(new Date(Date.now() + 8 * 86_400_000).toISOString()))
+        .statusCode,
+      400,
+      'a pause of more than a week is refused',
+    );
+    assert.equal(
+      (await pause(new Date(Date.now() + 3_600_000).toISOString())).statusCode,
+      204,
+    );
+    assert.ok((await seen()).pausedUntil);
+    await raw.prepare('UPDATE notifications SET due_at = 0').run();
+    const [n] = await f.store.notifications.take(10);
+    assert.ok(n);
+    assert.equal(await f.store.notifications.describe(n), null);
+    assert.equal((await pause(null)).statusCode, 204);
+    assert.equal((await seen()).pausedUntil, null);
+
+    // Unmuted, the channel turns unread again for what she hasn't read.
+    await f.app.inject({
+      method: 'POST',
+      url: f.channelPath + '/mute',
+      cookies: graceCookies,
+      payload: { muted: false },
+    });
+    assert.equal(await unread(), true);
+  } finally {
+    await raw.close();
+    await f.dispose();
+  }
+});

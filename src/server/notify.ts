@@ -2,8 +2,12 @@ import type { FastifyInstance, FastifyRequest } from 'fastify';
 import webpush from 'web-push';
 import { z } from 'zod';
 import { DomainError } from '../domain/errors.js';
+import { AgentId, TeamId } from '../domain/contracts.js';
 import {
+  MuteInput,
   NotifyLevel,
+  PAUSE_MOST_MS,
+  PauseInput,
   PushPayload,
   PushSubscriptionInput,
   Unsubscribe,
@@ -125,6 +129,35 @@ export function registerNotifications(
     );
     return reply.code(204).send();
   });
+  app.put('/api/me/pause', async (request, reply) => {
+    const humanId = human(request);
+    const { until } = PauseInput.parse(request.body);
+    const at = until === null ? null : Date.parse(until);
+    if (at !== null && (at <= Date.now() || at > Date.now() + PAUSE_MOST_MS))
+      throw new DomainError('invalid');
+    const team = await store.teamFor(humanId);
+    if (!team) throw new DomainError('forbidden');
+    await store.notifications.pause(humanId, team.team.id, at);
+    return reply.code(204).send();
+  });
+  app.post(
+    '/api/teams/:teamId/agents/:agentId/mute',
+    async (request, reply) => {
+      const humanId = human(request);
+      const { teamId, agentId } = z
+        .strictObject({ teamId: TeamId, agentId: AgentId })
+        .parse(request.params);
+      const team = await store.teamFor(humanId);
+      if (team?.team.id !== teamId) throw new DomainError('not-found');
+      await store.notifications.muteAgent(
+        humanId,
+        teamId,
+        agentId,
+        MuteInput.parse(request.body).muted,
+      );
+      return reply.code(204).send();
+    },
+  );
   app.put('/api/me/notify', async (request, reply) => {
     const humanId = human(request);
     const { level } = z

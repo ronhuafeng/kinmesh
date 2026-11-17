@@ -1163,6 +1163,9 @@ export function AgentAbout({
   const connection = t3.status?.connection ?? null;
   const where = connection && t3Where(connection);
   const provider = managed?.providerId ?? agent.preferences.providerId;
+  // Muted, its messages neither notify you nor turn channels unread.
+  const muted = data.muted.agents.includes(agent.id);
+  const mute = useRequest();
   return (
     <aside className="agent-about" aria-label="关于">
       <AvatarPicker agent={agent} data={data} onDone={onDone} />
@@ -1179,7 +1182,25 @@ export function AgentAbout({
         </dd>
         <dt>工作进程</dt>
         <dd>{managed ? '由 Kinmesh 运行' : awake ? '由你运行' : '未运行'}</dd>
+        <dt>通知</dt>
+        <dd>
+          {muted ? '已静音' : '照常'}{' '}
+          <button
+            type="button"
+            className="link-button"
+            disabled={mute.disabled}
+            onClick={() =>
+              void mute.send(
+                `/api/teams/${data.team.id}/agents/${agent.id}/mute`,
+                { muted: !muted },
+              )
+            }
+          >
+            {muted ? '取消静音' : '静音'}
+          </button>
+        </dd>
       </dl>
+      {mute.error && <Notice>{mute.error}</Notice>}
       <TeamMcp agent={agent} data={data} />
       <dl>
         <dt>智能体 ID</dt>

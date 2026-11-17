@@ -1,5 +1,6 @@
 import { useContext, useEffect, useState } from 'react';
 import type { NotifyLevel } from '../src/domain/notify.js';
+import type { WorkspaceSnapshot } from '../src/workspace/contracts.js';
 import { MutationPermission, useRequest } from './api.js';
 import { Notice } from './forms.js';
 import { BellIcon, BellOffIcon, PowerIcon } from './icons.js';
@@ -9,7 +10,7 @@ import {
   subscribe,
   unsubscribe,
 } from './push.js';
-import { Page } from './ui.js';
+import { Avatar, ChannelIcon, Page } from './ui.js';
 
 const LEVELS: { level: NotifyLevel; label: string }[] = [
   { level: 'all', label: '全部' },
@@ -86,18 +87,140 @@ function Notifications({ level }: { level: NotifyLevel }) {
     </div>
   );
 }
+/** Eight in the morning after now, by this browser's clock. */
+function tomorrowMorning(now: Date) {
+  const at = new Date(now);
+  at.setDate(at.getDate() + (now.getHours() < 8 ? 0 : 1));
+  at.setHours(8, 0, 0, 0);
+  return at;
+}
+/**
+ * Pausing: for an hour or until the morning, and it ends by itself. The
+ * choice shown is the pause in force, told by when it ends.
+ */
+function Pause({ until }: { until: string | null }) {
+  const action = useRequest();
+  const ends = until === null ? null : new Date(until);
+  const now = new Date();
+  const current =
+    ends === null || ends <= now
+      ? 'none'
+      : ends.getHours() === 8 && ends.getMinutes() === 0
+        ? 'morning'
+        : 'hour';
+  const choose = (next: 'none' | 'hour' | 'morning') => {
+    if (next === current) return;
+    const at =
+      next === 'none'
+        ? null
+        : next === 'hour'
+          ? new Date(Date.now() + 60 * 60 * 1000)
+          : tomorrowMorning(new Date());
+    void action.send(
+      '/api/me/pause',
+      { until: at === null ? null : at.toISOString() },
+      'PUT',
+    );
+  };
+  const options = [
+    { id: 'none', label: '不暂停' },
+    { id: 'hour', label: '1 小时' },
+    { id: 'morning', label: '到明早' },
+  ] as const;
+  return (
+    <>
+      <div className="you-row">
+        <span id="pause-label">暂停通知</span>
+        <div className="segmented" role="group" aria-labelledby="pause-label">
+          {options.map((o) => (
+            <button
+              key={o.id}
+              type="button"
+              aria-pressed={current === o.id}
+              disabled={action.disabled}
+              {...(current === o.id && ends
+                ? { title: '到 ' + ends.toLocaleString('zh-CN') }
+                : {})}
+              onClick={() => {
+                choose(o.id);
+              }}
+            >
+              {o.label}
+            </button>
+          ))}
+        </div>
+      </div>
+      {action.error && <Notice>{action.error}</Notice>}
+    </>
+  );
+}
+/** What you muted, each one click from undoing it. */
+function Muted({ data }: { data: WorkspaceSnapshot }) {
+  const action = useRequest();
+  const team = '/api/teams/' + data.team.id;
+  const rows = [
+    ...data.muted.channels.flatMap((id) => {
+      const channel = data.channels.items.find((c) => c.id === id);
+      return channel
+        ? [
+            {
+              key: id,
+              face: <ChannelIcon id={id} name={channel.name} />,
+              name: channel.name,
+              path: `${team}/channels/${id}/mute`,
+            },
+          ]
+        : [];
+    }),
+    ...data.muted.agents.flatMap((id) => {
+      const agent = data.agents.find((a) => a.id === id);
+      return agent
+        ? [
+            {
+              key: id,
+              face: <Avatar kind="agent" name={agent.name} id={id} />,
+              name: agent.name,
+              path: `${team}/agents/${id}/mute`,
+            },
+          ]
+        : [];
+    }),
+  ];
+  if (rows.length === 0) return null;
+  return (
+    <>
+      <ul className="you-muted" aria-label="已静音">
+        {rows.map((row) => (
+          <li key={row.key}>
+            {row.face}
+            <span>{row.name}</span>
+            <button
+              type="button"
+              className="link-button"
+              disabled={action.disabled}
+              onClick={() => void action.send(row.path, { muted: false })}
+            >
+              取消静音
+            </button>
+          </li>
+        ))}
+      </ul>
+      {action.error && <Notice>{action.error}</Notice>}
+    </>
+  );
+}
 /**
  * Your own page, opened from your tile on Team (a phone's You tab): what
  * notifies you, and signing out, here or everywhere. The team's name is the
  * organization's, shown at the top of the sidebar.
  */
 export function SettingsPage({
-  notify,
+  data,
   onClose,
   onSignOut,
   onSignOutEverywhere,
 }: {
-  notify: NotifyLevel;
+  data: WorkspaceSnapshot;
   onClose: () => void;
   onSignOut: () => void;
   /** Ends every session of yours, on every device, this one included. */
@@ -108,7 +231,9 @@ export function SettingsPage({
   return (
     <Page label="设置" onClose={onClose} bar={false}>
       <div className="page-body you">
-        <Notifications level={notify} />
+        <Notifications level={data.notify} />
+        {data.notify !== 'off' && <Pause until={data.pausedUntil} />}
+        <Muted data={data} />
         <div className="you-sign-outs">
           <button
             type="button"

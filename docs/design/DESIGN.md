@@ -299,7 +299,8 @@ fallback.
   semibold (the others medium); it reads as read once its newest message has been
   on screen in a visible tab, on any device (in a topic, as far as what is new is in
   that topic). There are no unread counts. Where the browser shows an app badge, it
-  says whether anything is unread. A channel where something waits on you ends in a
+  says whether anything is unread. A channel you muted is never unread, and its name
+  is in the muted ink. A channel where something waits on you ends in a
   decision-coloured dot, the
   size of a presence dot and on its edge; it fades out once nothing waits there. The current channel holds its topics under
   it like a tree on a hairline trunk: "全部", the ten most recently active, "更多话题"
@@ -342,7 +343,8 @@ fallback.
   fails retries by itself, a little later each time, and says "暂时读不到记录。" only
   once it keeps failing; it reads again whenever the task changes.
 - **Agent page**: status card with its actions, requests in this channel, About
-  (every fact visible, picture to change, Team MCP credential), runs as a table at the
+  (every fact visible, picture to change, whether it notifies you — "照常" or
+  "已静音" — with **静音** / **取消静音** beside it, Team MCP credential), runs as a table at the
   bottom, one T3 reference per run (its thread; the run on hover). A run shows what the agent last reported apart from what T3 confirms on
   **在 T3 中查看**; **在 T3 中打开** appears only when T3 supplied the link.
 - **Agent setup**: one next step at a time. First **连接 T3**, once per team: a T3
@@ -392,9 +394,12 @@ fallback.
   Choosing 全部 or 与我有关 in a browser that can be notified also turns them on
   there (the browser asks once); under it a quiet row in the primary colour with a
   bell, **在此设备上接收通知** or **此设备不再接收通知**, turns this browser on or
-  off. A browser that can't be notified, or has said no, shows no such row. Then
-  **退出登录** and **在所有设备上退出登录**, quiet rows in the danger colour, on
-  every device.
+  off. A browser that can't be notified, or has said no, shows no such row. Unless
+  notifications are off, "暂停通知" follows in the same form: 不暂停 | 1 小时 | 到明早
+  (the next 8:00), the pause in force chosen and its end on hover; it ends by
+  itself. Then what you muted, a channel's icon or an agent's face and its name on
+  a 44 px row, **取消静音** at the end on the column's edge. Then **退出登录** and
+  **在所有设备上退出登录**, quiet rows in the danger colour, on every device.
 - **Notifications**: one per place, the latest replacing the one before. The title
   is who wrote and where ("小助手 · #general · 话题"), or what waits on you and
   where ("等你验收", "请你评审", "退回给你", "交给你了", "_Ada_ 卡住了"); the line is the
@@ -427,7 +432,8 @@ fallback.
   hang below it, wider than the sidebar; Esc, a click elsewhere or a choice folds it
   back to the name. A closed sidebar opens to hold it. It jumps to
   views, channels, tasks and agents, and holds the actions that have no place on
-  screen: **新任务**, **退出 #_name_** and **立即刷新**. Places come before actions,
+  screen: **新任务**, **静音 #_name_** (**取消静音 #_name_** once muted), **退出 #_name_**
+  and **立即刷新**. Places come before actions,
   so a channel's name finds the channel first, not an action that mentions it.
 - **Sidebar**: beside the content on every screen wider than a phone, open or closed
   from one control, the sidebar icon (**展开侧栏** / **收起侧栏**). Closed, the icon
