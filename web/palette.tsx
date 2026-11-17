@@ -296,7 +296,7 @@ export function SidebarSearch({
           else show();
         }}
       >
-        <SearchIcon />
+        <SearchIcon size={20} />
       </button>
       {end}
       {open && (

@@ -1,12 +1,28 @@
-import { useEffect, useId, useLayoutEffect, useRef, useState } from 'react';
+import {
+  Fragment,
+  useCallback,
+  useEffect,
+  useId,
+  useLayoutEffect,
+  useRef,
+  useState,
+} from 'react';
 import { z } from 'zod';
 import { REACH, type Message } from '../src/domain/communication.js';
 import type { WorkspaceSnapshot } from '../src/workspace/contracts.js';
 import { value } from './api.js';
 import { ActionForm, AddButton, Field, InlineField } from './forms.js';
-import { ArrowIcon } from './icons.js';
+import { SendIcon } from './icons.js';
 import { joinedAgents, memberName, otherPeople } from './names.js';
-import { Avatar, Presence, shortTime, workerConnected } from './ui.js';
+import {
+  Avatar,
+  Presence,
+  clockTime,
+  dayLabel,
+  dayOf,
+  shortTime,
+  workerConnected,
+} from './ui.js';
 import { keep, kept } from './session.js';
 import { DeliveryLine } from './deliveries.js';
 import { Markdown } from './markdown.js';
@@ -111,7 +127,7 @@ function Composer({
         title="给团队发消息"
         path={channelPath + '/messages'}
         submit="发送消息"
-        icon={<ArrowIcon />}
+        icon={<SendIcon size={20} />}
         ready={ready}
         onDone={() => {
           setChips([]);
@@ -513,14 +529,32 @@ function useReadingPosition(place: string, messages: ChatMessage[]) {
       held.current.end = endOf(held.current.first);
       held.current.bottom = atBottom();
     };
+    // A window that changes size keeps you at the bottom if you were.
+    const resized = () => {
+      if (held.current?.bottom) toBottom();
+      note();
+    };
     window.addEventListener('scroll', note, { passive: true });
-    window.addEventListener('resize', note);
+    window.addEventListener('resize', resized);
     return () => {
       window.removeEventListener('scroll', note);
-      window.removeEventListener('resize', note);
+      window.removeEventListener('resize', resized);
+    };
+  }, []);
+  // A message that grows once shown (a diagram drawn, an image loaded)
+  // keeps the bottom in view when you were there.
+  const list = useCallback((element: HTMLOListElement | null) => {
+    if (!element) return;
+    const grown = new ResizeObserver(() => {
+      if (held.current?.bottom) toBottom();
+    });
+    grown.observe(element);
+    return () => {
+      grown.disconnect();
     };
   }, []);
   return {
+    list,
     sent: () => {
       toBottom();
       if (held.current) held.current.bottom = true;
@@ -676,11 +710,19 @@ export function Chat({
           />
         </div>
       )}
-      <ol className="messages" aria-label="频道消息">
+      <ol className="messages" aria-label="频道消息" ref={reading.list}>
         {messages.map((m, index) => {
           const previous = messages[index - 1];
+          // A new day opens with its date; a group never crosses one.
+          const newDay =
+            previous === undefined ||
+            dayOf(previous.createdAt) !== dayOf(m.createdAt);
+          // One author's run of messages, within five minutes of each other,
+          // in one topic and on one day, is one group: the face and name
+          // once, the rest under them.
           const sameAuthor =
             previous !== undefined &&
+            !newDay &&
             JSON.stringify(previous.author) === JSON.stringify(m.author) &&
             previous.topicId === m.topicId &&
             Date.parse(m.createdAt) - Date.parse(previous.createdAt) <
@@ -702,116 +744,141 @@ export function Chat({
             (d) => !(d.state === 'acked' && d.resultMessageId === following),
           );
           return (
-            <li
-              key={m.id}
-              id={'message-' + m.id}
-              data-kind={m.author.kind}
-              data-continued={sameAuthor ? 'true' : undefined}
-              data-new={fresh.has(m.id) ? 'true' : undefined}
-              // On touch, a tapped message shows what can be done with it.
-              data-chosen={chosen === m.id ? 'true' : undefined}
-              onClick={(event) => {
-                if (
-                  event.target instanceof Element &&
-                  event.target.closest('a, button')
-                )
-                  return;
-                setChosen((old) => (old === m.id ? null : m.id));
-              }}
-            >
-              {divider === m.id && (
-                <div className="new-divider" role="separator">
-                  {shortTime(m.createdAt)} 以来的新消息
-                </div>
+            <Fragment key={m.id}>
+              {newDay && (
+                <li className="day-divider" role="separator">
+                  <span>{dayLabel(m.createdAt)}</span>
+                </li>
               )}
-              <Avatar
-                kind={m.author.kind}
-                name={name}
-                id={
-                  m.author.kind === 'agent'
-                    ? m.author.agentId
-                    : m.author.humanId
-                }
-              />
-              <div className="message-body">
-                <header>
-                  {agent ? (
+              <li
+                id={'message-' + m.id}
+                data-kind={m.author.kind}
+                data-continued={sameAuthor ? 'true' : undefined}
+                data-new={fresh.has(m.id) ? 'true' : undefined}
+                // On touch, a tapped message shows what can be done with it.
+                data-chosen={chosen === m.id ? 'true' : undefined}
+                onClick={(event) => {
+                  if (
+                    event.target instanceof Element &&
+                    event.target.closest('a, button')
+                  )
+                    return;
+                  setChosen((old) => (old === m.id ? null : m.id));
+                }}
+              >
+                {divider === m.id && (
+                  <div className="new-divider" role="separator">
+                    {shortTime(m.createdAt)} 以来的新消息
+                  </div>
+                )}
+                {sameAuthor ? (
+                  // Under the group's face: the time, shown on hover (and
+                  // always read out), and the author for a screen reader.
+                  <time className="gutter-time" dateTime={m.createdAt}>
+                    <span className="visually-hidden">{name} </span>
+                    {clockTime(m.createdAt)}
+                  </time>
+                ) : (
+                  <Avatar
+                    kind={m.author.kind}
+                    name={name}
+                    id={
+                      m.author.kind === 'agent'
+                        ? m.author.agentId
+                        : m.author.humanId
+                    }
+                  />
+                )}
+                <div className="message-body">
+                  {!sameAuthor && (
+                    <header>
+                      {agent ? (
+                        <button
+                          type="button"
+                          className="author-link"
+                          onClick={() => {
+                            openAgent(agent.id);
+                          }}
+                        >
+                          {name}
+                        </button>
+                      ) : (
+                        <strong>{name}</strong>
+                      )}
+                      <time
+                        dateTime={m.createdAt}
+                        title={shortTime(m.createdAt)}
+                      >
+                        {clockTime(m.createdAt)}
+                      </time>
+                      {/* Only the whole channel tags a message with its topic;
+                      inside a topic it would say the place again. */}
+                      {topic === '' && m.topicId && (
+                        <small className="topic-tag">
+                          {topicTitle(m.topicId)}
+                        </small>
+                      )}
+                    </header>
+                  )}
+                  {quoted && (
                     <button
                       type="button"
-                      className="author-link"
+                      className="reply-to link-button"
                       onClick={() => {
-                        openAgent(agent.id);
+                        showMessage(answers);
                       }}
                     >
-                      {name}
+                      <span aria-hidden="true">↩</span>{' '}
+                      <span className="visually-hidden">回复 </span>
+                      {replySource(answers)}
                     </button>
-                  ) : (
-                    <strong>{name}</strong>
                   )}
-                  <time dateTime={m.createdAt}>{shortTime(m.createdAt)}</time>
-                  {/* Filtered to a topic, its messages need no tag for it. */}
-                  {m.topicId && m.topicId !== topic && (
-                    <small className="topic-tag">{topicTitle(m.topicId)}</small>
+                  <div className="message-text">
+                    <Markdown text={answerOnly(m.body, origin.get(m.id))} />
+                  </div>
+                  {origin.get(m.id) && <ReplyOrigin reply={origin.get(m.id)} />}
+                  {unwritten(m).length > 0 && (
+                    <ul className="mentions" aria-label="已提及">
+                      {unwritten(m).map((member) => (
+                        <li
+                          key={member.kind + member.id}
+                          className="mention-chip"
+                          data-kind={member.kind}
+                        >
+                          @{memberName(member, data)}
+                        </li>
+                      ))}
+                    </ul>
                   )}
-                </header>
-                {quoted && (
-                  <button
-                    type="button"
-                    className="reply-to link-button"
-                    onClick={() => {
-                      showMessage(answers);
-                    }}
-                  >
-                    <span aria-hidden="true">↩</span>{' '}
-                    <span className="visually-hidden">回复 </span>
-                    {replySource(answers)}
-                  </button>
-                )}
-                <div className="message-text">
-                  <Markdown text={answerOnly(m.body, origin.get(m.id))} />
+                  {lines.length > 0 && (
+                    <ul className="deliveries" aria-label="智能体响应">
+                      {lines.map((d) => (
+                        <DeliveryLine
+                          key={d.id}
+                          delivery={d}
+                          data={data}
+                          channelId={data.channel?.id ?? ''}
+                          onReply={showMessage}
+                          openAgent={openAgent}
+                          onDone={onDone}
+                        />
+                      ))}
+                    </ul>
+                  )}
+                  <div className="message-actions">
+                    <button
+                      type="button"
+                      className="quiet"
+                      onClick={() => {
+                        onMakeTask(m);
+                      }}
+                    >
+                      转为任务
+                    </button>
+                  </div>
                 </div>
-                {origin.get(m.id) && <ReplyOrigin reply={origin.get(m.id)} />}
-                {unwritten(m).length > 0 && (
-                  <ul className="mentions" aria-label="已提及">
-                    {unwritten(m).map((member) => (
-                      <li
-                        key={member.kind + member.id}
-                        className="mention-chip"
-                        data-kind={member.kind}
-                      >
-                        @{memberName(member, data)}
-                      </li>
-                    ))}
-                  </ul>
-                )}
-                {lines.length > 0 && (
-                  <ul className="deliveries" aria-label="智能体响应">
-                    {lines.map((d) => (
-                      <DeliveryLine
-                        key={d.id}
-                        delivery={d}
-                        data={data}
-                        channelId={data.channel?.id ?? ''}
-                        onReply={showMessage}
-                        openAgent={openAgent}
-                        onDone={onDone}
-                      />
-                    ))}
-                  </ul>
-                )}
-                <div className="message-actions">
-                  <button
-                    type="button"
-                    className="quiet"
-                    onClick={() => {
-                      onMakeTask(m);
-                    }}
-                  >
-                    转为任务
-                  </button>
-                </div>
-              </div>
-            </li>
+              </li>
+            </Fragment>
           );
         })}
       </ol>

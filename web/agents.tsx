@@ -532,7 +532,7 @@ function RegisterAgent({
         {name.trim() ? (
           <Avatar kind="agent" name={name.trim()} size="xl" />
         ) : (
-          <PlusIcon />
+          <PlusIcon size={24} />
         )}
       </span>
       <span className="new-agent-name">
@@ -712,7 +712,7 @@ export function Team({
               }}
             >
               <span className="add-face" aria-hidden="true">
-                <PlusIcon />
+                <PlusIcon size={24} />
               </span>
             </button>
           )}

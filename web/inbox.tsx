@@ -140,7 +140,7 @@ export function InboxPage({
       {items.length === 0 ? (
         <div className="inbox-empty">
           <span className="inbox-empty-mark" aria-hidden="true">
-            <InboxIcon />
+            <InboxIcon size={24} />
           </span>
           <p>都处理完了。</p>
         </div>

@@ -4,7 +4,8 @@
 
 A calm, precise workroom where people and AI agents work side by side, built like a
 native iOS and macOS app: a grey grouped canvas, white content, hairline separators,
-the system's own type and one deep green. Agents feel like teammates with
+translucent material and a little depth where things layer, the system's own type at a
+generous size, and one deep green. Agents feel like teammates with
 personality, never like settings. The human decision is always the most prominent
 thing on the screen.
 
@@ -79,20 +80,25 @@ that isn't needed. Check a change against these before it ships.
 16. Alignment is exact and measured, not eyeballed: siblings on a row share size,
     padding and line height; content aligns to its anchor; shared edges are truly
     shared; icons are truly centred.
-17. Balance: the composer at the bottom, equal-height board columns, no dead areas.
-    No cards for layout: content sits on the page, grouped by space and hairlines.
-    The grey canvas holds only what iOS groups on it — the sidebar, a phone's Home
-    list, the board's columns — and the white on it is the content itself (a list, a
-    task card), never a frame around a section.
-18. Order by importance: the decision waiting on you comes first; long lists (runs)
+17. Balance: reading views (a conversation, a page) are one centred column, the
+    composer on its edges; the board uses the whole width; equal-height board
+    columns; no dead areas.
+18. Hierarchy and material express structure — grouping, layering, focus — never
+    decoration. Depth comes from the elevation scale (see **Elevation and material**)
+    and only where something truly sits on or over something else: a card on its
+    column, the composer over the conversation, a popover over the page. The grey
+    canvas holds only what iOS groups on it — the sidebar, a phone's Home list, the
+    board's columns — and the white on it is the content itself (a list, a task card),
+    never a frame around a section.
+19. Order by importance: the decision waiting on you comes first; long lists (runs)
     come last. Views are tabs on the left; there is no page title above them.
 
 **Process**
 
-19. Redesigns may explore with Google Stitch; these principles filter what it
+20. Redesigns may explore with Google Stitch; these principles filter what it
     proposes, so leave out what the generator invents (step numbers, counts, shortcut
     hints, navigation repeated in the page).
-20. Verify UI in a real browser: screenshot it and measure the boxes.
+21. Verify UI in a real browser: screenshot it and measure the boxes.
 
 ## Color
 
@@ -105,7 +111,7 @@ The palette is iOS's, light and dark, following `prefers-color-scheme`:
 | --------------------------------------------- | -------------------------------- | ------------------------------------------------------------------------------ |
 | `--canvas`                                    | #F2F2F7 / #000000                | Grouped background: sidebar, phone Home, board columns, sign-in                |
 | `--paper`                                     | #FFFFFF / #1C1C1E                | Content: the main column, lists and cards on the canvas                        |
-| `--surface`, `--raised`                       | #FFF, #F7F7F9 / #2C2C2E          | Popovers and controls; a hovered row, the composer field                       |
+| `--surface`, `--raised`                       | #FFF, #F7F7F9 / #2C2C2E          | Popovers and controls; a hovered row, a table's head                           |
 | `--fill`, `--sunken`, `--hover`, `--selected` | grey at 12% / 24%                | Fields, segmented track, grey buttons; code; a current row; the chosen segment |
 | `--ink`, `--ink-muted`, `--ink-subtle`        | #1C1C1E, #6C6C70 / #FFF, #98989F | Primary and secondary text; tertiary (#8E8E93) for glyphs only, never text     |
 | `--hairline`, `--hairline-strong`             | #E5E5EA, #D1D1D6 / #38383A       | Separators, 0.5 px on a 2x screen (`--hairline-width`); control edges          |
@@ -126,10 +132,12 @@ button text.
 "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", system-ui, sans-serif`.
   Headings 600–700 with slight negative tracking; no serif, no uppercase labels.
 - Monospace (the system's `ui-monospace` / SF Mono) only for code and identifiers
-  (T3 references, IDs); times and labels are set in the UI face, times with
-  tabular figures.
-- Body 15 px on a wide screen, 16 px on a phone (messages, names and fields);
-  secondary text (times, where, presence, section labels) 13 px in `--ink-muted`.
+  (T3 references, IDs); times and labels are set in the UI face. Times, dates and
+  numbers use tabular figures.
+- The scale, on a 16 px root (`--text-body`, `--text-ui`, `--text-small`): what is
+  read — messages, a task's text — 16 px on a wide screen and 17 px on a phone;
+  controls, sidebar rows, names and fields 15 px (fields 16 px on a phone); secondary
+  text (times, where, presence, section labels, the day) 12–13 px in `--ink-muted`.
 - The team name: the UI face, 700, 18 px (15 px when long). On a phone's Home it is
   small and muted above the large title.
 - A phone's Home has an iOS large title, "频道", 34 px bold.
@@ -141,11 +149,53 @@ button text.
   size); 50% for every avatar.
 - Borders: hairline separators (0.5 px on a 2x screen, otherwise 1 px). Fields are
   filled grey with no border until focused (then green).
-- Shadows: only what iOS uses — a card's faint lift, the chosen segment, popovers.
 - Bars: a sticky header and a phone's bars are translucent, blurring what scrolls
-  under them (`backdrop-filter: saturate(180%) blur(20px)`), over a hairline; never an
-  opaque slab. On a phone they run edge to edge.
-- Spacing scale: 4, 8, 12, 16, 24, 32, 48.
+  under them (`--material`, `--blur`: `saturate(180%) blur(20px)`), over a hairline;
+  never an opaque slab. They run edge to edge across the content.
+- Spacing scale: 4, 8, 12, 16, 24, 32, 48. Targets are generous: sidebar rows 40 px,
+  header controls 38 px, a finger's 44 px on touch.
+
+## Layout
+
+- **Reading column**: a conversation, its composer and a page (a task, the Inbox,
+  Settings) are one column of `--reading` (720 px) centred in the main area, fluid
+  below it; an agent's page, which has a side column, is at most 72rem. The board
+  takes the whole width.
+- **Top bar**: the views' segmented control on the content's left edge (after the
+  sidebar icon when the sidebar is closed) and sign out at the right, both 38 px tall
+  and centred on one line, 12 px above and below.
+
+## Elevation and material
+
+Three levels, as tokens (`--elev-1`…`--elev-3`), each with a dark equivalent where
+depth is a lighter surface and a faint top rim of light:
+
+| Level | Token      | What sits there                                                    |
+| ----- | ---------- | ------------------------------------------------------------------ |
+| 1     | `--elev-1` | Rests on its surface: a task card, an image in a message           |
+| 2     | `--elev-2` | Floats over content: the composer, a message's hover action        |
+| 3     | `--elev-3` | Above everything: popovers, the search results, a floating sidebar |
+
+Material (`--material`, `--material-strong`) is translucent paper or surface with the
+blur, used by what floats or stays put while content scrolls under it: the bars, the
+composer, the mention popover. The sidebar is set apart from the content by tone (the
+grey canvas beside white), its hairline only finishing the edge. A card pointed at
+lifts to its hover level and 1 px up.
+
+## Icons
+
+One maintained set, Lucide (`lucide-react`, pinned), wrapped in
+[web/icons.tsx](../../web/icons.tsx) so every icon is drawn the same way: in the text
+colour, a 1.5 px non-scaling stroke, at 16 px inline, 20 px in bars and headers, 24 px
+for a phone's tabs and large marks. Icons are decorative; the control carries the
+accessible name.
+
+## Scrollbars
+
+Thin overlays: the page's always (the system hides it when idle), a panel's (the
+sidebar, the board, a code block, a table, search results) only while the pointer is
+over it, using the standard `scrollbar-width` / `scrollbar-color` with a WebKit
+fallback.
 
 ## Components
 
@@ -155,11 +205,12 @@ button text.
 - **Channel icon**: a channel's face, in sidebar rows, phone Home rows and search
   results: a rounded square in one of six soft tints, picked from the channel's ID
   so it never changes, with the first character of its name. It replaces the "#"
-  (which stays for screen readers in search); 28 px in the sidebar, 32 px on a
-  phone, 24 px in search. Every name beside it — channels, topics and people — starts
+  (which stays for screen readers in search); 32 px in the sidebar and on a phone,
+  24 px in search. Every name beside it — channels, topics and people — starts
   on one edge, and people's faces in the sidebar are the icon's size.
 - **Segmented control**: the views (聊天 | 看板 | 团队 | 收件箱) and a narrow board's
-  stages: a grey track, the chosen segment a raised white (dark: grey) thumb.
+  stages: a grey track, the chosen segment a raised white (dark: grey) thumb that
+  eases in. In the top bar it is the page's primary control: 38 px tall, 15 px labels.
 - **Buttons**: primary is filled green; secondary a grey fill; destructive red text
   on the grey fill; a quiet one has no fill until hovered.
 - **Names**: a person is their Feishu name everywhere they appear (messages, the
@@ -170,11 +221,30 @@ button text.
   the last 90 seconds (an open workspace keeps it so); an agent while a worker can
   wake it, so an agent nobody runs is offline before anyone asks it. Others see it
   change without reloading.
-- **Message**: avatar, name, time, topic pill (none while the view is that topic);
-  consecutive messages from the same author are grouped. Bodies render a safe
-  Markdown subset (paragraphs, lists, quotes, headings, code, emphasis, http(s) links
-  opening in a new tab); a fenced code block is one rounded block in the system
-  monospace, never boxed line by line. A mention already written as `@Name` gets no second chip. An
+- **Message**: avatar, then a line of name (15 px, 600), time (12 px, muted) and,
+  only in the whole channel ("全部"), the topic as a pill after a little more room;
+  inside a topic there is no tag.
+- **Message group**: one author's messages within five minutes of each other form a
+  group: the face and name once, the rest under them on the same text edge, close
+  together. A later message's time appears in the face's column while it is pointed
+  at (or tapped), and is always read out with its author. A group ends when the
+  author changes, after a five-minute gap, at a change of topic, at a new day, or at
+  the "new since" line. Each day opens with its date, quiet and centred between
+  hairlines ("今天", "昨天", "11月13日周四"). Delivery lines, Stop and **转为任务**
+  work the same on every message of a group.
+- **Rich content**: bodies render a safe Markdown subset (paragraphs, lists, quotes,
+  headings, code, emphasis, tables, images, http(s) links opening in a new tab) as
+  React elements, never as HTML. A fenced code block is one rounded block in the
+  system monospace, never boxed line by line, and keeps its language. A `mermaid`
+  block is drawn as its diagram: Mermaid loads only when a message holds one, at its
+  strict security level, themed from the tokens for light or dark, and the drawing is
+  shown as an image, so it runs nothing; its space is kept and it fades in; one that
+  can't be drawn stays its code, silently. A table has hairline rows, a heavier head
+  and scrolls sideways inside the message when wide. An image from this site is
+  rounded, at most the message's width, and opens its original; one from elsewhere is
+  its link, since the page loads images only from here. Links stay text links: there
+  are no previews, which would need the server to fetch other sites.
+- **Mentions and replies**: a mention already written as `@Name` gets no second chip. An
   agent's reply shows the message it answers, unless it is the very next message,
   and carries a line only for an exception (failed, stopped, shortened); what ran it
   lives with the run on the agent's page. **转为任务** shows on hover, and on touch
@@ -198,11 +268,13 @@ button text.
   **停止**, which ends it at once: "_Ada_ 的 T3 权限变了，已停止".
 - **Composer**: multi-line input with the `@` mention popover (the channel's agents
   and other people, found by a word of their name or a person's handle; a choice is
-  written as @Name), on the bottom edge of
-  the chat over a band of the page that hides the conversation scrolling behind it.
-  It is one large rounded field, a single line until more is written, with "@" and
-  Send sharing its centre; hints in the placeholder. Send is the round green confirm
-  button, drawn larger here, shown once there is something to send. A channel or topic that opens is ready to
+  written as @Name), floating on the bottom edge of
+  the reading column, over a band of the page that fades the conversation out behind
+  it. It is one large rounded field of translucent material at the second elevation,
+  a single line until more is written, with "@" and Send sharing its centre; focus
+  draws a soft green ring. Hints live in the placeholder. Send is the round green
+  confirm button with an upward arrow, drawn larger here, growing in once there is
+  something to send. A channel or topic that opens is ready to
   type in (a touch keyboard waits to be asked for), and sending keeps the keyboard.
   The placeholder never repeats the channel: "输入 @ 提及成员，⌘/Ctrl+Enter 发送"
   ("输入 @ 提及成员" on a phone).
@@ -295,7 +367,8 @@ button text.
   this organization, took too long, or Feishu couldn't be reached — and the reason
   leaves the address, so a reload starts clean. Turning back at Feishu returns here
   silently.
-- **Sign out**: the power icon at the far right of the header.
+- **Sign out**: the power icon at the right of the top bar, a round button on the
+  segmented control's grey track and at its height, so the two read as one bar.
 - **Opening the workspace**: quiet. A load that is quick shows nothing; one that takes
   more than 0.6 s fades in the brand, "正在打开工作区…" and a skeleton board
   (at once without motion). Only a failure says "工作区打不开" and offers
@@ -317,8 +390,8 @@ button text.
   after search: its glyph on the channels' `+` edge, centred with the magnifier and a
   finger's 44 px after it; while searching the field takes the whole row and the icon
   steps aside. From 900 px an open sidebar is a column beside the content. Narrower,
-  it floats over the content's edge — inset 0.5 rem from the window, rounded, a soft
-  shadow, at its usual width, nothing dimmed, the header under it unmoved — and closes
+  it floats over the content's edge — inset 0.5 rem from the window, rounded, at the
+  third elevation, at its usual width, nothing dimmed, the header under it unmoved — and closes
   again on a choice of place, a click or tap outside, or Esc. Nothing opens it on its
   own: no hover, no edge. `⌘\` / `Ctrl+\` opens and closes it; ⌘K opens it with search.
   From 900 px it starts open and each device remembers whether it was left open;
@@ -349,7 +422,7 @@ sidebar sits beside a content column of at least 360 px):
   you, otherwise on Home; an address that names a place always opens there.
 - **Bottom tabs**: icons only, each named for a screen reader — 频道 (`#`, Home), 搜索
   (the magnifier), 收件箱 (with how many things wait on you) and 我 (your face) — four
-  equal 44 px tabs with 22 px icons, the current one in the primary colour and a
+  equal 44 px tabs with 24 px icons, the current one in the primary colour and a
   heavier stroke (your face gets a primary ring), on a translucent bar. They sit under
   Home and the pages they open.
 - **Search** is the 搜索 tab, a page at `?search` (⌘K on a keyboard): the field at
@@ -383,9 +456,12 @@ stage, its card marked by a green edge — instead of replacing it.
 
 ## Motion
 
-Short and purposeful (160–320 ms, ease-out or gentle spring). Cards travel between
-status columns, pages fade in where the view was, checklists draw their ticks on
-acceptance. Everything honours reduced-motion preferences.
+Short and purposeful: 150 ms (`--dur-fast`) for hover, press and selection; 200 ms
+(`--dur`) for what moves or appears — the segmented thumb, the composer's focus,
+popovers, a new message, a card lifting, a page fading in where the view was — up to
+320 ms for cards travelling between status columns and checklists drawing their ticks
+on acceptance; ease-out or a gentle spring. With reduced motion nothing moves, slides
+or scales; colour and fades that only say a state changed keep their short ease.
 
 ## Voice
 

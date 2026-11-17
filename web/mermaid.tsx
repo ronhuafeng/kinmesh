@@ -1,0 +1,176 @@
+import { useEffect, useState, useSyncExternalStore } from 'react';
+
+/**
+ * A ```mermaid block drawn as its diagram. Mermaid is loaded only when a
+ * message holds one, runs at its strict security level, and its drawing is
+ * shown as an image: an SVG in an <img> runs no script and loads nothing,
+ * and needs no inline style on this page. Until it is drawn the block keeps
+ * its place; if it can't be drawn it stays the code it was, silently.
+ */
+export function MermaidBlock({ source }: { source: string }) {
+  const dark = useDark();
+  const [drawn, setDrawn] = useState<Drawing | 'failed' | null>(
+    () => cache.get(key(source, dark)) ?? null,
+  );
+  useEffect(() => {
+    const cached = cache.get(key(source, dark));
+    if (cached) {
+      setDrawn(cached);
+      return;
+    }
+    let live = true;
+    draw(source, dark).then(
+      (drawing) => {
+        cache.set(key(source, dark), drawing);
+        if (live) setDrawn(drawing);
+      },
+      () => {
+        if (live) setDrawn('failed');
+      },
+    );
+    return () => {
+      live = false;
+    };
+  }, [source, dark]);
+  if (drawn === 'failed')
+    return (
+      <pre data-lang="mermaid">
+        <code className="language-mermaid">{source}</code>
+      </pre>
+    );
+  return (
+    <figure className="md-diagram" data-drawn={drawn ? 'true' : undefined}>
+      {drawn && (
+        <img
+          src={drawn.src}
+          alt={drawn.label}
+          width={drawn.width}
+          height={drawn.height}
+          draggable={false}
+        />
+      )}
+    </figure>
+  );
+}
+interface Drawing {
+  src: string;
+  width: number;
+  height: number;
+  label: string;
+}
+const cache = new Map<string, Drawing>();
+const key = (source: string, dark: boolean) => (dark ? 'd:' : 'l:') + source;
+let counter = 0;
+/** One drawing at a time: Mermaid's settings are global. */
+let queue: Promise<unknown> = Promise.resolve();
+function draw(source: string, dark: boolean): Promise<Drawing> {
+  const next = queue.then(async () => {
+    const { default: mermaid } = await import('mermaid');
+    const css = getComputedStyle(document.documentElement);
+    const token = (name: string) => css.getPropertyValue(name).trim();
+    const ink = token('--ink');
+    const muted = token('--ink-muted');
+    const paper = token('--paper');
+    const line = token('--hairline-strong');
+    const primary = token('--primary');
+    mermaid.initialize({
+      startOnLoad: false,
+      securityLevel: 'strict',
+      // A block that can't be drawn stays code; Mermaid adds nothing.
+      suppressErrorRendering: true,
+      theme: 'base',
+      darkMode: dark,
+      fontFamily: token('--font'),
+      themeVariables: {
+        darkMode: dark,
+        background: paper,
+        fontFamily: token('--font'),
+        fontSize: '14px',
+        primaryColor: token('--primary-soft'),
+        primaryTextColor: ink,
+        primaryBorderColor: primary,
+        secondaryColor: token('--agent-soft'),
+        tertiaryColor: token('--human-soft'),
+        lineColor: muted,
+        textColor: ink,
+        mainBkg: token('--primary-soft'),
+        nodeBorder: primary,
+        clusterBkg: token('--raised'),
+        clusterBorder: line,
+        noteBkgColor: token('--decision-soft'),
+        noteTextColor: ink,
+        xyChart: {
+          backgroundColor: paper,
+          titleColor: ink,
+          xAxisLabelColor: muted,
+          xAxisTitleColor: muted,
+          xAxisTickColor: line,
+          xAxisLineColor: line,
+          yAxisLabelColor: muted,
+          yAxisTitleColor: muted,
+          yAxisTickColor: line,
+          yAxisLineColor: line,
+          plotColorPalette: [
+            primary,
+            token('--agent'),
+            token('--human'),
+            token('--decision'),
+          ].join(', '),
+        },
+      },
+    });
+    const { svg } = await mermaid.render(
+      'mermaid-' + String(++counter),
+      source,
+    );
+    const root = new DOMParser().parseFromString(
+      svg,
+      'image/svg+xml',
+    ).documentElement;
+    if (root.nodeName !== 'svg') throw new Error('Mermaid drew nothing');
+    const box = (root.getAttribute('viewBox') ?? '')
+      .split(/[\s,]+/)
+      .map(Number);
+    const [, , boxWidth = 0, boxHeight = 0] = box;
+    const widest = /max-width:\s*([\d.]+)px/.exec(
+      root.getAttribute('style') ?? '',
+    );
+    const width = Math.round(Number(widest?.[1] ?? boxWidth));
+    if (!(width > 0 && boxWidth > 0 && boxHeight > 0))
+      throw new Error('Mermaid drew no size');
+    // The image draws at its own size; the page scales it to the column.
+    root.setAttribute('width', String(width));
+    root.setAttribute(
+      'height',
+      String(Math.round((width * boxHeight) / boxWidth)),
+    );
+    // Named by its title when it has one.
+    const title =
+      root.querySelector('title')?.textContent.trim() ??
+      /^\s*(?:title|accTitle:?)\s+"?([^"\n]+)"?/m.exec(source)?.[1]?.trim();
+    const label = title ? '图表：' + title : '图表';
+    return {
+      src:
+        'data:image/svg+xml;charset=utf-8,' +
+        encodeURIComponent(new XMLSerializer().serializeToString(root)),
+      width,
+      height: Math.round((width * boxHeight) / boxWidth),
+      label,
+    };
+  });
+  queue = next.catch(() => undefined);
+  return next;
+}
+const scheme = window.matchMedia('(prefers-color-scheme: dark)');
+/** Whether the page is drawn dark, following the system as it changes. */
+function useDark() {
+  return useSyncExternalStore(
+    (changed) => {
+      scheme.addEventListener('change', changed);
+      return () => {
+        scheme.removeEventListener('change', changed);
+      };
+    },
+    () => scheme.matches,
+  );
+}
