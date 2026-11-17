@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Notice } from './forms.js';
 
 /** Why Feishu sent the browser back without signing it in. */
@@ -13,6 +13,22 @@ const turnedBack: Record<string, string> = {
  * own place (which drops it, so a reload starts clean); shown once.
  */
 let pending = new URLSearchParams(window.location.search).get('signin');
+/**
+ * The place this page was opened at (a card's link, say), which signing in
+ * returns to; read before the workspace rewrites the address.
+ */
+const opened = (() => {
+  const query = new URLSearchParams(window.location.search);
+  query.delete('signin');
+  const search = query.toString();
+  return window.location.pathname + (search ? '?' + search : '');
+})();
+const signIn =
+  '/login' + (opened === '/' ? '' : '?next=' + encodeURIComponent(opened));
+/** Opened inside the Feishu (Lark) client, whose sign-in asks nothing. */
+const inFeishu = /\b(Lark|Feishu)\b/i.test(navigator.userAgent);
+/** Set when a person signs out here, so the page doesn't sign them back in. */
+export const SIGNED_OUT = 'kinmesh-signed-out';
 
 /** `denied`: signed out here because the account lost its access. */
 export function Auth({ denied = false }: { denied?: boolean }) {
@@ -22,6 +38,21 @@ export function Auth({ denied = false }: { denied?: boolean }) {
     return value;
   });
   const reason = denied ? '这个账号已无权访问此工作区。' : turned;
+  // Inside Feishu the sign-in completes on its own, so it starts at once:
+  // unless Feishu turned it back, access was lost, or you just signed out.
+  const automatic = (() => {
+    let chose = false;
+    try {
+      chose = sessionStorage.getItem(SIGNED_OUT) !== null;
+    } catch {
+      // Storage refused: sign in as asked.
+    }
+    return inFeishu && reason === undefined && !chose;
+  })();
+  useEffect(() => {
+    if (automatic) window.location.replace(signIn);
+  }, [automatic]);
+  if (automatic) return null;
   return (
     <main className="auth-shell">
       <section className="auth-intro">
@@ -40,7 +71,7 @@ export function Auth({ denied = false }: { denied?: boolean }) {
       </section>
       <section className="auth-card">
         <h2>欢迎</h2>
-        <a className="button" href="/login">
+        <a className="button" href={signIn}>
           使用飞书登录
         </a>
         {reason && <Notice>{reason}</Notice>}

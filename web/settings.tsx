@@ -253,6 +253,61 @@ function ThisDevice() {
     </>
   );
 }
+/** Opened as an installed app, not in a browser tab. */
+const installed = () =>
+  window.matchMedia('(display-mode: standalone)').matches ||
+  ('standalone' in navigator && navigator.standalone === true);
+/**
+ * Kinmesh as an app on this device: installed; one click from it where the
+ * browser offers that; or how, where it is done from the browser's menu.
+ * Nothing where it can't be.
+ */
+function Install() {
+  const [, redraw] = useState(0);
+  useEffect(() => {
+    const changed = () => {
+      redraw((n) => n + 1);
+    };
+    window.addEventListener('kinmesh-install', changed);
+    return () => {
+      window.removeEventListener('kinmesh-install', changed);
+    };
+  }, []);
+  const offer = window.kinmeshInstall;
+  const ua = navigator.userAgent;
+  const iPhone =
+    /iPad|iPhone|iPod/.test(ua) ||
+    (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+  const macSafari =
+    !iPhone && ua.includes('Macintosh') && /Version\/[\d.]+ Safari/.test(ua);
+  return installed() ? (
+    <Row label="安装">
+      <Pill on>已安装</Pill>
+    </Row>
+  ) : offer ? (
+    <Row label="安装">
+      <button
+        type="button"
+        className="link-button"
+        onClick={() => {
+          void offer.prompt();
+        }}
+      >
+        安装到桌面
+      </button>
+    </Row>
+  ) : iPhone ? (
+    <Row label="安装">
+      <span className="muted">在 Safari 中点「分享」›「添加到主屏幕」</span>
+    </Row>
+  ) : macSafari ? (
+    <Row label="安装">
+      <span className="muted">
+        在 Safari 的「文件」菜单中选「添加到程序坞」
+      </span>
+    </Row>
+  ) : null;
+}
 /** What stays unread this long also goes to you in Feishu, from the bot. */
 function Forward({ minutes }: { minutes: number | null }) {
   const action = useRequest();
@@ -507,6 +562,7 @@ export function NotificationSettings({ data }: { data: WorkspaceSnapshot }) {
   return (
     <>
       <Group title="送达">
+        <Install />
         <ThisDevice />
         <Forward minutes={data.forwardAfter} />
       </Group>

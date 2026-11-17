@@ -13,6 +13,9 @@ export default defineConfig({
     trace: 'off',
     video: 'off',
     screenshot: 'only-on-failure',
+    // The workspace's service worker keeps the app's files and receives
+    // shares; these tests reach the hub directly, so routes see every call.
+    serviceWorkers: 'block',
   },
   reporter: 'list',
 });

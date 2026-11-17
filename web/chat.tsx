@@ -11,6 +11,7 @@ import {
 import { z } from 'zod';
 import { Message, REACH } from '../src/domain/communication.js';
 import { Attachment } from '../src/domain/attachments.js';
+import type { Shared } from './share.js';
 import type { WorkspaceSnapshot } from '../src/workspace/contracts.js';
 import { MutationPermission, api, request, value } from './api.js';
 import { ActionForm, AddButton, Field, InlineField } from './forms.js';
@@ -80,10 +81,13 @@ function Composer({
   members,
   onSend,
   onDone,
+  incoming,
 }: {
   channelPath: string;
   topicId: string;
   members: Mentionable[];
+  /** What was shared to Kinmesh for this channel: attached, its text typed. */
+  incoming?: { key: string; shared: Shared } | undefined;
   /** Takes a message on its way, so the field is free at once. */
   onSend: (path: string, body: Record<string, unknown>) => void;
   onDone: () => void;
@@ -130,6 +134,19 @@ function Composer({
   function detach(key: string) {
     setFiles((old) => old.filter((f) => f.key !== key));
   }
+  // Shared to Kinmesh: its files attached and its text in the field, once.
+  const placed = useRef<string | null>(null);
+  useEffect(() => {
+    if (!incoming || placed.current === incoming.key) return;
+    placed.current = incoming.key;
+    attach(incoming.shared.files);
+    const el = input.current;
+    if (el && incoming.shared.text !== '') {
+      el.value = (el.value ? el.value + '\n' : '') + incoming.shared.text;
+      keep(draftKey, el.value);
+      setReady(true);
+    }
+  });
   const filesReady =
     files.length > 0 && files.every((f) => f.state === 'ready');
   const filesWaiting = files.some((f) => f.state !== 'ready');
@@ -1209,6 +1226,7 @@ export function Chat({
   openAgent,
   onLeave,
   onTeam,
+  incoming,
 }: {
   data: WorkspaceSnapshot;
   channelPath: string;
@@ -1225,6 +1243,8 @@ export function Chat({
   onLeave: () => void;
   /** The channel's 成员 view, where an agent is added. */
   onTeam: () => void;
+  /** What was shared to Kinmesh, for this channel's composer. */
+  incoming?: { key: string; shared: Shared } | undefined;
 }) {
   const channel = data.channel;
   const messages = data.messages.items;
@@ -1476,6 +1496,7 @@ export function Chat({
         key={channel.id}
         channelPath={channelPath}
         topicId={topic}
+        incoming={incoming}
         members={[
           ...joinedAgents(data).map((a): Mentionable => ({
             kind: 'agent',

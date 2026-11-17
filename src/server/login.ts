@@ -8,6 +8,16 @@ import { organizationMember, type Feishu } from './feishu.js';
 import { clientAddress } from './limits.js';
 
 const STATE_COOKIE = 'kinmesh-login';
+/** The place a sign-in returns to, kept beside its state. */
+const NEXT_COOKIE = 'kinmesh-next';
+/**
+ * A place on this site: an absolute path with its query, never a scheme,
+ * a host (`//elsewhere`) or a backslash a browser might read as one.
+ */
+const Next = z
+  .string()
+  .max(512)
+  .regex(/^\/(?![/\\])[^\\\s]*$/);
 const Callback = z.object({
   code: z.string().min(1).max(2048).optional(),
   state: z.string().min(1).max(256),
@@ -35,8 +45,21 @@ export function registerLogin(
     },
   };
   // A link, not a form: the page's form-action policy keeps forms on-site.
-  app.get('/login', limit, async (_request, reply) => {
+  app.get('/login', limit, async (request, reply) => {
     const state = await store.logins.begin(Date.now());
+    // Where to come back to: a place on this site, never another.
+    const next = Next.safeParse(
+      z.object({ next: z.string().optional() }).safeParse(request.query).data
+        ?.next,
+    );
+    if (next.success)
+      void reply.setCookie(NEXT_COOKIE, next.data, {
+        path: '/login',
+        httpOnly: true,
+        sameSite: 'lax',
+        secure: config.secureCookie,
+        maxAge: LOGIN_STATE_MS / 1000,
+      });
     // Lax, because Feishu sends the browser back from another site.
     void reply.setCookie(STATE_COOKIE, state, {
       path: '/login',
@@ -51,7 +74,9 @@ export function registerLogin(
   });
   app.get('/login/callback', limit, async (request, reply) => {
     const cookie = request.cookies[STATE_COOKIE];
+    const next = Next.safeParse(request.cookies[NEXT_COOKIE]);
     void reply.clearCookie(STATE_COOKIE, { path: '/login' });
+    void reply.clearCookie(NEXT_COOKIE, { path: '/login' });
     reply.header('Cache-Control', 'no-store');
     const turnBack = (reason: 'expired' | 'denied' | 'unavailable') =>
       reply.redirect(`/?signin=${reason}`);
@@ -107,6 +132,7 @@ export function registerLogin(
       'session',
       await store.sessions.open(human.id, Date.now()),
     );
-    return reply.redirect('/');
+    // Back to the place the sign-in began from, such as a card's link.
+    return reply.redirect(next.success ? next.data : '/');
   });
 }
