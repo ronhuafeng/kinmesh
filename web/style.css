@@ -1465,6 +1465,10 @@ button.author-link:hover:not(:disabled) {
   padding-bottom: calc(1rem + env(safe-area-inset-bottom));
   background: linear-gradient(to bottom, transparent, var(--paper) 1.25rem);
 }
+/* A channel you only look in: where the composer would be, joining it. */
+.join-bar > .action-form {
+  justify-content: center;
+}
 .composer > .action-form {
   gap: 0.4rem;
   background: var(--material-strong);
@@ -3267,6 +3271,22 @@ span.person {
   padding: 0 0 0 calc(0.5rem + 1px);
   font-size: 0.875rem;
   color: var(--ink-muted);
+}
+.left-channels li > button {
+  min-width: 0;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.left-channels li > button:hover,
+.left-channels li > button[aria-current='page'] {
+  color: var(--ink);
 }
 .left-channels button[type='submit'] {
   padding: 0.2rem 0.4rem;

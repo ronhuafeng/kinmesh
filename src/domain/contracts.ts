@@ -46,10 +46,14 @@ export const Team = z.strictObject({
   id: TeamId,
   name: z.string().min(1).max(80),
 });
+/** Who sees a channel: the team (public), or those invited (private). */
+export const Visibility = z.enum(['public', 'private']);
+export type Visibility = z.infer<typeof Visibility>;
 export const Channel = z.strictObject({
   id: ChannelId,
   teamId: TeamId,
   name: z.string().min(1).max(80),
+  visibility: Visibility,
 });
 export const Membership = z.strictObject({
   humanId: HumanId,

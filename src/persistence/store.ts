@@ -168,7 +168,11 @@ export async function openStore(url: string) {
           await communicationStore.createChannel(
             { kind: 'human', humanId: human.id },
             team.id,
-            { operationKey: 'bootstrap.general', name: 'general' },
+            {
+              operationKey: 'bootstrap.general',
+              name: 'general',
+              visibility: 'public',
+            },
           );
           return human;
         });

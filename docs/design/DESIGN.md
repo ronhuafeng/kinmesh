@@ -331,15 +331,19 @@ fallback.
   删除了一个文件 · 11月17日 14:02"; the text stays as written.
   The placeholder never repeats the channel: "输入 @ 提及成员，⌘/Ctrl+Enter 发送"
   ("输入 @ 提及成员" on a phone).
-- **Channels**: the sidebar lists joined channels; a channel you left can be rejoined
-  by name. A name too long for its row fades out at the row's edge and is said in full
+- **Channels**: the sidebar lists joined channels; under them, in the muted ink, the
+  channels you may join — public ones you were never in, then ones you left — each
+  with **加入**. A public one opens by its name to read: the composer's place holds
+  **加入 #_name_**, and nothing in it can be done until you join. New channels are
+  public. A name too long for its row fades out at the row's edge and is said in full
   on hover. A channel someone else wrote in since you last read it has its name in
   semibold (the others medium); it reads as read once its newest message has been
   on screen in a visible tab, on any device (in a topic, as far as what is new is in
   that topic). There are no unread counts. Where the browser shows an app badge, it
   says whether anything is unread. Each channel is as loud as you set it from its
   row's **Menu** (right-click, or a long press on a phone): 与我有关 (the default),
-  每条消息 or 静音, ticked, then 退出 #_name_ in the danger colour. A channel you muted
+  每条消息 or 静音, ticked, then **设为公开…** (pressed again, it reads
+  确认：团队里所有人都能查看) or **设为私密**, then 退出 #_name_ in the danger colour. A channel you muted
   is never unread and its name is in the muted ink; one you follow ends in a small
   bell in the subtle ink. A channel where something waits on you ends in a
   decision-coloured dot, the

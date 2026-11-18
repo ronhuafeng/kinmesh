@@ -59,6 +59,7 @@ import {
   type PageInput,
   Participant,
   ParticipantInput,
+  VisibilityInput,
   PostInput,
   ReadInput,
   Topic,
@@ -129,16 +130,22 @@ export function communicationRepository(
         )
         .limit(1)
     )[0];
-    if (
-      channel === undefined ||
-      participant === undefined ||
-      participant.state === 'removed' ||
-      (!inactive && participant.state !== 'joined')
-    )
-      throw new DomainError('not-found');
+    if (channel === undefined) throw new DomainError('not-found');
+    const belongs =
+      participant !== undefined &&
+      participant.state !== 'removed' &&
+      (inactive || participant.state === 'joined');
+    // A public channel is read by any person of the team, joined or not
+    // (not one removed from it); writing, and every agent, needs joining.
+    const previewing =
+      !write &&
+      p.kind === 'human' &&
+      channel.visibility === 'public' &&
+      participant?.state !== 'removed';
+    if (!belongs && !previewing) throw new DomainError('not-found');
     return {
       channel: ChannelView.parse(channel),
-      participant,
+      participant: belongs ? participant : null,
     };
   }
   /** A person of the team, joined to the channel when one is named. */
@@ -406,6 +413,7 @@ export function communicationRepository(
             id: s.channels.id,
             teamId: s.channels.teamId,
             name: s.channels.name,
+            visibility: s.channels.visibility,
             position: s.channels.position,
           })
           .from(s.channels)
@@ -461,7 +469,7 @@ export function communicationRepository(
     createChannel(
       p: Principal,
       teamId: TeamId,
-      input: z.infer<typeof ChannelInput>,
+      input: z.input<typeof ChannelInput>,
     ) {
       return atomic(async () => {
         await person(p, teamId);
@@ -488,6 +496,7 @@ export function communicationRepository(
               teamId,
               name: data.name,
               position,
+              visibility: data.visibility,
             });
             await q().insert(s.channels).values(channel);
             const target = member(p);
@@ -563,6 +572,7 @@ export function communicationRepository(
               id: s.channels.id,
               teamId: s.channels.teamId,
               name: s.channels.name,
+              visibility: s.channels.visibility,
               position: s.channels.position,
             })
             .from(s.channels)
@@ -580,6 +590,81 @@ export function communicationRepository(
             .orderBy(asc(s.channels.position))
             .limit(100)
         ).map((row) => ChannelView.parse(row));
+      });
+    },
+    /** Public channels the person has never joined, to look in and join. */
+    publicChannels(p: Principal, teamId: TeamId) {
+      return atomic(async () => {
+        await team(p, teamId);
+        if (p.kind !== 'human') return [];
+        return (
+          await q()
+            .select({
+              id: s.channels.id,
+              teamId: s.channels.teamId,
+              name: s.channels.name,
+              visibility: s.channels.visibility,
+              position: s.channels.position,
+            })
+            .from(s.channels)
+            .leftJoin(
+              s.channelParticipants,
+              and(
+                eq(s.channels.id, s.channelParticipants.channelId),
+                eq(s.channelParticipants.memberKey, memberKey(member(p))),
+              ),
+            )
+            .where(
+              and(
+                eq(s.channels.teamId, teamId),
+                eq(s.channels.visibility, 'public'),
+                isNull(s.channelParticipants.channelId),
+              ),
+            )
+            .orderBy(asc(s.channels.position))
+            .limit(100)
+        ).map((row) => ChannelView.parse(row));
+      });
+    },
+    /** A person in a channel makes it public or private, on the record. */
+    setVisibility(
+      p: Principal,
+      teamId: TeamId,
+      channelId: ChannelId,
+      input: z.infer<typeof VisibilityInput>,
+    ) {
+      return atomic(async () => {
+        await person(p, teamId, channelId);
+        const data = VisibilityInput.parse(input);
+        return mutation(
+          p,
+          teamId,
+          channelId,
+          'visibility',
+          data,
+          ChannelView,
+          async () => {
+            const { channel } = await access(p, teamId, channelId, true);
+            if (channel.visibility !== data.visibility) {
+              await q()
+                .update(s.channels)
+                .set({ visibility: data.visibility })
+                .where(eq(s.channels.id, channelId));
+              await fact(
+                p,
+                teamId,
+                channelId,
+                data.operationKey,
+                'channel.changed',
+                { visibility: data.visibility },
+              );
+            }
+            return ChannelView.parse({
+              ...channel,
+              visibility: data.visibility,
+            });
+          },
+        );
       });
     },
     channels(p: Principal, teamId: TeamId, input: PageInput = {}) {
@@ -615,6 +700,7 @@ export function communicationRepository(
                   id: s.channels.id,
                   teamId: s.channels.teamId,
                   name: s.channels.name,
+                  visibility: s.channels.visibility,
                   position: s.channels.position,
                 })
                 .from(s.channels)
@@ -652,6 +738,8 @@ export function communicationRepository(
       return atomic(async () => {
         if (p.kind !== 'human') throw new DomainError('forbidden');
         const { participant } = await access(p, teamId, channelId);
+        // Read positions are for those who joined, not those looking in.
+        if (participant?.state !== 'joined') throw new DomainError('not-found');
         const seen = (
           await q()
             .select({ position: s.messages.position })
@@ -710,7 +798,7 @@ export function communicationRepository(
     ) {
       return atomic(async () => {
         if (p.kind !== 'human') throw new DomainError('forbidden');
-        await access(p, teamId, channelId);
+        await access(p, teamId, channelId, true);
         await q()
           .update(s.channelParticipants)
           .set({ level: ChannelLevel.parse(level) })
@@ -790,6 +878,12 @@ export function communicationRepository(
     channel(p: Principal, teamId: TeamId, channelId: ChannelId) {
       return atomic(async () => (await access(p, teamId, channelId)).channel);
     },
+    /** A channel the caller is joined to, as anything written there needs. */
+    joinedChannel(p: Principal, teamId: TeamId, channelId: ChannelId) {
+      return atomic(
+        async () => (await access(p, teamId, channelId, true)).channel,
+      );
+    },
     participant(p: Principal, teamId: TeamId, channelId: ChannelId) {
       return atomic(async () => {
         await access(p, teamId, channelId);
@@ -804,7 +898,9 @@ export function communicationRepository(
       action: 'subscribe' | 'leave',
     ) {
       return atomic(async () => {
-        await access(p, teamId, channelId, true, true);
+        // Joining needs only seeing the channel: a channel you left, or a
+        // public one you never joined. Leaving needs belonging to it.
+        await access(p, teamId, channelId, action === 'leave', true);
         const data = Mutation.parse(input);
         return mutation(
           p,
@@ -817,14 +913,22 @@ export function communicationRepository(
             const target = member(p);
             const state = action === 'subscribe' ? 'joined' : 'left';
             await q()
-              .update(s.channelParticipants)
-              .set({ state })
-              .where(
-                and(
-                  eq(s.channelParticipants.channelId, channelId),
-                  eq(s.channelParticipants.memberKey, memberKey(target)),
-                ),
-              );
+              .insert(s.channelParticipants)
+              .values({
+                channelId,
+                teamId,
+                memberKey: memberKey(target),
+                humanId: p.kind === 'human' ? p.humanId : null,
+                agentId: p.kind === 'agent' ? p.agentId : null,
+                state,
+              })
+              .onConflictDoUpdate({
+                target: [
+                  s.channelParticipants.channelId,
+                  s.channelParticipants.memberKey,
+                ],
+                set: { state },
+              });
             await fact(
               p,
               teamId,
@@ -1364,24 +1468,33 @@ export function communicationRepository(
     ) {
       return atomic(async () => {
         await team(p, teamId);
+        // One channel's files are for whoever can read it, a public
+        // channel's previewers too; every channel's are the person's own.
+        if (channelId !== null) await access(p, teamId, channelId);
         const rows = await q()
           .select({ file: s.attachments })
           .from(s.attachments)
-          .innerJoin(
-            s.channelParticipants,
-            and(
-              eq(s.channelParticipants.channelId, s.attachments.channelId),
-              eq(s.channelParticipants.memberKey, memberKey(member(p))),
-              eq(s.channelParticipants.state, 'joined'),
-            ),
-          )
           .where(
             and(
               eq(s.attachments.teamId, teamId),
               isNotNull(s.attachments.messageId),
               before === null ? undefined : lt(s.attachments.createdAt, before),
               channelId === null
-                ? undefined
+                ? inArray(
+                    s.attachments.channelId,
+                    q()
+                      .select({ id: s.channelParticipants.channelId })
+                      .from(s.channelParticipants)
+                      .where(
+                        and(
+                          eq(
+                            s.channelParticipants.memberKey,
+                            memberKey(member(p)),
+                          ),
+                          eq(s.channelParticipants.state, 'joined'),
+                        ),
+                      ),
+                  )
                 : eq(s.attachments.channelId, channelId),
               named === null
                 ? undefined

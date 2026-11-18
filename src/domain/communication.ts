@@ -1,7 +1,14 @@
 import { TaskStatus, TaskAction } from './task-state.js';
 import { TaskId } from './contracts.js';
 import { z } from 'zod';
-import { AgentId, HumanId, TeamId, ChannelId, Channel } from './contracts.js';
+import {
+  AgentId,
+  HumanId,
+  TeamId,
+  ChannelId,
+  Channel,
+  Visibility,
+} from './contracts.js';
 import { Author } from './agents.js';
 import {
   Attachment,
@@ -26,6 +33,8 @@ export const OperationKey = z
 export const Mutation = z.strictObject({ operationKey: OperationKey });
 export const ChannelInput = Mutation.extend({
   name: z.string().trim().min(1).max(80),
+  /** Private unless asked: only those invited see it. */
+  visibility: Visibility.default('private'),
 });
 export const ParticipantInput = Mutation.extend({ member: Member });
 export const TopicInput = Mutation.extend({
@@ -63,6 +72,11 @@ export type PostInput = z.infer<typeof PostInput>;
 export const ReadInput = z.strictObject({
   messageId: MessageId,
   topicId: TopicId.nullable(),
+});
+/** A joined person makes a channel public or private. */
+export const VisibilityInput = z.strictObject({
+  operationKey: OperationKey,
+  visibility: Visibility,
 });
 export const ChannelView = Channel.extend({
   position: z.number().int().positive(),
@@ -137,6 +151,7 @@ export const CommunicationFact = z
     author: Author,
     kind: z.enum([
       'channel.created',
+      'channel.changed',
       'participant.changed',
       'topic.created',
       'message.posted',
@@ -150,6 +165,8 @@ export const CommunicationFact = z
     sourceMessageId: MessageId.nullable(),
     sourceEventId: z.uuid().nullable(),
     operationKey: OperationKey,
+    /** What a channel.changed made the channel. */
+    visibility: Visibility.optional(),
   })
   .superRefine((v, ctx) => {
     const isMessage = v.kind === 'message.posted';
@@ -160,7 +177,11 @@ export const CommunicationFact = z
       isParticipant !== (v.participant !== null) ||
       isParticipant !== (v.participantState !== null) ||
       (v.kind === 'topic.created' && v.topicId === null) ||
-      ((v.kind === 'channel.created' || isParticipant) && v.topicId !== null) ||
+      (v.kind === 'channel.changed') !== (v.visibility !== undefined) ||
+      ((v.kind === 'channel.created' ||
+        v.kind === 'channel.changed' ||
+        isParticipant) &&
+        v.topicId !== null) ||
       (!isMessage &&
         (v.mentions.length !== 0 ||
           v.sourceMessageId !== null ||

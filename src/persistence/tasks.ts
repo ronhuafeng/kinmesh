@@ -64,7 +64,11 @@ export function taskRepository(
     channelId: ChannelId,
     scope: Scope = 'tasks:read',
   ) {
-    await communication.channel(p, teamId, channelId);
+    // Reading a public channel's tasks needs only reading it; anything
+    // that changes a task needs joining it.
+    await (scope === 'tasks:read'
+      ? communication.channel(p, teamId, channelId)
+      : communication.joinedChannel(p, teamId, channelId));
     await agents.teamAccess(p, teamId, 'tasks:read', scope);
   }
   async function row(teamId: TeamId, channelId: ChannelId, id: TaskId) {

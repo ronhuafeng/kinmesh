@@ -245,6 +245,7 @@ export function InlineField({
   taken,
   onClose,
   onCreated,
+  extra = {},
 }: {
   name: string;
   label: string;
@@ -256,6 +257,8 @@ export function InlineField({
   taken?: string;
   onClose: () => void;
   onCreated: (id: string) => void;
+  /** Sent along with the field, as what a new thing starts as. */
+  extra?: Record<string, unknown>;
 }) {
   const action = useAction(taken ? { 409: taken } : {});
   return (
@@ -267,9 +270,17 @@ export function InlineField({
         if (!text || action.disabled) return;
         let created = '';
         void action
-          .send(path, { [name]: text }, true, {}, undefined, 'POST', (raw) => {
-            created = z.object({ id: z.string() }).parse(raw).id;
-          })
+          .send(
+            path,
+            { ...extra, [name]: text },
+            true,
+            {},
+            undefined,
+            'POST',
+            (raw) => {
+              created = z.object({ id: z.string() }).parse(raw).id;
+            },
+          )
           .then((ok) => {
             if (!ok) return;
             onClose();
