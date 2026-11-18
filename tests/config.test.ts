@@ -1,4 +1,5 @@
 import { test } from 'node:test';
+import { storeEnv } from './database.js';
 import assert from 'node:assert/strict';
 import { loadConfig } from '../src/server/config.js';
 import { feishuEnv, fixture } from './helpers.js';
@@ -10,6 +11,7 @@ await test('configuration rejects absent secrets, invalid ports and non-loopback
     KINMESH_SESSION_KEY: 'b'.repeat(64),
     KINMESH_DATABASE_URL: 'postgres://kinmesh@127.0.0.1:5432/kinmesh',
     ...feishuEnv,
+    ...storeEnv(),
   };
   // Without a PostgreSQL database there is nowhere to keep the team.
   for (const url of [

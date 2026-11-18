@@ -1,5 +1,6 @@
 import { isIP } from 'node:net';
 import { z } from 'zod';
+import { storeConfig } from '../persistence/attachment-store.js';
 import { DatabaseUrl } from '../persistence/database.js';
 import { Endpoint } from '../adapters/t3/oauth.js';
 
@@ -133,6 +134,7 @@ export function loadConfig(env: NodeJS.ProcessEnv) {
   return {
     database: value.KINMESH_DATABASE_URL,
     state: value.KINMESH_STATE,
+    files: storeConfig(env),
     attachmentsRoom: value.KINMESH_ATTACHMENTS_ROOM,
     sessionKey: Buffer.from(value.KINMESH_SESSION_KEY, 'hex'),
     origin: origin.origin,

@@ -1,13 +1,16 @@
 import { spawn } from 'node:child_process';
 import { once } from 'node:events';
 import { z } from 'zod';
-import { startTestDatabase } from './database.js';
+import { startTestDatabase, startTestStore } from './database.js';
 
 /**
- * `npm test`: one PostgreSQL for the whole run, then `node --test` on the
+ * `npm test`: one PostgreSQL and one store for the whole run, then `node --test` on the
  * given files, which inherit where it is.
  */
-const database = await startTestDatabase();
+const [database, store] = await Promise.all([
+  startTestDatabase(),
+  startTestStore(),
+]);
 try {
   const child = spawn(
     process.execPath,
@@ -26,5 +29,5 @@ try {
     .parse(await once(child, 'exit'));
   process.exitCode = code ?? 1;
 } finally {
-  await database.stop();
+  await Promise.all([database.stop(), store.stop()]);
 }

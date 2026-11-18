@@ -63,16 +63,22 @@ jobs:
       - run: npm ci
       - name: Build the image (publishing is a separate, deliberate step)
         run: docker build -t kinmesh:ci .
-      - name: The container is healthy against a fresh database
+      - name: The container is healthy against a fresh database and file store
         run: |
           docker network create kinmesh
           docker run -d --name postgres --network kinmesh \
             -e POSTGRES_USER=kinmesh -e POSTGRES_PASSWORD=ci -e POSTGRES_DB=kinmesh \
             postgres:17-alpine
+          docker run -d --name silo --network kinmesh \
+            -e MINIO_ROOT_USER=kinmesh -e MINIO_ROOT_PASSWORD=ci-store-secret \
+            pgsty/silo:RELEASE.2026-11-12T00-00-00Z server /data
           # Over TCP: the image's first-run server listens on its socket only.
           until docker exec postgres pg_isready -h 127.0.0.1 -U kinmesh -d kinmesh; do sleep 1; done
+          until docker exec silo curl -sf http://127.0.0.1:9000/minio/health/ready; do sleep 1; done
           docker run -d --name kinmesh --network kinmesh \
             -e KINMESH_DATABASE_URL=postgres://kinmesh:ci@postgres:5432/kinmesh \
+            -e KINMESH_S3_ENDPOINT=http://silo:9000 \
+            -e KINMESH_S3_ACCESS_KEY_ID=kinmesh -e KINMESH_S3_SECRET_ACCESS_KEY=ci-store-secret \
             -e KINMESH_SESSION_KEY="$(openssl rand -hex 32)" \
             -e FEISHU_APP_ID=cli_ci -e FEISHU_APP_SECRET=ci-secret \
             -e KINMESH_EMAIL_DOMAIN=example.com \
@@ -130,4 +136,4 @@ jobs:
       - if: failure()
         run: docker logs t3 2>&1 | tail -50 || true
       - if: always()
-        run: docker rm -f kinmesh postgres t3 || true
+        run: docker rm -f kinmesh postgres silo t3 || true

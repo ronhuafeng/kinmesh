@@ -4,7 +4,7 @@ import { join } from 'node:path';
 import { randomBytes } from 'node:crypto';
 import { openStore } from '../src/persistence/store.js';
 import { loadConfig } from '../src/server/config.js';
-import { testDatabase } from './database.js';
+import { testDatabase, storeEnv } from './database.js';
 /** A Feishu app for tests; its hosts are stood in for. */
 export const feishuEnv = {
   FEISHU_APP_ID: 'cli_test',
@@ -18,14 +18,18 @@ export const feishuEnv = {
 export async function fixture() {
   const directory = mkdtempSync(join(realpathSync(tmpdir()), 'kinmesh-test-'));
   const database = await testDatabase();
+  const filesEnv = storeEnv();
   const config = loadConfig({
     KINMESH_DATABASE_URL: database.url,
     KINMESH_STATE: directory,
     KINMESH_SESSION_KEY: randomBytes(32).toString('hex'),
     ...feishuEnv,
+    ...filesEnv,
   });
   return {
     directory,
+    /** The store's settings, for another process of the same hub. */
+    filesEnv,
     path: database.url,
     config,
     open: () => openStore(database.url),

@@ -4,11 +4,11 @@ import rateLimit from '@fastify/rate-limit';
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
 import type { Store } from '../persistence/store.js';
 import type { TeamConfig } from './config.js';
-import { directoryBytes } from '../persistence/attachment-bytes.js';
+import { attachmentStore } from '../persistence/attachment-store.js';
 import { agentPrincipal, teamServer } from './tools.js';
 
 export async function createTeamApp(config: TeamConfig, store: Store) {
-  const bytes = directoryBytes(config.state);
+  const files = attachmentStore(config.files);
   const app = Fastify({
     logger: false,
     bodyLimit: 16384,
@@ -79,7 +79,7 @@ export async function createTeamApp(config: TeamConfig, store: Store) {
         return reply.code(401).send({ error: 'Authentication required' });
       reply.raw.setHeader('Cache-Control', 'no-store');
       reply.raw.setHeader('X-Content-Type-Options', 'nosniff');
-      const server = teamServer(store, authorization, bytes);
+      const server = teamServer(store, authorization, files);
       const transport = new StreamableHTTPServerTransport({
         enableJsonResponse: true,
       });

@@ -10,7 +10,7 @@ import {
   unplaceAttachments,
 } from './attachments.js';
 import { spacePairer, spaceRemover } from '../inbox/space.js';
-import { directoryBytes } from '../persistence/attachment-bytes.js';
+import { attachmentStore } from '../persistence/attachment-store.js';
 import { registerNotifications } from './notify.js';
 import { registerMe } from './me.js';
 import { registerAgents } from './agents.js';
@@ -128,6 +128,12 @@ export async function createApp(
     zlibOptions: { level: 6 },
   });
   app.decorateRequest('principal', null);
+  // Browsers upload files straight to the store.
+  const storeOrigin = new URL(config.files.publicEndpoint).origin;
+  const connect =
+    storeOrigin === new URL(config.origin).origin
+      ? "'self'"
+      : `'self' ${storeOrigin}`;
   app.addHook('onSend', async (_request, reply) => {
     reply.header('X-Content-Type-Options', 'nosniff');
     reply.header('Referrer-Policy', 'no-referrer');
@@ -135,7 +141,7 @@ export async function createApp(
     if (!reply.hasHeader('Content-Security-Policy'))
       reply.header(
         'Content-Security-Policy',
-        "default-src 'self'; script-src 'self'; style-src 'self'; connect-src 'self'; img-src 'self' data:; object-src 'none'; base-uri 'none'; frame-ancestors 'none'; form-action 'self'",
+        `default-src 'self'; script-src 'self'; style-src 'self'; connect-src ${connect}; img-src 'self' data:; object-src 'none'; base-uri 'none'; frame-ancestors 'none'; form-action 'self'`,
       );
   });
   app.setErrorHandler((error, request, reply) => {
@@ -313,9 +319,11 @@ export async function createApp(
   const expiring = setInterval(() => void expire(), 60_000);
   expiring.unref();
   registerCommunication(app, store);
-  const attachmentBytes = directoryBytes(config.state);
-  registerAttachments(app, store, attachmentBytes, config.attachmentsRoom);
-  const stopSweeping = sweepAttachments(store, attachmentBytes, (error) => {
+  const files = attachmentStore(config.files);
+  await files.prepare();
+  await files.adopt(config.state);
+  registerAttachments(app, store, files, config.attachmentsRoom);
+  const stopSweeping = sweepAttachments(store, files, (error) => {
     app.log.error(describeFailure(error), 'attachment_sweep_failed');
   });
   const stopUnplacing =

@@ -12,7 +12,7 @@ import {
   type Provisioner,
 } from '../src/inbox/space.js';
 import { createHash } from 'node:crypto';
-import { directoryBytes } from '../src/persistence/attachment-bytes.js';
+import { Readable } from 'node:stream';
 import { spaceDirectory } from '../src/domain/inbox.js';
 import { ExecutionFailure } from '../src/domain/execution.js';
 import { assistantRead, due, inboxFixture } from './inbox-helpers.js';
@@ -279,24 +279,24 @@ await test('a message’s files are in the channel’s folder before the agent i
   const f = await inboxFixture();
   try {
     const { provisioner } = space(f);
-    const bytes = directoryBytes(f.directory);
     const content = Buffer.from('the error log');
     const sha256 = createHash('sha256').update(content).digest('hex');
     const file = await f.comm.upload(
       f.principal,
       f.teamId,
       f.channelId,
-      {
-        operationKey: key(),
-        name: 'error.log',
-        type: 'application/octet-stream',
-        size: content.length,
-        sha256,
-        width: null,
-        height: null,
-      },
+      { operationKey: key(), name: 'error.log', sha256 },
       1024 ** 3,
-      () => bytes.put(sha256, content),
+      {
+        describe: () =>
+          Promise.resolve({
+            type: 'application/octet-stream',
+            size: content.length,
+            width: null,
+            height: null,
+          }),
+        keep: () => Promise.resolve(),
+      },
     );
     await f.comm.post(f.principal, f.teamId, f.channelId, {
       ...postInput({ mentions: [{ kind: 'agent', id: f.agent.id }] }),
@@ -306,10 +306,11 @@ await test('a message’s files are in the channel’s folder before the agent i
     let launchesWhenPlaced = -1;
     const placer =
       (answer: () => Promise<void>): FilePlacer =>
-      async (directory, attached, given, hash) => {
+      async (directory, attached, given) => {
         await answer();
-        assert.deepEqual(given, content);
-        assert.equal(hash, sha256);
+        assert.deepEqual(Buffer.concat(await given.body.toArray()), content);
+        assert.equal(given.size, content.length);
+        assert.equal(given.sha256, sha256);
         launchesWhenPlaced = calls(f, 't3_thread_launch').length;
         const path = `/space/${directory}/attachments/${attached.id.slice(0, 8)}-error.log`;
         placedAt.push(path);
@@ -328,7 +329,10 @@ await test('a message’s files are in the channel’s folder before the agent i
         provisioner,
         {
           place,
-          bytes,
+          read: (hash) => {
+            assert.equal(hash, sha256);
+            return Promise.resolve(Readable.from([content]));
+          },
         },
       );
       return f.inbox.get(claim.id);

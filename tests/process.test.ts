@@ -1,4 +1,5 @@
 import { ChannelView } from '../src/domain/communication.js';
+import { storeEnv } from './database.js';
 import { key } from './communication-helpers.js';
 import { z } from 'zod';
 import { Team } from '../src/domain/contracts.js';
@@ -63,6 +64,7 @@ await test('actual server entrypoint boots from env, persists an authenticated w
         KINMESH_STATE: f.directory,
         KINMESH_SESSION_KEY: f.config.sessionKey.toString('hex'),
         ...feishuEnv,
+        ...storeEnv(),
         KINMESH_FEISHU_URL: feishu.url,
         KINMESH_PORT: String(port),
         KINMESH_ORIGIN: origin,

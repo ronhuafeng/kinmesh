@@ -45,9 +45,10 @@ import {
   type Provisioner,
 } from './space.js';
 import {
-  directoryBytes,
-  type AttachmentBytes,
-} from '../persistence/attachment-bytes.js';
+  attachmentStore,
+  storeConfig,
+} from '../persistence/attachment-store.js';
+import type { Readable } from 'node:stream';
 import { posix } from 'node:path';
 
 /**
@@ -241,8 +242,11 @@ export async function deliver(
   stopping: AbortSignal,
   /** Makes a channel's folder in the space a T3 project; null: scratch threads. */
   space: Provisioner | null = null,
-  /** Places a message's files in the channel's folder, from the hub's bytes. */
-  files: { place: FilePlacer; bytes: AttachmentBytes } | null = null,
+  /** Places a message's files in the channel's folder, from the store. */
+  files: {
+    place: FilePlacer;
+    read: (sha256: string) => Promise<Readable>;
+  } | null = null,
 ) {
   const signal = AbortSignal.any([
     stopping,
@@ -332,24 +336,23 @@ export async function deliver(
         );
         const root = await space(directory, context.channelName, signal);
         for (const file of attached) {
-          const { sha256 } = await store.communication.attachment(
+          const { attachment, sha256 } = await store.communication.attachment(
             principal,
             claim.teamId,
             claim.channelId,
             file.id,
           );
-          let bytes: Buffer;
+          let body: Readable;
           try {
-            bytes = await files.bytes.get(sha256);
+            body = await files.read(sha256);
           } catch {
-            // The hub no longer has them: placing again won't help.
+            // The store no longer has them: placing again won't help.
             throw new ExecutionFailure('incompatible');
           }
           const path = await files.place(
             directory,
             file,
-            bytes,
-            sha256,
+            { body, size: attachment.size, sha256 },
             signal,
           );
           placed[file.id] = posix.relative(root, path);
@@ -668,13 +671,13 @@ export async function runWorker(
   const running = new Set<Promise<void>>();
   const directory = managedDirectory(config.state);
   const space = config.space === null ? null : spaceProvisioner(config.space);
-  // The hub's state directory holds the bytes of the files people attached.
+  // The files people attached are in the store the hub was given.
   const files =
     config.space === null
       ? null
       : {
           place: spacePlacer(config.space),
-          bytes: directoryBytes(config.state),
+          read: attachmentStore(storeConfig(process.env)).read,
         };
   let bindings = new Map<AgentId, WorkerBinding>();
   let lastBeat = 0;

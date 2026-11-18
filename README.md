@@ -10,7 +10,7 @@ Use **Node 26** and Docker. Running the workspace needs no T3, provider credenti
 npm ci
 npm run build                    # the React workspace and server
 npm run setup                    # writes a private .env (0600) with a session key and database password; never overwrites
-docker compose up -d postgres    # the database, on loopback
+docker compose up -d postgres silo   # the database and the file store, on loopback
 npm start                        # migrates, listens on 127.0.0.1:3000; keep it running
 ```
 

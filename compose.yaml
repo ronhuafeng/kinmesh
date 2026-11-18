@@ -1,10 +1,11 @@
-# Kinmesh for a team: the hub and its PostgreSQL, each with its state in a
-# volume. Secrets and settings come from .env (never committed; `npm run
+# Kinmesh for a team: the hub, its PostgreSQL and its file store, each with
+# its state in a volume. Secrets and settings come from .env (never committed; `npm run
 # setup` writes one). Put an HTTPS reverse proxy in front
 # (docs/operations.md); the hub is published on this machine's loopback only.
 #
-# For development, start only the database (`docker compose up -d postgres`)
-# and run the hub with `npm start`; it reaches the database on loopback.
+# For development, start only the database and the store (`docker compose up
+# -d postgres silo`) and run the hub with `npm start`; it reaches both on
+# loopback, and browsers upload to the store there.
 services:
   postgres:
     image: postgres:17-alpine
@@ -22,6 +23,22 @@ services:
       timeout: 5s
       retries: 10
     restart: unless-stopped
+  silo:
+    image: pgsty/silo:RELEASE.2026-11-12T00-00-00Z
+    command: [server, /data]
+    environment:
+      MINIO_ROOT_USER: ${KINMESH_S3_ACCESS_KEY_ID:-kinmesh}
+      MINIO_ROOT_PASSWORD: ${KINMESH_S3_SECRET_ACCESS_KEY:?set it in .env}
+    ports:
+      - 127.0.0.1:${KINMESH_S3_PORT:-9000}:9000
+    volumes:
+      - kinmesh-files:/data
+    healthcheck:
+      test: [CMD, curl, -sf, http://127.0.0.1:9000/minio/health/ready]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
   hub:
     build: .
     env_file: .env
@@ -29,8 +46,13 @@ services:
       KINMESH_HOST: 0.0.0.0
       KINMESH_DATABASE_URL: postgres://kinmesh:${KINMESH_POSTGRES_PASSWORD}@postgres:5432/kinmesh
       KINMESH_STATE: /data
+      KINMESH_S3_ENDPOINT: http://silo:9000
+      # Behind the reverse proxy, the store's public address (operations.md).
+      KINMESH_S3_PUBLIC_ENDPOINT: ${KINMESH_S3_PUBLIC_ENDPOINT:-http://127.0.0.1:9000}
     depends_on:
       postgres:
+        condition: service_healthy
+      silo:
         condition: service_healthy
     ports:
       - 127.0.0.1:3000:3000
@@ -40,3 +62,4 @@ services:
 volumes:
   kinmesh-postgres:
   kinmesh-data:
+  kinmesh-files:

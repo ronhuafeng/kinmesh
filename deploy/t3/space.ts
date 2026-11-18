@@ -6,18 +6,28 @@
 import { execFile } from 'node:child_process';
 import { createHash, randomBytes, timingSafeEqual } from 'node:crypto';
 import {
+  closeSync,
+  createWriteStream,
   existsSync,
   mkdirSync,
+  openSync,
   readFileSync,
+  readSync,
   readdirSync,
   realpathSync,
   renameSync,
   rmSync,
   writeFileSync,
 } from 'node:fs';
-import { createServer, type IncomingHttpHeaders, type Server } from 'node:http';
+import {
+  createServer,
+  type IncomingHttpHeaders,
+  type IncomingMessage,
+  type Server,
+} from 'node:http';
 import { request } from 'node:https';
 import { join, resolve, sep } from 'node:path';
+import { pipeline } from 'node:stream/promises';
 import { promisify } from 'node:util';
 
 const run = promisify(execFile);
@@ -124,8 +134,6 @@ export function placedName(id: string, name: string) {
   }
   return `${id.slice(0, 8)}-${clean}`;
 }
-const sha256 = (bytes: Buffer) =>
-  createHash('sha256').update(bytes).digest('hex');
 /** The channel's folder, when it is one this provisioner made. */
 function folderOf(options: SpaceOptions, directory: string) {
   if (!DIRECTORY.test(directory)) return null;
@@ -158,24 +166,71 @@ function placedFor(folder: string, id: string) {
   );
 }
 /**
- * Places an attachment's bytes in the folder's `attachments/`, whole or not
- * at all. The same ID with the same bytes again changes nothing; with other
- * bytes it is a conflict.
+ * Places received bytes (`partial`, already in `attachments/`, whose SHA-256
+ * is `hash`) as an attachment, whole or not at all. The same ID with the
+ * same bytes again changes nothing; with other bytes it is a conflict.
  */
-function place(root: string, id: string, name: string, bytes: Buffer) {
+function place(
+  root: string,
+  id: string,
+  name: string,
+  partial: string,
+  hash: string,
+) {
+  const folder = join(root, 'attachments');
+  const [there] = placedFor(folder, id);
+  if (there !== undefined) {
+    rmSync(partial, { force: true });
+    const path = join(folder, there);
+    return hashOf(path) === hash ? path : null;
+  }
+  const path = join(folder, placedName(id, name));
+  renameSync(partial, path);
+  return path;
+}
+/** A file's SHA-256, read a megabyte at a time. */
+function hashOf(path: string) {
+  const hash = createHash('sha256');
+  const chunk = Buffer.alloc(1024 * 1024);
+  const fd = openSync(path, 'r');
+  try {
+    for (let read; (read = readSync(fd, chunk)) > 0;)
+      hash.update(chunk.subarray(0, read));
+  } finally {
+    closeSync(fd);
+  }
+  return hash.digest('hex');
+}
+/**
+ * Receives an attachment's bytes into a new file in the folder's
+ * `attachments/`, hashing them as they come: its path and SHA-256, or null
+ * when they are more than allowed or the request ends early.
+ */
+async function receive(root: string, req: IncomingMessage) {
   excluded(root);
   const folder = join(root, 'attachments');
   mkdirSync(folder, { recursive: true });
-  const [there] = placedFor(folder, id);
-  if (there !== undefined) {
-    const path = join(folder, there);
-    return sha256(readFileSync(path)) === sha256(bytes) ? path : null;
-  }
-  const path = join(folder, placedName(id, name));
   const partial = join(folder, `.${randomBytes(8).toString('hex')}.partial`);
-  writeFileSync(partial, bytes);
-  renameSync(partial, path);
-  return path;
+  const hash = createHash('sha256');
+  let size = 0;
+  try {
+    await pipeline(
+      req,
+      async function* (chunks: AsyncIterable<Buffer>) {
+        for await (const chunk of chunks) {
+          size += chunk.length;
+          if (size > FILE_LIMIT) throw new Error('too large');
+          hash.update(chunk);
+          yield chunk;
+        }
+      },
+      createWriteStream(partial),
+    );
+  } catch {
+    rmSync(partial, { force: true });
+    return null;
+  }
+  return { partial, hash: hash.digest('hex') };
 }
 function unplace(root: string, id: string) {
   const folder = join(root, 'attachments');
@@ -210,27 +265,7 @@ export function spaceServer(options: SpaceOptions): Server {
       answer(404, { error: 'not found' });
       return;
     }
-    const limit = placing ? FILE_LIMIT : BODY_LIMIT;
-    const chunks: Buffer[] = [];
-    let size = 0;
-    req.on('data', (chunk: Buffer) => {
-      size += chunk.length;
-      if (size > limit) {
-        answer(413, { error: 'too large' });
-        req.destroy();
-        return;
-      }
-      chunks.push(chunk);
-    });
-    req.on('end', () => {
-      const body = Buffer.concat(chunks);
-      const work = pairing
-        ? pairRoute(options, body)
-        : route(options, req.method ?? '', placing, req.headers, body);
-      if ('status' in work) {
-        answer(work.status, work.body);
-        return;
-      }
+    const queued = (work: { run: () => Promise<Answer> }) => {
       queue = queue.then(async () => {
         try {
           const done = await work.run();
@@ -243,6 +278,58 @@ export function spaceServer(options: SpaceOptions): Server {
           answer(500, { error: 'unavailable' });
         }
       });
+    };
+    // A file's bytes go straight to disk, and only placing them waits its turn.
+    if (placing && req.method === 'PUT') {
+      const target = placingTarget(options, placing, req.headers);
+      if ('status' in target) {
+        answer(target.status, target.body);
+        req.resume();
+        return;
+      }
+      void receive(target.root, req).then((got) => {
+        if (got?.hash !== target.hash) {
+          if (got) rmSync(got.partial, { force: true });
+          answer(400, { error: 'invalid' });
+          return;
+        }
+        queued({
+          run: () => {
+            const path = place(
+              target.root,
+              target.id,
+              target.name,
+              got.partial,
+              got.hash,
+            );
+            return Promise.resolve(
+              path === null
+                ? { status: 409, body: { error: 'conflict' } }
+                : { status: 200, body: { path } },
+            );
+          },
+        });
+      });
+      return;
+    }
+    const chunks: Buffer[] = [];
+    let size = 0;
+    req.on('data', (chunk: Buffer) => {
+      size += chunk.length;
+      if (size > BODY_LIMIT) {
+        answer(413, { error: 'too large' });
+        req.destroy();
+        return;
+      }
+      chunks.push(chunk);
+    });
+    req.on('end', () => {
+      const body = Buffer.concat(chunks);
+      const work = pairing
+        ? pairRoute(options, body)
+        : route(options, req.method ?? '', placing, body);
+      if ('status' in work) answer(work.status, work.body);
+      else queued(work);
     });
   });
 }
@@ -293,7 +380,6 @@ function route(
   options: SpaceOptions,
   method: string,
   placing: RegExpExecArray | null,
-  headers: IncomingHttpHeaders,
   body: Buffer,
 ): Answer | { run: () => Promise<Answer> } {
   const invalid = { status: 400, body: { error: 'invalid' } };
@@ -313,31 +399,38 @@ function route(
   if (!ATTACHMENT.test(id)) return invalid;
   const root = folderOf(options, directory);
   if (root === null) return { status: 404, body: { error: 'not found' } };
-  if (method === 'DELETE')
-    return {
-      run: () => {
-        unplace(root, id);
-        return Promise.resolve({ status: 200, body: {} });
-      },
-    };
+  return {
+    run: () => {
+      unplace(root, id);
+      return Promise.resolve({ status: 200, body: {} });
+    },
+  };
+}
+/**
+ * Where a file is to be placed, from what the request says before its
+ * bytes: its folder, ID, name and SHA-256. Refused at once otherwise.
+ */
+function placingTarget(
+  options: SpaceOptions,
+  placing: RegExpExecArray,
+  headers: IncomingHttpHeaders,
+): Answer | { root: string; id: string; name: string; hash: string } {
+  const invalid = { status: 400, body: { error: 'invalid' } };
+  const [, directory = '', id = ''] = placing;
+  if (!ATTACHMENT.test(id)) return invalid;
+  if (Number(headers['content-length'] ?? 0) > FILE_LIMIT)
+    return { status: 413, body: { error: 'too large' } };
+  const root = folderOf(options, directory);
+  if (root === null) return { status: 404, body: { error: 'not found' } };
   let name = '';
   try {
     name = decodeURIComponent(String(headers['x-kinmesh-name'] ?? ''));
   } catch {
     return invalid;
   }
-  if (name === '' || sha256(body) !== String(headers['x-kinmesh-sha256'] ?? ''))
-    return invalid;
-  return {
-    run: () => {
-      const path = place(root, id, name, body);
-      return Promise.resolve(
-        path === null
-          ? { status: 409, body: { error: 'conflict' } }
-          : { status: 200, body: { path } },
-      );
-    },
-  };
+  const hash = String(headers['x-kinmesh-sha256'] ?? '');
+  if (name === '' || !/^[a-f0-9]{64}$/.test(hash)) return invalid;
+  return { root, id, name, hash };
 }
 
 /**
