@@ -18,6 +18,8 @@ jobs:
     timeout-minutes: 5
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
       - name: A pull request for a newer stable T3, once
         env:
           GH_TOKEN: ${{ github.token }}
@@ -30,7 +32,8 @@ jobs:
           [ "$latest" != "$current" ] || exit 0
           [ "$(printf '%s\n%s\n' "$current" "$latest" | sort -V | tail -1)" = "$latest" ] || exit 0
           branch="t3/$latest"
-          if git ls-remote --exit-code --heads origin "$branch" >/dev/null; then
+          origin="https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
+          if git ls-remote --exit-code --heads "$origin" "$branch" >/dev/null; then
             echo "$branch is already proposed"
             exit 0
           fi
@@ -39,7 +42,7 @@ jobs:
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
           git switch -c "$branch"
           git commit -qam "build(t3): T3 Code $latest"
-          git push -q origin "$branch"
+          git push -q "$origin" "$branch"
           gh pr create --head "$branch" --title "T3 Code $latest" --body "Pins T3 Code $latest (from $current) in the agents' runtime image.
 
           CI's image job builds it and runs \`npm run t3:smoke\` against it with a session it issued: every tool a run uses, its schemas and the environment, as Kinmesh reads them. No model runs.

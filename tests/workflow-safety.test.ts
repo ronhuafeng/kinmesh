@@ -7,7 +7,7 @@ import { z } from 'zod';
 const source = (path: string) =>
   readFileSync(new URL('../' + path, import.meta.url), 'utf8');
 const workflow = (name: string) => source('.github/workflows/' + name);
-const WORKFLOWS = ['ci.yml', 'live.yml', 't3-live.yml'];
+const WORKFLOWS = ['ci.yml', 'live.yml', 't3-live.yml', 't3-update.yml'];
 const MANUAL = ['live.yml', 't3-live.yml'];
 const OWNER_GUARDS = [
   'test "$GITHUB_EVENT_NAME" = "workflow_dispatch"',
@@ -48,12 +48,23 @@ await test('PR CI holds no secrets, credentials or paid/live runs', () => {
   assert.match(triggers(text), /pull_request:/);
   assert.doesNotMatch(
     text,
-    /secrets\.|LLM_API_KEY|KINMESH_T3_(?:AUTH_FILE|ENDPOINT)|KINMESH_TEAM_T3_LIVE|self-hosted/,
+    /secrets\.|LLM_API_KEY|KINMESH_T3_AUTH_FILE|KINMESH_TEAM_T3_LIVE|self-hosted/,
   );
+  // The one T3 it reaches is the one it started from the image it built,
+  // on the runner's loopback, with a session that T3 issued.
+  for (const [, endpoint] of text.matchAll(/KINMESH_T3_ENDPOINT=(\S+)/g))
+    assert.equal(endpoint, 'http://127.0.0.1:3773/mcp');
   assert.doesNotMatch(
     text,
     /test:live|test:team-live|test:inbox-live|test:collaboration-live|t3:auth|release:check|tests\/live/,
   );
+});
+
+await test('the T3 version workflow pushes only its own branch and runs no code from it', () => {
+  const text = workflow('t3-update.yml');
+  assert.doesNotMatch(triggers(text), /pull_request|push:/);
+  assert.doesNotMatch(text, /secrets\.|self-hosted|^\s+(?:npm|npx|node) /m);
+  assert.match(text, /git push -q "\$origin" "\$branch"/);
 });
 
 await test('paid and credential-bearing runs are manual, owner-only on main, guarded before checkout', () => {
