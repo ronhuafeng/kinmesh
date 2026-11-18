@@ -1457,7 +1457,9 @@ button.author-link:hover:not(:disabled) {
 .workspace-main:has(.composer) {
   padding-bottom: 0;
 }
-.composer {
+/* A channel you only look in holds joining it where the composer would be. */
+.composer,
+.join-bar {
   position: sticky;
   bottom: 0;
   z-index: 3;
@@ -1465,9 +1467,9 @@ button.author-link:hover:not(:disabled) {
   padding-bottom: calc(1rem + env(safe-area-inset-bottom));
   background: linear-gradient(to bottom, transparent, var(--paper) 1.25rem);
 }
-/* A channel you only look in: where the composer would be, joining it. */
-.join-bar > .action-form {
-  justify-content: center;
+.join-bar button[type='submit'] {
+  justify-self: center;
+  white-space: nowrap;
 }
 .composer > .action-form {
   gap: 0.4rem;
@@ -3288,7 +3290,12 @@ span.person {
 .left-channels li > button[aria-current='page'] {
   color: var(--ink);
 }
+.left-channels li > form {
+  flex: none;
+}
 .left-channels button[type='submit'] {
+  flex: none;
+  white-space: nowrap;
   padding: 0.2rem 0.4rem;
   border: 0;
   background: none;

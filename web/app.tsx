@@ -2043,7 +2043,7 @@ function JoinBar({
   onDone: () => void;
 }) {
   return (
-    <div className="composer join-bar">
+    <div className="join-bar">
       <ActionForm
         title={'加入 ' + channel.name}
         path={`/api/teams/${teamId}/channels/${channel.id}/subscribe`}
