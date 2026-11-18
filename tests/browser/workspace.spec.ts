@@ -1558,7 +1558,7 @@ test('human claim and request-review controls, plus leave/rejoin of known member
   const left = page.getByRole('list', { name: '可加入的频道' });
   await expect(left.getByRole('listitem')).toHaveText([/general/]);
   // #general is public: it opens to read, with joining where the composer was.
-  await left.getByRole('button', { name: '# general' }).click();
+  await left.getByRole('button', { name: 'general', exact: true }).click();
   await expect(page.getByRole('heading', { name: '# general' })).toBeVisible();
   await expect(page.getByRole('form', { name: '给团队发消息' })).toHaveCount(0);
   await page

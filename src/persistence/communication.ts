@@ -880,9 +880,12 @@ export function communicationRepository(
     },
     /** A channel the caller is joined to, as anything written there needs. */
     joinedChannel(p: Principal, teamId: TeamId, channelId: ChannelId) {
-      return atomic(
-        async () => (await access(p, teamId, channelId, true)).channel,
-      );
+      return atomic(async () => {
+        // Read access, plus being in it: a task grant needs no channels:write.
+        const { channel, participant } = await access(p, teamId, channelId);
+        if (participant === null) throw new DomainError('not-found');
+        return channel;
+      });
     },
     participant(p: Principal, teamId: TeamId, channelId: ChannelId) {
       return atomic(async () => {
