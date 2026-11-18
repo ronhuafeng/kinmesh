@@ -209,7 +209,7 @@ await test('a file larger than allowed is refused from what the request says', a
       url: `${f.channelPath}/attachments?operationKey=${key()}&name=big.bin`,
       cookies: f.cookies,
       headers: { 'content-type': 'application/octet-stream' },
-      payload: Buffer.alloc(25 * 1024 * 1024 + 1),
+      payload: Buffer.alloc(200 * 1024 * 1024 + 1),
     });
     assert.equal(refused.statusCode, 413);
     assert.equal(kept(f.directory), 0);

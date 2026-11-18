@@ -317,10 +317,12 @@ fallback.
   is sent and the text stays in the field.
 - **Attaching**: a file pasted into the composer, dropped on it (the field draws a
   2 px green ring while one is held over it) or chosen with the paperclip beside "@"
-  uploads at once and shows above the text: an image as a 56 px square of itself, any
+  uploads and shows above the text: an image as a 56 px square of itself, any
   other file as a tile of its name and size. Each has a small round × at its corner
-  to take it off. A file still uploading reads at half strength; one that can't be
-  attached has a red outline and says why in its tile ("超过 25 MB",
+  to take it off. Files go up one at a time, in the order added: one waiting its turn reads at half
+  strength, the one going up has a 3 px green line along its foot that fills as it
+  goes; one that can't be
+  attached has a red outline and says why in its tile ("超过 200 MB",
   "团队的文件空间已满"). Send waits for every file to be there, and files alone are
   enough to send. At most ten go with one message; more are left out.
 - **Files in a message**: under its text (or alone), images as they are, at most 240

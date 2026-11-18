@@ -1553,8 +1553,32 @@ button.author-link:hover:not(:disabled) {
   background: var(--fill);
   transition: opacity var(--dur) ease;
 }
-.composer-files li[data-state='uploading'] {
+.composer-files li[data-state='queued'] {
   opacity: 0.55;
+}
+/* The file going up now: a line along its foot fills as it goes. */
+.composer-progress {
+  position: absolute;
+  left: 0.5rem;
+  right: 0.5rem;
+  bottom: 0.35rem;
+  width: auto;
+  height: 3px;
+  appearance: none;
+  border: 0;
+  border-radius: 999px;
+  background: var(--hairline-strong);
+  overflow: hidden;
+}
+.composer-progress::-webkit-progress-bar {
+  background: var(--hairline-strong);
+}
+.composer-progress::-webkit-progress-value {
+  background: var(--primary);
+  transition: width var(--dur) linear;
+}
+.composer-progress::-moz-progress-bar {
+  background: var(--primary);
 }
 .composer-files li[data-state='failed'] {
   box-shadow: 0 0 0 1.5px var(--danger);

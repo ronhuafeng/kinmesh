@@ -7,7 +7,7 @@ import {
 } from '../src/domain/attachments.js';
 
 export { fileSize };
-import { HttpError, api } from './api.js';
+import { HttpError } from './api.js';
 import { FileIcon } from './icons.js';
 
 export const inline = (type: string) =>
@@ -18,12 +18,15 @@ export interface Pending {
   file: File;
   /** Whether it looks like an image, to hold an image's square for it. */
   image: boolean;
-  state: 'uploading' | 'ready' | 'failed';
+  /** Queued: waits its turn, files go up one at a time. */
+  state: 'queued' | 'uploading' | 'ready' | 'failed';
+  /** How much of the file the server has, 0 to 1, while it uploads. */
+  progress: number;
   /** Why it can't be attached, in the person's words. */
   problem: string | null;
   attachment: Attachment | null;
 }
-const TOO_LARGE = '超过 25 MB';
+const TOO_LARGE = '超过 200 MB';
 /** Files dropped, pasted or chosen, as many as a message may still carry. */
 export function pendingOf(files: Iterable<File>, already: number): Pending[] {
   return [...files]
@@ -32,31 +35,79 @@ export function pendingOf(files: Iterable<File>, already: number): Pending[] {
       key: crypto.randomUUID(),
       file,
       image: file.type.startsWith('image/'),
-      state: file.size > ATTACHMENT_MOST_BYTES ? 'failed' : 'uploading',
+      state: file.size > ATTACHMENT_MOST_BYTES ? 'failed' : 'queued',
+      progress: 0,
       problem: file.size > ATTACHMENT_MOST_BYTES ? TOO_LARGE : null,
       attachment: null,
     }));
 }
-/** Uploads one file to the channel; its key makes a retry the same upload. */
-export async function upload(channelPath: string, pending: Pending) {
+/** An upload that sends nothing for this long has stalled. */
+const STALL_MS = 60_000;
+/**
+ * Uploads one file to the channel, reporting how much of it has gone (0 to 1,
+ * whole percents); its key makes a retry the same upload. `fetch` can't tell
+ * how far a request body has gone, so this is the one request that isn't.
+ */
+export function upload(
+  channelPath: string,
+  pending: Pending,
+  onProgress: (fraction: number) => void,
+  signal: AbortSignal,
+): Promise<Attachment> {
   const query = new URLSearchParams({
     operationKey: pending.key,
     name: pending.file.name || 'file',
   });
-  try {
-    return Attachment.parse(
-      await api(`${channelPath}/attachments?${query.toString()}`, {
-        method: 'POST',
-        headers: { 'content-type': 'application/octet-stream' },
-        body: pending.file,
-        signal: AbortSignal.timeout(120_000),
-      }),
-    );
-  } catch (cause) {
-    throw cause instanceof HttpError && cause.status === 413
-      ? new Error('团队的文件空间已满')
-      : cause;
-  }
+  return new Promise((resolve, reject) => {
+    const failed = new Error('没有传上去');
+    const request = new XMLHttpRequest();
+    let stall = 0;
+    let percent = -1;
+    const arm = () => {
+      window.clearTimeout(stall);
+      stall = window.setTimeout(() => {
+        request.abort();
+      }, STALL_MS);
+    };
+    const end = () => {
+      window.clearTimeout(stall);
+      signal.removeEventListener('abort', cancel);
+    };
+    const cancel = () => {
+      request.abort();
+    };
+    request.open('POST', `${channelPath}/attachments?${query.toString()}`);
+    request.setRequestHeader('content-type', 'application/octet-stream');
+    request.responseType = 'json';
+    request.upload.onprogress = (event) => {
+      arm();
+      if (!event.lengthComputable) return;
+      const now = Math.floor((event.loaded / event.total) * 100);
+      if (now === percent) return;
+      percent = now;
+      onProgress(now / 100);
+    };
+    request.onload = () => {
+      end();
+      if (request.status >= 200 && request.status < 300) {
+        const parsed = Attachment.safeParse(request.response);
+        if (parsed.success) resolve(parsed.data);
+        else reject(failed);
+      } else
+        reject(
+          request.status === 413
+            ? new Error('团队的文件空间已满')
+            : new HttpError(request.status),
+        );
+    };
+    request.onerror = request.onabort = () => {
+      end();
+      reject(failed);
+    };
+    signal.addEventListener('abort', cancel, { once: true });
+    arm();
+    request.send(pending.file);
+  });
 }
 /**
  * A message's files: images as they are, at most 240 px tall, each taking
