@@ -48,10 +48,11 @@ Avatars are served with their detected type, `nosniff` and a sandboxing CSP.
 ## Attachments
 
 - **Who.** Only a person joined to the channel uploads to it; a person who reads it (joined, or looking in a public channel) opens its files, rechecked on every read; agents upload nothing.
-- **Sizes.** A file is at most 200 MB. The team's files together are at most `KINMESH_ATTACHMENTS_ROOM` bytes (10 GiB by default), counting the same bytes once. Both are refused (413) before anything is kept: a file's size from its `Content-Length`, which the upload requires (411 without). The upload route alone takes a body that large; every other route keeps the 16 KiB limit.
+- **Sizes.** A file is at most 200 MB. The team's files together are at most `KINMESH_ATTACHMENTS_ROOM` bytes (10 GiB by default), counting the same bytes once. Both are refused (413) before an upload is allowed, and the room again as the file is registered.
+- **Uploads.** The browser puts a file's bytes in the [file store](operations.md#the-file-store) itself, never through the hub. The hub gives a joined person a URL for one upload: signed for 15 minutes, for exactly the size and SHA-256 they declared, under `incoming/`; the store refuses any other bytes, any other length and any request without that checksum. The store's key never leaves the hub, the worker and Team MCP, and its bucket is never public. A file is registered only from what the store holds: its size from the store, its type from its first bytes there.
 - **Type.** The type is decided from the content's signature, never from the name or the request.
-- **Serving.** PNG, JPEG, GIF and WebP show inline; everything else, SVG and HTML included, downloads (`Content-Disposition: attachment`). Every file is served with its detected type, `nosniff`, and `Content-Security-Policy: default-src 'none'; sandbox`, so one opened on its own runs nothing and reaches nothing.
-- **Storage.** The bytes are kept in the state directory's `attachments/`, named by their SHA-256 and written whole (a temporary file, then renamed), mode 0600; they go once nothing refers to them.
+- **Serving.** The hub serves every file, streamed from the store, the whole or one `Range`. PNG, JPEG, GIF and WebP show inline; everything else, SVG and HTML included, downloads (`Content-Disposition: attachment`). Every file is served with its detected type, `nosniff`, and `Content-Security-Policy: default-src 'none'; sandbox`, so one opened on its own runs nothing and reaches nothing.
+- **Storage.** The bytes are kept in the store's bucket under their SHA-256 (`files/`), once; they go once nothing refers to them. Uploads no one registered go after a day (`incoming/`).
 
 ## Notifications
 

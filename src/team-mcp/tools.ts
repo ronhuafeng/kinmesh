@@ -24,7 +24,7 @@ import {
 } from '../domain/tasks.js';
 import { resolvePrincipal } from '../server/principals.js';
 import type { Store } from '../persistence/store.js';
-import type { AttachmentBytes } from '../persistence/attachment-bytes.js';
+import type { AttachmentStore } from '../persistence/attachment-store.js';
 import { Attachment, AttachmentId } from '../domain/attachments.js';
 
 /** The most `team_attachment_read` returns of a file. */
@@ -98,7 +98,7 @@ export async function agentPrincipal(
 export function teamServer(
   store: Store,
   authorization: string,
-  bytes: AttachmentBytes,
+  files: AttachmentStore,
 ) {
   const server = new McpServer({ name: 'kinmesh-team', version: '0.1.0' });
   const channel = z.strictObject({ channelId: ChannelId });
@@ -224,7 +224,7 @@ export function teamServer(
       );
       if (attachment.size > ATTACHMENT_READ_MOST)
         throw new DomainError('too-large');
-      const content = await bytes.get(sha256);
+      const content = Buffer.concat(await (await files.read(sha256)).toArray());
       const text = asText(content);
       return {
         attachment,

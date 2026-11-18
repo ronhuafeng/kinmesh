@@ -19,7 +19,7 @@ import { dropDisposable } from '../src/persistence/disposable.js';
 import { StreamableHTTPError } from '@modelcontextprotocol/sdk/client/streamableHttp.js';
 import { z } from 'zod';
 import { taskFixture, commandInput, taskInput } from './task-helpers.js';
-import { key, postInput } from './communication-helpers.js';
+import { key, postInput, uploadFile } from './communication-helpers.js';
 import {
   freePort,
   startTeam,
@@ -45,6 +45,7 @@ import { TeamId } from '../src/domain/contracts.js';
 import { Attachment } from '../src/domain/attachments.js';
 import { outcome } from '../src/team-mcp/tools.js';
 import { forkWorker, race } from './process-helpers.js';
+import { storeEnv } from './database.js';
 
 async function fixture() {
   const f = await taskFixture();
@@ -55,7 +56,7 @@ async function fixture() {
   });
   const port = await freePort();
   const endpoint = `http://127.0.0.1:${String(port)}/mcp`;
-  let process = await startTeam(f.dbPath, port, f.directory);
+  let process = await startTeam(f.dbPath, port, f.filesEnv);
   const connections: Awaited<ReturnType<typeof connectTeam>>[] = [];
   return {
     ...f,
@@ -69,7 +70,7 @@ async function fixture() {
     },
     async restart() {
       await stop(process);
-      process = await startTeam(f.dbPath, port, f.directory);
+      process = await startTeam(f.dbPath, port, f.filesEnv);
     },
     async cleanup() {
       for (const c of connections) await c.client.close();
@@ -579,6 +580,7 @@ await test('Team MCP transactions roll back on outbox failure and retries recove
 await test('Team configuration rejects non-TLS external origins and malformed configuration', () => {
   const database = {
     KINMESH_DATABASE_URL: 'postgres://kinmesh@127.0.0.1:5432/kinmesh',
+    ...storeEnv(),
   };
   assert.equal(teamConfig(database).port, 3001);
   assert.throws(() => teamConfig({}));
@@ -929,13 +931,13 @@ await test('an agent without a space reads a joined channel’s attached file th
   const f = await fixture();
   try {
     const upload = async (body: string, name: string) => {
-      const uploaded = await f.app.inject({
-        method: 'POST',
-        url: `${f.channelPath}/attachments?operationKey=${key()}&name=${name}`,
-        cookies: f.cookies,
-        headers: { 'content-type': 'text/plain' },
-        payload: body,
-      });
+      const uploaded = await uploadFile(
+        f.app,
+        f.channelPath,
+        f.cookies,
+        Buffer.from(body),
+        name,
+      );
       assert.equal(uploaded.statusCode, 201);
       return Attachment.parse(uploaded.json<unknown>());
     };

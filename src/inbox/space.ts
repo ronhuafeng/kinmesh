@@ -1,4 +1,8 @@
 import { readFileSync } from 'node:fs';
+import { request as httpRequest } from 'node:http';
+import { request as httpsRequest } from 'node:https';
+import type { Readable } from 'node:stream';
+import { pipeline } from 'node:stream/promises';
 import { z } from 'zod';
 import { ExecutionFailure } from '../domain/execution.js';
 import type { SpaceProvisioner } from './config.js';
@@ -58,42 +62,77 @@ export function spaceProvisioner(space: SpaceProvisioner): Provisioner {
 export type FilePlacer = (
   directory: string,
   file: { id: string; name: string },
-  bytes: Buffer,
-  sha256: string,
+  bytes: { body: Readable; size: number; sha256: string },
   signal: AbortSignal,
 ) => Promise<string>;
 const Placed = z.object({ path: z.string().min(1).max(4096) });
-/** The provisioner's `PUT /projects/:directory/attachments/:id`. */
+/**
+ * A streamed PUT (`fetch` takes no Node stream): its status and the start of
+ * what it answered.
+ */
+function put(
+  url: URL,
+  headers: Record<string, string>,
+  body: Readable,
+  signal: AbortSignal,
+) {
+  return new Promise<{ status: number; body: string }>((resolve, reject) => {
+    const sent = (url.protocol === 'https:' ? httpsRequest : httpRequest)(
+      url,
+      { method: 'PUT', headers, signal },
+      (response) => {
+        const chunks: Buffer[] = [];
+        let size = 0;
+        response.on('data', (chunk: Buffer) => {
+          size += chunk.length;
+          if (size <= 65536) chunks.push(chunk);
+        });
+        response.on('end', () => {
+          resolve({
+            status: response.statusCode ?? 0,
+            body: Buffer.concat(chunks).toString('utf8'),
+          });
+        });
+        response.on('error', reject);
+      },
+    );
+    sent.on('error', reject);
+    pipeline(body, sent).catch(reject);
+  });
+}
+/** The provisioner's `PUT /projects/:directory/attachments/:id`, streamed. */
 export function spacePlacer(space: SpaceProvisioner): FilePlacer {
-  return async (directory, file, bytes, sha256, signal) => {
+  return async (directory, file, { body, size, sha256 }, signal) => {
     let token = '';
     try {
       token = readFileSync(space.tokenFile, 'utf8').trim();
     } catch {
       // Not there yet: the deployment writes it.
     }
-    if (token === '') throw new ExecutionFailure('unavailable');
-    let response: Response;
+    if (token === '') {
+      body.destroy();
+      throw new ExecutionFailure('unavailable');
+    }
+    let response: { status: number; body: string };
     try {
-      response = await fetch(
+      response = await put(
         new URL(
           `/projects/${encodeURIComponent(directory)}/attachments/${encodeURIComponent(file.id)}`,
           space.endpoint,
         ),
         {
-          method: 'PUT',
-          headers: {
-            authorization: `Bearer ${token}`,
-            'content-type': 'application/octet-stream',
-            'x-kinmesh-name': encodeURIComponent(file.name),
-            'x-kinmesh-sha256': sha256,
-          },
-          body: new Uint8Array(bytes),
-          redirect: 'error',
-          signal: AbortSignal.any([signal, AbortSignal.timeout(60_000)]),
+          authorization: `Bearer ${token}`,
+          'content-type': 'application/octet-stream',
+          'content-length': String(size),
+          'x-kinmesh-name': encodeURIComponent(file.name),
+          'x-kinmesh-sha256': sha256,
         },
+        body,
+        // A minute, and a second more for each megabyte.
+        AbortSignal.any([signal, AbortSignal.timeout(60_000 + size / 1000)]),
       );
     } catch {
+      body.destroy();
       throw new ExecutionFailure(signal.aborted ? 'cancelled' : 'unavailable');
     }
     if (response.status === 401 || response.status === 403)
@@ -102,8 +141,15 @@ export function spacePlacer(space: SpaceProvisioner): FilePlacer {
     // placing again won't change it.
     if (response.status >= 400 && response.status < 500)
       throw new ExecutionFailure('incompatible');
-    if (!response.ok) throw new ExecutionFailure('unavailable');
-    const placed = Placed.safeParse(await response.json().catch(() => null));
+    if (response.status < 200 || response.status >= 300)
+      throw new ExecutionFailure('unavailable');
+    let answer: unknown = null;
+    try {
+      answer = JSON.parse(response.body);
+    } catch {
+      // Not JSON: not an answer.
+    }
+    const placed = Placed.safeParse(answer);
     if (!placed.success) throw new ExecutionFailure('incompatible');
     return placed.data.path;
   };

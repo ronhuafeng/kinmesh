@@ -24,7 +24,7 @@ import { Message } from '../src/domain/communication.js';
 import { WORKER_SHUTDOWN_MS } from '../src/inbox/lifecycle.js';
 import { RestartBudget } from '../src/server/inbox-supervisor.js';
 import { deadline, freePort } from './process-helpers.js';
-import { testDatabase } from './database.js';
+import { testDatabase, storeEnv } from './database.js';
 import { rawDatabase } from './raw.js';
 import postgres from 'postgres';
 import { feishuEnv } from './helpers.js';
@@ -160,6 +160,7 @@ async function fixture(database?: string, shared?: string) {
   const feishu = await startFeishuStandIn();
   const app = {
     ...feishuEnv,
+    ...storeEnv(),
     FEISHU_APP_SECRET: randomBytes(16).toString('hex'),
     KINMESH_FEISHU_URL: feishu.url,
   };

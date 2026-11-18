@@ -1,4 +1,5 @@
 import { test } from 'node:test';
+import { storeEnv } from './database.js';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
@@ -177,6 +178,7 @@ await test('a hub that cannot start says what failed', () => {
         KINMESH_STATE: directory,
         KINMESH_SESSION_KEY: 'b'.repeat(64),
         ...feishuEnv,
+        ...storeEnv(),
       },
     },
   );

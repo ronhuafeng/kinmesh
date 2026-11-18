@@ -8,26 +8,37 @@ Running Kinmesh, its Inbox worker and Team MCP; the live gates against real T3; 
 
 The hub writes JSON lines to standard output: one record per failure, with its request ID, route, error name, code, constraint and stack (what is never recorded: [security](security.md)). A process that cannot start or run, the Inbox worker and Team MCP included, prints one `…_failed` line with the same fields to standard error before it exits with 1.
 
-| Variable                                             | Meaning                                                                                                                                                                                                                                                                                           |
-| ---------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `KINMESH_SESSION_KEY`                                | Required; 64 lowercase hex characters; `npm run setup` writes it to `.env`                                                                                                                                                                                                                        |
-| `FEISHU_APP_ID`, `FEISHU_APP_SECRET`                 | Required; the Feishu app people sign in through; its redirect URL is `KINMESH_ORIGIN/login/callback`. For [notifications in Feishu](collaboration.md#notifications) the app also needs its bot and the permission to send messages as it (`im:message:send_as_bot`); without them only that fails |
-| `KINMESH_EMAIL_DOMAIN`                               | Required; only mailboxes in this domain may sign in                                                                                                                                                                                                                                               |
-| `KINMESH_DATABASE_URL`                               | Required; the PostgreSQL database, as a `postgres://` URL; `npm run setup` writes one for compose's database                                                                                                                                                                                      |
-| `KINMESH_STATE`                                      | The hub's own files, such as the [managed directory](security.md#hub-held-worker-secrets) (default `.store`)                                                                                                                                                                                      |
-| `KINMESH_ATTACHMENTS_ROOM`                           | The most the team's attached files may hold together, in bytes (default 10 GiB); [attachments](security.md#attachments)                                                                                                                                                                           |
-| `KINMESH_ORIGIN`, `KINMESH_PORT`                     | Public origin (an HTTPS origin, or exactly `http://127.0.0.1:<port>`) and listener port                                                                                                                                                                                                           |
-| `KINMESH_HOST`                                       | Listener address (default `127.0.0.1`); `0.0.0.0` only inside a container network behind the reverse proxy                                                                                                                                                                                        |
-| `KINMESH_INBOX_CONFIG`                               | Optional operator worker configuration (below)                                                                                                                                                                                                                                                    |
-| `KINMESH_RATE_LIMIT`                                 | Requests per minute per session or address (default 300); see [security](security.md)                                                                                                                                                                                                             |
-| `KINMESH_TRUSTED_PROXIES`                            | The reverse proxies, comma-separated addresses or CIDR ranges; required with an HTTPS origin                                                                                                                                                                                                      |
-| `KINMESH_T3_ENDPOINT`, `KINMESH_T3_CREDENTIAL_FILE`  | Optional, together; a T3 the deployment connects, and the file holding the session it issued for the hub; a person may still sign in to it ([T3](t3.md#t3-sign-in))                                                                                                                               |
-| `KINMESH_SPACE_ENDPOINT`, `KINMESH_SPACE_TOKEN_FILE` | Optional, together; the [space](#the-space)'s provisioner, and the file holding its token                                                                                                                                                                                                         |
-| `KINMESH_METRICS_TOKEN`                              | Optional; lets a scraper elsewhere read `/metrics` (at least 32 characters)                                                                                                                                                                                                                       |
+| Variable                                                                          | Meaning                                                                                                                                                                                                                                                                                           |
+| --------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `KINMESH_SESSION_KEY`                                                             | Required; 64 lowercase hex characters; `npm run setup` writes it to `.env`                                                                                                                                                                                                                        |
+| `FEISHU_APP_ID`, `FEISHU_APP_SECRET`                                              | Required; the Feishu app people sign in through; its redirect URL is `KINMESH_ORIGIN/login/callback`. For [notifications in Feishu](collaboration.md#notifications) the app also needs its bot and the permission to send messages as it (`im:message:send_as_bot`); without them only that fails |
+| `KINMESH_EMAIL_DOMAIN`                                                            | Required; only mailboxes in this domain may sign in                                                                                                                                                                                                                                               |
+| `KINMESH_DATABASE_URL`                                                            | Required; the PostgreSQL database, as a `postgres://` URL; `npm run setup` writes one for compose's database                                                                                                                                                                                      |
+| `KINMESH_STATE`                                                                   | The hub's own files, such as the [managed directory](security.md#hub-held-worker-secrets) (default `.store`)                                                                                                                                                                                      |
+| `KINMESH_S3_ENDPOINT`, `KINMESH_S3_ACCESS_KEY_ID`, `KINMESH_S3_SECRET_ACCESS_KEY` | Required; the [file store](#the-file-store), and the key the hub, the Inbox worker and Team MCP reach it with                                                                                                                                                                                     |
+| `KINMESH_S3_PUBLIC_ENDPOINT`                                                      | Where browsers reach the store to upload (default `KINMESH_S3_ENDPOINT`)                                                                                                                                                                                                                          |
+| `KINMESH_S3_BUCKET`, `KINMESH_S3_REGION`                                          | The bucket (default `kinmesh-files`) and the region the store signs for (default `us-east-1`)                                                                                                                                                                                                     |
+| `KINMESH_ATTACHMENTS_ROOM`                                                        | The most the team's attached files may hold together, in bytes (default 10 GiB); [attachments](security.md#attachments)                                                                                                                                                                           |
+| `KINMESH_ORIGIN`, `KINMESH_PORT`                                                  | Public origin (an HTTPS origin, or exactly `http://127.0.0.1:<port>`) and listener port                                                                                                                                                                                                           |
+| `KINMESH_HOST`                                                                    | Listener address (default `127.0.0.1`); `0.0.0.0` only inside a container network behind the reverse proxy                                                                                                                                                                                        |
+| `KINMESH_INBOX_CONFIG`                                                            | Optional operator worker configuration (below)                                                                                                                                                                                                                                                    |
+| `KINMESH_RATE_LIMIT`                                                              | Requests per minute per session or address (default 300); see [security](security.md)                                                                                                                                                                                                             |
+| `KINMESH_TRUSTED_PROXIES`                                                         | The reverse proxies, comma-separated addresses or CIDR ranges; required with an HTTPS origin                                                                                                                                                                                                      |
+| `KINMESH_T3_ENDPOINT`, `KINMESH_T3_CREDENTIAL_FILE`                               | Optional, together; a T3 the deployment connects, and the file holding the session it issued for the hub; a person may still sign in to it ([T3](t3.md#t3-sign-in))                                                                                                                               |
+| `KINMESH_SPACE_ENDPOINT`, `KINMESH_SPACE_TOKEN_FILE`                              | Optional, together; the [space](#the-space)'s provisioner, and the file holding its token                                                                                                                                                                                                         |
+| `KINMESH_METRICS_TOKEN`                                                           | Optional; lets a scraper elsewhere read `/metrics` (at least 32 characters)                                                                                                                                                                                                                       |
 
 `npm start` reads `.env` if present; managed deployments may inject the same variables instead. Missing or malformed values fail startup.
 
-The database is PostgreSQL 17. For development, `docker compose up -d postgres` starts the one `compose.yaml` describes, on loopback port 5433 (`KINMESH_POSTGRES_PORT`) with the password `KINMESH_POSTGRES_PASSWORD` from `.env`. Any other PostgreSQL works too: give the hub a database of its own and a role that owns it. Tests start their own PostgreSQL in Docker, so running them needs Docker.
+The database is PostgreSQL 17. For development, `docker compose up -d postgres silo` starts it and the [file store](#the-file-store) as `compose.yaml` describes: the database on loopback port 5433 (`KINMESH_POSTGRES_PORT`) with the password `KINMESH_POSTGRES_PASSWORD` from `.env`, the store on loopback port 9000 (`KINMESH_S3_PORT`). Any other PostgreSQL works too: give the hub a database of its own and a role that owns it. Tests start their own PostgreSQL and store in Docker, so running them needs Docker.
+
+### The file store
+
+The bytes of the files people attach are in an S3-compatible bucket, never in the hub: [silo](https://silo.pigsty.io) (`pgsty/silo`, a maintained MinIO), or any store that checks a PUT's signed `x-amz-checksum-sha256` and supports bucket lifecycle rules. The hub creates the bucket if it is missing and sets its one rule: uploads no one kept (`incoming/`) go after a day. Kept bytes are `files/<SHA-256>`, each once.
+
+A browser uploads to the store itself, so `KINMESH_S3_PUBLIC_ENDPOINT` must be reachable from people's browsers, and the store must allow the workspace's origin (silo allows any origin by default); the hub adds that origin to its `connect-src`. Reached under the hub's own origin, it needs neither: route `/<bucket>/` there to the store, unchanged and with the original `Host` (the upload's signature covers both), taking bodies up to 200 MB (below). Downloads go through the hub, which streams them and answers a `Range` with that part. The hub, the Inbox worker and Team MCP reach the store at `KINMESH_S3_ENDPOINT`; none of them ever holds a whole file.
+
+As it starts, the hub moves bytes an earlier hub kept in its state directory (`attachments/`) to the store, then removes that directory.
 
 ### In a container
 
@@ -53,9 +64,17 @@ location / {
   proxy_buffering off;
   proxy_read_timeout 60s;
 }
+# The file store, under the hub's origin: uploads straight from browsers.
+location /kinmesh-files/ {
+  proxy_pass http://127.0.0.1:9000;
+  proxy_set_header Host $host;
+  client_max_body_size 200m;
+  proxy_request_buffering off;
+  proxy_read_timeout 300s;
+}
 ```
 
-with `KINMESH_ORIGIN=https://kinmesh.example.com` and `KINMESH_TRUSTED_PROXIES=127.0.0.1`.
+with `KINMESH_ORIGIN=https://kinmesh.example.com`, `KINMESH_S3_PUBLIC_ENDPOINT=https://kinmesh.example.com` and `KINMESH_TRUSTED_PROXIES=127.0.0.1`.
 
 Behind two proxies, name both. For example, an edge nginx that forwards over a tailnet to a cluster's ingress controller needs `KINMESH_TRUSTED_PROXIES=<edge tailnet address>/32,<ingress pod range>`, and the ingress trusts forwarded headers only from the edge.
 
@@ -87,7 +106,7 @@ No label carries anything a person wrote, a mailbox, a name or an ID.
 
 ### Backup and restore
 
-Back up before every upgrade. A backup is the database and the state directory together; both hold team content and credentials, and the state directory's `attachments/` holds the bytes of the files people attached, which the database only describes. `pg_dump` takes a consistent copy of a running database:
+Back up before every upgrade. A backup is the database, the state directory and the store's bucket together: the first two hold team content and credentials, and the bucket holds the bytes of the files people attached, which the database only describes. `pg_dump` takes a consistent copy of a running database:
 
 ```sh
 docker compose exec -T postgres pg_dump -U kinmesh -Fc kinmesh > kinmesh.dump
@@ -99,7 +118,7 @@ To restore, stop the hub and every worker and Team MCP, then:
 docker compose exec -T postgres pg_restore -U kinmesh -d kinmesh --clean --if-exists < kinmesh.dump
 ```
 
-and put back the state directory from the same time. Never run a restored older backup against live native work without reconciling it.
+and put back the state directory and the bucket (for example with `mc mirror`) from the same time. Never run a restored older backup against live native work without reconciling it.
 
 ## Inbox worker
 
@@ -219,7 +238,7 @@ X-Kinmesh-Sha256: <the bytes' SHA-256, hex>
 <the file's bytes, at most 200 MB>
 ```
 
-It writes `<folder>/attachments/<first 8 of the ID>-<name>` whole (a temporary file, then renamed) and answers `200 {"path": "/space/design-3f2a91c0/attachments/3f2a91c0-screen.png"}`. The name keeps only letters, digits, `.`, `_`, `-` and spaces of its last segment, no leading dot, at most 100 characters, so nothing leaves `attachments/`. The same ID with the same bytes again changes nothing; with other bytes, `409`. Bytes that don't match the hash, or an ID that isn't one, are `400`; a folder it didn't make, `404`. `DELETE` on the same path removes the file, `200` also when it is already gone. The folder's `.git/info/exclude` lists `attachments/`, so the files stay out of agents' diffs and commits unless one copies them in. The worker reads the bytes from the hub's state directory, so it runs where that directory is (as the hub's own worker does).
+It writes `<folder>/attachments/<first 8 of the ID>-<name>` whole (a temporary file, then renamed) and answers `200 {"path": "/space/design-3f2a91c0/attachments/3f2a91c0-screen.png"}`. The name keeps only letters, digits, `.`, `_`, `-` and spaces of its last segment, no leading dot, at most 100 characters, so nothing leaves `attachments/`. The same ID with the same bytes again changes nothing; with other bytes, `409`. Bytes that don't match the hash, or an ID that isn't one, are `400`; a folder it didn't make, `404`. `DELETE` on the same path removes the file, `200` also when it is already gone. The folder's `.git/info/exclude` lists `attachments/`, so the files stay out of agents' diffs and commits unless one copies them in. The worker streams the bytes from the [file store](#the-file-store) to the provisioner, which writes them as they come; neither holds a whole file.
 
 `POST {KINMESH_SPACE_ENDPOINT}/pair` with `{"label": "Kinmesh"}` runs `t3 pair --ttl 5m --label <label>` and answers `200 {"token": "…", "expiresAt": "…"}`: a pairing code that lets a browser into T3 for five minutes, which the hub hands to a person in 连接 › T3 ([T3](t3.md#t3-adapter)).
 
@@ -359,7 +378,7 @@ Before any model runs, the aggregate rejects linked or non-private files, aliase
 | `Authenticated T3 acceptance` | Manual dispatch on `main`             | `release:check` on the owner's `kinmesh-t3-acceptance` self-hosted runner                                                                |
 | `Publish image`               | Pushes on `main`                      | Both images for both architectures, then the [deployment](#deploying-a-commit)                                                           |
 
-Tests run against PostgreSQL in a Docker container that each run starts once: its migrated template is copied into a new database for every test, dropped afterwards. `main` requires `foundation` and `chromium`. Routine CI has no model credentials and never starts a provider run; native DTO cases use labelled fixtures. Browser tests use real Chromium with generated secrets, no Inbox or T3 credentials, and no traces or video. A green CI run is not live evidence.
+Tests run against PostgreSQL and the file store in Docker containers that each run starts once; every test's hub has a bucket of its own, and the database's migrated template is copied into a new database for every test, dropped afterwards. `main` requires `foundation` and `chromium`. Routine CI has no model credentials and never starts a provider run; native DTO cases use labelled fixtures. Browser tests use real Chromium with generated secrets, no Inbox or T3 credentials, and no traces or video. A green CI run is not live evidence.
 
 Both manual workflows check, before checkout, that the dispatcher and any rerun actor is the repository owner on `main` (and, for `Live collaboration`, a GitHub-hosted runner); the scripts check again. Neither runs on pull requests.
 

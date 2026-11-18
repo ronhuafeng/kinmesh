@@ -30,7 +30,7 @@ import {
 } from '../browser/ui.js';
 import { feishuEnv } from '../helpers.js';
 import { startFeishuStandIn } from '../feishu.js';
-import { testDatabase } from '../database.js';
+import { testDatabase, storeEnv } from '../database.js';
 
 export class Hub {
   /** The hub's own disposable database, made when it first starts. */
@@ -100,11 +100,14 @@ export class Hub {
   }
   /** People sign in through a stand-in for Feishu; the gate is about agents. */
   feishu: Awaited<ReturnType<typeof startFeishuStandIn>> | undefined;
+  /** The store the hub and Team MCP share. */
+  files: ReturnType<typeof storeEnv> | undefined;
   async start() {
     if (!this.origin) this.origin = `http://127.0.0.1:${String(await port())}`;
     this.feishu ??= await startFeishuStandIn();
     this.owned ??= await testDatabase();
     this.database = this.owned.url;
+    this.files ??= storeEnv();
     const env: NodeJS.ProcessEnv = {
       PATH: process.env.PATH,
       HOME: this.root,
@@ -113,6 +116,7 @@ export class Hub {
       KINMESH_STATE: this.root,
       KINMESH_SESSION_KEY: this.session,
       ...feishuEnv,
+      ...this.files,
       KINMESH_FEISHU_URL: this.feishu.url,
       KINMESH_ORIGIN: this.origin,
       KINMESH_PORT: new URL(this.origin).port,
@@ -225,7 +229,7 @@ export class Hub {
         PATH: process.env.PATH,
         HOME: this.root,
         KINMESH_DATABASE_URL: this.database,
-        KINMESH_STATE: this.root,
+        ...this.files,
         KINMESH_TEAM_MCP_PORT: new URL(this.teamOrigin).port,
       },
       join(this.root, 'team.log'),

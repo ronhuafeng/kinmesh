@@ -7,7 +7,9 @@ import {
 } from '../src/domain/attachments.js';
 
 export { fileSize };
-import { HttpError } from './api.js';
+import { createSHA256 } from 'hash-wasm';
+import { z } from 'zod';
+import { HttpError, api, request } from './api.js';
 import { FileIcon } from './icons.js';
 
 export const inline = (type: string) =>
@@ -43,23 +45,77 @@ export function pendingOf(files: Iterable<File>, already: number): Pending[] {
 }
 /** An upload that sends nothing for this long has stalled. */
 const STALL_MS = 60_000;
+const FAILED = '没有传上去';
+/**
+ * The file's SHA-256, read a part at a time so no copy of it is held: hex
+ * for the hub, base64 for the store.
+ */
+async function digest(file: File) {
+  const hash = await createSHA256();
+  const reader = file.stream().getReader();
+  for (let part = await reader.read(); !part.done; part = await reader.read())
+    hash.update(part.value);
+  const bytes = hash.digest('binary');
+  return {
+    hex: Array.from(bytes, (b) => b.toString(16).padStart(2, '0')).join(''),
+    base64: btoa(String.fromCharCode(...bytes)),
+  };
+}
 /**
  * Uploads one file to the channel, reporting how much of it has gone (0 to 1,
- * whole percents); its key makes a retry the same upload. `fetch` can't tell
- * how far a request body has gone, so this is the one request that isn't.
+ * whole percents); its key makes a retry the same upload. The browser puts
+ * the bytes in the store itself, where the hub said, then registers them.
  */
-export function upload(
+export async function upload(
   channelPath: string,
   pending: Pending,
   onProgress: (fraction: number) => void,
   signal: AbortSignal,
 ): Promise<Attachment> {
-  const query = new URLSearchParams({
-    operationKey: pending.key,
-    name: pending.file.name || 'file',
-  });
-  return new Promise((resolve, reject) => {
-    const failed = new Error('没有传上去');
+  const sha256 = await digest(pending.file);
+  signal.throwIfAborted();
+  try {
+    const { url } = Upload.parse(
+      await request(`${channelPath}/attachments/uploads`, {
+        sha256: sha256.hex,
+        size: pending.file.size,
+      }),
+    );
+    if (url !== null)
+      await put(url, pending.file, sha256.base64, onProgress, signal);
+    return Attachment.parse(
+      await api(`${channelPath}/attachments`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          operationKey: pending.key,
+          name: pending.file.name || 'file',
+          sha256: sha256.hex,
+        }),
+        // The store keeps a large file under its hash before this answers.
+        signal: AbortSignal.any([signal, AbortSignal.timeout(60_000)]),
+      }),
+    );
+  } catch (cause) {
+    throw cause instanceof HttpError && cause.status === 413
+      ? new Error('团队的文件空间已满')
+      : cause;
+  }
+}
+const Upload = z.object({ url: z.url().nullable() });
+/**
+ * PUTs the file to the store. `fetch` can't tell how far a request body has
+ * gone, so this is the one request that isn't.
+ */
+function put(
+  url: string,
+  file: File,
+  checksum: string,
+  onProgress: (fraction: number) => void,
+  signal: AbortSignal,
+) {
+  return new Promise<void>((resolve, reject) => {
+    const failed = new Error(FAILED);
     const request = new XMLHttpRequest();
     let stall = 0;
     let percent = -1;
@@ -69,16 +125,16 @@ export function upload(
         request.abort();
       }, STALL_MS);
     };
+    const cancel = () => {
+      request.abort();
+    };
     const end = () => {
       window.clearTimeout(stall);
       signal.removeEventListener('abort', cancel);
     };
-    const cancel = () => {
-      request.abort();
-    };
-    request.open('POST', `${channelPath}/attachments?${query.toString()}`);
-    request.setRequestHeader('content-type', 'application/octet-stream');
-    request.responseType = 'json';
+    request.open('PUT', url);
+    // The store checks the bytes against it, and refuses others.
+    request.setRequestHeader('x-amz-checksum-sha256', checksum);
     request.upload.onprogress = (event) => {
       arm();
       if (!event.lengthComputable) return;
@@ -89,16 +145,8 @@ export function upload(
     };
     request.onload = () => {
       end();
-      if (request.status >= 200 && request.status < 300) {
-        const parsed = Attachment.safeParse(request.response);
-        if (parsed.success) resolve(parsed.data);
-        else reject(failed);
-      } else
-        reject(
-          request.status === 413
-            ? new Error('团队的文件空间已满')
-            : new HttpError(request.status),
-        );
+      if (request.status >= 200 && request.status < 300) resolve();
+      else reject(failed);
     };
     request.onerror = request.onabort = () => {
       end();
@@ -106,7 +154,7 @@ export function upload(
     };
     signal.addEventListener('abort', cancel, { once: true });
     arm();
-    request.send(pending.file);
+    request.send(file);
   });
 }
 /**

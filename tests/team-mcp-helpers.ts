@@ -5,10 +5,15 @@ import { CallToolResultSchema } from '@modelcontextprotocol/sdk/types.js';
 import type { z } from 'zod';
 import { outcome } from '../src/team-mcp/tools.js';
 import { stop as stopProcess } from './process-helpers.js';
+import { storeEnv } from './database.js';
 export { freePort } from './process-helpers.js';
 export const stop = (child: ChildProcess) =>
   stopProcess(child, 'SIGTERM', 3000);
-export async function startTeam(path: string, port: number, state?: string) {
+export async function startTeam(
+  path: string,
+  port: number,
+  files: Record<string, string> = storeEnv(),
+) {
   const child = spawn(
     process.execPath,
     ['--import', 'tsx', 'src/team-mcp/main.ts'],
@@ -18,7 +23,7 @@ export async function startTeam(path: string, port: number, state?: string) {
         KINMESH_DATABASE_URL: path,
         KINMESH_TEAM_MCP_PORT: String(port),
         KINMESH_TEAM_MCP_ORIGIN: `http://127.0.0.1:${String(port)}`,
-        ...(state === undefined ? {} : { KINMESH_STATE: state }),
+        ...files,
       },
       stdio: ['ignore', 'pipe', 'pipe'],
     },

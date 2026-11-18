@@ -14,7 +14,7 @@ import { test } from 'node:test';
 import { z } from 'zod';
 import { deadline, freePort, printed, stop } from './process-helpers.js';
 import { feishuEnv } from './helpers.js';
-import { testDatabase } from './database.js';
+import { testDatabase, storeEnv } from './database.js';
 
 /**
  * Proves the hub's start script runs on secrets from the process environment
@@ -47,6 +47,7 @@ await test(
         ...process.env,
         KINMESH_SESSION_KEY: randomBytes(32).toString('hex'),
         ...feishuEnv,
+        ...storeEnv(),
         KINMESH_DATABASE_URL: database.url,
         KINMESH_STATE: directory,
         KINMESH_ORIGIN: origin,

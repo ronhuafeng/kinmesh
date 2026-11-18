@@ -353,6 +353,43 @@ export function communicationRepository(
     }
     return found;
   }
+  /**
+   * The team's room counts bytes kept, each once: the same bytes again take
+   * none. Refused when these would pass it.
+   */
+  async function fits(
+    teamId: TeamId,
+    file: { sha256: string; size: number },
+    room: number,
+  ) {
+    const [known] = await q()
+      .select({ id: s.attachments.id })
+      .from(s.attachments)
+      .where(
+        and(
+          eq(s.attachments.teamId, teamId),
+          eq(s.attachments.sha256, file.sha256),
+        ),
+      )
+      .limit(1);
+    if (known !== undefined) return;
+    const distinct = q()
+      .selectDistinct({
+        sha256: s.attachments.sha256,
+        size: s.attachments.size,
+      })
+      .from(s.attachments)
+      .where(eq(s.attachments.teamId, teamId))
+      .as('kept');
+    const used = Number(
+      (
+        await q()
+          .select({ total: sum(distinct.size) })
+          .from(distinct)
+      )[0]?.total ?? 0,
+    );
+    if (used + file.size > room) throw new DomainError('too-large');
+  }
   /** Only one transaction at a time keeps or lets go of the same bytes. */
   const holdBytes = (sha256: string) =>
     q().execute(
@@ -1221,26 +1258,44 @@ export function communicationRepository(
       });
     },
     /**
+     * Whether a person may upload these bytes to a channel they joined:
+     * refused before anything is sent, as `upload` would refuse them.
+     */
+    mayUpload(
+      p: Principal,
+      teamId: TeamId,
+      channelId: ChannelId,
+      file: { sha256: string; size: number },
+      room: number,
+    ) {
+      return atomic(async () => {
+        await access(p, teamId, channelId, true);
+        if (p.kind !== 'human') throw new DomainError('forbidden');
+        await fits(teamId, file, room);
+      });
+    },
+    /**
      * A person's upload to a joined channel: its description, kept once per
-     * operation key (a retry gives the same one). `place` keeps the bytes
-     * while no other transaction may let go of the same ones; `room` is the
-     * team's total, refused when the file would pass it.
+     * operation key (a retry gives the same one). Only once they may,
+     * `bytes.describe` says what the uploaded bytes are and `bytes.keep`
+     * keeps them, while no other transaction may let go of the same ones;
+     * `room` is the team's total, refused when the file would pass it.
      */
     upload(
       p: Principal,
       teamId: TeamId,
       channelId: ChannelId,
-      file: {
-        operationKey: string;
-        name: string;
-        type: string;
-        size: number;
-        sha256: string;
-        width: number | null;
-        height: number | null;
-      },
+      file: { operationKey: string; name: string; sha256: string },
       room: number,
-      place: () => Promise<void>,
+      bytes: {
+        describe: () => Promise<{
+          type: string;
+          size: number;
+          width: number | null;
+          height: number | null;
+        }>;
+        keep: () => Promise<void>;
+      },
     ) {
       return atomic(async () => {
         await access(p, teamId, channelId, true);
@@ -1265,42 +1320,14 @@ export function communicationRepository(
           if (kept.sha256 !== file.sha256) throw new DomainError('conflict');
           return attachmentOf(kept);
         }
-        // The team's room counts bytes kept, each once: the same bytes
-        // again take none.
-        const [known] = await q()
-          .select({ id: s.attachments.id })
-          .from(s.attachments)
-          .where(
-            and(
-              eq(s.attachments.teamId, teamId),
-              eq(s.attachments.sha256, file.sha256),
-            ),
-          )
-          .limit(1);
-        if (known === undefined) {
-          const distinct = q()
-            .selectDistinct({
-              sha256: s.attachments.sha256,
-              size: s.attachments.size,
-            })
-            .from(s.attachments)
-            .where(eq(s.attachments.teamId, teamId))
-            .as('kept');
-          const used = Number(
-            (
-              await q()
-                .select({ total: sum(distinct.size) })
-                .from(distinct)
-            )[0]?.total ?? 0,
-          );
-          if (used + file.size > room) throw new DomainError('too-large');
-        }
         await holdBytes(file.sha256);
+        const described = { ...file, ...(await bytes.describe()) };
+        await fits(teamId, described, room);
         const id = AttachmentId.parse(randomUUID());
         await q()
           .insert(s.attachments)
           .values({
-            ...file,
+            ...described,
             id,
             teamId,
             channelId,
@@ -1309,7 +1336,7 @@ export function communicationRepository(
             operationKey,
             createdAt: Date.now(),
           });
-        await place();
+        await bytes.keep();
         const row = (
           await q()
             .select()

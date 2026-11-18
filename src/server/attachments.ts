@@ -1,4 +1,4 @@
-import { createHash } from 'node:crypto';
+import type { Readable } from 'node:stream';
 import type { FastifyInstance, FastifyReply } from 'fastify';
 import { z } from 'zod';
 import {
@@ -13,77 +13,71 @@ import type { FileRemover } from '../inbox/space.js';
 import { OperationKey } from '../domain/communication.js';
 import { DomainError } from '../domain/errors.js';
 import type { Store } from '../persistence/store.js';
-import type { AttachmentBytes } from '../persistence/attachment-bytes.js';
+import type { AttachmentStore } from '../persistence/attachment-store.js';
 import { principal } from './principals.js';
 
 const ChannelPath = z.object({ teamId: TeamId, channelId: ChannelId });
 const FilePath = ChannelPath.extend({ attachmentId: AttachmentId });
-const UploadQuery = z.strictObject({
+const Sha256 = z.string().regex(/^[a-f0-9]{64}$/);
+const Upload = z.strictObject({
+  sha256: Sha256,
+  size: z.number().int().nonnegative(),
+});
+const Register = z.strictObject({
   operationKey: OperationKey,
   name: z.string().min(1).max(1000),
+  sha256: Sha256,
 });
 /** `filename*` for any name, and a plain fallback for old clients. */
 const disposition = (kind: 'inline' | 'attachment', name: string) =>
   `${kind}; filename="${name.replace(/[^\x20-\x7e]|["\\]/g, '_')}"; filename*=UTF-8''${encodeURIComponent(name)}`;
 /**
- * A person uploads a file to a joined channel, then posts a message with
- * it. Its bytes travel as the request body, its name in the query.
+ * A person uploads a file to a joined channel, then posts a message with it:
+ * the browser hashes it, asks where to put it, puts it in the store itself
+ * and registers it here, so its bytes never pass through the hub.
  */
 export function registerAttachments(
   app: FastifyInstance,
   store: Store,
-  bytes: AttachmentBytes,
+  files: AttachmentStore,
   room: number,
 ) {
   const base = '/api/teams/:teamId/channels/:channelId/attachments';
-  // Every type: the server decides what a file is from its content.
-  app.register((upload, _options, done) => {
-    upload.removeAllContentTypeParsers();
-    upload.addContentTypeParser(
-      '*',
-      { parseAs: 'buffer', bodyLimit: ATTACHMENT_MOST_BYTES },
-      (_request, body, parsed) => {
-        parsed(null, body);
-      },
+  app.post(base + '/uploads', async (request) => {
+    const { teamId, channelId } = ChannelPath.parse(request.params);
+    const file = Upload.parse(request.body);
+    if (file.size > ATTACHMENT_MOST_BYTES) throw new DomainError('too-large');
+    await store.communication.mayUpload(
+      principal(request),
+      teamId,
+      channelId,
+      file,
+      room,
     );
-    upload.post(
-      base,
+    return { url: await files.uploadUrl(file.sha256, file.size) };
+  });
+  app.post(base, async (request, reply) => {
+    const { teamId, channelId } = ChannelPath.parse(request.params);
+    const { operationKey, name, sha256 } = Register.parse(request.body);
+    const attachment = await store.communication.upload(
+      principal(request),
+      teamId,
+      channelId,
+      { operationKey, name: cleanName(name), sha256 },
+      room,
       {
-        bodyLimit: ATTACHMENT_MOST_BYTES,
-        // Too large is refused from what the request says, before its body.
-        onRequest: (request, reply, next) => {
-          const length = Number(request.headers['content-length'] ?? NaN);
-          if (!Number.isInteger(length))
-            return void reply.code(411).send({ error: 'length-required' });
-          if (length > ATTACHMENT_MOST_BYTES)
-            return void reply.code(413).send({ error: 'too-large' });
-          next();
+        // What the store holds, never what the browser said.
+        describe: async () => {
+          const found = await files.find(sha256);
+          if (found === null) throw new DomainError('invalid');
+          if (found.size > ATTACHMENT_MOST_BYTES)
+            throw new DomainError('too-large');
+          return { size: found.size, ...sniff(found.head) };
         },
-      },
-      async (request, reply) => {
-        const { teamId, channelId } = ChannelPath.parse(request.params);
-        const { operationKey, name } = UploadQuery.parse(request.query);
-        const body: unknown = request.body;
-        if (!Buffer.isBuffer(body)) throw new DomainError('invalid');
-        const sha256 = createHash('sha256').update(body).digest('hex');
-        const attachment = await store.communication.upload(
-          principal(request),
-          teamId,
-          channelId,
-          {
-            operationKey,
-            name: cleanName(name),
-            size: body.length,
-            sha256,
-            ...sniff(body),
-          },
-          room,
-          () => bytes.put(sha256, body),
-        );
-        return reply.code(201).send(attachment);
+        keep: () => files.keep(sha256),
       },
     );
-    done();
+    return reply.code(201).send(attachment);
   });
   // A person joined to the channel removes a file from its message.
   app.post(base + '/:attachmentId/remove', async (request) => {
@@ -95,7 +89,7 @@ export function registerAttachments(
       attachmentId,
       z.strictObject({ operationKey: OperationKey }).parse(request.body),
     );
-    await store.communication.release(sha256, () => bytes.remove(sha256));
+    await store.communication.release(sha256, () => files.remove(sha256));
     return removal;
   });
   // The files of every channel the person is in, newest first.
@@ -139,18 +133,58 @@ export function registerAttachments(
       channelId,
       attachmentId,
     );
-    return serve(reply, attachment, await bytes.get(sha256));
+    const range = byteRange(request.headers.range, attachment.size);
+    if (range === 'unsatisfiable')
+      return reply
+        .code(416)
+        .header('content-range', `bytes */${String(attachment.size)}`)
+        .send();
+    const body = await files.read(sha256, range ?? undefined);
+    if (range !== null)
+      reply
+        .code(206)
+        .header(
+          'content-range',
+          `bytes ${String(range.start)}-${String(range.end)}/${String(attachment.size)}`,
+        );
+    const length =
+      range === null ? attachment.size : range.end - range.start + 1;
+    return serve(reply, attachment, body, length);
   });
+}
+/**
+ * The part of a file a `Range` header asks for: one range of bytes, inclusive.
+ * Null is the whole file (no header, or one this does not serve, such as
+ * several ranges); past the end is unsatisfiable.
+ */
+export function byteRange(header: string | undefined, size: number) {
+  const match = /^bytes=(\d*)-(\d*)$/.exec(header ?? '');
+  if (!match) return null;
+  const [, first = '', last = ''] = match;
+  if (first === '' && last === '') return null;
+  if (size === 0) return 'unsatisfiable';
+  const range =
+    first === ''
+      ? { start: Math.max(0, size - Number(last)), end: size - 1 }
+      : {
+          start: Number(first),
+          end: Math.min(size - 1, last === '' ? size - 1 : Number(last)),
+        };
+  if (range.start >= size || range.end < range.start) return 'unsatisfiable';
+  return range;
 }
 function serve(
   reply: FastifyReply,
   file: { name: string; type: string },
-  body: Buffer,
+  body: Readable,
+  length: number,
 ) {
   const inline = (INLINE_TYPES as readonly string[]).includes(file.type);
   return (
     reply
       .header('content-type', file.type)
+      .header('content-length', length)
+      .header('accept-ranges', 'bytes')
       .header(
         'content-disposition',
         disposition(inline ? 'inline' : 'attachment', file.name),
@@ -169,13 +203,13 @@ function serve(
  */
 export function sweepAttachments(
   store: Store,
-  bytes: AttachmentBytes,
+  files: AttachmentStore,
   failed: (error: unknown) => void,
 ) {
   const sweep = async () => {
     try {
       for (const sha256 of await store.communication.sweepUnbound(Date.now()))
-        await store.communication.release(sha256, () => bytes.remove(sha256));
+        await store.communication.release(sha256, () => files.remove(sha256));
     } catch (error) {
       failed(error);
     }

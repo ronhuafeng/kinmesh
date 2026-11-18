@@ -7,7 +7,7 @@ import { randomBytes } from 'node:crypto';
 import { deadline, freePort, printed, stop } from '../process-helpers.js';
 import { feishuEnv } from '../helpers.js';
 import { startFeishuStandIn } from '../feishu.js';
-import { testDatabase } from '../database.js';
+import { testDatabase, storeEnv } from '../database.js';
 export const test = base.extend<{
   hub: { origin: string; database: string; state: string };
 }>({
@@ -34,6 +34,7 @@ export const test = base.extend<{
           KINMESH_ORIGIN: origin,
           KINMESH_SESSION_KEY: randomBytes(32).toString('hex'),
           ...feishuEnv,
+          ...storeEnv(),
           KINMESH_FEISHU_URL: feishu.url,
         },
       },
