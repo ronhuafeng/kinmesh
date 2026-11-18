@@ -216,7 +216,7 @@ Authorization: Bearer <token>
 X-Kinmesh-Name: <the file's name, URI-encoded>
 X-Kinmesh-Sha256: <the bytes' SHA-256, hex>
 
-<the file's bytes, at most 25 MB>
+<the file's bytes, at most 200 MB>
 ```
 
 It writes `<folder>/attachments/<first 8 of the ID>-<name>` whole (a temporary file, then renamed) and answers `200 {"path": "/space/design-3f2a91c0/attachments/3f2a91c0-screen.png"}`. The name keeps only letters, digits, `.`, `_`, `-` and spaces of its last segment, no leading dot, at most 100 characters, so nothing leaves `attachments/`. The same ID with the same bytes again changes nothing; with other bytes, `409`. Bytes that don't match the hash, or an ID that isn't one, are `400`; a folder it didn't make, `404`. `DELETE` on the same path removes the file, `200` also when it is already gone. The folder's `.git/info/exclude` lists `attachments/`, so the files stay out of agents' diffs and commits unless one copies them in. The worker reads the bytes from the hub's state directory, so it runs where that directory is (as the hub's own worker does).

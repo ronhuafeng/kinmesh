@@ -94,45 +94,61 @@ function Composer({
   onDone: () => void;
 }) {
   const [chips, setChips] = useState<Mentionable[]>([]);
-  // Files dropped, pasted or chosen: each uploads at once, and the message
+  // Files dropped, pasted or chosen: each uploads in turn, and the message
   // goes once they all have.
   const [files, setFiles] = useState<Pending[]>([]);
   const [dragging, setDragging] = useState(false);
   const picker = useRef<HTMLInputElement>(null);
-  function send(pending: Pending) {
-    upload(channelPath, pending).then(
-      (attachment) => {
-        setFiles((old) =>
-          old.map((f) =>
-            f.key === pending.key ? { ...f, state: 'ready', attachment } : f,
-          ),
-        );
-      },
-      (cause: unknown) => {
-        setFiles((old) =>
-          old.map((f) =>
-            f.key === pending.key
-              ? {
-                  ...f,
-                  state: 'failed',
-                  problem:
-                    cause instanceof Error ? cause.message : '没有传上去',
-                }
-              : f,
-          ),
-        );
-      },
+  // Files go up one at a time, in the order they were added, so a few large
+  // ones never hold their bytes in the hub together.
+  const queue = useRef<Promise<void>>(Promise.resolve());
+  const going = useRef(new Map<string, AbortController>());
+  useEffect(() => {
+    const running = going.current;
+    return () => {
+      for (const abort of running.values()) abort.abort();
+    };
+  }, []);
+  function patch(key: string, change: Partial<Pending>) {
+    setFiles((old) =>
+      old.map((f) => (f.key === key ? { ...f, ...change } : f)),
     );
+  }
+  function send(pending: Pending) {
+    const abort = new AbortController();
+    going.current.set(pending.key, abort);
+    queue.current = queue.current.then(async () => {
+      if (abort.signal.aborted) return;
+      patch(pending.key, { state: 'uploading' });
+      try {
+        const attachment = await upload(
+          channelPath,
+          pending,
+          (progress) => {
+            patch(pending.key, { progress });
+          },
+          abort.signal,
+        );
+        patch(pending.key, { state: 'ready', progress: 1, attachment });
+      } catch (cause) {
+        patch(pending.key, {
+          state: 'failed',
+          problem: cause instanceof Error ? cause.message : '没有传上去',
+        });
+      } finally {
+        going.current.delete(pending.key);
+      }
+    });
   }
   function attach(list: Iterable<File>) {
     const added = pendingOf(list, files.length);
     if (added.length === 0) return;
     setFiles((old) => [...old, ...added]);
-    for (const pending of added)
-      if (pending.state === 'uploading') send(pending);
+    for (const pending of added) if (pending.state === 'queued') send(pending);
     input.current?.focus();
   }
   function detach(key: string) {
+    going.current.get(key)?.abort();
     setFiles((old) => old.filter((f) => f.key !== key));
   }
   // Shared to Kinmesh: its files attached and its text in the field, once.
@@ -288,6 +304,14 @@ function Composer({
                       {p.problem ?? fileSize(p.file.size)}
                     </span>
                   </span>
+                )}
+                {p.state === 'uploading' && (
+                  <progress
+                    className="composer-progress"
+                    max={1}
+                    value={p.progress}
+                    aria-label={'上传 ' + p.file.name}
+                  />
                 )}
                 <button
                   type="button"

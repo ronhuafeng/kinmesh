@@ -3,7 +3,7 @@ import { z } from 'zod';
 export const AttachmentId = z.uuid().brand<'AttachmentId'>();
 export type AttachmentId = z.infer<typeof AttachmentId>;
 /** The most one file may hold. */
-export const ATTACHMENT_MOST_BYTES = 25 * 1024 * 1024;
+export const ATTACHMENT_MOST_BYTES = 200 * 1024 * 1024;
 /** The most files one message carries. */
 export const ATTACHMENTS_PER_MESSAGE = 10;
 /** How long an upload no message took is kept. */

@@ -99,8 +99,8 @@ function inputOf(body: string): { directory: string; title: string } | null {
   return title === '' ? null : { directory, title };
 }
 
-/** A file the hub places at most: 25 MB, as Kinmesh attaches. */
-const FILE_LIMIT = 25 * 1024 * 1024;
+/** A file the hub places at most: 200 MB, as Kinmesh attaches. */
+const FILE_LIMIT = 200 * 1024 * 1024;
 const ATTACHMENT =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 const PLACE = /^\/projects\/([^/]+)\/attachments\/([^/]+)$/;
