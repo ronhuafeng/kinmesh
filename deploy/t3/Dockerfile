@@ -4,7 +4,7 @@
 # volumes the deployment provides. T3 is the image's; the coding agents go
 # into ~/.local at start (agents.ts), where upgrading them lasts.
 FROM node:26-bookworm-slim
-ARG T3CODE_VERSION=0.1.9
+ARG T3CODE_VERSION=0.1.10
 ARG PI_VERSION=1.5.2
 ARG CODEX_VERSION=0.169.1
 ARG CLAUDE_CODE_VERSION=2.1.327
