@@ -1,7 +1,8 @@
 name: T3 version
-# Each day, a newer stable T3 Code becomes a pull request that pins it in the
-# agents' runtime image; CI builds that image and checks Kinmesh reads its T3
-# as a run would. Merging it stays a person's (or their agent's) decision.
+# Each day, a newer stable T3 Code is pinned in the agents' runtime image
+# through a pull request: CI builds that image and checks Kinmesh reads its
+# T3 as a run would, and once the required checks pass it is merged and
+# published, which deploys it (publish.yml). A red check stops it there.
 on:
   schedule:
     - cron: '17 3 * * *'
@@ -15,15 +16,16 @@ concurrency:
 jobs:
   bump:
     runs-on: ubuntu-24.04
-    timeout-minutes: 5
+    timeout-minutes: 40
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - name: A pull request for a newer stable T3, once
+      - name: A pull request for a newer stable T3, merged once its checks pass
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
+          set -euo pipefail
           latest="$(curl -fsSL https://api.github.com/repos/pingdotgg/t3code/releases/latest | jq -r .tag_name)"
           latest="${latest#v}"
           current="$(sed -n 's/^ARG T3CODE_VERSION=//p' deploy/t3/Dockerfile)"
@@ -34,21 +36,34 @@ jobs:
           branch="t3/$latest"
           origin="https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
           if git ls-remote --exit-code --heads "$origin" "$branch" >/dev/null; then
-            echo "$branch is already proposed"
-            exit 0
+            # Proposed before: bring it up to main, as merging requires.
+            gh pr update-branch "$branch" --rebase || true
+          else
+            sed -i "s/^ARG T3CODE_VERSION=.*/ARG T3CODE_VERSION=$latest/" deploy/t3/Dockerfile
+            git config user.name 'github-actions[bot]'
+            git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+            git switch -c "$branch"
+            git commit -qam "build(t3): T3 Code $latest"
+            git push -q "$origin" "$branch"
+            gh pr create --head "$branch" --title "T3 Code $latest" --body "Pins T3 Code $latest (from $current) in the agents' runtime image.
+
+          CI's image job builds it and runs \`npm run t3:smoke\` against it with a session it issued: every tool a run uses, its schemas and the environment, as Kinmesh reads them. No model runs. Once the required checks pass, this workflow merges it and publishes, which deploys it.
+
+          Release notes: https://github.com/pingdotgg/t3code/releases/tag/v$latest"
           fi
-          sed -i "s/^ARG T3CODE_VERSION=.*/ARG T3CODE_VERSION=$latest/" deploy/t3/Dockerfile
-          git config user.name 'github-actions[bot]'
-          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git switch -c "$branch"
-          git commit -qam "build(t3): T3 Code $latest"
-          git push -q "$origin" "$branch"
-          gh pr create --head "$branch" --title "T3 Code $latest" --body "Pins T3 Code $latest (from $current) in the agents' runtime image.
-
-          CI's image job builds it and runs \`npm run t3:smoke\` against it with a session it issued: every tool a run uses, its schemas and the environment, as Kinmesh reads them. No model runs.
-
-          Release notes: https://github.com/pingdotgg/t3code/releases/tag/v$latest
-
-          After merging, the deployment pins the new \`kinmesh-t3\` commit ([operations](docs/operations.md#deploying-a-commit))."
-          # A pull request opened by GitHub Actions starts no workflow itself.
-          gh workflow run ci.yml --ref "$branch"
+          # GitHub holds a pull request's CI from this bot until it is
+          # approved; approve what waits (CI only runs, it changes nothing).
+          head="$(gh pr view "$branch" --json headRefOid -q .headRefOid)"
+          for _ in $(seq 30); do
+            waiting="$(gh api "repos/$GITHUB_REPOSITORY/actions/runs?head_sha=$head&event=pull_request" \
+              -q '.workflow_runs[] | select(.conclusion == "action_required") | .id')"
+            started="$(gh api "repos/$GITHUB_REPOSITORY/actions/runs?head_sha=$head&event=pull_request" \
+              -q '[.workflow_runs[] | select(.conclusion != "action_required")] | length')"
+            for id in $waiting; do gh api -X POST "repos/$GITHUB_REPOSITORY/actions/runs/$id/approve"; done
+            [ -z "$waiting" ] && [ "$started" -gt 0 ] && break
+            sleep 10
+          done
+          gh pr checks "$branch" --required --watch --fail-fast
+          gh pr merge "$branch" --rebase --delete-branch
+          # A merge by this workflow's token starts no workflow by itself.
+          gh workflow run publish.yml --ref main

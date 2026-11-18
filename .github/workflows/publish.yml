@@ -70,7 +70,9 @@ jobs:
   # the owner adds the token (docs/operations.md, Deploying a commit).
   deploy:
     needs: manifest
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    # A manual run on main deploys too: the T3 version workflow merges with
+    # its own token, which starts no push run, and then starts this.
+    if: (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && github.ref == 'refs/heads/main'
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     environment: infra
@@ -82,7 +84,7 @@ jobs:
     env:
       HAS_TOKEN: ${{ secrets.INFRA_PR_TOKEN != '' }}
     steps:
-      - name: Set the hub's tag on infra main
+      - name: Set the hub's tag, and the agents' runtime's when it changed, on infra main
         if: env.HAS_TOKEN == 'true'
         env:
           GH_TOKEN: ${{ secrets.INFRA_PR_TOKEN }}
@@ -90,6 +92,7 @@ jobs:
           REPO: weavertech-group/infra
           FILE: apps/kinmesh/kustomization.yaml
           IMAGE: ghcr.io/${{ github.repository_owner }}/kinmesh
+          T3_IMAGE: ghcr.io/${{ github.repository_owner }}/kinmesh-t3
         run: |
           set -euo pipefail
           # Only the newest commit on main is deployed; an older run that
@@ -100,20 +103,33 @@ jobs:
             exit 0
           fi
           cd "$RUNNER_TEMP"
-          message=$(printf 'deploy: Kinmesh hub %s\n\nRuns %s:%s, published from %s/%s/commit/%s.' \
-            "${GITHUB_SHA::7}" "$IMAGE" "$GITHUB_SHA" "$GITHUB_SERVER_URL" "$GITHUB_REPOSITORY" "$GITHUB_SHA")
           # A commit to the file on infra main between the read and the write
           # fails the write with 409; then it reads again, once.
           for attempt in 1 2; do
             gh api "repos/$REPO/contents/$FILE?ref=main" > file.json
             jq -r .content file.json | base64 -d > current.yaml
-            # The tag under this image's entry, and nothing else.
-            awk -v entry="  - name: $IMAGE" -v tag="$GITHUB_SHA" '
+            # The agents' runtime restarts only when its image changed: when
+            # deploy/t3 differs between the commit it runs and this one.
+            running=$(awk -v entry="  - name: $T3_IMAGE" '
               /^  - name: / { inside = ($0 == entry) }
-              inside && /^    newTag: / { $0 = "    newTag: " tag; changed = 1 }
+              inside && /^    newTag: / { print $2 }
+            ' current.yaml)
+            t3_tag=""
+            changed=$(GH_TOKEN="$OWN_TOKEN" gh api "repos/$GITHUB_REPOSITORY/compare/$running...$GITHUB_SHA" \
+              --jq '[.files[]?.filename | select(startswith("deploy/t3/"))] | length')
+            [ "$changed" != 0 ] && t3_tag="$GITHUB_SHA"
+            # The tag under these images' entries, and nothing else.
+            awk -v hub="  - name: $IMAGE" -v t3="  - name: $T3_IMAGE" -v tag="$GITHUB_SHA" -v t3tag="$t3_tag" '
+              /^  - name: / { entry = $0 }
+              entry == hub && /^    newTag: / { $0 = "    newTag: " tag; changed = 1 }
+              entry == t3 && t3tag != "" && /^    newTag: / { $0 = "    newTag: " t3tag }
               { print }
               END { if (!changed) exit 1 }
             ' current.yaml > updated.yaml
+            what="Kinmesh hub"
+            [ -n "$t3_tag" ] && what="Kinmesh hub and agents' runtime"
+            message=$(printf 'deploy: %s %s\n\nRuns %s:%s, published from %s/%s/commit/%s.' \
+              "$what" "${GITHUB_SHA::7}" "$IMAGE" "$GITHUB_SHA" "$GITHUB_SERVER_URL" "$GITHUB_REPOSITORY" "$GITHUB_SHA")
             if cmp -s current.yaml updated.yaml; then
               echo "The deployment already runs $GITHUB_SHA."
               exit 0
