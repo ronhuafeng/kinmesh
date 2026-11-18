@@ -966,7 +966,7 @@ export function inboxRepository(
             .limit(1)
         )[0];
         if (row?.teamId !== teamId) throw new DomainError('not-found');
-        await communication.channel(
+        await communication.joinedChannel(
           p,
           TeamId.parse(teamId),
           ChannelId.parse(row.channelId),
@@ -1019,7 +1019,7 @@ export function inboxRepository(
             .limit(1)
         )[0];
         if (found?.teamId !== teamId) throw new DomainError('not-found');
-        await communication.channel(
+        await communication.joinedChannel(
           p,
           TeamId.parse(teamId),
           ChannelId.parse(found.channelId),

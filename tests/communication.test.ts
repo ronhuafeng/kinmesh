@@ -707,6 +707,11 @@ await test('channel/topic/outbox pages are bounded stable snapshots and new memb
       ).items.length,
       4,
     );
+    // #general is public; what follows is about a private channel.
+    await f.comm.setVisibility(f.principal, f.teamId, f.channelId, {
+      operationKey: key(),
+      visibility: 'private',
+    });
     await f.comm.membership(
       f.principal,
       f.teamId,
@@ -1069,6 +1074,11 @@ await test('a channel shows only to those in it; any person in it manages it, as
     await raw
       .prepare('INSERT INTO memberships VALUES (?, ?)')
       .run(id, f.teamId);
+    // #general is public; what follows is about a private channel.
+    await f.comm.setVisibility(f.principal, f.teamId, f.channelId, {
+      operationKey: key(),
+      visibility: 'private',
+    });
     const p: Principal = { kind: 'human', humanId: id };
     assert.equal((await f.comm.channels(p, f.teamId)).items.length, 0);
     await assert.rejects(

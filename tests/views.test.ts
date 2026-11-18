@@ -96,7 +96,11 @@ await test('what the workspace reads about a team checks who asks, not the route
     for (const [name, read] of reads.slice(0, 7))
       await assert.rejects(read(f.workerPrincipal), DomainError, name);
 
-    // A channel's deliveries and replies need that channel.
+    // A private channel's deliveries and replies need that channel.
+    await f.comm.setVisibility(f.principal, f.teamId, f.channelId, {
+      operationKey: key(),
+      visibility: 'private',
+    });
     const left = await f.store.signIn(feishuPerson('left@example.com'));
     const leaver: Principal = { kind: 'human', humanId: left.id };
     await f.comm.membership(
