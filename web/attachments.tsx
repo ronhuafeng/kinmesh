@@ -7,7 +7,7 @@ import {
 } from '../src/domain/attachments.js';
 
 export { fileSize };
-import { createSHA256 } from 'hash-wasm';
+import { sha256 as SHA256 } from '@noble/hashes/sha2.js';
 import { z } from 'zod';
 import { HttpError, api, request } from './api.js';
 import { FileIcon } from './icons.js';
@@ -51,11 +51,11 @@ const FAILED = '没有传上去';
  * for the hub, base64 for the store.
  */
 async function digest(file: File) {
-  const hash = await createSHA256();
+  const hash = SHA256.create();
   const reader = file.stream().getReader();
   for (let part = await reader.read(); !part.done; part = await reader.read())
     hash.update(part.value);
-  const bytes = hash.digest('binary');
+  const bytes = hash.digest();
   return {
     hex: Array.from(bytes, (b) => b.toString(16).padStart(2, '0')).join(''),
     base64: btoa(String.fromCharCode(...bytes)),
