@@ -26,6 +26,35 @@ const Issued = z
   .loose();
 
 /**
+ * A session T3 issued (`t3 auth session issue --json`) as a credential for
+ * the T3 at `endpoint`, which names its environment.
+ */
+export async function issuedCredential(
+  raw: string,
+  endpoint: string,
+  fetchFn: typeof fetch = fetch,
+) {
+  const issued = Issued.parse(JSON.parse(raw));
+  const response = await fetchFn(
+    new URL('/.well-known/t3/environment', endpoint),
+    { redirect: 'error', signal: AbortSignal.timeout(10_000) },
+  );
+  if (!response.ok) throw new Error('T3 environment unavailable');
+  const { environmentId } = Descriptor.parse(await response.json());
+  return Credential.parse({
+    endpoint,
+    environmentId,
+    tokens: {
+      access_token: issued.token,
+      token_type: 'Bearer',
+      scope: issued.scopes.join(' '),
+    },
+    ...(issued.expiresAt === undefined
+      ? {}
+      : { expiresAt: new Date(issued.expiresAt).toISOString() }),
+  });
+}
+/**
  * The T3 the deployment connects: the session T3 issued for the hub, in a
  * file the deployment keeps current. Each sync that finds it changed asks
  * T3 which environment it is and the session's ceiling, stores it where the
@@ -44,25 +73,8 @@ export function provisionedT3(
   return async function sync() {
     const raw = readFileSync(t3.credentialFile, 'utf8');
     if (raw === applied) return false;
-    const issued = Issued.parse(JSON.parse(raw));
-    const response = await fetchFn(
-      new URL('/.well-known/t3/environment', t3.endpoint),
-      { redirect: 'error', signal: AbortSignal.timeout(10_000) },
-    );
-    if (!response.ok) throw new Error('T3 environment unavailable');
-    const { environmentId } = Descriptor.parse(await response.json());
-    const credential = Credential.parse({
-      endpoint: t3.endpoint,
-      environmentId,
-      tokens: {
-        access_token: issued.token,
-        token_type: 'Bearer',
-        scope: issued.scopes.join(' '),
-      },
-      ...(issued.expiresAt === undefined
-        ? {}
-        : { expiresAt: new Date(issued.expiresAt).toISOString() }),
-    });
+    const credential = await issuedCredential(raw, t3.endpoint, fetchFn);
+    const { environmentId } = credential;
     // How far its runs may go, so a person's broader sign-in is preferred
     // and the workspace says how agents run; the session stands without it.
     const mode = await ceiling(credential, AbortSignal.timeout(10_000)).catch(

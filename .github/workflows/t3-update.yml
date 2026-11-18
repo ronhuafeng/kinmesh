@@ -1,0 +1,51 @@
+name: T3 version
+# Each day, a newer stable T3 Code becomes a pull request that pins it in the
+# agents' runtime image; CI builds that image and checks Kinmesh reads its T3
+# as a run would. Merging it stays a person's (or their agent's) decision.
+on:
+  schedule:
+    - cron: '17 3 * * *'
+  workflow_dispatch:
+permissions:
+  contents: write
+  pull-requests: write
+  actions: write
+concurrency:
+  group: t3-update
+jobs:
+  bump:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: A pull request for a newer stable T3, once
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          latest="$(curl -fsSL https://api.github.com/repos/pingdotgg/t3code/releases/latest | jq -r .tag_name)"
+          latest="${latest#v}"
+          current="$(sed -n 's/^ARG T3CODE_VERSION=//p' deploy/t3/Dockerfile)"
+          echo "pinned $current, latest stable $latest"
+          [[ "$latest" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo "unexpected tag"; exit 1; }
+          [ "$latest" != "$current" ] || exit 0
+          [ "$(printf '%s\n%s\n' "$current" "$latest" | sort -V | tail -1)" = "$latest" ] || exit 0
+          branch="t3/$latest"
+          if git ls-remote --exit-code --heads origin "$branch" >/dev/null; then
+            echo "$branch is already proposed"
+            exit 0
+          fi
+          sed -i "s/^ARG T3CODE_VERSION=.*/ARG T3CODE_VERSION=$latest/" deploy/t3/Dockerfile
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git switch -c "$branch"
+          git commit -qam "build(t3): T3 Code $latest"
+          git push -q origin "$branch"
+          gh pr create --head "$branch" --title "T3 Code $latest" --body "Pins T3 Code $latest (from $current) in the agents' runtime image.
+
+          CI's image job builds it and runs \`npm run t3:smoke\` against it with a session it issued: every tool a run uses, its schemas and the environment, as Kinmesh reads them. No model runs.
+
+          Release notes: https://github.com/pingdotgg/t3code/releases/tag/v$latest
+
+          After merging, the deployment pins the new \`kinmesh-t3\` commit ([operations](docs/operations.md#deploying-a-commit))."
+          # A pull request opened by GitHub Actions starts no workflow itself.
+          gh workflow run ci.yml --ref "$branch"
