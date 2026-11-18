@@ -76,6 +76,7 @@ The hub's worker grant ends 90 days after the hub last renewed it, and the hub r
 - Workers never open consent or widen authority. A frozen delivery cannot move to a different T3 authority unless it provably never reached T3.
 - **Check in T3** reads only, through the team's T3 connection; nothing in the request chooses the endpoint, credential, environment or thread. Every native failure is one generic error, and a T3 link is only ever to the exact thread on the team's T3 endpoint's own origin: the server builds it there, never from a link T3 returns, and the server and the browser each refuse any other origin, T3's hosted app included. The same holds for the link to a delivery's run.
 - The workspace probe for a local T3 contacts only `127.0.0.1:3773`.
+- In the agents' runtime, the coding agents (pi, Codex, Claude Code) live in the home folder on the deployment's volume, writable by the user T3 and its runs share, so an upgrade, or a change a run makes to them, outlasts a restart; T3 itself stays the image's and is changed only by a reviewed pull request ([newer T3](operations.md#newer-t3)).
 
 ## The space
 

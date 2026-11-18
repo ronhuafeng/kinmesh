@@ -38,7 +38,7 @@ docker compose up -d --build
 docker compose ps      # healthy once the database and worker are ready
 ```
 
-The hub is published on this machine's loopback only (`127.0.0.1:3000`), for the reverse proxy below; its proxy then reaches it from the host, so `KINMESH_TRUSTED_PROXIES` names the Docker network's gateway (for the default bridge, `172.16.0.0/12`). Back up the `kinmesh-data` volume with the database (below). CI builds the image on every pull request. Each commit on `main` is published for linux/amd64 and linux/arm64 as `ghcr.io/ronhuafeng/kinmesh:<commit>`, beside the agents' runtime `ghcr.io/ronhuafeng/kinmesh-t3:<commit>` (`deploy/t3`: unmodified T3 Code and the pi agent at pinned versions, running `t3 serve` as a non-root user; its browser needs the syscall filter in [security](security.md#t3-credentials), and downloads Chrome when a browser tab first opens); deployments pin that commit ([deploying a commit](#deploying-a-commit)).
+The hub is published on this machine's loopback only (`127.0.0.1:3000`), for the reverse proxy below; its proxy then reaches it from the host, so `KINMESH_TRUSTED_PROXIES` names the Docker network's gateway (for the default bridge, `172.16.0.0/12`). Back up the `kinmesh-data` volume with the database (below). CI builds the image on every pull request. Each commit on `main` is published for linux/amd64 and linux/arm64 as `ghcr.io/ronhuafeng/kinmesh:<commit>`, beside the agents' runtime `ghcr.io/ronhuafeng/kinmesh-t3:<commit>` (`deploy/t3`: unmodified T3 Code at a pinned version, running `t3 serve` as a non-root user, and the coding agents it runs — pi, Codex and Claude Code. The image carries a version of each; as it starts (`agents.ts`) each goes into the home folder's npm prefix (`~/.local`, on the deployment's volume) unless one as new or newer is there, so an agent, T3 or a person upgrading one with npm or its own updater keeps that upgrade, and the image's version is the floor; its browser needs the syscall filter in [security](security.md#t3-credentials), and downloads Chrome when a browser tab first opens); deployments pin that commit ([deploying a commit](#deploying-a-commit)).
 
 ### Behind a reverse proxy
 
@@ -376,6 +376,10 @@ The job is skipped until the `infra` environment of this repository holds the se
 ```sh
 gh secret set INFRA_PR_TOKEN --env infra --repo ronhuafeng/kinmesh
 ```
+
+### Newer T3
+
+Each day the `T3 version` workflow (`t3-update.yml`) turns a newer stable T3 Code release into a pull request that pins it in `deploy/t3`, once per release, and runs CI on it. CI's image job builds the image, starts its T3, has it issue a session and runs `npm run t3:smoke` with it: every tool a run uses, its schemas and the environment, as Kinmesh reads them, with no model. A red check means the [adapter](t3.md#supported-t3) needs work first. Merging it, then pinning the new `kinmesh-t3` commit in infra, is a deliberate step. GitHub Actions may open the pull request only while the repository allows it (**Settings → Actions → General → Allow GitHub Actions to create and approve pull requests**).
 
 ### Live collaboration
 

@@ -4,6 +4,9 @@ on:
     branches: [main]
   push:
     branches: [main]
+  # The T3 version bump (t3-update.yml) runs these on its branch: a pull
+  # request GitHub Actions opens starts no workflow by itself.
+  workflow_dispatch:
 permissions:
   contents: read
 concurrency:
@@ -56,6 +59,11 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 26
+          cache: npm
+      - run: npm ci
       - name: Build the image (publishing is a separate, deliberate step)
         run: docker build -t kinmesh:ci .
       - name: The container is healthy against a fresh database
@@ -84,10 +92,24 @@ jobs:
         run: |
           test "$(docker exec kinmesh id -u)" != 0
           docker exec kinmesh sh -c 'test ! -e /app/tests && test ! -e /app/.env && test -z "$(find /app/dist -name "*.map" -o -name "*.ts")"'
-      - name: The agents' runtime image runs T3 and pi as a non-root user
+      - name: The agents' runtime image runs T3 and its coding agents as a non-root user
         run: |
           docker build -t kinmesh-t3:ci deploy/t3
-          docker run --rm kinmesh-t3:ci sh -c 't3 --version && pi --version && test "$(id -u)" != 0'
+          docker run --rm kinmesh-t3:ci sh -euc '
+            test "$(id -u)" != 0
+            node /opt/kinmesh/agents.ts
+            t3 --version && pi --version && codex --version && claude --version'
+      - name: A coding agent upgraded in the home folder stays; one older than the image's is replaced
+        run: |
+          docker run --rm kinmesh-t3:ci sh -euc '
+            pi=~/.local/lib/node_modules/@earendil-works/pi-coding-agent/package.json
+            version() { node -e "const f=process.argv[1],p=require(f);p.version=process.argv[2];require(\"fs\").writeFileSync(f,JSON.stringify(p))" "$pi" "$1"; }
+            node /opt/kinmesh/agents.ts
+            version 99.0.0
+            node /opt/kinmesh/agents.ts | grep -q "pi-coding-agent 99.0.0 kept"
+            version 0.0.1
+            node /opt/kinmesh/agents.ts | grep -q "pi-coding-agent .* installed over 0.0.1"
+            pi --version'
       - name: The agents' runtime image starts the space provisioner and answers with a T3 project
         run: |
           docker run --rm kinmesh-t3:ci sh -euc '
@@ -96,5 +118,19 @@ jobs:
             curl -sf -X POST localhost:3774/projects -H "authorization: Bearer $(cat /tmp/token)" \
               -H "content-type: application/json" -d "{\"directory\":\"ci\",\"title\":\"ci\"}"
             git -C /space/ci log --oneline | grep -q "Start the channel"'
+      - name: Kinmesh reads the image's T3 as a run would find it (tools, schemas, environment)
+        run: |
+          docker run -d --name t3 -p 127.0.0.1:3773:3773 kinmesh-t3:ci
+          for _ in $(seq 90); do
+            curl -sf localhost:3773/.well-known/t3/environment >/dev/null && break
+            sleep 1
+          done
+          # A session T3 issues, as the deployment gives the hub one.
+          docker exec t3 t3 auth session issue --scope orchestration:read --scope orchestration:operate \
+            --subject mcp-client --ttl 1d --label ci --json > "$RUNNER_TEMP/session.json"
+          KINMESH_T3_ENDPOINT=http://127.0.0.1:3773/mcp \
+            KINMESH_T3_CREDENTIAL_FILE="$RUNNER_TEMP/session.json" npm run t3:smoke
+      - if: failure()
+        run: docker logs t3 2>&1 | tail -50 || true
       - if: always()
-        run: docker rm -f kinmesh postgres || true
+        run: docker rm -f kinmesh postgres t3 || true
