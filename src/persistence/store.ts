@@ -517,6 +517,7 @@ export async function openStore(url: string) {
               id: tables.channels.id,
               teamId: tables.channels.teamId,
               name: tables.channels.name,
+              visibility: tables.channels.visibility,
             })
             .from(tables.channels)
             .innerJoin(
