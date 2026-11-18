@@ -11,6 +11,7 @@ import {
   ReadInput,
   TopicId,
   TopicInput,
+  VisibilityInput,
 } from '../domain/communication.js';
 import { LevelInput } from '../domain/notify.js';
 import type { Store } from '../persistence/store.js';
@@ -36,15 +37,15 @@ export function registerCommunication(app: FastifyInstance, store: Store) {
   app.get(base, async (request) => {
     const { teamId } = TeamPath.parse(request.params);
     const { membership, ...page } = PageInput.extend({
-      membership: z.enum(['joined', 'left']).optional(),
+      membership: z.enum(['joined', 'left', 'public']).optional(),
     }).parse(request.query);
     // "left" lists only the caller's own left memberships; removed never return.
-    return membership === 'left'
+    // "public" lists public channels the caller has never been in.
+    return membership === 'left' || membership === 'public'
       ? {
-          items: await store.communication.leftChannels(
-            principal(request),
-            teamId,
-          ),
+          items: await (membership === 'left'
+            ? store.communication.leftChannels(principal(request), teamId)
+            : store.communication.publicChannels(principal(request), teamId)),
           nextCursor: null,
         }
       : await store.communication.channels(principal(request), teamId, page);
@@ -102,6 +103,15 @@ export function registerCommunication(app: FastifyInstance, store: Store) {
         action,
       );
     });
+  app.post(channel + '/visibility', async (request) => {
+    const { teamId, channelId } = ChannelPath.parse(request.params);
+    return store.communication.setVisibility(
+      principal(request),
+      teamId,
+      channelId,
+      VisibilityInput.parse(request.body),
+    );
+  });
   for (const action of ['invite', 'remove'] as const)
     app.post(channel + '/participants/' + action, async (request) => {
       const { teamId, channelId } = ChannelPath.parse(request.params);

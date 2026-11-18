@@ -1555,11 +1555,17 @@ test('human claim and request-review controls, plus leave/rejoin of known member
     page.getByText('欢迎来到你的团队', { exact: true }),
   ).toBeVisible();
   // A channel you left is offered back by name; no IDs to copy.
-  const left = page.getByRole('list', { name: '已退出的频道' });
+  const left = page.getByRole('list', { name: '可加入的频道' });
   await expect(left.getByRole('listitem')).toHaveText([/general/]);
-  await left.getByRole('button', { name: '重新加入', exact: true }).click();
+  // #general is public: it opens to read, with joining where the composer was.
+  await left.getByRole('button', { name: '# general' }).click();
   await expect(page.getByRole('heading', { name: '# general' })).toBeVisible();
-  // Nothing left to rejoin: the list disappears.
+  await expect(page.getByRole('form', { name: '给团队发消息' })).toHaveCount(0);
+  await page
+    .getByRole('button', { name: '加入 #general', exact: true })
+    .click();
+  await expect(page.getByRole('form', { name: '给团队发消息' })).toBeVisible();
+  // Nothing left to join: the list disappears.
   await expect(left).toHaveCount(0);
   await page.getByRole('tab', { name: '看板', exact: true }).click();
   await expect(inStage(page, '审核中', 'Human owned task')).toBeVisible();

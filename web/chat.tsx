@@ -1,4 +1,5 @@
 import {
+  type ReactNode,
   memo,
   useCallback,
   useContext,
@@ -1227,6 +1228,7 @@ export function Chat({
   onLeave,
   onTeam,
   incoming,
+  join = null,
 }: {
   data: WorkspaceSnapshot;
   channelPath: string;
@@ -1245,6 +1247,8 @@ export function Chat({
   onTeam: () => void;
   /** What was shared to Kinmesh, for this channel's composer. */
   incoming?: { key: string; shared: Shared } | undefined;
+  /** In place of the composer: joining a channel you only look in. */
+  join?: ReactNode;
 }) {
   const channel = data.channel;
   const messages = data.messages.items;
@@ -1492,57 +1496,61 @@ export function Chat({
       {rows.length === 0 && (
         <p className="board-empty">还没有消息。输入 @ 请智能体加入。</p>
       )}
-      <Composer
-        key={channel.id}
-        channelPath={channelPath}
-        topicId={topic}
-        incoming={incoming}
-        members={[
-          ...joinedAgents(data).map((a): Mentionable => ({
-            kind: 'agent',
-            id: a.id,
-            name: a.name,
-            handle: null,
-            online: workerConnected(data.wake, a.id),
-          })),
-          ...otherPeople(data).map((p): Mentionable => ({
-            kind: 'human',
-            id: p.id,
-            name: p.name,
-            handle: p.username,
-            online: p.online,
-          })),
-        ]}
-        onSend={(path, body) => {
-          const key = crypto.randomUUID();
-          const after = messages.at(-1)?.position ?? 0;
-          // The files go as their IDs; what shows meanwhile has them whole.
-          const attachments = z.array(Attachment).parse(body.attachments ?? []);
-          outbox.send({
-            key,
-            path,
-            request: JSON.stringify({
-              ...body,
-              attachments: attachments.map((a) => a.id),
-              operationKey: key,
-            }),
-            message: Message.parse({
-              ...body,
-              attachments,
-              removedAttachments: [],
-              id: key,
-              channelId: channel.id,
-              position: after + 1,
-              author: { kind: 'human', humanId: data.human.id },
-              createdAt: new Date().toISOString(),
-            }),
-            after,
-            id: null,
-            failed: false,
-          });
-        }}
-        onDone={reading.sent}
-      />
+      {join ?? (
+        <Composer
+          key={channel.id}
+          channelPath={channelPath}
+          topicId={topic}
+          incoming={incoming}
+          members={[
+            ...joinedAgents(data).map((a): Mentionable => ({
+              kind: 'agent',
+              id: a.id,
+              name: a.name,
+              handle: null,
+              online: workerConnected(data.wake, a.id),
+            })),
+            ...otherPeople(data).map((p): Mentionable => ({
+              kind: 'human',
+              id: p.id,
+              name: p.name,
+              handle: p.username,
+              online: p.online,
+            })),
+          ]}
+          onSend={(path, body) => {
+            const key = crypto.randomUUID();
+            const after = messages.at(-1)?.position ?? 0;
+            // The files go as their IDs; what shows meanwhile has them whole.
+            const attachments = z
+              .array(Attachment)
+              .parse(body.attachments ?? []);
+            outbox.send({
+              key,
+              path,
+              request: JSON.stringify({
+                ...body,
+                attachments: attachments.map((a) => a.id),
+                operationKey: key,
+              }),
+              message: Message.parse({
+                ...body,
+                attachments,
+                removedAttachments: [],
+                id: key,
+                channelId: channel.id,
+                position: after + 1,
+                author: { kind: 'human', humanId: data.human.id },
+                createdAt: new Date().toISOString(),
+              }),
+              after,
+              id: null,
+              failed: false,
+            });
+          }}
+          onDone={reading.sent}
+        />
+      )}
     </div>
   );
 }

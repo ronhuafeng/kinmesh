@@ -138,9 +138,15 @@ export const channels = pgTable(
       .references(() => teams.id, { onDelete: 'cascade' }),
     name: text('name').notNull(),
     position: integer('position').notNull().default(0),
+    /**
+     * Public: anyone of the team sees it, reads it and joins it. Private:
+     * only those invited. What a person may do in it is still by joining.
+     */
+    visibility: text('visibility').notNull().default('private'),
   },
   (t) => [
     uniqueIndex('channel_position').on(t.position),
+    check('channel_visibility', sql`${t.visibility} IN ('public', 'private')`),
     unique('channel_id_team').on(t.id, t.teamId),
     uniqueIndex('channel_team_name').on(t.teamId, t.name),
     check('channel_name_length', sql`length(trim(${t.name})) BETWEEN 1 AND 80`),

@@ -951,6 +951,9 @@ export function App() {
     });
   };
   /** Leaves any channel you are in, from its row's menu. */
+  // A public channel opened without joining it: there to read.
+  const looking =
+    channel !== null && !data.joinedHumanIds.includes(data.human.id);
   const leaveChannelById = (id: string) => {
     if (!canAct) return;
     void api(`/api/teams/${data.team.id}/channels/${id}/leave`, {
@@ -1385,12 +1388,19 @@ export function App() {
                           }}
                           // The channel just made is where you meant to go.
                           onCreated={selectChannel}
+                          // Open to the team unless someone makes it private.
+                          extra={{ visibility: 'public' }}
                         />
                       )}
                       {/* Channels you left, only when there are any: one click back. */}
-                      <LeftChannels
+                      <JoinableChannels
                         teamId={data.team.id}
-                        channels={data.leftChannels}
+                        channels={[
+                          ...data.publicChannels,
+                          ...data.leftChannels,
+                        ]}
+                        current={looking ? channel.id : null}
+                        onOpen={selectChannel}
                         onDone={selectChannel}
                       />
                     </nav>
@@ -1757,84 +1767,101 @@ export function App() {
                           <span className="skeleton-card" />
                         </div>
                       )}
-                      <Tabs.Content
-                        value="chat"
-                        key={channel?.id ?? 'no-channel'}
-                      >
-                        {channel && channelPath ? (
-                          <Chat
+                      {/* A public channel you only look in: read, but nothing to do there until you join. */}
+                      <MutationPermission value={canAct && !looking}>
+                        <Tabs.Content
+                          value="chat"
+                          key={channel?.id ?? 'no-channel'}
+                        >
+                          {channel && channelPath ? (
+                            <Chat
+                              data={data}
+                              channelPath={channelPath}
+                              topic={selection.topic}
+                              shownTopic={
+                                new URLSearchParams(loadedPlace ?? '').get(
+                                  'topicId',
+                                ) ?? ''
+                              }
+                              onTopic={(topic) => {
+                                setSelection((old) => ({ ...old, topic }));
+                                setCursors({});
+                              }}
+                              onDone={refresh}
+                              next={next}
+                              onEarlier={(cursor) => {
+                                next('messagesCursor', cursor);
+                              }}
+                              onMakeTask={(message) => {
+                                setDraft(draftFromMessage(message, data));
+                                setFocus(null);
+                                setView('board');
+                              }}
+                              openAgent={openAgent}
+                              onLeave={() => {
+                                selectChannel('');
+                              }}
+                              onTeam={() => {
+                                setView('team');
+                              }}
+                              incoming={incoming}
+                              join={
+                                looking ? (
+                                  <MutationPermission value={canAct}>
+                                    <JoinBar
+                                      teamId={data.team.id}
+                                      channel={channel}
+                                      onDone={refresh}
+                                    />
+                                  </MutationPermission>
+                                ) : null
+                              }
+                            />
+                          ) : (
+                            <div className="empty">
+                              <h3>没有打开的频道</h3>
+                              <p>选一个已加入的频道来查看和发消息。</p>
+                            </div>
+                          )}
+                        </Tabs.Content>
+                        <Tabs.Content value="board">
+                          {channelPath ? (
+                            <Board
+                              data={data}
+                              openTask={openTask}
+                              onNewTask={startNewTask}
+                              openId={focus?.kind === 'task' ? focus.id : null}
+                            />
+                          ) : (
+                            <div className="empty">
+                              <p>先建一个频道，再创建任务。</p>
+                            </div>
+                          )}
+                        </Tabs.Content>
+                        <Tabs.Content value="files">
+                          {channel && (
+                            <section
+                              className="channel-files"
+                              aria-label="文件"
+                            >
+                              <Files
+                                data={data}
+                                channelId={channel.id}
+                                openMessage={openMessageIn}
+                              />
+                            </section>
+                          )}
+                        </Tabs.Content>
+                        <Tabs.Content value="team">
+                          <Team
                             data={data}
                             channelPath={channelPath}
-                            topic={selection.topic}
-                            shownTopic={
-                              new URLSearchParams(loadedPlace ?? '').get(
-                                'topicId',
-                              ) ?? ''
-                            }
-                            onTopic={(topic) => {
-                              setSelection((old) => ({ ...old, topic }));
-                              setCursors({});
-                            }}
+                            channelName={channel?.name ?? ''}
                             onDone={refresh}
-                            next={next}
-                            onEarlier={(cursor) => {
-                              next('messagesCursor', cursor);
-                            }}
-                            onMakeTask={(message) => {
-                              setDraft(draftFromMessage(message, data));
-                              setFocus(null);
-                              setView('board');
-                            }}
                             openAgent={openAgent}
-                            onLeave={() => {
-                              selectChannel('');
-                            }}
-                            onTeam={() => {
-                              setView('team');
-                            }}
-                            incoming={incoming}
                           />
-                        ) : (
-                          <div className="empty">
-                            <h3>没有打开的频道</h3>
-                            <p>选一个已加入的频道来查看和发消息。</p>
-                          </div>
-                        )}
-                      </Tabs.Content>
-                      <Tabs.Content value="board">
-                        {channelPath ? (
-                          <Board
-                            data={data}
-                            openTask={openTask}
-                            onNewTask={startNewTask}
-                            openId={focus?.kind === 'task' ? focus.id : null}
-                          />
-                        ) : (
-                          <div className="empty">
-                            <p>先建一个频道，再创建任务。</p>
-                          </div>
-                        )}
-                      </Tabs.Content>
-                      <Tabs.Content value="files">
-                        {channel && (
-                          <section className="channel-files" aria-label="文件">
-                            <Files
-                              data={data}
-                              channelId={channel.id}
-                              openMessage={openMessageIn}
-                            />
-                          </section>
-                        )}
-                      </Tabs.Content>
-                      <Tabs.Content value="team">
-                        <Team
-                          data={data}
-                          channelPath={channelPath}
-                          channelName={channel?.name ?? ''}
-                          onDone={refresh}
-                          openAgent={openAgent}
-                        />
-                      </Tabs.Content>
+                        </Tabs.Content>
+                      </MutationPermission>
                       <Tabs.Content value="agent">
                         {pageAgent ? (
                           <AgentPage
@@ -1953,29 +1980,49 @@ export function App() {
     </MutationPermission>
   );
 }
-/** Channels you left, muted under the rest, each one click from rejoining. */
-function LeftChannels({
+/**
+ * Channels you are not in but may join, muted under the rest: public ones
+ * open to look in, and every one is one click from joining.
+ */
+function JoinableChannels({
   teamId,
   channels,
+  current,
+  onOpen,
   onDone,
 }: {
   teamId: string;
-  channels: WorkspaceSnapshot['leftChannels'];
+  channels: WorkspaceSnapshot['publicChannels'];
+  /** The one open to look in. */
+  current: string | null;
+  onOpen: (id: string) => void;
   onDone: (id: string) => void;
 }) {
   if (channels.length === 0) return null;
   return (
-    <ul className="left-channels" aria-label="已退出的频道">
+    <ul className="left-channels" aria-label="可加入的频道">
       {channels.map((c) => (
         <li key={c.id}>
-          <span>
-            <span aria-hidden="true">#</span> {c.name}
-          </span>
+          {c.visibility === 'public' ? (
+            <button
+              type="button"
+              aria-current={current === c.id ? 'page' : undefined}
+              onClick={() => {
+                onOpen(c.id);
+              }}
+            >
+              <span aria-hidden="true">#</span> {c.name}
+            </button>
+          ) : (
+            <span>
+              <span aria-hidden="true">#</span> {c.name}
+            </span>
+          )}
           <ActionForm
-            title={'重新加入 ' + c.name}
+            title={'加入 ' + c.name}
             path={`/api/teams/${teamId}/channels/${c.id}/subscribe`}
             build={() => ({})}
-            submit="重新加入"
+            submit="加入"
             onDone={() => {
               onDone(c.id);
             }}
@@ -1983,6 +2030,28 @@ function LeftChannels({
         </li>
       ))}
     </ul>
+  );
+}
+/** Where a channel you only look in would take a message: joining it. */
+function JoinBar({
+  teamId,
+  channel,
+  onDone,
+}: {
+  teamId: string;
+  channel: { id: string; name: string };
+  onDone: () => void;
+}) {
+  return (
+    <div className="composer join-bar">
+      <ActionForm
+        title={'加入 ' + channel.name}
+        path={`/api/teams/${teamId}/channels/${channel.id}/subscribe`}
+        build={() => ({})}
+        submit={'加入 #' + channel.name}
+        onDone={onDone}
+      />
+    </div>
   );
 }
 /**

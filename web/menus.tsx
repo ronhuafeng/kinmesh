@@ -321,8 +321,17 @@ export function ChannelMenu({
   children: ReactNode;
 }) {
   const level = levelOf(data, channelId);
+  const visibility =
+    data.channels.items.find((c) => c.id === channelId)?.visibility ??
+    'private';
+  // Opening a channel to the whole team takes a second press.
+  const [opening, setOpening] = useState(false);
   return (
-    <ContextMenu.Root>
+    <ContextMenu.Root
+      onOpenChange={() => {
+        setOpening(false);
+      }}
+    >
       <ContextMenu.Trigger asChild>{children}</ContextMenu.Trigger>
       <ContextMenu.Portal>
         <ContextMenu.Content className="menu" collisionPadding={8}>
@@ -359,6 +368,38 @@ export function ChannelMenu({
             ))}
           </ContextMenu.RadioGroup>
           <ContextMenu.Separator className="menu-separator" />
+          <ContextMenu.Item
+            className="menu-item"
+            onSelect={(event) => {
+              if (visibility === 'private' && !opening) {
+                event.preventDefault();
+                setOpening(true);
+                return;
+              }
+              void request(
+                `/api/teams/${data.team.id}/channels/${channelId}/visibility`,
+                {
+                  operationKey: crypto.randomUUID(),
+                  visibility: visibility === 'private' ? 'public' : 'private',
+                },
+              ).catch(() => undefined);
+            }}
+          >
+            <span className="menu-icon">
+              {visibility === 'private' ? (
+                <SettingsIcons.globe size={16} />
+              ) : (
+                <SettingsIcons.lock size={16} />
+              )}
+            </span>
+            <span className="menu-label">
+              {visibility === 'public'
+                ? '设为私密'
+                : opening
+                  ? '确认：团队里所有人都能查看'
+                  : '设为公开…'}
+            </span>
+          </ContextMenu.Item>
           <ContextMenu.Item
             className="menu-item"
             data-danger="true"
