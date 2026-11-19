@@ -321,7 +321,6 @@ export async function createApp(
   registerCommunication(app, store);
   const files = attachmentStore(config.files);
   await files.prepare();
-  await files.adopt(config.state);
   registerAttachments(app, store, files, config.attachmentsRoom);
   const stopSweeping = sweepAttachments(store, files, (error) => {
     app.log.error(describeFailure(error), 'attachment_sweep_failed');

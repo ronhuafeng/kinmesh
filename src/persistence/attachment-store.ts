@@ -1,6 +1,3 @@
-import { readdir, rm, stat } from 'node:fs/promises';
-import { createReadStream } from 'node:fs';
-import { join } from 'node:path';
 import { Readable } from 'node:stream';
 import {
   CopyObjectCommand,
@@ -200,29 +197,6 @@ export function attachmentStore(config: StoreConfig) {
       await s3.send(
         new DeleteObjectCommand({ Bucket, Key: kept(checked(sha256)) }),
       );
-    },
-    /**
-     * Bytes an earlier hub kept in its state directory (`attachments/ab/…`)
-     * move to the store, once, as the hub starts.
-     */
-    async adopt(state: string) {
-      const root = join(state, 'attachments');
-      if (!(await stat(root).catch(() => null))) return;
-      for (const shard of await readdir(root))
-        for (const name of await readdir(join(root, shard))) {
-          if (!SHA256.test(name)) continue;
-          const path = join(root, shard, name);
-          if ((await size(kept(name))) !== null) continue;
-          await s3.send(
-            new PutObjectCommand({
-              Bucket,
-              Key: kept(name),
-              Body: createReadStream(path),
-              ContentLength: (await stat(path)).size,
-            }),
-          );
-        }
-      await rm(root, { recursive: true, force: true });
     },
   };
 }

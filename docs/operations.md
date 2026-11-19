@@ -38,8 +38,6 @@ The bytes of the files people attach are in an S3-compatible bucket, never in th
 
 A browser uploads to the store itself, so `KINMESH_S3_PUBLIC_ENDPOINT` must be reachable from people's browsers, and the store must allow the workspace's origin (silo allows any origin by default); the hub adds that origin to its `connect-src`. Reached under the hub's own origin, it needs neither: route `/<bucket>/` there to the store, unchanged and with the original `Host` (the upload's signature covers both), taking bodies up to 200 MB (below). Downloads go through the hub, which streams them and answers a `Range` with that part. The hub, the Inbox worker and Team MCP reach the store at `KINMESH_S3_ENDPOINT`; none of them ever holds a whole file.
 
-As it starts, the hub moves bytes an earlier hub kept in its state directory (`attachments/`) to the store, then removes that directory.
-
 ### In a container
 
 The image holds the compiled server, its migrations and the built workspace; it runs as the unprivileged `node` user, keeps its own files in the `/data` volume and reports healthy only when ready (`/health`). Everything else comes from the environment. `compose.yaml` runs it beside PostgreSQL, whose data is in the `kinmesh-postgres` volume. With a `.env` beside it (never committed; `npm run setup` writes one, then add the Feishu app and domain):

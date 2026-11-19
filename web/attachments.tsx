@@ -7,7 +7,6 @@ import {
 } from '../src/domain/attachments.js';
 
 export { fileSize };
-import { sha256 as SHA256 } from '@noble/hashes/sha2.js';
 import { z } from 'zod';
 import { HttpError, api, request } from './api.js';
 import { FileIcon } from './icons.js';
@@ -46,20 +45,34 @@ export function pendingOf(files: Iterable<File>, already: number): Pending[] {
 /** An upload that sends nothing for this long has stalled. */
 const STALL_MS = 60_000;
 const FAILED = '没有传上去';
+const Digest = z.object({ hex: z.string(), base64: z.string() });
 /**
- * The file's SHA-256, read a part at a time so no copy of it is held: hex
- * for the hub, base64 for the store.
+ * The file's SHA-256 (hex for the hub, base64 for the store), worked out in
+ * a worker so a large file never holds up the page.
  */
-async function digest(file: File) {
-  const hash = SHA256.create();
-  const reader = file.stream().getReader();
-  for (let part = await reader.read(); !part.done; part = await reader.read())
-    hash.update(part.value);
-  const bytes = hash.digest();
-  return {
-    hex: Array.from(bytes, (b) => b.toString(16).padStart(2, '0')).join(''),
-    base64: btoa(String.fromCharCode(...bytes)),
-  };
+function digest(file: File, signal: AbortSignal) {
+  return new Promise<z.infer<typeof Digest>>((resolve, reject) => {
+    const worker = new Worker(new URL('./hash-worker.ts', import.meta.url), {
+      type: 'module',
+    });
+    const done = () => {
+      worker.terminate();
+      signal.removeEventListener('abort', cancel);
+    };
+    const cancel = () => {
+      done();
+      reject(new Error(FAILED));
+    };
+    worker.onmessage = (event: MessageEvent<unknown>) => {
+      done();
+      const parsed = Digest.safeParse(event.data);
+      if (parsed.success) resolve(parsed.data);
+      else reject(new Error(FAILED));
+    };
+    worker.onerror = cancel;
+    signal.addEventListener('abort', cancel, { once: true });
+    worker.postMessage(file);
+  });
 }
 /**
  * Uploads one file to the channel, reporting how much of it has gone (0 to 1,
@@ -72,8 +85,7 @@ export async function upload(
   onProgress: (fraction: number) => void,
   signal: AbortSignal,
 ): Promise<Attachment> {
-  const sha256 = await digest(pending.file);
-  signal.throwIfAborted();
+  const sha256 = await digest(pending.file, signal);
   try {
     const { url } = Upload.parse(
       await request(`${channelPath}/attachments/uploads`, {
