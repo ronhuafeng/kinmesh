@@ -360,6 +360,23 @@ function Composer({
                   aria-label={'移除对 ' + member.name + ' 的提及'}
                   onClick={() => {
                     setChips((old) => old.filter((c) => c.id !== member.id));
+                    // The `@Name` written for them goes too, or the text
+                    // would still mention them.
+                    const el = input.current;
+                    if (!el) return;
+                    for (const said of [member.name, member.handle])
+                      if (said)
+                        el.value = el.value.replace(
+                          new RegExp(
+                            '(^|\\s)@' +
+                              said.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') +
+                              '(?![\\p{L}\\p{N}_-]) ?',
+                            'giu',
+                          ),
+                          '$1',
+                        );
+                    keep(draftKey, el.value || null);
+                    setReady(el.value.trim() !== '');
                   }}
                 >
                   ×
