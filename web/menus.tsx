@@ -90,11 +90,14 @@ export function AccountMenu({
   onSettings,
   onSignOut,
   onSignOutEverywhere,
+  onFailed,
 }: {
   data: WorkspaceSnapshot;
   onSettings: (section: string) => void;
   onSignOut: () => void;
   onSignOutEverywhere: () => void;
+  /** Says an action didn't happen, where the person will see it. */
+  onFailed: (message: string) => void;
 }) {
   const [theme, setTheme] = useState<Theme>(readTheme);
   const paused = until(data.pausedUntil);
@@ -107,7 +110,9 @@ export function AccountMenu({
       '/api/me/pause',
       { until: at === null ? null : at.toISOString() },
       'PUT',
-    ).catch(() => undefined);
+    ).catch(() => {
+      onFailed('没能改好，请再试一次。');
+    });
   return (
     <Menu.Root>
       <Menu.Trigger className="account-row" aria-label="你的账户">
@@ -312,12 +317,15 @@ export function ChannelMenu({
   channelId,
   channelName,
   onLeave,
+  onFailed,
   children,
 }: {
   data: WorkspaceSnapshot;
   channelId: string;
   channelName: string;
   onLeave: (channelId: string) => void;
+  /** Says an action didn't happen, where the person will see it. */
+  onFailed: (message: string) => void;
   children: ReactNode;
 }) {
   const level = levelOf(data, channelId);
@@ -341,9 +349,9 @@ export function ChannelMenu({
             onValueChange={(value) => {
               const next = ChannelLevel.safeParse(value);
               if (next.success)
-                void setLevel(data.team.id, channelId, next.data).catch(
-                  () => undefined,
-                );
+                void setLevel(data.team.id, channelId, next.data).catch(() => {
+                  onFailed('没能改好，请再试一次。');
+                });
             }}
           >
             {/* Loudest first. */}
@@ -382,7 +390,9 @@ export function ChannelMenu({
                   operationKey: crypto.randomUUID(),
                   visibility: visibility === 'private' ? 'public' : 'private',
                 },
-              ).catch(() => undefined);
+              ).catch(() => {
+                onFailed('没能改好，请再试一次。');
+              });
             }}
           >
             <span className="menu-icon">

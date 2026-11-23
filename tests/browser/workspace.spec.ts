@@ -1504,6 +1504,38 @@ test('the agent panel still walks an operator through a self-run worker binding'
 });
 
 /**
+ * Proves an action that doesn't happen says so: a refused pause, and signing
+ * out while Kinmesh can't be reached.
+ */
+test('a menu action the hub refuses, and one that can’t go while out of reach, each say so', async ({
+  page,
+  context,
+  hub,
+}) => {
+  await signIn(page, hub);
+  await page.route('**/api/me/pause', (route) =>
+    route.fulfill({ status: 500, json: {} }),
+  );
+  await page.getByRole('button', { name: '你的账户' }).click();
+  await page.getByRole('menuitem', { name: '暂停 1 小时' }).click();
+  await expect(
+    page.getByRole('status').filter({ hasText: '没能改好，请再试一次。' }),
+  ).toBeVisible();
+  // Out of reach, signing out says why it waits instead of doing nothing.
+  await context.setOffline(true);
+  await refreshNow(page);
+  await expect(staleLine(page)).toBeVisible();
+  await page.getByRole('button', { name: '你的账户' }).click();
+  await page.getByRole('menuitem', { name: '退出登录', exact: true }).click();
+  await expect(
+    page
+      .getByRole('status')
+      .filter({ hasText: '连不上 Kinmesh，恢复连接后再试。' }),
+  ).toBeVisible();
+  await context.setOffline(false);
+});
+
+/**
  * Proves a workspace this page can't read (as after an update it predates)
  * reloads the page once, and failing again shows the way back, not a blank
  * page or a claim that Kinmesh is unreachable.

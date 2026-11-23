@@ -925,8 +925,17 @@ export function App() {
         : !selection.channel
           ? 'home'
           : 'channel';
+  /** What an action that can't go now says, instead of nothing. */
+  const cannot = () => {
+    notify(
+      stale ? '连不上 Kinmesh，恢复连接后再试。' : '页面还在更新，请稍后再试。',
+    );
+  };
   const signOut = () => {
-    if (!canAct) return;
+    if (!canAct) {
+      cannot();
+      return;
+    }
     // This browser stops being notified for you before you leave it.
     void unsubscribe()
       .catch(() => undefined)
@@ -940,7 +949,10 @@ export function App() {
       });
   };
   const signOutEverywhere = () => {
-    if (!canAct) return;
+    if (!canAct) {
+      cannot();
+      return;
+    }
     // This browser stops being notified for you before you leave it.
     void unsubscribe()
       .catch(() => undefined)
@@ -955,7 +967,11 @@ export function App() {
   };
   /** Leaves the open channel, from the command palette. */
   const leaveChannel = () => {
-    if (!canAct || !channelPath) return;
+    if (!channelPath) return;
+    if (!canAct) {
+      cannot();
+      return;
+    }
     void api(channelPath + '/leave', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
@@ -971,7 +987,11 @@ export function App() {
   // How loud the open channel is for you, changed from search.
   const channelLevel = channel ? levelOf(data, channel.id) : 'default';
   const changeLevel = (level: ChannelLevel) => {
-    if (!canAct || !channel) return;
+    if (!channel) return;
+    if (!canAct) {
+      cannot();
+      return;
+    }
     void setLevel(data.team.id, channel.id, level).catch(() => {
       notify('没能改好，请再试一次。');
     });
@@ -981,7 +1001,10 @@ export function App() {
   const looking =
     channel !== null && !data.joinedHumanIds.includes(data.human.id);
   const leaveChannelById = (id: string) => {
-    if (!canAct) return;
+    if (!canAct) {
+      cannot();
+      return;
+    }
     void api(`/api/teams/${data.team.id}/channels/${id}/leave`, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
@@ -1301,6 +1324,7 @@ export function App() {
                             channelId={c.id}
                             channelName={c.name}
                             onLeave={leaveChannelById}
+                            onFailed={notify}
                           >
                             <button
                               // On a phone the row also shows the newest message,
@@ -1512,6 +1536,7 @@ export function App() {
                       onSettings={openSettings}
                       onSignOut={signOut}
                       onSignOutEverywhere={signOutEverywhere}
+                      onFailed={notify}
                     />
                   </div>
                 )}
