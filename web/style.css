@@ -4654,6 +4654,10 @@ button.inbox-main:focus-visible::after {
 .task-main .create-task {
   justify-self: start;
 }
+.task-edit-buttons {
+  display: flex;
+  gap: 0.5rem;
+}
 /* A new agent is typed into its own tile: the dashed face fills in with
  * the initial as the name is written, the name sits where names sit, and
  * the role is a quiet line under it, like presence. Enter adds it. */

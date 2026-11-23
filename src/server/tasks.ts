@@ -46,6 +46,7 @@ export function registerTasks(app: FastifyInstance, store: Store) {
     'rework',
     'cancel',
     'link-execution',
+    'edit',
   ] as const) {
     app.post(base + '/:taskId/' + type, async (request) => {
       const { teamId, channelId, taskId } = TaskPath.parse(request.params);

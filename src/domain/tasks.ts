@@ -154,6 +154,17 @@ export const TaskCommand = z.discriminatedUnion('type', [
     reference: CorrelationInput.shape.reference,
     note: Note,
   }),
+  /**
+   * Its acceptor says what is asked again: title, description, criteria and
+   * who reviews, all given as they should be.
+   */
+  CommandBase.extend({
+    type: z.literal('edit'),
+    title: TaskCreate.shape.title,
+    description: TaskCreate.shape.description,
+    criteria: TaskCreate.shape.criteria,
+    reviewer: Member.nullable(),
+  }),
 ]);
 export type TaskCommand = z.infer<typeof TaskCommand>;
 export const principalMember = (p: Principal): z.infer<typeof Member> =>
@@ -215,8 +226,22 @@ export function transition(
       });
     case 'handoff':
       if (command.mode === 'work' && finalHuman) {
-        // Explicit audited recovery when the old owner cannot act. Review restarts.
-        if (state.owner === null) throw new DomainError('conflict');
+        // Explicit audited recovery when the old owner cannot act, or the
+        // acceptor giving work nobody has started to someone. Review
+        // restarts, unless nothing was worked on yet.
+        if (state.status === 'proposed') {
+          if (
+            state.reviewer !== null &&
+            memberKey(command.recipient) === memberKey(state.reviewer)
+          )
+            throw new DomainError('conflict');
+          return TaskState.parse({
+            status: 'in-progress',
+            owner: command.recipient,
+            reviewer: state.reviewer,
+            note: command.note,
+          });
+        }
       } else {
         work();
         ready();
@@ -293,6 +318,34 @@ export function transition(
         cancelledBy: principal.humanId,
         cancelledAt: time,
       });
+    case 'edit': {
+      if (!finalHuman) throw new DomainError('forbidden');
+      const same = (a: Member | null, b: Member | null) =>
+        (a === null ? null : memberKey(a)) ===
+        (b === null ? null : memberKey(b));
+      // Who reviews is settled once review is asked for.
+      if (
+        !same(command.reviewer, state.reviewer) &&
+        (state.status === 'review-requested' ||
+          state.status === 'awaiting-human')
+      )
+        throw new DomainError('conflict');
+      if (
+        command.reviewer !== null &&
+        state.owner !== null &&
+        same(command.reviewer, state.owner)
+      )
+        throw new DomainError('conflict');
+      // An edit changes something.
+      if (
+        command.title === current.title &&
+        command.description === current.description &&
+        JSON.stringify(command.criteria) === JSON.stringify(current.criteria) &&
+        same(command.reviewer, state.reviewer)
+      )
+        throw new DomainError('invalid');
+      return TaskState.parse({ ...state, reviewer: command.reviewer });
+    }
     case 'link-execution':
       if (
         !owns &&

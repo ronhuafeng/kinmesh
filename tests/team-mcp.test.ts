@@ -102,7 +102,9 @@ await test('real Team MCP subprocess + independent SDK initializes, notifies, li
         (t) => t.name === 'team_messages_send' && t.outputSchema !== undefined,
       ),
     );
-    assert.ok(!tools.tools.some((t) => /accept|cancel|rework$/.test(t.name)));
+    assert.ok(
+      !tools.tools.some((t) => /accept|cancel|rework$|task_edit$/.test(t.name)),
+    );
     const channels = await call(
       client,
       'team_channels_list',

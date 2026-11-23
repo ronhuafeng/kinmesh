@@ -571,6 +571,8 @@ export function taskRepository(
               await target(p, teamId, channelId, data.recipient);
             if (data.type === 'request-review')
               await target(p, teamId, channelId, data.reviewer);
+            if (data.type === 'edit')
+              await target(p, teamId, channelId, data.reviewer);
             // Assigned people must still be active/joined before taking review or acceptance decisions.
             if (data.type === 'review' || data.type === 'accept') {
               await target(p, teamId, channelId, state.owner);
@@ -584,6 +586,13 @@ export function taskRepository(
                 ownerKey: state.owner === null ? null : memberKey(state.owner),
                 version: old.version + 1,
                 updatedAt: time,
+                ...(data.type === 'edit'
+                  ? {
+                      title: data.title,
+                      description: data.description,
+                      criteria: JSON.stringify(data.criteria),
+                    }
+                  : {}),
               })
               .where(
                 and(

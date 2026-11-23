@@ -275,6 +275,21 @@ function said(e: z.infer<typeof TaskEvent>, data: WorkspaceSnapshot): string {
       return `${who} 取消了任务${quote(c.note)}`;
     case 'link-execution':
       return `${who} 关联了一次 T3 运行`;
+    case 'edit': {
+      const before = e.before;
+      const changed = before
+        ? [
+            before.title !== c.title && '标题',
+            before.description !== c.description && '描述',
+            before.criteria.join('\n') !== c.criteria.join('\n') && '完成标准',
+            (before.state.reviewer === null
+              ? ''
+              : memberKey(before.state.reviewer)) !==
+              (c.reviewer === null ? '' : memberKey(c.reviewer)) && '审核人',
+          ].filter((v): v is string => v !== false)
+        : [];
+      return `${who} 修改了${changed.length > 0 ? changed.join('、') : '任务'}`;
+    }
   }
 }
 function TaskHistory({
@@ -378,6 +393,7 @@ type Intent =
   | 'accept'
   | 'handoff'
   | 'rework'
+  | 'edit'
   | 'cancel';
 const intentLabels: Record<Intent, string> = {
   claim: '认领任务',
@@ -388,6 +404,7 @@ const intentLabels: Record<Intent, string> = {
   accept: '验收通过',
   handoff: '转交工作',
   rework: '退回修改',
+  edit: '编辑任务',
   cancel: '取消任务',
 };
 /** What the person sees after the server confirms the decision. */
@@ -400,8 +417,20 @@ const intentDone: Record<Intent, string> = {
   accept: '已验收，备注已记录。',
   handoff: '工作已转交，审核重新开始。',
   rework: '已退回修改。',
+  edit: '任务已修改。',
   cancel: '任务已取消。',
 };
+/** Work nobody has started is given to someone, not handed on. */
+function labelOf(intent: Intent, task: Task) {
+  return intent === 'handoff' && task.state.status === 'proposed'
+    ? '指派负责人'
+    : intentLabels[intent];
+}
+function doneOf(intent: Intent, task: Task) {
+  return intent === 'handoff' && task.state.status === 'proposed'
+    ? '已指派负责人。'
+    : intentDone[intent];
+}
 /**
  * What you may do with a task, mirroring the server's rules so no button
  * leads to a certain 409/403: what waits on you leads the page; the rest is
@@ -429,10 +458,9 @@ function taskActions(task: Task, data: WorkspaceSnapshot) {
   if (owns && working)
     (status === 'rework-requested' ? lead : rest).push('progress');
   if (owns && status === 'in-progress') rest.push('request-review');
-  if ((final && !done && owner !== null) || (owns && working))
-    rest.push('handoff');
+  if ((final && !done) || (owns && working)) rest.push('handoff');
   if (final && !done && owner !== null) rest.push('rework');
-  if (final && !done) rest.push('cancel');
+  if (final && !done) rest.push('edit', 'cancel');
   return { lead, rest, done };
 }
 /**
@@ -473,7 +501,7 @@ function DecisionForm({
   // A recipient must differ from the current owner (work) or from you (review).
   const exclude =
     routed === 'handoff'
-      ? task.state.owner
+      ? (task.state.owner ?? task.state.reviewer)
       : routed === 'request-review'
         ? human
         : null;
@@ -493,7 +521,7 @@ function DecisionForm({
       }}
       onDone={() => {
         onSettled();
-        if (chosen.current) onDecided(intentDone[chosen.current]);
+        if (chosen.current) onDecided(doneOf(chosen.current, task));
         onDone();
       }}
       build={(f) => {
@@ -586,7 +614,7 @@ function DecisionForm({
               chosen.current = intent;
             }}
           >
-            {intentLabels[intent]}
+            {labelOf(intent, task)}
           </button>
         ))}
         {onBack && (
@@ -690,6 +718,7 @@ function PersonPicker({
   data,
   initial,
   people = false,
+  exclude = null,
 }: {
   name: string;
   label: string;
@@ -697,6 +726,8 @@ function PersonPicker({
   initial: string;
   /** Only people, and always someone: who decides on a task. */
   people?: boolean;
+  /** Someone who can't be chosen here, such as the owner as reviewer. */
+  exclude?: Member | null;
 }) {
   const [chosen, setChosen] = useState(initial);
   const member = chosen ? memberFrom(chosen) : null;
@@ -718,7 +749,7 @@ function PersonPicker({
         }}
       >
         {!people && <option value="">选择…</option>}
-        <MemberOptions data={data} people={people} />
+        <MemberOptions data={data} people={people} exclude={exclude} />
       </select>
     </span>
   );
@@ -983,7 +1014,7 @@ function TaskDecision({
           task={task}
           data={data}
           path={path}
-          title={ask ? '等你决定' : intentLabels[intents[0] ?? 'claim']}
+          title={ask ? '等你决定' : labelOf(intents[0] ?? 'claim', task)}
           intents={intents}
           held={held}
           onSettled={onSettled}
@@ -1025,6 +1056,8 @@ export function TaskPage({
   const { lead, rest, done } = taskActions(task, data);
   // One of the row's actions, chosen: its note opens in place of the row.
   const [picked, setPicked] = useState<Intent | null>(null);
+  // Edited, the task is the page it was created on, filled in.
+  const [editing, setEditing] = useState(false);
   const chosen = picked !== null && rest.includes(picked) ? picked : null;
   // After a decision lands, buttons wait for the new task version so a second
   // click can never re-send against the old one.
@@ -1038,6 +1071,31 @@ export function TaskPage({
     ? taskDeliveries(data, task.id)
     : [];
   const decision = { task, data, path, held, onDone, onDecided };
+  if (editing && rest.includes('edit'))
+    return (
+      <Page
+        label={task.title}
+        onClose={onClose}
+        className="task-page"
+        tabLeadsBack
+        bar={data.channel ? '# ' + data.channel.name : ''}
+      >
+        <TaskEdit
+          task={task}
+          data={data}
+          path={path}
+          topic={topic?.title ?? null}
+          onClose={() => {
+            setEditing(false);
+          }}
+          onDone={() => {
+            setEditing(false);
+            onDecided(intentDone.edit);
+            onDone();
+          }}
+        />
+      </Page>
+    );
   return (
     <Page
       label={task.title}
@@ -1103,7 +1161,7 @@ export function TaskPage({
             <div className="task-actions">
               <DecisionForm
                 {...decision}
-                title={intentLabels[chosen]}
+                title={labelOf(chosen, task)}
                 intents={[chosen]}
                 onBack={() => {
                   setPicked(null);
@@ -1122,10 +1180,11 @@ export function TaskPage({
                       intent === 'cancel' ? 'quiet subtle-danger' : 'quiet'
                     }
                     onClick={() => {
-                      setPicked(intent);
+                      if (intent === 'edit') setEditing(true);
+                      else setPicked(intent);
                     }}
                   >
-                    {intentLabels[intent]}
+                    {labelOf(intent, task)}
                   </button>
                 ))}
               </div>
@@ -1134,6 +1193,151 @@ export function TaskPage({
         </TaskLayout>
       </div>
     </Page>
+  );
+}
+/** What an edit would make of the task, as the form holds it. */
+function editOf(f: FormData, task: Task) {
+  const reviewer = f.get('reviewer');
+  return {
+    title: value(f, 'title').trim(),
+    description: value(f, 'description').trim(),
+    criteria: f
+      .getAll('criteria')
+      .map((c) => (typeof c === 'string' ? c.trim() : ''))
+      .filter(Boolean),
+    // Settled once review is asked for, it is shown, not chosen.
+    reviewer:
+      reviewer === null
+        ? task.state.reviewer
+        : memberFrom(typeof reviewer === 'string' ? reviewer : ''),
+  };
+}
+function unchanged(edit: ReturnType<typeof editOf>, task: Task) {
+  const key = (m: Member | null) => (m === null ? '' : memberKey(m));
+  return (
+    edit.title === task.title &&
+    edit.description === task.description &&
+    edit.criteria.join('\n') === task.criteria.join('\n') &&
+    key(edit.reviewer) === key(task.state.reviewer)
+  );
+}
+/**
+ * A task's acceptor says again what is asked, on the page it was created
+ * on: its places filled in and editable. 保存 keeps it; 取消 or Esc leaves
+ * it as it was, and saving what is unchanged only closes the form.
+ */
+function TaskEdit({
+  task,
+  data,
+  path,
+  topic,
+  onClose,
+  onDone,
+}: {
+  task: Task;
+  data: WorkspaceSnapshot;
+  path: string;
+  topic: string | null;
+  onClose: () => void;
+  onDone: () => void;
+}) {
+  const { status, owner, reviewer } = task.state;
+  const settled = status === 'review-requested' || status === 'awaiting-human';
+  return (
+    <div
+      className="page-body"
+      data-status={status}
+      onKeyDown={(e) => {
+        if (e.key !== 'Escape' || composing(e)) return;
+        // Esc leaves the edit, not the task.
+        e.preventDefault();
+        onClose();
+      }}
+      onSubmitCapture={(e) => {
+        if (!(e.target instanceof HTMLFormElement)) return;
+        if (!unchanged(editOf(new FormData(e.target), task), task)) return;
+        e.preventDefault();
+        e.stopPropagation();
+        onClose();
+      }}
+    >
+      <ActionForm
+        key={task.id}
+        title="编辑任务"
+        path={path + '/edit'}
+        onDone={onDone}
+        build={(f) => {
+          const command = TaskCommand.parse({
+            operationKey: crypto.randomUUID(),
+            expectedVersion: task.version,
+            type: 'edit',
+            ...editOf(f, task),
+          });
+          return Object.fromEntries(
+            Object.entries(command).filter(
+              ([key]) => key !== 'type' && key !== 'operationKey',
+            ),
+          );
+        }}
+      >
+        <TaskLayout
+          status={status}
+          title={
+            <Field label="任务标题">
+              <input
+                name="title"
+                className="title-input"
+                required
+                maxLength={160}
+                defaultValue={task.title}
+                autoFocus
+              />
+            </Field>
+          }
+          description={
+            <Field label="描述">
+              <textarea
+                name="description"
+                className="description-input"
+                rows={3}
+                maxLength={4000}
+                placeholder="添加描述"
+                defaultValue={task.description}
+              />
+            </Field>
+          }
+          criteria={<CriteriaInput initial={task.criteria} />}
+          owner={<MemberChip member={owner} data={data} />}
+          reviewer={
+            settled ? (
+              <MemberChip member={reviewer} data={data} />
+            ) : (
+              <PersonPicker
+                name="reviewer"
+                label="审核人"
+                data={data}
+                initial={reviewer ? reviewer.kind + ':' + reviewer.id : ''}
+                exclude={owner}
+              />
+            )
+          }
+          acceptor={
+            <MemberChip
+              member={{ kind: 'human', id: task.acceptorHumanId }}
+              data={data}
+            />
+          }
+          topic={topic}
+        >
+          <div className="task-edit-buttons">
+            <button type="submit">保存</button>
+            <button type="button" className="secondary" onClick={onClose}>
+              取消
+            </button>
+          </div>
+        </TaskLayout>
+      </ActionForm>
+    </div>
   );
 }
 function TaskCard({

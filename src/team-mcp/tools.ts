@@ -289,8 +289,14 @@ export function teamServer(
   for (const command of TaskCommand.options) {
     const { type, ...fields } = command.shape;
     const action = type.value;
-    // Human-only decisions are deliberately absent from the agent transport.
-    if (action === 'accept' || action === 'rework' || action === 'cancel')
+    // Human-only decisions, and the acceptor's say over what is asked, are
+    // deliberately absent from the agent transport.
+    if (
+      action === 'accept' ||
+      action === 'rework' ||
+      action === 'cancel' ||
+      action === 'edit'
+    )
       continue;
     register(
       'team_task_' + action.replaceAll('-', '_'),
