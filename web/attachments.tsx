@@ -105,7 +105,8 @@ export async function upload(
           sha256: sha256.hex,
         }),
         // The store keeps a large file under its hash before this answers.
-        signal: AbortSignal.any([signal, AbortSignal.timeout(60_000)]),
+        signal,
+        timeout: 60_000,
       }),
     );
   } catch (cause) {

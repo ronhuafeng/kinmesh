@@ -1473,6 +1473,32 @@ test('the agent panel still walks an operator through a self-run worker binding'
   await expect(snippet).not.toContainText('kma_');
 });
 
+/**
+ * Proves a read the network holds open still ends: after its timeout the
+ * page says it can't reach Kinmesh, and once the hub answers again it
+ * recovers by itself.
+ */
+test('a workspace read the network never answers ends, says so, and recovers', async ({
+  page,
+  hub,
+}) => {
+  test.setTimeout(60_000);
+  await withoutStream(page);
+  await signIn(page, hub);
+  await expectHealthy(page);
+  let hold = true;
+  await page.route('**/api/workspace?*', async (route) => {
+    if (hold) return; // Never answered while held.
+    await route.continue();
+  });
+  await refreshNow(page);
+  await expect(staleLine(page)).toBeVisible({ timeout: 15_000 });
+  // The page asks again every 5 seconds while out of reach.
+  hold = false;
+  await expect(staleLine(page)).toHaveCount(0, { timeout: 15_000 });
+  await expectHealthy(page);
+});
+
 test('lost message response retries the same committed operation; real conflict stays visible', async ({
   page,
   context,
