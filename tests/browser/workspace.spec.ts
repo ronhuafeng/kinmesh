@@ -128,6 +128,29 @@ test('a desktop workspace loads without sideways scrolling', async ({
     ),
   ).toBe(true);
 });
+/**
+ * Proves what someone else writes while you are in the conversation is read
+ * out to a screen reader: who, then what, in a polite live region.
+ */
+test('a message from someone else is announced politely as it arrives', async ({
+  page,
+  browser,
+  hub,
+}) => {
+  await signIn(page, hub, 'ada@example.com');
+  const theirs = await browser.newContext();
+  try {
+    const grace = await theirs.newPage();
+    await signIn(grace, hub, 'grace@example.com');
+    const composer = grace.getByRole('form', { name: '给团队发消息' });
+    await composer.getByLabel('消息', { exact: true }).fill('Hi **Ada**');
+    await composer.getByRole('button', { name: '发送消息' }).click();
+    const said = page.locator('[aria-live="polite"].visually-hidden');
+    await expect(said).toHaveText('Grace Hopper：Hi Ada');
+  } finally {
+    await theirs.close();
+  }
+});
 test('a second person of the organization signs in to the same workspace and sees who is there', async ({
   page,
   browser,

@@ -38,7 +38,7 @@ import {
 } from './ui.js';
 import { keep, kept } from './session.js';
 import { DeliveryLine } from './deliveries.js';
-import { Markdown } from './markdown.js';
+import { Markdown, plainText } from './markdown.js';
 import { ReplyOrigin, answerOnly, type ReplyView } from './replies.js';
 import type { DeliveryView } from './deliveries.js';
 
@@ -856,6 +856,8 @@ function useArrivals(place: string, messages: ChatMessage[], me: string) {
   const seen = useRef<{ place: string; newest: number } | null>(null);
   const [divider, setDivider] = useState<string | null>(null);
   const [fresh, setFresh] = useState<Set<string>>(new Set());
+  // What arrived from others, said politely to a screen reader.
+  const [heard, setHeard] = useState<ChatMessage[]>([]);
   useEffect(() => {
     const previous = seen.current;
     const newest = messages.at(-1)?.position ?? 0;
@@ -871,8 +873,9 @@ function useArrivals(place: string, messages: ChatMessage[], me: string) {
     setFresh(new Set(arrived.map((m) => m.id)));
     const fromOthers = arrived.find((m) => !mine(m, me));
     if (fromOthers) setDivider((old) => old ?? fromOthers.id);
+    setHeard(arrived.filter((m) => !mine(m, me)));
   }, [place, messages, me]);
-  return { divider, fresh };
+  return { divider, fresh, heard };
 }
 const atBottom = () =>
   window.innerHeight + window.scrollY >=
@@ -1334,7 +1337,7 @@ export function Chat({
   const channel = data.channel;
   const messages = data.messages.items;
   const shown = (channel?.id ?? '') + ':' + shownTopic;
-  const { divider, fresh } = useArrivals(shown, messages, data.human.id);
+  const { divider, fresh, heard } = useArrivals(shown, messages, data.human.id);
   // The message tapped on a touch screen, which shows its actions.
   const [chosen, setChosen] = useState<string | null>(null);
   const reading = useReadingPosition(shown, messages);
@@ -1511,6 +1514,19 @@ export function Chat({
         </div>
       )}
       <FirstSteps data={data} openAgent={openAgent} onTeam={onTeam} />
+      {/* What others write while you are here is read out, without moving
+          focus: who, then the start of what they wrote. */}
+      <p className="visually-hidden" aria-live="polite">
+        {heard
+          .map(
+            (m) =>
+              memberName(m.author, data) +
+              '：' +
+              (plainText(m.body).slice(0, 140) ||
+                m.attachments.map((a) => a.name).join('、')),
+          )
+          .join('。')}
+      </p>
       <ol className="messages" aria-label="频道消息" ref={reading.list}>
         {rows.map(({ m, o }, index) => {
           const previous = rows[index - 1]?.m;

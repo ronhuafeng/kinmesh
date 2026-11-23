@@ -58,6 +58,26 @@ interface Drawing {
   height: number;
   label: string;
 }
+/**
+ * What an untitled diagram shows, for those who can't see it: the first few
+ * names its nodes are given (`A["Name"]`, `B(Name)`), else its kind.
+ */
+export function describe(source: string) {
+  const names: string[] = [];
+  for (const m of source.matchAll(
+    /\b[\w-]+\s*(?:\[\(|\(\[|\[\[|\(\(|\[|\(|\{)\s*"?([^"\]\)\}\n]+?)"?\s*(?:\)\]|\]\)|\]\]|\)\)|\]|\)|\})/g,
+  )) {
+    const name = (m[1] ?? '')
+      .replace(/<br\s*\/?>/gi, ' ')
+      .replace(/\s+/g, ' ')
+      .trim();
+    if (name && !names.includes(name)) names.push(name);
+    if (names.length === 4) break;
+  }
+  if (names.length > 0)
+    return names.join('、') + (names.length === 4 ? '…' : '');
+  return /^\s*(\w+)/.exec(source)?.[1] ?? '';
+}
 const cache = new Map<string, Drawing>();
 const key = (source: string, dark: boolean) => (dark ? 'd:' : 'l:') + source;
 let counter = 0;
@@ -153,7 +173,7 @@ function draw(source: string, dark: boolean): Promise<Drawing> {
     const title =
       root.querySelector('title')?.textContent.trim() ??
       /^\s*(?:title|accTitle:?)\s+"?([^"\n]+)"?/m.exec(source)?.[1]?.trim();
-    const label = title ? '图表：' + title : '图表';
+    const label = '图表：' + (title ?? describe(source));
     return {
       src:
         'data:image/svg+xml;charset=utf-8,' +

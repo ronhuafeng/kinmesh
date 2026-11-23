@@ -460,17 +460,20 @@ function AccountSection({
     </>
   );
 }
-const SHORTCUTS = [
-  ['搜索', '⌘ K'],
-  ['发送消息', '⌘ ↵'],
-  ['设置', '⌘ ,'],
-  ['收起或展开侧栏', '⌘ \\'],
-  ['返回', 'Esc'],
-] as const;
+/** The keys, with the modifier this computer uses: ⌘ on a Mac, else Ctrl. */
+const SHORTCUTS = (mod: string) =>
+  [
+    ['搜索', mod + ' K'],
+    ['发送消息', mod + ' ↵'],
+    ['设置', mod + ' ,'],
+    ['收起或展开侧栏', mod + ' \\'],
+    ['返回', 'Esc'],
+  ] as const;
 function Shortcuts() {
+  const mod = /Mac|iPhone|iPad/.test(navigator.userAgent) ? '⌘' : 'Ctrl';
   return (
     <Group>
-      {SHORTCUTS.map(([label, keys]) => (
+      {SHORTCUTS(mod).map(([label, keys]) => (
         <Row key={label} label={label}>
           <kbd>{keys}</kbd>
         </Row>
