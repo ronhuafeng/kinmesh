@@ -105,7 +105,9 @@ worker.addEventListener('fetch', (event) => {
     return;
   }
   if (request.method !== 'GET') return;
-  if (request.mode === 'navigate') {
+  // Only the workspace's own page is the shell. Anything else opened in a
+  // tab (a file, a sign-in step) goes to the hub alone and is never kept.
+  if (request.mode === 'navigate' && url.pathname === '/') {
     event.respondWith(
       (async () => {
         try {
