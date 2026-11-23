@@ -3295,6 +3295,36 @@ test('a mermaid block is drawn as its diagram, and one that can’t be drawn sta
   );
 });
 
+/**
+ * Proves a criterion row removed with Backspace is gone from the kept draft
+ * too: a reload brings back exactly the rows left.
+ */
+test('a criterion row removed with Backspace stays removed after a reload', async ({
+  page,
+  hub,
+}) => {
+  await signIn(page, hub);
+  await page.getByRole('tab', { name: '看板', exact: true }).click();
+  await page.getByRole('button', { name: '新任务' }).click();
+  const form = page.getByRole('form', { name: '新任务' });
+  await form.getByLabel('任务标题').fill('Ship it');
+  const first = form.getByLabel('完成标准', { exact: true });
+  await first.fill('Tests pass');
+  await first.press('Enter');
+  const second = form.getByLabel('完成标准 2', { exact: true });
+  await expect(second).toBeFocused();
+  await second.press('Backspace');
+  await expect(second).toHaveCount(0);
+  await page.reload();
+  const restored = page.getByRole('form', { name: '新任务' });
+  await expect(restored.getByLabel('完成标准', { exact: true })).toHaveValue(
+    'Tests pass',
+  );
+  await expect(restored.getByLabel('完成标准 2', { exact: true })).toHaveCount(
+    0,
+  );
+});
+
 test('a reload keeps the place and unsent work; Back returns to where you were', async ({
   page,
   hub,

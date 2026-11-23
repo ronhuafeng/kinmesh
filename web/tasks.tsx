@@ -609,14 +609,22 @@ function CriteriaInput({ initial }: { initial: string[] }) {
   const [rows, setRows] = useState(initial.length > 0 ? initial : ['']);
   const inputs = useRef<(HTMLInputElement | null)[]>([]);
   const focus = useRef<number | null>(null);
+  const list = useRef<HTMLUListElement>(null);
+  // A row added or removed changes what the form holds without typing: the
+  // draft kept from each input hears of it too.
+  const changed = useRef(false);
   useEffect(() => {
+    if (changed.current) {
+      changed.current = false;
+      list.current?.dispatchEvent(new Event('input', { bubbles: true }));
+    }
     if (focus.current === null) return;
     inputs.current[focus.current]?.focus();
     focus.current = null;
   }, [rows.length]);
   const placeholders = ['测试通过', '文档已更新'];
   return (
-    <ul className="criteria-input">
+    <ul className="criteria-input" ref={list}>
       {rows.map((row, index) => (
         <li key={index}>
           <input
@@ -652,6 +660,7 @@ function CriteriaInput({ initial }: { initial: string[] }) {
               ) {
                 e.preventDefault();
                 focus.current = Math.max(0, index - 1);
+                changed.current = true;
                 setRows((old) => old.filter((_, i) => i !== index));
               }
             }}
@@ -1051,8 +1060,8 @@ export function TaskPage({
           }
           criteria={
             <ol className="criteria">
-              {task.criteria.map((c) => (
-                <li key={c}>{c}</li>
+              {task.criteria.map((c, index) => (
+                <li key={index}>{c}</li>
               ))}
             </ol>
           }
