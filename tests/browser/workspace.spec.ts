@@ -957,6 +957,36 @@ test('a request waiting for an approval in T3 is stopped from its line, and one 
 });
 
 /**
+ * Proves an input method keeps its keys: the Enter that commits a pinyin
+ * candidate never chooses from the @ list; a plain Enter then does.
+ */
+test('Enter committing an input method candidate never picks from the @ list', async ({
+  page,
+  hub,
+}) => {
+  await signIn(page, hub);
+  await register(page, 'Ada', 'developer');
+  await page.getByRole('tab', { name: '聊天', exact: true }).click();
+  const composer = page.getByRole('form', { name: '给团队发消息' });
+  const field = composer.getByLabel('消息', { exact: true });
+  await field.pressSequentially('@Ad');
+  const list = page.getByRole('listbox', { name: '可提及的成员' });
+  await expect(list).toBeVisible();
+  for (const init of [
+    { key: 'Enter', isComposing: true },
+    { key: 'Enter', keyCode: 229 },
+  ])
+    await field.dispatchEvent('keydown', { ...init, bubbles: true });
+  await expect(field).toHaveValue('@Ad');
+  await expect(composer.getByRole('list', { name: '提及' })).toHaveCount(0);
+  await expect(list).toBeVisible();
+  await field.press('Enter');
+  await expect(composer.getByRole('list', { name: '提及' })).toContainText(
+    '@Ada',
+  );
+});
+
+/**
  * Proves removing a mention takes it back: the chip and the `@Name` written
  * for it go, and the message reaches no agent.
  */

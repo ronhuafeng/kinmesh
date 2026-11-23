@@ -13,7 +13,14 @@ import { useLive } from './live.js';
 import { api, HttpError, request, useRequest, value } from './api.js';
 import { ActionForm, Notice } from './forms.js';
 import { ArrowIcon, PlusIcon } from './icons.js';
-import { ago, Avatar, Page, Presence, workerConnected } from './ui.js';
+import {
+  ago,
+  Avatar,
+  composing,
+  Page,
+  Presence,
+  workerConnected,
+} from './ui.js';
 import {
   deliveryText,
   Outcome,
@@ -550,7 +557,7 @@ function RegisterAgent({
           });
       }}
       onKeyDown={(event) => {
-        if (event.key !== 'Escape') return;
+        if (event.key !== 'Escape' || composing(event)) return;
         event.preventDefault();
         onClose();
       }}

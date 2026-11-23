@@ -9,7 +9,7 @@ import {
   type ReactNode,
 } from 'react';
 import { SearchIcon } from './icons.js';
-import { ChannelIcon } from './ui.js';
+import { ChannelIcon, composing } from './ui.js';
 
 export interface Command {
   id: string;
@@ -303,6 +303,7 @@ export function SidebarSearch({
           placeholder="搜索"
           aria-keyshortcuts="Meta+K Control+K"
           onKeyDown={(e) => {
+            if (composing(e)) return;
             if (e.key === 'Escape') {
               e.preventDefault();
               hide(true);
