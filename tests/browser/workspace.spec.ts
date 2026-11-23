@@ -24,6 +24,31 @@ import {
   taskPage,
   untilReady,
 } from './ui.js';
+/**
+ * Records what the page hands the clipboard: CI's headless browser has no
+ * system clipboard to read back, and what a button copies is the point.
+ */
+async function recordCopies(page: Page) {
+  await page.addInitScript(() => {
+    const copied: string[] = [];
+    Object.defineProperty(window, '__copied', { value: copied });
+    Object.defineProperty(navigator, 'clipboard', {
+      value: {
+        writeText: (text: string) => {
+          copied.push(text);
+          return Promise.resolve();
+        },
+      },
+    });
+  });
+  return async () =>
+    z
+      .array(z.string())
+      .parse(
+        await page.evaluate((): unknown => Reflect.get(window, '__copied')),
+      )
+      .at(-1);
+}
 async function snapshot(request: APIRequestContext, origin: string) {
   const response = await request.get(origin + '/api/workspace');
   expect(response.status()).toBe(200);
@@ -3036,6 +3061,39 @@ test('a fenced code block is one block, not a box around every line', async ({
   expect(
     await inline.evaluate((el) => getComputedStyle(el).borderTopWidth),
   ).toBe('1px');
+});
+
+/**
+ * Proves a code block and a message each copy as written: the code without
+ * the button's word, the message as its Markdown.
+ */
+test('a code block and a message each copy as written', async ({
+  page,
+  hub,
+}) => {
+  const lastCopied = await recordCopies(page);
+  await signIn(page, hub);
+  const composer = page.getByRole('form', { name: '给团队发消息' });
+  const body = 'Run **this**:\n```sh\nnpm ci\nnpm start\n```';
+  await composer.getByLabel('消息', { exact: true }).fill(body);
+  await composer.getByRole('button', { name: '发送消息' }).click();
+  const message = page
+    .getByRole('list', { name: '频道消息' })
+    .getByRole('listitem')
+    .filter({ hasText: 'Run' });
+  const block = message.locator('.code-block');
+  await block.hover();
+  // By its place: its name becomes 已复制 once pressed.
+  const copyCode = block.locator('.code-copy');
+  await copyCode.click();
+  await expect(copyCode).toHaveText('已复制');
+  expect(await lastCopied()).toBe('npm ci\nnpm start');
+  await message.hover();
+  await message
+    .locator('.message-actions')
+    .getByRole('button', { name: '复制', exact: true })
+    .click();
+  expect(await lastCopied()).toBe(body);
 });
 
 /**

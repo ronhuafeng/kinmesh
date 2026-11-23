@@ -7,7 +7,7 @@ import type { WorkspaceSnapshot } from '../src/workspace/contracts.js';
 import { useLive } from './live.js';
 import { api, useRequest, value } from './api.js';
 import { ActionForm, Field, Notice } from './forms.js';
-import { ago, Avatar, Page, workerConnected } from './ui.js';
+import { ago, Avatar, CopyButton, Page, workerConnected } from './ui.js';
 
 /** Scopes the Inbox worker needs (docs/collaboration.md, Grants and scopes). */
 const WORKER_SCOPES: Scope[] = [
@@ -122,36 +122,6 @@ function Row({
         {children}
       </div>
     </li>
-  );
-}
-/** Copy with visible feedback; clipboard access can be refused. */
-function CopyButton({
-  text,
-  label,
-  className = 'secondary',
-}: {
-  text: string;
-  label: string;
-  className?: string;
-}) {
-  const [done, setDone] = useState<'' | '已复制' | '复制失败'>('');
-  return (
-    <button
-      type="button"
-      className={className}
-      onClick={() => {
-        navigator.clipboard.writeText(text).then(
-          () => {
-            setDone('已复制');
-          },
-          () => {
-            setDone('复制失败');
-          },
-        );
-      }}
-    >
-      {done || label}
-    </button>
   );
 }
 /** Shown once: the token lives only in this component until dismissed. */

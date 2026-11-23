@@ -4,6 +4,7 @@ import {
   useEffect,
   useLayoutEffect,
   useRef,
+  useState,
   useSyncExternalStore,
 } from 'react';
 import { createPortal } from 'react-dom';
@@ -140,12 +141,7 @@ export function ago(iso: string, now = Date.now()) {
     ? `${String(hours)} 小时前`
     : `${String(Math.round(hours / 24))} 天前`;
 }
-/**
- * A page in the main area, in place of the view it was opened from: no
- * overlay and no close button. The sidebar and tabs lead away; Esc goes
- * back, unless a popover or dialog takes it. Only the innermost (last)
- * page answers Esc, so a page shown within another closes alone.
- */
+/** Whether a media query matches now, following it as it changes. */
 function useMedia(media: string) {
   return useSyncExternalStore(
     (changed) => {
@@ -159,7 +155,6 @@ function useMedia(media: string) {
     () => false,
   );
 }
-/** True on a phone-sized screen, where places stack instead of sitting side by side. */
 /**
  * Whether a key belongs to an input method still composing (pinyin, kana):
  * Enter commits its candidate and Escape cancels it, so the page acts on
@@ -174,6 +169,47 @@ export function composing(
   // eslint-disable-next-line @typescript-eslint/no-deprecated
   return key.isComposing || key.key === 'Process' || key.keyCode === 229;
 }
+/** Copy with visible feedback; clipboard access can be refused. */
+export function CopyButton({
+  text,
+  label,
+  className = 'secondary',
+}: {
+  text: string;
+  label: string;
+  className?: string;
+}) {
+  const [done, setDone] = useState<'' | '已复制' | '复制失败'>('');
+  // The word goes back after a moment, ready to copy again.
+  useEffect(() => {
+    if (done === '') return;
+    const back = setTimeout(() => {
+      setDone('');
+    }, 2000);
+    return () => {
+      clearTimeout(back);
+    };
+  }, [done]);
+  return (
+    <button
+      type="button"
+      className={className}
+      onClick={() => {
+        navigator.clipboard.writeText(text).then(
+          () => {
+            setDone('已复制');
+          },
+          () => {
+            setDone('复制失败');
+          },
+        );
+      }}
+    >
+      {done || label}
+    </button>
+  );
+}
+/** True on a phone-sized screen, where places stack instead of sitting side by side. */
 export function usePhone() {
   return useMedia('(max-width: 575px)');
 }
@@ -192,10 +228,13 @@ export function usePad(): 'narrow' | 'wide' | null {
  */
 export const HeaderStart = createContext<HTMLElement | null>(null);
 /**
- * A page in the main area. On a phone it opens under a bar with a way back
- * and what it is (`bar`); a page reached from the bottom tabs has none. On a
- * tablet the way back is at the start of the top bar, unless a view's tab
- * already leads back (`tabLeadsBack`, a task under 看板).
+ * A page in the main area, in place of the view it was opened from: no
+ * overlay and no close button. On a phone it opens under a bar with a way
+ * back and what it is (`bar`); a page reached from the bottom tabs has
+ * none. On a tablet the way back is at the start of the top bar, unless a
+ * view's tab already leads back (`tabLeadsBack`, a task under 看板). Esc
+ * goes back, unless a popover or dialog takes it; only the innermost (last)
+ * page answers, so a page shown within another closes alone.
  */
 export function Page({
   label,

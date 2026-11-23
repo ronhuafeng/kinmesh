@@ -1421,6 +1421,8 @@ button.author-link:hover:not(:disabled) {
   top: -0.875rem;
   right: 0.5rem;
   z-index: 1;
+  display: flex;
+  gap: 0.25rem;
   opacity: 0;
   transition: opacity var(--dur-fast) ease;
 }
@@ -1448,7 +1450,7 @@ button.author-link:hover:not(:disabled) {
     background: var(--fill);
   }
   .messages > li[data-chosen] .message-actions {
-    display: block;
+    display: flex;
   }
 }
 /* The composer floats on the bottom edge of the reading column: a band
@@ -2867,7 +2869,8 @@ a.button-link {
 .message-text > :is(p, ul, ol, blockquote, h1, h2, h3, h4, h5, h6) {
   max-width: var(--reading);
 }
-.message-text > :last-child {
+.message-text > :last-child,
+.message-text > .code-block:last-child > pre {
   margin-bottom: 0;
 }
 .message-text ol,
@@ -2903,6 +2906,35 @@ a.button-link {
   border: var(--hairline-width) solid var(--hairline);
   border-radius: var(--radius);
   background: var(--sunken);
+}
+/* A block of code copies from a button on its corner, shown while the
+ * pointer or focus is on the block, as the message's own actions are. */
+.message-text .code-block {
+  position: relative;
+}
+.code-copy {
+  position: absolute;
+  top: 0.55rem;
+  right: 0.55rem;
+  padding: 0.125rem 0.5rem;
+  border: var(--hairline-width) solid var(--hairline);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  color: var(--ink-muted);
+  font-family: var(--font);
+  font-size: 12px;
+  opacity: 0;
+  user-select: none;
+  transition: opacity var(--dur-fast) ease;
+}
+.code-block:hover .code-copy,
+.code-copy:focus-visible {
+  opacity: 1;
+}
+@media (hover: none) {
+  .code-copy {
+    opacity: 1;
+  }
 }
 /* A fenced block is one block: the code inside takes none of inline
  * code's box, which would otherwise be drawn around every line. */
