@@ -7,7 +7,7 @@ import {
   TaskId,
 } from '../domain/contracts.js';
 import { MessageId } from '../domain/communication.js';
-import { TeamEndpoint } from './client.js';
+import { TeamEndpoint } from '../adapters/team-mcp/client.js';
 import { LiveDatabaseUrl } from '../persistence/disposable.js';
 /** Private disposable fixture metadata, not an authentication source for MCP requests. */
 export const LiveContext = z.strictObject({

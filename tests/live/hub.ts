@@ -6,14 +6,14 @@ import { join } from 'node:path';
 import { z } from 'zod';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js';
-import { loadAgentToken } from '../../src/team-mcp/client.js';
+import { loadAgentToken } from '../../src/adapters/team-mcp/client.js';
 import { expect, type Page } from '@playwright/test';
 import { loadCredential } from '../../src/adapters/t3/oauth.js';
 import {
   t3AuthFile,
   managedDirectory,
   agentTokenFile,
-} from '../../src/inbox/managed.js';
+} from '../../src/runtime/managed.js';
 import { Agent, Grant } from '../../src/domain/agents.js';
 import { Task } from '../../src/domain/tasks.js';
 import { WorkspaceSnapshot } from '../../src/workspace/contracts.js';

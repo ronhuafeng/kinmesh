@@ -1,4 +1,4 @@
-import { loadWorkerConfig } from './config.js';
+import { loadWorkerConfig } from '../runtime/worker-config.js';
 import { runWorker } from './worker.js';
 import { t3Factory } from './t3.js';
 import { openStore, type Store } from '../persistence/store.js';
@@ -10,7 +10,7 @@ import {
   Run,
   WORKER_SHUTDOWN_MS,
   type WorkerEvent,
-} from './lifecycle.js';
+} from '../runtime/worker-lifecycle.js';
 import { reportFailure } from '../diagnostics.js';
 process.umask(0o077);
 let store: Store | undefined;

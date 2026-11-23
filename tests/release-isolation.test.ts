@@ -17,7 +17,7 @@ import { tmpdir } from 'node:os';
 import { LiveContext } from '../src/team-mcp/live-context.js';
 import { openStore } from '../src/persistence/store.js';
 import { dropDisposable } from '../src/persistence/disposable.js';
-import { loadAgentToken } from '../src/team-mcp/client.js';
+import { loadAgentToken } from '../src/adapters/team-mcp/client.js';
 import { type Credential } from '../src/adapters/t3/oauth.js';
 import { Capabilities } from '../src/adapters/t3/contracts.js';
 import {

@@ -15,8 +15,8 @@ import {
   type Credential,
 } from '../adapters/t3/oauth.js';
 import type { Store } from '../persistence/store.js';
-import type { WorkerBinding } from './config.js';
-import { SignInEnded } from './worker.js';
+import type { WorkerBinding } from '../runtime/worker-config.js';
+import { SignInEnded } from './sign-in-ended.js';
 export type BackendFactory = (
   binding: WorkerBinding,
   profile: Agent,

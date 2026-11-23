@@ -13,7 +13,10 @@ import {
   type Wire,
 } from '../src/adapters/t3/contracts.js';
 import { openStore } from '../src/persistence/store.js';
-import { connectAgent, loadAgentToken } from '../src/team-mcp/client.js';
+import {
+  connectAgent,
+  loadAgentToken,
+} from '../src/adapters/team-mcp/client.js';
 import { Task } from '../src/domain/tasks.js';
 import { Message } from '../src/domain/communication.js';
 import { outcome } from '../src/team-mcp/tools.js';

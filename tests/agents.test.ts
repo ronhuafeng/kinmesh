@@ -14,7 +14,7 @@ import {
 } from '../src/domain/agents.js';
 import { DomainError } from '../src/domain/errors.js';
 import { createApp } from '../src/server/app.js';
-import { resolvePrincipal } from '../src/server/principals.js';
+import { resolvePrincipal } from '../src/persistence/principals.js';
 import {
   agentFixture,
   correlationInput,

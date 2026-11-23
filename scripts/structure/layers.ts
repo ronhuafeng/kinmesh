@@ -16,9 +16,12 @@ const SRC_RANK: Record<string, number> = {
   adapters: 1,
   workspace: 2,
   persistence: 3,
-  server: 4,
-  inbox: 4,
-  'team-mcp': 4,
+  // What the processes share as they run: the worker's configuration and
+  // the hub's protocol with it, and the files they keep on disk.
+  runtime: 4,
+  server: 5,
+  inbox: 5,
+  'team-mcp': 5,
 };
 /** The bundles the page loads first; they compose like the shell. */
 const WEB_ENTRIES = new Set([

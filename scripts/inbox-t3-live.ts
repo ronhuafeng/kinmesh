@@ -6,9 +6,12 @@ import { spawn, type ChildProcess } from 'node:child_process';
 import { once } from 'node:events';
 import { setTimeout as delay } from 'node:timers/promises';
 import { z } from 'zod';
-import { loadWorkerConfig } from '../src/inbox/config.js';
+import { loadWorkerConfig } from '../src/runtime/worker-config.js';
 import { LiveContext } from '../src/team-mcp/live-context.js';
-import { connectAgent, loadAgentToken } from '../src/team-mcp/client.js';
+import {
+  connectAgent,
+  loadAgentToken,
+} from '../src/adapters/team-mcp/client.js';
 import { outcome } from '../src/team-mcp/tools.js';
 import { Message } from '../src/domain/communication.js';
 import { FrozenLaunch, Result } from '../src/domain/inbox.js';

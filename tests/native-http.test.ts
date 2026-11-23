@@ -13,7 +13,7 @@ import {
   managedDirectory,
   privateDirectory,
   t3AuthFile,
-} from '../src/inbox/managed.js';
+} from '../src/runtime/managed.js';
 
 /** Record the team's T3 connection; returns where its credential lives. */
 async function connectTeam(

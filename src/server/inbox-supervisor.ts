@@ -1,17 +1,14 @@
 import { fork, type ChildProcess } from 'node:child_process';
 import { setTimeout as delay } from 'node:timers/promises';
-import {
-  loadWorkerConfig,
-  WorkerConfig,
-  type SpaceProvisioner,
-} from '../inbox/config.js';
+import { loadWorkerConfig, WorkerConfig } from '../runtime/worker-config.js';
+import type { SpaceProvisioner } from '../adapters/space/provisioner.js';
 import {
   sameDatabase,
   type DatabaseIdentity,
   WorkerEvent,
   WORKER_SHUTDOWN_MS,
   type WorkerCommand,
-} from '../inbox/lifecycle.js';
+} from '../runtime/worker-lifecycle.js';
 
 const STARTUP_MS = 10_000;
 const RESTART_DELAYS = [250, 500, 1000] as const;

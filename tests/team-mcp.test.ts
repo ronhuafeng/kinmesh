@@ -12,7 +12,10 @@ import {
 } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
-import { loadAgentToken, TeamEndpoint } from '../src/team-mcp/client.js';
+import {
+  loadAgentToken,
+  TeamEndpoint,
+} from '../src/adapters/team-mcp/client.js';
 import { LiveContext } from '../src/team-mcp/live-context.js';
 import { rawDatabase } from './raw.js';
 import { dropDisposable } from '../src/persistence/disposable.js';

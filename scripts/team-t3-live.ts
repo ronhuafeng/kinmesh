@@ -4,7 +4,10 @@ import { tmpdir } from 'node:os';
 import { randomUUID } from 'node:crypto';
 import { z } from 'zod';
 import { LiveContext } from '../src/team-mcp/live-context.js';
-import { connectAgent, loadAgentToken } from '../src/team-mcp/client.js';
+import {
+  connectAgent,
+  loadAgentToken,
+} from '../src/adapters/team-mcp/client.js';
 import { outcome } from '../src/team-mcp/tools.js';
 import { Task } from '../src/domain/tasks.js';
 import { Message, pageOf } from '../src/domain/communication.js';

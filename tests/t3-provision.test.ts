@@ -20,7 +20,7 @@ import {
   provisionedT3,
   separateDeploymentSession,
 } from '../src/server/provision.js';
-import { t3AuthFile, t3DeploymentFile } from '../src/inbox/managed.js';
+import { t3AuthFile, t3DeploymentFile } from '../src/runtime/managed.js';
 import { agentFixture } from './agent-helpers.js';
 import { environment } from './t3-helpers.js';
 

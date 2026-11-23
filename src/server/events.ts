@@ -12,7 +12,7 @@ import {
   type Resource,
 } from '../workspace/events.js';
 import type { Changes } from './changes.js';
-import { resolvePrincipal } from './principals.js';
+import { resolvePrincipal } from '../persistence/principals.js';
 
 type Person = Extract<Principal, { kind: 'human' }>;
 interface Revisioned {

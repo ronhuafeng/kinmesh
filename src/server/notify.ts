@@ -13,7 +13,7 @@ import {
   PushEndpoint,
 } from '../domain/notify.js';
 import type { Store } from '../persistence/store.js';
-import { pushKeys } from '../inbox/managed.js';
+import { pushKeys } from '../runtime/managed.js';
 import { describeFailure } from '../diagnostics.js';
 import { FeishuFailure, type Feishu } from './feishu.js';
 import { principal } from './principals.js';

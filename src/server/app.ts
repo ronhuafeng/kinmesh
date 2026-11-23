@@ -9,7 +9,7 @@ import {
   sweepAttachments,
   unplaceAttachments,
 } from './attachments.js';
-import { spacePairer, spaceRemover } from '../inbox/space.js';
+import { spacePairer, spaceRemover } from '../adapters/space/client.js';
 import { attachmentStore } from '../persistence/attachment-store.js';
 import { registerNotifications } from './notify.js';
 import { registerMe } from './me.js';
@@ -25,8 +25,9 @@ import {
   provisionedT3,
   separateDeploymentSession,
 } from './provision.js';
-import { managedDirectory } from '../inbox/managed.js';
-import { principal, resolvePrincipal } from './principals.js';
+import { managedDirectory } from '../runtime/managed.js';
+import { principal } from './principals.js';
+import { resolvePrincipal } from '../persistence/principals.js';
 import { DomainError, type Refusal } from '../domain/errors.js';
 import { z } from 'zod';
 import Fastify, { LogController, type FastifyRequest } from 'fastify';

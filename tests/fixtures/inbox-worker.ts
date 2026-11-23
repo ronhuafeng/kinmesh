@@ -1,12 +1,12 @@
 // Fixture transport only. The ordinary worker loop, repositories and T3Backend are production code.
 import { rawDatabase } from '../raw.js';
-import { loadWorkerConfig } from '../../src/inbox/config.js';
+import { loadWorkerConfig } from '../../src/runtime/worker-config.js';
 import { runWorker } from '../../src/inbox/worker.js';
 import { openStore } from '../../src/persistence/store.js';
 import { T3Backend } from '../../src/adapters/t3/backend.js';
 import { MockWire, envelope, options, reference } from '../t3-helpers.js';
 import { assistantRead } from '../inbox-helpers.js';
-import { loadAgentToken } from '../../src/team-mcp/client.js';
+import { loadAgentToken } from '../../src/adapters/team-mcp/client.js';
 const config = loadWorkerConfig(process.argv[2] ?? '');
 const store = await openStore(config.database);
 const counter = rawDatabase(config.database);

@@ -33,10 +33,10 @@ import {
   t3AuthFile,
   t3DeploymentFile,
   writeAgentToken,
-} from '../inbox/managed.js';
+} from '../runtime/managed.js';
 import type { Changes } from './changes.js';
 import type { Store } from '../persistence/store.js';
-import type { Pairer } from '../inbox/space.js';
+import type { Pairer } from '../adapters/space/client.js';
 import { fingerprint } from '../persistence/transactional.js';
 import { principal } from './principals.js';
 

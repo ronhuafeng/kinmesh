@@ -12,7 +12,7 @@ import { DomainError } from '../domain/errors.js';
 import type { Store } from '../persistence/store.js';
 import { fingerprint } from '../persistence/transactional.js';
 import { AVATAR_LIMIT } from '../persistence/agents.js';
-import { removeAgentToken, writeAgentToken } from '../inbox/managed.js';
+import { removeAgentToken, writeAgentToken } from '../runtime/managed.js';
 import { WORKER_GRANT } from './connect.js';
 import { principal } from './principals.js';
 const TeamPath = z.object({ teamId: TeamId });

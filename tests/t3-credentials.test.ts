@@ -13,8 +13,8 @@ import {
 } from '../src/adapters/t3/oauth.js';
 import { ExecutionFailure } from '../src/domain/execution.js';
 import { runCredential } from '../src/inbox/t3.js';
-import { SignInEnded } from '../src/inbox/worker.js';
-import { WorkerBinding } from '../src/inbox/config.js';
+import { SignInEnded } from '../src/inbox/sign-in-ended.js';
+import { WorkerBinding } from '../src/runtime/worker-config.js';
 
 const endpoint = 'https://t3.test/mcp';
 const DAY = 86400_000;
