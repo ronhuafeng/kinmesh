@@ -1,15 +1,15 @@
 import type { Task } from '../../src/domain/tasks.js';
 import { TaskCommand } from '../../src/domain/tasks.js';
 import type { WorkspaceSnapshot } from '../../src/workspace/contracts.js';
-import { ActionForm } from '../shared/action-form.js';
-import { Field } from '../shared/field.js';
+import { ActionForm } from '../shared/forms.js';
+import { Field } from '../shared/forms.js';
 import { composing } from '../shared/keys.js';
 import { unchanged, editOf } from './model.js';
 import { TaskLayout } from './task-layout.js';
 import { CriteriaInput } from './criteria-input.js';
 import { DueAndPriority } from './due-and-priority.js';
-import { MemberChip } from './member-chip.js';
-import { PersonPicker } from './person-picker.js';
+import { MemberChip } from './members.js';
+import { PersonPicker } from './members.js';
 
 /**
  * A task's acceptor says again what is asked, on the page it was created

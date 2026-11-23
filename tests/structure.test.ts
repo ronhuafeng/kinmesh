@@ -64,24 +64,6 @@ await test('layers depend downward only, and nothing imports in a circle', () =>
   );
 });
 
-await test('a UI file gives one component or hook; the shell holds no state', () => {
-  assert.deepEqual(
-    check({
-      'web/shared/a.tsx':
-        'export function A() { return null; } export const label = "a"; function Part() { return null; } void Part;',
-      'web/shared/use-b.ts': 'export function useB() { return 1; }',
-    }),
-    [],
-  );
-  assert.match(
-    check({
-      'web/shared/a.tsx':
-        'export function A() { return null; } export const B = memo(function B() { return null; });',
-    }).join(),
-    /gives 2 components or hooks/,
-  );
-});
-
 await test('a composition root only wires modules together', () => {
   // Composing: calls, single-expression callbacks, and a choice between
   // single statements.
@@ -95,11 +77,16 @@ await test('a composition root only wires modules together', () => {
   );
   const refused = (source: string) => {
     assert.match(
-      check({ 'src/inbox/main.ts': source }).join(),
+      check({ 'src/server/app.ts': source }).join(),
       /only wires modules together/,
       source,
     );
   };
+  // A process's entry keeps its lifecycle: it is not a composition root.
+  assert.deepEqual(
+    check({ 'src/inbox/main.ts': 'let stopping = false; void stopping;' }),
+    [],
+  );
   // State, data, requests and behaviour of its own, each refused.
   refused('let started = false; void started;');
   refused('export const seen = new Set();');

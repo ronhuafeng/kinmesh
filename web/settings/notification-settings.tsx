@@ -1,22 +1,22 @@
 import { useEffect, useState } from 'react';
 import type { NotifyHours } from '../../src/domain/notify.js';
 import type { WorkspaceSnapshot } from '../../src/workspace/contracts.js';
-import { useRequest } from '../shared/use-request.js';
-import { Notice } from '../shared/notice.js';
+import { useRequest } from '../shared/api.js';
+import { Notice } from '../shared/forms.js';
 import {
   currentSubscription,
   pushSupported,
   subscribe,
   unsubscribe,
 } from '../shared/push.js';
-import { ChannelIcon } from '../shared/channel-icon.js';
+import { ChannelIcon } from '../shared/faces.js';
 import { LEVEL_LABELS, setLevel } from '../shared/levels.js';
-import { Pill } from '../shared/pill.js';
-import { Row } from '../shared/row.js';
-import { ChoiceRow } from '../shared/choice-row.js';
-import { tomorrowMorning } from '../shared/format-time.js';
-import { Group } from '../shared/group.js';
-import { ListRow } from '../shared/list-row.js';
+import { Pill } from '../shared/list.js';
+import { Row } from '../shared/list.js';
+import { ChoiceRow } from '../shared/list.js';
+import { tomorrowMorning } from '../shared/format.js';
+import { Group } from '../shared/list.js';
+import { ListRow } from '../shared/list.js';
 
 /** Whether this is an iPhone or iPad not opened from its Home Screen. */
 const iosInBrowser = () =>

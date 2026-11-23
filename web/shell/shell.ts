@@ -1,8 +1,8 @@
 import { createContext, useContext } from 'react';
 import type { WorkspaceSnapshot } from '../../src/workspace/contracts.js';
 import { actionsOf } from './actions.js';
-import { commandsOf } from './commands.js';
-import { remoteSearch } from './remote-search.js';
+import { commandsOf } from './search-commands.js';
+import { remoteSearch } from './search-commands.js';
 import { screenOf } from './screen.js';
 import type { Notices } from './use-notices.js';
 import type { Place } from './use-place.js';

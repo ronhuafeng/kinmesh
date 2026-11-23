@@ -1,13 +1,13 @@
 import type { ReactNode } from 'react';
 import type { WorkspaceSnapshot } from '../../src/workspace/contracts.js';
 import { deliveryText } from '../shared/deliveries.js';
-import { Recovery } from '../shared/recovery.js';
+import { Recovery } from '../shared/deliveries.js';
 import { InboxIcon } from '../shared/icons.js';
 import { memberName } from '../shared/names.js';
 import { MODE_NAMES } from '../shared/t3.js';
 import { ReconnectT3 } from '../shared/reconnect-t3.js';
 import { humanAsk } from '../shared/task-status.js';
-import { Avatar } from '../shared/avatar.js';
+import { Avatar } from '../shared/faces.js';
 import { Page } from '../shared/page.js';
 import { ago, workerConnected } from '../shared/format.js';
 

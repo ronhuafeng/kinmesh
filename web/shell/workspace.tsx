@@ -1,6 +1,6 @@
 import type { WorkspaceSnapshot } from '../../src/workspace/contracts.js';
 import { MutationPermission, Offline } from '../shared/api.js';
-import { AvatarImages } from '../shared/avatar.js';
+import { AvatarImages } from '../shared/faces.js';
 import { LiveContext } from '../shared/live.js';
 import { MainArea } from './main-area.js';
 import { PhoneTabs } from './phone-tabs.js';

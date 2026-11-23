@@ -1,9 +1,28 @@
-import type { Task } from '../../src/domain/tasks.js';
-import { TaskPriority } from '../../src/domain/tasks.js';
+import type { ReactNode } from 'react';
+import { type Task, TaskPriority } from '../../src/domain/tasks.js';
 import { DueIcon, PriorityIcon } from '../shared/icons.js';
-import { SideValue } from './side-value.js';
 import { priorityLabels } from './model.js';
 
+/**
+ * A value beside the people that isn't someone: its glyph where their face
+ * would be, so every value starts on one edge.
+ */
+export function SideValue({
+  icon,
+  children,
+}: {
+  icon: ReactNode;
+  children: ReactNode;
+}) {
+  return (
+    <span className="side-value">
+      <span className="side-icon" aria-hidden="true">
+        {icon}
+      </span>
+      {children}
+    </span>
+  );
+}
 /** When it is due and how much it matters, chosen. */
 export function DueAndPriority({
   due,

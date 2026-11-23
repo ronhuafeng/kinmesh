@@ -8,7 +8,7 @@ import {
 import { createPortal } from 'react-dom';
 import type { ReactNode } from 'react';
 import { BackIcon } from './icons.js';
-import { useMedia } from './use-media.js';
+import { useMedia } from './screen-size.js';
 import { composing } from './keys.js';
 
 /**

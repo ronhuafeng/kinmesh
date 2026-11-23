@@ -1,6 +1,6 @@
-import { Avatar } from '../shared/avatar.js';
-import { MemberMenu } from './member-menu.js';
-import { Presence } from '../shared/presence.js';
+import { Avatar } from '../shared/faces.js';
+import { MemberMenu } from './menus.js';
+import { Presence } from '../shared/faces.js';
 import { type ReactElement } from 'react';
 import { otherPeople } from '../shared/names.js';
 import { workerConnected } from '../shared/format.js';

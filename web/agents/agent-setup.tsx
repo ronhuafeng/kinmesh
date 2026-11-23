@@ -1,13 +1,14 @@
-import { useEffect, useState } from 'react';
-import type { ReactNode } from 'react';
 import type { Agent } from '../../src/domain/agents.js';
+import {
+  type useT3,
+  useSetupRequest,
+  managedOf,
+  t3Where,
+} from '../shared/t3.js';
+import { type ReactNode, useEffect, useState } from 'react';
 import type { WorkspaceSnapshot } from '../../src/workspace/contracts.js';
-import { ActionForm } from '../shared/action-form.js';
-import { Notice } from '../shared/notice.js';
+import { ActionForm, Notice } from '../shared/forms.js';
 import { workerConnected } from '../shared/format.js';
-import type { useT3 } from '../shared/use-t3.js';
-import { useSetupRequest } from '../shared/use-setup-request.js';
-import { managedOf, t3Where } from '../shared/t3.js';
 import { ConnectT3 } from './connect-t3.js';
 import { ChooseModel } from './choose-model.js';
 

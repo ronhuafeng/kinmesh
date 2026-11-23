@@ -1,4 +1,4 @@
-import { createContext } from 'react';
+import { createContext, useContext, useRef, useState, useEffect } from 'react';
 import type { z } from 'zod';
 import { pageOf } from '../../src/domain/communication.js';
 
@@ -99,4 +99,141 @@ export interface Pending {
   onSuccess?: () => void;
   /** The server's answer, for a caller that goes on to show what it made. */
   onResult?: (raw: unknown) => void;
+}
+/**
+ * Unkeyed requests, one at a time, with what went wrong in the person's
+ * terms (by HTTP status, else the fallback). Each resolves to the server's
+ * answer (null for no content), or undefined when it failed or wasn't sent;
+ * the caller decides what follows.
+ */
+export function useRequest(
+  messages: Partial<Record<number, string>> = {},
+  fallback = FAILED,
+) {
+  const permitted = useContext(MutationPermission);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
+  const running = useRef(false);
+  async function run<T>(work: () => Promise<T>): Promise<T | undefined> {
+    if (!permitted || running.current) return undefined;
+    running.current = true;
+    setBusy(true);
+    setError('');
+    try {
+      return await work();
+    } catch (cause) {
+      setError(
+        (cause instanceof HttpError ? messages[cause.status] : undefined) ??
+          fallback,
+      );
+      return undefined;
+    } finally {
+      running.current = false;
+      setBusy(false);
+    }
+  }
+  return {
+    busy,
+    error,
+    setError,
+    permitted,
+    disabled: !permitted || busy,
+    run,
+    send: (...args: Parameters<typeof request>) => run(() => request(...args)),
+  };
+}
+/**
+ * A lost response keeps the exact command/key in memory for an explicit
+ * retry. Never auto-resend. `messages` says a refusal in the terms of the
+ * thing being done ("That name is taken"), by HTTP status.
+ */
+export function useAction(messages: Partial<Record<number, string>> = {}) {
+  const permitted = useContext(MutationPermission);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
+  const [uncertain, setUncertain] = useState(false);
+  const pending = useRef<Pending | null>(null);
+  const running = useRef(false);
+  const pausedNotice = useRef(false);
+  // The "paused" explanation is only true until sending is allowed again.
+  useEffect(() => {
+    if (permitted && pausedNotice.current) {
+      pausedNotice.current = false;
+      setError('');
+    }
+  }, [permitted]);
+  async function perform(command: Pending): Promise<boolean> {
+    if (!permitted || running.current) return false;
+    running.current = true;
+    setBusy(true);
+    setError('');
+    let result: unknown;
+    try {
+      result = await api(command.path, {
+        method: command.method,
+        body: command.body,
+        headers: command.headers,
+      });
+      pending.current = null;
+      setUncertain(false);
+    } catch (cause) {
+      if (
+        cause instanceof HttpError &&
+        cause.status < 500 &&
+        cause.status !== 408
+      ) {
+        pending.current = null;
+        setUncertain(false);
+        setError(messages[cause.status] ?? cause.message);
+      } else {
+        pending.current = command;
+        setUncertain(true);
+        setError('可能没有成功。');
+      }
+      return false;
+    } finally {
+      running.current = false;
+      setBusy(false);
+    }
+    command.onSuccess?.();
+    command.onResult?.(result);
+    return true;
+  }
+  return {
+    busy,
+    disabled: !permitted,
+    error,
+    uncertain,
+    invalid() {
+      setError('请检查填写的内容后再试。');
+    },
+    paused() {
+      pausedNotice.current = true;
+      setError('连不上 Kinmesh，没有发送。你写的内容还在。');
+    },
+    async send(
+      path: string,
+      body: Record<string, unknown>,
+      keyed = true,
+      extraHeaders: Record<string, string> = {},
+      onSuccess?: () => void,
+      method: 'POST' | 'PUT' = 'POST',
+      onResult?: (raw: unknown) => void,
+    ) {
+      if (pending.current) return false;
+      return perform({
+        path,
+        method,
+        body: JSON.stringify(
+          keyed ? { ...body, operationKey: crypto.randomUUID() } : body,
+        ),
+        headers: { 'content-type': 'application/json', ...extraHeaders },
+        ...(onSuccess ? { onSuccess } : {}),
+        ...(onResult ? { onResult } : {}),
+      });
+    },
+    async retry() {
+      return pending.current ? perform(pending.current) : false;
+    },
+  };
 }

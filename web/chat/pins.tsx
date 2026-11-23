@@ -1,11 +1,11 @@
 import type { WorkspaceSnapshot } from '../../src/workspace/contracts.js';
 import { request } from '../shared/api.js';
-import { useRequest } from '../shared/use-request.js';
-import { Notice } from '../shared/notice.js';
+import { useRequest } from '../shared/api.js';
+import { Notice } from '../shared/forms.js';
 import { plainText } from '../shared/markdown.js';
 import { memberName } from '../shared/names.js';
-import { ListRow } from '../shared/list-row.js';
-import { Avatar } from '../shared/avatar.js';
+import { ListRow } from '../shared/list.js';
+import { Avatar } from '../shared/faces.js';
 import { shortTime } from '../shared/format.js';
 
 /**

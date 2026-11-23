@@ -1,11 +1,11 @@
 import { useState } from 'react';
 import type { Agent } from '../../src/domain/agents.js';
 import type { WorkspaceSnapshot } from '../../src/workspace/contracts.js';
-import { Notice } from '../shared/notice.js';
+import { Notice } from '../shared/forms.js';
 import { ago } from '../shared/format.js';
-import { useSetupRequest } from '../shared/use-setup-request.js';
-import { TEAM_MCP_SCOPES, Issued } from './setup-model.js';
-import { TokenOnce } from './token-once.js';
+import { useSetupRequest } from '../shared/t3.js';
+import { TEAM_MCP_SCOPES, Issued } from './setup-parts.js';
+import { TokenOnce } from './setup-parts.js';
 
 /**
  * Optional: let the agent read and act in Kinmesh while it works (Team MCP).

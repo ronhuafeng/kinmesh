@@ -8,8 +8,8 @@ import remarkCjkFriendly from 'remark-cjk-friendly';
 import remarkCjkFriendlyGfmStrikethrough from 'remark-cjk-friendly-gfm-strikethrough';
 import type { Link, Parent, Root, RootContent, Text } from 'mdast';
 import { MermaidBlock } from './mermaid.js';
-import { CodeBlock } from './code-block.js';
-import { Copyable } from './copyable.js';
+import { CodeBlock } from './code.js';
+import { Copyable } from './code.js';
 
 /**
  * Messages as Markdown, with GitHub's extensions (tables, task lists,

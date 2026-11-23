@@ -1,5 +1,5 @@
 import { Auth } from './shell/auth.js';
-import { Broken } from './shell/broken.js';
+import { Broken } from './shell/boundary.js';
 import { Opening } from './shell/opening.js';
 import { useAppBadge } from './shell/use-app-badge.js';
 import { useAvatarImages } from './shell/use-avatar-images.js';
@@ -12,7 +12,7 @@ import { useShortcuts } from './shell/use-shortcuts.js';
 import { useSidebar } from './shell/use-sidebar.js';
 import { useWorkspace } from './shell/use-workspace.js';
 import { Workspace } from './shell/workspace.js';
-import { usePhone } from './shared/use-phone.js';
+import { usePhone } from './shared/screen-size.js';
 
 /**
  * The app: where you are, the live workspace for it and what goes with it,

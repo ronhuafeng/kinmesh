@@ -1,13 +1,13 @@
-import { ChannelIcon } from '../shared/channel-icon.js';
+import { ChannelIcon } from '../shared/faces.js';
 import { InboxPage } from '../inbox/inbox-page.js';
-import { ListRow } from '../shared/list-row.js';
+import { ListRow } from '../shared/list.js';
 import { NewTaskPage } from '../tasks/new-task-page.js';
 import { OwnWorkerPage } from '../agents/own-worker-page.js';
 import { Page } from '../shared/page.js';
-import { SearchPage } from '../search/search-page.js';
+import { SearchPage } from '../search/palette.js';
 import { SettingsPage } from '../settings/settings-page.js';
 import { TaskPage } from '../tasks/task-page.js';
-import { showMessage } from '../chat/show-message.js';
+import { showMessage } from '../chat/chat-message.js';
 import { useShell } from './shell.js';
 
 /**

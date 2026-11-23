@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Notice } from '../shared/notice.js';
+import { Notice } from '../shared/forms.js';
 
 /** Why Feishu sent the browser back without signing it in. */
 const turnedBack: Record<string, string> = {

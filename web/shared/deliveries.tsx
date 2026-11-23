@@ -1,11 +1,16 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
 import type { WorkspaceSnapshot } from '../../src/workspace/contracts.js';
 import {
   BlockedReason,
-  type BlockedReason as Cause,
   type DeliveryReason,
+  type BlockedReason as Cause,
 } from '../../src/domain/inbox.js';
-import { ago, cjk } from './format.js';
+import { ago, cjk, workerConnected } from './format.js';
+import { z } from 'zod';
+import { trustedLinkOrigin } from '../../src/workspace/links.js';
+import { api, useAction } from './api.js';
+import { Notice } from './forms.js';
+import { memberName } from './names.js';
 
 export type DeliveryView = WorkspaceSnapshot['deliveries'][number];
 type Tone = 'queued' | 'active' | 'waiting' | 'done' | 'problem';
@@ -161,4 +166,308 @@ export function taskDeliveries(data: WorkspaceSnapshot, taskId: string) {
   for (const d of data.deliveries)
     if (d.taskId === taskId) latest.set(d.agentId, d);
   return [...latest.values()].reverse();
+}
+/**
+ * Where T3 shows a run waiting for an approval, on the team's T3: null until
+ * T3 has said, and whenever it can't be asked.
+ */
+export function useApproval(
+  delivery: DeliveryView,
+  teamId: string,
+  t3Origin: string | null,
+) {
+  const [url, setUrl] = useState<string | null>(null);
+  const waiting =
+    delivery.state === 'waiting' &&
+    delivery.reason === 'human-or-approval-wait';
+  useEffect(() => {
+    if (!waiting || t3Origin === null) return;
+    const controller = new AbortController();
+    api(`/api/teams/${teamId}/deliveries/${delivery.id}/link`, {
+      signal: controller.signal,
+    })
+      .then((raw) => {
+        const { url } = z.object({ url: z.url().nullable() }).parse(raw);
+        if (controller.signal.aborted) return;
+        setUrl(url !== null && trustedLinkOrigin(url, t3Origin) ? url : null);
+      })
+      .catch(() => undefined);
+    return () => {
+      controller.abort();
+    };
+  }, [teamId, delivery.id, waiting, t3Origin]);
+  return waiting ? url : null;
+}
+/**
+ * Stops the agent working on this: what hasn't reached T3 ends at once, a
+ * run in T3 is interrupted and its stopped reply posted.
+ */
+export function Stop({
+  delivery,
+  teamId,
+  onDone,
+}: {
+  delivery: DeliveryView;
+  teamId: string;
+  onDone: () => void;
+}) {
+  const action = useAction();
+  const done = (ok: boolean) => {
+    if (ok) onDone();
+  };
+  return (
+    <>
+      <button
+        type="button"
+        className="link-button"
+        disabled={action.disabled || action.busy}
+        onClick={() => {
+          void (
+            action.uncertain
+              ? action.retry()
+              : action.send(
+                  `/api/teams/${teamId}/deliveries/${delivery.id}/stop`,
+                  {},
+                )
+          ).then(done);
+        }}
+      >
+        {action.uncertain ? '重试同一操作' : '停止'}
+      </button>
+      {action.error && <Notice>{action.error}</Notice>}
+    </>
+  );
+}
+/**
+ * What came of a request; while its run waits for an approval, a link to the
+ * run in T3, where it is approved.
+ */
+export function Outcome({
+  delivery,
+  teamId,
+  t3Origin,
+  className,
+  children,
+}: {
+  delivery: DeliveryView;
+  teamId: string;
+  t3Origin: string | null;
+  className?: string;
+  children: ReactNode;
+}) {
+  const approve = useApproval(delivery, teamId, t3Origin);
+  return (
+    <span className={className}>
+      {approve ? (
+        <a
+          className="link-button"
+          href={approve}
+          target="_blank"
+          rel="noopener noreferrer"
+        >
+          {children} ↗
+        </a>
+      ) : (
+        children
+      )}
+    </span>
+  );
+}
+export function DeliveryLine({
+  delivery,
+  data,
+  channelId,
+  onReply,
+  openAgent,
+  onDone,
+}: {
+  delivery: DeliveryView;
+  data: WorkspaceSnapshot;
+  channelId: string;
+  /** Jump to the agent's reply when it is on this page. */
+  onReply?: (messageId: string) => void;
+  openAgent?: (agentId: string) => void;
+  onDone: () => void;
+}) {
+  const { text, tone } = deliveryText(
+    delivery,
+    memberName({ kind: 'agent', id: delivery.agentId }, data),
+    workerConnected(data.wake, delivery.agentId),
+  );
+  const reply = delivery.resultMessageId;
+  const onPage =
+    reply !== null && data.messages.items.some((m) => m.id === reply);
+  return (
+    <li
+      className="delivery"
+      data-tone={tone}
+      title={`${delivery.state} · ${delivery.reason}`}
+    >
+      {onPage && onReply ? (
+        <button
+          type="button"
+          className="link-button"
+          onClick={() => {
+            onReply(reply);
+          }}
+        >
+          <Words text={text} /> ↓
+        </button>
+      ) : (
+        <Outcome
+          delivery={delivery}
+          teamId={data.team.id}
+          t3Origin={data.nativeT3Origin}
+        >
+          <Words text={text} />
+        </Outcome>
+      )}
+      {unanswered(delivery) && delivery.step && (
+        // What its run is on in T3: what waits on your approval there, or
+        // the step it is taking.
+        <span
+          className="delivery-step"
+          data-waiting={delivery.step.waiting ? 'true' : undefined}
+        >
+          {delivery.step.waiting ? '要执行 ' : ''}
+          <code>{delivery.step.text}</code>
+        </span>
+      )}
+      {stoppable(delivery) && (
+        <Stop delivery={delivery} teamId={data.team.id} onDone={onDone} />
+      )}
+      {delivery.state === 'blocked' && (
+        <Recovery
+          delivery={delivery}
+          data={data}
+          channelId={channelId}
+          {...(openAgent ? { openAgent } : {})}
+          onDone={onDone}
+        />
+      )}
+    </li>
+  );
+}
+/**
+ * One way out of a blocked delivery: fix the cause in place and retry, or go
+ * where it can be fixed. Retrying keeps the original intent; a cause that is
+ * still there blocks it again with the same sentence.
+ */
+export function Recovery({
+  delivery,
+  data,
+  channelId,
+  openAgent,
+  onDone,
+}: {
+  delivery: DeliveryView;
+  data: WorkspaceSnapshot;
+  channelId: string;
+  openAgent?: (agentId: string) => void;
+  onDone: () => void;
+}) {
+  const action = useAction();
+  const team = `/api/teams/${data.team.id}`;
+  const agentId = delivery.agentId;
+  const name = memberName({ kind: 'agent', id: agentId }, data);
+  const retry = () =>
+    action.send(`${team}/deliveries/${delivery.id}/resume`, {}).then((ok) => {
+      if (ok) onDone();
+    });
+  const fixThenRetry = (
+    path: string,
+    body: Record<string, unknown>,
+    keyed: boolean,
+  ) => {
+    void action
+      .send(path, body, keyed)
+      .then((ok) => (ok ? retry() : undefined));
+  };
+  const cause = BlockedReason.safeParse(delivery.reason);
+  const reason = cause.success ? cause.data : null;
+  const busy = action.disabled || action.busy;
+  return (
+    <div className="delivery-recovery">
+      {reason === 'agent-disabled' && (
+        <button
+          type="button"
+          disabled={busy}
+          onClick={() => {
+            fixThenRetry(
+              `${team}/agents/${agentId}/lifecycle`,
+              { lifecycle: 'active' },
+              false,
+            );
+          }}
+        >
+          重新启用 {name} 并重试
+        </button>
+      )}
+      {reason === 'not-in-channel' && (
+        <button
+          type="button"
+          disabled={busy}
+          onClick={() => {
+            fixThenRetry(
+              `${team}/channels/${channelId}/participants/invite`,
+              { member: { kind: 'agent', id: agentId } },
+              true,
+            );
+          }}
+        >
+          把 {name} 加回频道并重试
+        </button>
+      )}
+      {(reason === 'credential-invalid' ||
+        reason === 'native-access' ||
+        reason === 'native-incompatible' ||
+        reason === 'environment-changed') &&
+        openAgent && (
+          <button
+            type="button"
+            className="secondary"
+            onClick={() => {
+              openAgent(agentId);
+            }}
+          >
+            修复 {name} 的配置
+          </button>
+        )}
+      {reason !== 'not-assigned' &&
+        reason !== 'authority-changed' &&
+        reason !== 'agent-disabled' &&
+        reason !== 'not-in-channel' && (
+          <button
+            type="button"
+            className="secondary"
+            disabled={busy}
+            onClick={() => {
+              void retry();
+            }}
+          >
+            {action.busy ? '正在重试…' : '重试'}
+          </button>
+        )}
+      {action.uncertain && (
+        <button
+          type="button"
+          disabled={busy}
+          onClick={() => {
+            void action.retry().then((ok) => {
+              if (ok) onDone();
+            });
+          }}
+        >
+          重试同一操作
+        </button>
+      )}
+      {action.error && <Notice>{action.error}</Notice>}
+      {reason === null && (
+        <p className="muted recovery-operator">
+          没有记下原因。请在运行工作进程的机器上用{' '}
+          <code>npm run inbox:worker -- resume {delivery.id}</code> 恢复
+        </p>
+      )}
+    </div>
+  );
 }

@@ -14,7 +14,7 @@ import { Attachment } from '../../src/domain/attachments.js';
 import type { Shared } from '../shared/share.js';
 import type { WorkspaceSnapshot } from '../../src/workspace/contracts.js';
 import { MutationPermission, request } from '../shared/api.js';
-import { ActionForm } from '../shared/action-form.js';
+import { ActionForm } from '../shared/forms.js';
 import { joinedAgents, memberName, otherPeople } from '../shared/names.js';
 import { dayOf, workerConnected } from '../shared/format.js';
 import { plainText } from '../shared/markdown.js';
@@ -27,13 +27,13 @@ import {
   filesOf,
   sameAuthorOf,
 } from './chat-message.js';
-import { useArchive } from './use-archive.js';
-import { useArrivals } from './use-arrivals.js';
-import { useReadingPosition } from './use-reading-position.js';
-import { useEarlier } from './use-earlier.js';
-import { useMarkRead } from './use-mark-read.js';
+import { useArchive } from './reading.js';
+import { useArrivals } from './reading.js';
+import { useReadingPosition } from './reading.js';
+import { useEarlier } from './reading.js';
+import { useMarkRead } from './reading.js';
 import { type RowActions, MessageRow, NONE } from './message-row.js';
-import { NewTopic } from './new-topic.js';
+import { NewTopic } from './topics.js';
 import { FirstSteps } from './first-steps.js';
 
 export function Chat({

@@ -1,14 +1,71 @@
+import { WorkspaceSnapshot } from '../../src/workspace/contracts.js';
+import { flushSync } from 'react-dom';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { PageRef, Revisions, pageParam } from '../../src/workspace/events.js';
-import { WorkspaceSnapshot } from '../../src/workspace/contracts.js';
 import { api, HttpError } from '../shared/api.js';
 import { SIGNED_OUT } from './auth.js';
-import { animateBoard } from './animate-board.js';
-import { reloadOnce } from './broken.js';
-import { keepUnchanged } from './keep-unchanged.js';
+import { reloadOnce } from './boundary.js';
 import type { Place } from './use-place.js';
 import { takeStream, useRevisions } from './use-revisions.js';
 
+/**
+ * The new snapshot, keeping each message as the one before had it when it
+ * is unchanged: a row whose message is the same object is not drawn again.
+ */
+export function keepUnchanged(
+  previous: WorkspaceSnapshot | null,
+  next: WorkspaceSnapshot,
+): WorkspaceSnapshot {
+  if (!previous) return next;
+  const kept = new Map(previous.messages.items.map((m) => [m.id, m]));
+  return {
+    ...next,
+    messages: {
+      ...next.messages,
+      items: next.messages.items.map((m) => {
+        const old = kept.get(m.id);
+        return old && JSON.stringify(old) === JSON.stringify(m) ? old : m;
+      }),
+    },
+  };
+}
+/** True when a refresh moved at least one visible task to another status. */
+function statusesMoved(
+  before: WorkspaceSnapshot | null,
+  after: WorkspaceSnapshot,
+) {
+  if (!before || before.channel?.id !== after.channel?.id) return false;
+  const old = new Map(before.tasks.items.map((t) => [t.id, t.state.status]));
+  return after.tasks.items.some((t) => {
+    const status = old.get(t.id);
+    return status !== undefined && status !== t.state.status;
+  });
+}
+function animate(update: () => void) {
+  if (
+    typeof document.startViewTransition !== 'function' ||
+    window.matchMedia('(prefers-reduced-motion: reduce)').matches
+  ) {
+    update();
+    return;
+  }
+  document.startViewTransition(() => {
+    flushSync(update);
+  });
+}
+/**
+ * Puts a new snapshot on screen: cards on screen travel to their new
+ * column; other refreshes stay instant.
+ */
+export function animateBoard(
+  before: WorkspaceSnapshot | null,
+  after: WorkspaceSnapshot,
+  apply: () => void,
+) {
+  if (document.querySelector('.board') && statusesMoved(before, after))
+    animate(apply);
+  else apply();
+}
 /** How long a stream may stay silent before the place is read without it. */
 const SILENT_STREAM_MS = 3000;
 /** An event's JSON, or undefined when it isn't JSON (so it reads as unreadable). */

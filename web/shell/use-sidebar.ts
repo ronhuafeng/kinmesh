@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { usePad } from '../shared/use-pad.js';
+import { usePad } from '../shared/screen-size.js';
 
 const OPEN_KEY = 'kinmesh:sidebar-open';
 /** This device's choice, if it made one: open or closed. */

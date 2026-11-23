@@ -3,14 +3,14 @@ import { z } from 'zod';
 import { TeamFile } from '../../src/domain/communication.js';
 import type { WorkspaceSnapshot } from '../../src/workspace/contracts.js';
 import { api } from './api.js';
-import { useAction } from './use-action.js';
+import { useAction } from './api.js';
 import { fileSize } from '../../src/domain/attachments.js';
 import { inline } from './attachments.js';
 import { FileIcon } from './icons.js';
 import { memberName } from './names.js';
-import { Notice } from './notice.js';
+import { Notice } from './forms.js';
 import { shortTime } from './format.js';
-import { ListRow } from './list-row.js';
+import { ListRow } from './list.js';
 
 const Page = z.strictObject({
   items: z.array(TeamFile),
