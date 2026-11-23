@@ -17,15 +17,21 @@ export class HttpError extends Error {
     super(said[status] ?? FAILED);
   }
 }
+/**
+ * A request to the hub. It always ends: at `timeout` (10 seconds unless the
+ * caller knows the hub takes longer), or sooner when the caller's own signal
+ * aborts it.
+ */
 export async function api(
   path: string,
-  options: RequestInit = {},
+  { timeout = 10000, ...options }: RequestInit & { timeout?: number } = {},
 ): Promise<unknown> {
+  const limit = AbortSignal.timeout(timeout);
   const response = await fetch(path, {
     ...options,
     credentials: 'same-origin',
     cache: 'no-store',
-    signal: options.signal ?? AbortSignal.timeout(10000),
+    signal: options.signal ? AbortSignal.any([options.signal, limit]) : limit,
   });
   if (!response.ok) throw new HttpError(response.status);
   return response.status === 204 ? null : response.json();

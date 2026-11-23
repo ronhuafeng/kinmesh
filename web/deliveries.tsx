@@ -187,7 +187,7 @@ function useApproval(
     if (!waiting || t3Origin === null) return;
     const controller = new AbortController();
     api(`/api/teams/${teamId}/deliveries/${delivery.id}/link`, {
-      signal: AbortSignal.any([controller.signal, AbortSignal.timeout(10000)]),
+      signal: controller.signal,
     })
       .then((raw) => {
         const { url } = z.object({ url: z.url().nullable() }).parse(raw);

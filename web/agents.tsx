@@ -60,12 +60,7 @@ function NativeStatus({
     try {
       const raw = await api(
         `/api/teams/${teamId}/agents/${agentId}/executions/${correlation.id}/native`,
-        {
-          signal: AbortSignal.any([
-            controller.signal,
-            AbortSignal.timeout(10000),
-          ]),
-        },
+        { signal: controller.signal },
       );
       if (controller.signal.aborted) return;
       setObservation(
