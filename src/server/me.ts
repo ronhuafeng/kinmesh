@@ -50,10 +50,10 @@ export function registerMe(
   });
   app.get('/api/push/browsers', (request, reply) => {
     reply.header('Cache-Control', 'no-store');
-    return store.notifications.browserList(human(request));
+    return store.browsers.browserList(human(request));
   });
   app.post('/api/push/forget', async (request, reply) => {
-    const forgotten = await store.notifications.forgetBrowser(
+    const forgotten = await store.browsers.forgetBrowser(
       human(request),
       Id.parse(request.body).id,
     );

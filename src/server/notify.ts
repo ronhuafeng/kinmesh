@@ -117,7 +117,7 @@ export function registerNotifications(
     const humanId = human(request);
     const session = request.session.get('session');
     if (typeof session !== 'string') throw new DomainError('unauthenticated');
-    await store.notifications.subscribe(
+    await store.browsers.subscribe(
       humanId,
       session,
       PushSubscriptionInput.parse(request.body),
@@ -128,7 +128,7 @@ export function registerNotifications(
     const humanId = human(request);
     const session = request.session.get('session');
     if (typeof session !== 'string') throw new DomainError('unauthenticated');
-    await store.notifications.renew(
+    await store.browsers.renew(
       humanId,
       session,
       PushEndpoint.parse(request.body).endpoint,
@@ -136,7 +136,7 @@ export function registerNotifications(
     return reply.code(204).send();
   });
   app.post('/api/push/unsubscribe', async (request, reply) => {
-    await store.notifications.unsubscribe(
+    await store.browsers.unsubscribe(
       human(request),
       PushEndpoint.parse(request.body).endpoint,
     );
@@ -150,7 +150,7 @@ export function registerNotifications(
       throw new DomainError('invalid');
     const team = await store.teamFor(humanId);
     if (!team) throw new DomainError('forbidden');
-    await store.notifications.pause(humanId, team.team.id, at);
+    await store.quiet.pause(humanId, team.team.id, at);
     return reply.code(204).send();
   });
   app.put('/api/me/hours', async (request, reply) => {
@@ -158,7 +158,7 @@ export function registerNotifications(
     const { hours } = HoursInput.parse(request.body);
     const team = await store.teamFor(humanId);
     if (!team) throw new DomainError('forbidden');
-    await store.notifications.hours(humanId, team.team.id, hours);
+    await store.quiet.hours(humanId, team.team.id, hours);
     return reply.code(204).send();
   });
   app.put('/api/me/forward', async (request, reply) => {
@@ -166,7 +166,7 @@ export function registerNotifications(
     const { minutes } = ForwardInput.parse(request.body);
     const team = await store.teamFor(humanId);
     if (!team) throw new DomainError('forbidden');
-    await store.notifications.forwardAfter(humanId, team.team.id, minutes);
+    await store.quiet.forwardAfter(humanId, team.team.id, minutes);
     return reply.code(204).send();
   });
 
@@ -195,7 +195,7 @@ export function registerNotifications(
         error instanceof webpush.WebPushError &&
         (error.statusCode === 404 || error.statusCode === 410)
       ) {
-        await store.notifications.gone(browser.endpoint);
+        await store.browsers.gone(browser.endpoint);
         return 'gone';
       }
       app.log.error(
@@ -212,8 +212,8 @@ export function registerNotifications(
   /** In the person's quiet time: paused, or outside their hours. */
   async function quiet(humanId: string) {
     const [paused, hours] = await Promise.all([
-      store.notifications.pausedUntilOf(humanId),
-      store.notifications.hoursOf(humanId),
+      store.quiet.pausedUntilOf(humanId),
+      store.quiet.hoursOf(humanId),
     ]);
     return paused !== null || !withinHours(new Date(), hours);
   }
@@ -262,10 +262,10 @@ export function registerNotifications(
         deliveryId: null,
       }),
     );
-    for (const browser of await store.notifications.browsers(humanId))
+    for (const browser of await store.browsers.browsers(humanId))
       await push(browser, payload);
     const union = await store.notifications.unionOf(humanId);
-    if (union !== null && (await store.notifications.forwardsTo(humanId)))
+    if (union !== null && (await store.quiet.forwardsTo(humanId)))
       await feishu
         .message(union, { title, text: body, url: new URL('/', origin).href })
         .catch((error: unknown) => {
@@ -279,7 +279,7 @@ export function registerNotifications(
     const about = await store.notifications.describe(n);
     if (about === null) return;
     if (await held(n, 'push')) return;
-    const browsers = await store.notifications.browsers(n.humanId);
+    const browsers = await store.browsers.browsers(n.humanId);
     if (browsers.length === 0) return;
     const payload = JSON.stringify(payloadOf(n, about));
     for (const browser of browsers) await push(browser, payload);
@@ -290,7 +290,7 @@ export function registerNotifications(
   app.post('/api/push/test', async (request, reply) => {
     const humanId = human(request);
     const { endpoint } = PushEndpoint.parse(request.body);
-    const browser = await store.notifications.browser(humanId, endpoint);
+    const browser = await store.browsers.browser(humanId, endpoint);
     if (browser === null) return reply.code(410).send();
     const outcome = await push(
       browser,
