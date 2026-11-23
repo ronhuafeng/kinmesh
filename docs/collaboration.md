@@ -142,6 +142,7 @@ Any joined member with write authority may create an unowned task or one owned b
 | progress                | Work owner; `in-progress` or `rework-requested`                | `in-progress` with a note                                  |
 | handoff (work)          | Work owner; `in-progress`/`rework-requested`                   | New owner, reviewer cleared; `in-progress`                 |
 | handoff (work recovery) | Acceptor; any nonterminal owned task                           | Audited transfer to an active joined member; `in-progress` |
+| handoff (work, assign)  | Acceptor; `proposed`; not its preset reviewer                  | The member owns it, reviewer kept; `in-progress`           |
 | handoff (review)        | Work owner; `in-progress`/`rework-requested`                   | Owner kept, distinct reviewer; `review-requested`          |
 | request-review          | Work owner; `in-progress`                                      | Owner kept, distinct reviewer; `review-requested`          |
 | review approve          | Assigned reviewer; `review-requested`                          | `awaiting-human` (**not accepted**)                        |
@@ -150,8 +151,9 @@ Any joined member with write authority may create an unowned task or one owned b
 | accept                  | Acceptor; `awaiting-human`                                     | Terminal `accepted`, server human ID and time              |
 | cancel                  | Acceptor; any nonterminal task                                 | Terminal `cancelled`, server human ID and time             |
 | link-execution          | Work owner, or the assigned reviewer while review is requested | Immutable execution reference; state unchanged             |
+| edit                    | Acceptor (a person); any nonterminal task                      | New title, description, criteria and reviewer; same status |
 
-Owner and reviewer must differ and stay active and joined. Rework always needs another review before acceptance. Terminal tasks reject every command. Title, description, criteria, creator, context and acceptor are immutable; progress is a note, not a patch. Audit keeps before/after snapshots, command, verified author (with grant ID for agents), time, version and event ID. Runtime completion is not part of the transition algebra; execution links and reports never accept a task.
+Owner and reviewer must differ and stay active and joined. Rework always needs another review before acceptance. Terminal tasks reject every command. Creator, context and acceptor are immutable; progress is a note, not a patch. Only the acceptor edits what is asked: an edit gives title, description, criteria and reviewer as they should be, must change at least one (400 otherwise), and keeps the reviewer once review is asked for (`review-requested`, `awaiting-human`; 409 otherwise); a changed reviewer must be an active joined member other than the owner. An edit wakes no agent and notifies nobody; its history entry carries the task before and after. Agents never edit, and Team MCP has no tool for it. Audit keeps before/after snapshots, command, verified author (with grant ID for agents), time, version and event ID. Runtime completion is not part of the transition algebra; execution links and reports never accept a task.
 
 | Method/path                               | Body                                                                                                             |
 | ----------------------------------------- | ---------------------------------------------------------------------------------------------------------------- |
@@ -167,6 +169,7 @@ Owner and reviewer must differ and stay active and joined. Rework always needs a
 | `POST T/:taskId/review`                   | Common + `{decision:"approve"\|"rework",note}`                                                                   |
 | `POST T/:taskId/accept, /rework, /cancel` | Common + `{note}`                                                                                                |
 | `POST T/:taskId/link-execution`           | Common + `{reference,note}`                                                                                      |
+| `POST T/:taskId/edit`                     | Common + `{title,description,criteria,reviewer}`                                                                 |
 
 Common command fields are `{operationKey,expectedVersion}`; the route names the command, so `type` in a body is rejected. A member is `{kind:"human"|"agent",id}` and names a target, never the caller. Nullable create fields must be explicit `null`. Limits: title 1–160, description 0–4000, criteria 1–20 distinct entries of at most 500, notes 1–2000 characters. Commands return `{task,eventId,executionLink}`. Status codes: 401/403 or hiding 404 for authorization, 400 schema or cursor, 409 transition, version or key conflict, 413 oversized body.
 

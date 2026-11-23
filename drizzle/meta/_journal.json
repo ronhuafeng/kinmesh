@@ -169,6 +169,13 @@
       "when": 1795430920770,
       "tag": "0023_message_edits",
       "breakpoints": true
+    },
+    {
+      "idx": 24,
+      "version": "7",
+      "when": 1795431546348,
+      "tag": "0024_task_edits",
+      "breakpoints": true
     }
   ]
 }

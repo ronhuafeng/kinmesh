@@ -3554,6 +3554,49 @@ test('a message is pinned, listed in the 置顶 view, opened from it, and unpinn
 });
 
 /**
+ * Proves a task's acceptor edits it on its own page (Esc leaves it as it
+ * was), the page shows it as edited, and history says what changed.
+ */
+test('the acceptor edits a task in place and history says what changed', async ({
+  page,
+  hub,
+}) => {
+  await signIn(page, hub);
+  let task = await newTask(page, {
+    title: 'Draft title',
+    criteria: ['Tests pass'],
+  });
+  // Nobody has started it: its acceptor can give it to someone.
+  await expect(
+    task.getByRole('button', { name: '指派负责人', exact: true }),
+  ).toBeVisible();
+  await task.getByRole('button', { name: '编辑任务', exact: true }).click();
+  const form = task.getByRole('form', { name: '编辑任务' });
+  await form.getByLabel('任务标题').fill('Something else');
+  await form.getByLabel('任务标题').press('Escape');
+  await expect(form).toHaveCount(0);
+  await expect(
+    task.getByRole('heading', { name: 'Draft title' }),
+  ).toBeVisible();
+  await task.getByRole('button', { name: '编辑任务', exact: true }).click();
+  await form.getByLabel('任务标题').fill('Final title');
+  await form.getByLabel('完成标准', { exact: true }).press('Enter');
+  await form.getByLabel('完成标准 2', { exact: true }).fill('Docs updated');
+  await form.getByRole('button', { name: '保存', exact: true }).click();
+  task = taskPage(page, 'Final title');
+  await expect(
+    task.getByRole('heading', { name: 'Final title' }),
+  ).toBeVisible();
+  await expect(task.locator('.criteria li')).toHaveText([
+    'Tests pass',
+    'Docs updated',
+  ]);
+  await expect(task.getByRole('region', { name: '记录' })).toContainText(
+    '修改了标题、完成标准',
+  );
+});
+
+/**
  * Proves a person edits their message in place (Esc leaves it as it was),
  * it then says 已编辑, and withdrawing it, asked twice, leaves only that it
  * was withdrawn.

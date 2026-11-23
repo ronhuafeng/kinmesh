@@ -414,11 +414,16 @@ fallback.
   "任务已关闭。"), "完成标准" as a checklist, history as one timeline with faces, and
   last one quiet row of what else you may do; on the right owner, reviewer, acceptor
   and the topic. A new task's acceptor is a picker of the channel's people, starting at
-  you; whoever it names decides.
+  you; whoever it names decides. Its acceptor edits an open task with **编辑任务** from
+  that row: the page becomes the new-task page filled in — title, description,
+  criteria and the reviewer picker (shown, not chosen, once review is asked for) —
+  with **保存** and **取消**; Esc leaves it as it was, and saving nothing new only
+  closes it. History says what changed ("_Ada_ 修改了标题、完成标准").
 - **Decision**: waits on you when you accept, review, claim, or own work sent back:
   the latest note that led here, the note typed in place ("写下备注", one underline that
   turns green) and the actions as buttons, the way forward green. The rest — 发布进展,
-  请求审核, 转交工作, 退回修改, then 取消任务, the only red — are quiet buttons with no
+  请求审核, 转交工作 (**指派负责人** while nobody has started it), 退回修改, 编辑任务,
+  then 取消任务, the only red — are quiet buttons with no
   ellipsis; choosing one opens its note (and, to hand on, who to) in place of the row,
   with **返回**. Disabled with a reason only when offline.
 - **History**: one sentence per event, each person by name, you included
