@@ -16,7 +16,7 @@ export function MainArea() {
   const {
     data,
     phone,
-    sidebar,
+    sidebar: { pad, state, headerToggle, open, toggle },
     switching,
     refreshing,
     stale,
@@ -53,9 +53,7 @@ export function MainArea() {
             // Settings beside their map hold nothing up here: no
             // views, no title, the sidebar's control in the map.
             data-bare={
-              inSettings && !phone && !(sidebar.pad && sidebar.state)
-                ? 'true'
-                : undefined
+              inSettings && !phone && !(pad && state) ? 'true' : undefined
             }
             // The views centre over the column the place on
             // screen uses: the bar and the content share an axis.
@@ -101,17 +99,17 @@ export function MainArea() {
               {/* Closed, the sidebar opens from here; open, the same
                         control ends the team name's row. A floating sidebar
                         covers this one, which keeps the header still. */}
-              {sidebar.pad && sidebar.state && (
+              {pad && state && (
                 <button
                   type="button"
-                  ref={sidebar.headerToggle}
+                  ref={headerToggle}
                   className="quiet icon-button sidebar-toggle"
                   aria-label="展开侧栏"
                   title="展开侧栏"
-                  aria-expanded={sidebar.open}
+                  aria-expanded={open}
                   aria-controls="sidebar"
                   aria-keyshortcuts="Meta+Backslash Control+Backslash"
-                  onClick={sidebar.toggle}
+                  onClick={toggle}
                 >
                   <SidebarIcon size={20} />
                 </button>

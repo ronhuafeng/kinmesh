@@ -1,8 +1,10 @@
 import { defineConfig } from 'eslint/config';
+import reactHooks from 'eslint-plugin-react-hooks';
 import tseslint from 'typescript-eslint';
 export default defineConfig(
   ...tseslint.configs.strictTypeChecked,
   ...tseslint.configs.stylisticTypeChecked,
+  { files: ['web/**/*.{ts,tsx}'], ...reactHooks.configs.flat.recommended },
   {
     files: ['**/*.ts', '**/*.tsx'],
     languageOptions: {

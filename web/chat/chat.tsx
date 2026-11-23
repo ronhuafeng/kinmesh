@@ -4,6 +4,7 @@ import {
   useMemo,
   useContext,
   useEffect,
+  useEffectEvent,
   useLayoutEffect,
   useRef,
   useState,
@@ -102,12 +103,13 @@ export function Chat({
       ? data.messages.nextCursor
       : archive.cursor
     : data.messages.nextCursor;
+  const loadArchive = archive.load;
   const reachOlder = useCallback(
     (cursor: string) => {
-      if (full) archive.load(cursor);
+      if (full) loadArchive(cursor);
       else onEarlier(cursor);
     },
-    [full, archive.load, onEarlier],
+    [full, loadArchive, onEarlier],
   );
   const { divider, fresh, heard } = useArrivals(shown, messages, data.human.id);
   // The message tapped on a touch screen, which shows its actions.
@@ -117,7 +119,12 @@ export function Chat({
     place: string;
     id: string;
   } | null>(null);
-  const reading = useReadingPosition(shown, messages);
+  const {
+    atEnd,
+    list: listRef,
+    sent: toNewest,
+    show: showMessage,
+  } = useReadingPosition(shown, messages);
   const earlier = useEarlier(older, reachOlder);
   // Where you stopped reading, as this place opened: it opens there, under
   // the "new since" line, until you go elsewhere.
@@ -140,13 +147,16 @@ export function Chat({
   // A message opened here is reached however far back it is, shown and
   // marked once.
   const reachedFor = useRef<string | null>(null);
+  const reveal = useEffectEvent((id: string) => {
+    requestAnimationFrame(() => {
+      showMessage(id);
+    });
+  });
   useEffect(() => {
     if (!goTo || reachedFor.current === shown + goTo) return;
     if (messages.some((m) => m.id === goTo)) {
       reachedFor.current = shown + goTo;
-      requestAnimationFrame(() => {
-        reading.show(goTo);
-      });
+      reveal(goTo);
     } else if (older !== null) reachOlder(older);
     else reachedFor.current = shown + goTo;
   }, [goTo, shown, messages, older, reachOlder]);
@@ -223,9 +233,8 @@ export function Chat({
   // Which message each one sent became: the one the server named, or, when
   // its answer was lost, the same words of mine arriving after it. A
   // message keeps the place, and the element, of what was shown for it.
-  const became = useRef(new Map<string, string>());
-  const claimed = new Set(became.current.keys());
-  const keyOf = new Map(became.current);
+  const claimed = new Set(outbox.became.keys());
+  const keyOf = new Map(outbox.became);
   for (const o of outbox.outgoing) if (o.id !== null) claimed.add(o.id);
   for (const o of outbox.outgoing) {
     const id =
@@ -252,12 +261,11 @@ export function Chat({
       (shownTopic === '' || o.message.topicId === shownTopic),
   );
   const landedKeys = landed.map((o) => o.key).join(' ');
+  const land = useEffectEvent((keys: string[]) => {
+    outbox.land([...keyOf].filter(([, key]) => keys.includes(key)));
+  });
   useEffect(() => {
-    if (landedKeys === '') return;
-    const keys = landedKeys.split(' ');
-    for (const [id, key] of keyOf)
-      if (keys.includes(key)) became.current.set(id, key);
-    outbox.remove(keys);
+    if (landedKeys !== '') land(landedKeys.split(' '));
   }, [landedKeys]);
   if (!channel) return null;
   // What is on its way is shown after what has arrived, as it will read.
@@ -385,7 +393,7 @@ export function Chat({
           )
           .join('。')}
       </p>
-      <ol className="messages" aria-label="频道消息" ref={reading.list}>
+      <ol className="messages" aria-label="频道消息" ref={listRef}>
         {rows.map(({ m, o }, index) => {
           const previous = rows[index - 1]?.m;
           // A new day opens with its date; a group never crosses one.
@@ -452,9 +460,9 @@ export function Chat({
         <p className="board-empty">还没有消息。输入 @ 请智能体加入。</p>
       )}
       {/* Read back, the newest is one press away. */}
-      {!reading.atEnd && rows.length > 0 && (
+      {!atEnd && rows.length > 0 && (
         <div className="to-newest">
-          <button type="button" onClick={reading.sent}>
+          <button type="button" onClick={toNewest}>
             回到最新 ↓
           </button>
         </div>
@@ -525,7 +533,7 @@ export function Chat({
               refused: null,
             });
           }}
-          onDone={reading.sent}
+          onDone={toNewest}
         />
       )}
     </div>

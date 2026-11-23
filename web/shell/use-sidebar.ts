@@ -35,6 +35,12 @@ export function useSidebar(place: string) {
   const pad = usePad();
   const [choice, setChoice] = useState(readOpen);
   const [visiting, setVisiting] = useState(false);
+  // A sidebar visiting a narrow screen goes when the screen changes.
+  const [visitedPad, setVisitedPad] = useState(pad);
+  if (visitedPad !== pad) {
+    setVisitedPad(pad);
+    setVisiting(false);
+  }
   const open = pad === null || (pad === 'narrow' ? visiting : (choice ?? true));
   const floating = pad === 'narrow' && open;
   const headerToggle = useRef<HTMLButtonElement>(null);
@@ -80,7 +86,6 @@ export function useSidebar(place: string) {
     if (latest.current.floating) latest.current.set(false, false);
   }, [place]);
   useEffect(() => {
-    setVisiting(false);
     if (!pad) return;
     const onKey = (e: KeyboardEvent) => {
       if ((e.metaKey || e.ctrlKey) && e.key === '\\') {

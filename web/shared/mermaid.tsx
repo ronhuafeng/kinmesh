@@ -9,29 +9,28 @@ import { useEffect, useState, useSyncExternalStore } from 'react';
  */
 export function MermaidBlock({ source }: { source: string }) {
   const dark = useDark();
-  const [drawn, setDrawn] = useState<Drawing | 'failed' | null>(
-    () => cache.get(key(source, dark)) ?? null,
-  );
+  const at = key(source, dark);
+  // Drawings live in `cache`; until this one is there, the last one drawn
+  // here keeps the block's place.
+  const [last, setLast] = useState<Drawing | null>(null);
+  const [failed, setFailed] = useState<string | null>(null);
+  const drawn = failed === at ? 'failed' : (cache.get(at) ?? last);
   useEffect(() => {
-    const cached = cache.get(key(source, dark));
-    if (cached) {
-      setDrawn(cached);
-      return;
-    }
+    if (cache.has(at)) return;
     let live = true;
     draw(source, dark).then(
       (drawing) => {
-        cache.set(key(source, dark), drawing);
-        if (live) setDrawn(drawing);
+        cache.set(at, drawing);
+        if (live) setLast(drawing);
       },
       () => {
-        if (live) setDrawn('failed');
+        if (live) setFailed(at);
       },
     );
     return () => {
       live = false;
     };
-  }, [source, dark]);
+  }, [at, source, dark]);
   if (drawn === 'failed')
     return (
       <pre data-lang="mermaid">

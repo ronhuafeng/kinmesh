@@ -39,6 +39,8 @@ export function OwnWorker({
   const { send, busy, error, permitted } = useSetupRequest();
   const base = `/api/teams/${data.team.id}/agents/${agent.id}`;
   const [grants, setGrants] = useState<ListedGrant[] | null>(null);
+  // When the credentials were read: whether one is live is as of then.
+  const [readAt, setReadAt] = useState(0);
   const [token, setToken] = useState<string | null>(null);
   const [loadError, setLoadError] = useState('');
   const [editing, setEditing] = useState(false);
@@ -49,6 +51,7 @@ export function OwnWorker({
       .then((raw) => {
         const next = Grants.parse(raw);
         setGrants(next.grants);
+        setReadAt(Date.now());
         setLoadError('');
         settle('grants', next.revision);
       })
@@ -198,7 +201,7 @@ export function OwnWorker({
           <ul className="grant-list" aria-label="凭据">
             {grants.map((g) => {
               const live =
-                g.revokedAt === null && Date.parse(g.expiresAt) > Date.now();
+                g.revokedAt === null && Date.parse(g.expiresAt) > readAt;
               const hubs = g.id === managedGrantId;
               return (
                 <li key={g.id} data-live={live ? 'true' : undefined}>

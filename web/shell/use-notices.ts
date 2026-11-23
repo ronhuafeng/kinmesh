@@ -1,8 +1,8 @@
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import type { WorkspaceSnapshot } from '../../src/workspace/contracts.js';
 
 export interface Toast {
-  id: number;
+  id: number | string;
   message: string;
   detail?: string;
   url?: string;
@@ -13,47 +13,39 @@ export interface Toast {
  * another; a notice also opens its place.
  */
 export function useNotices(data: WorkspaceSnapshot | null) {
-  const [toast, setToast] = useState<Toast | null>(null);
+  // A word said here, which goes before any notice.
+  const [said, setSaid] = useState<Toast | null>(null);
   // In-page notices shown already, so a refresh doesn't show them again.
-  const noticed = useRef(new Set<string>());
-  // Notices still to show, one after another.
-  const [queuedNotices, setQueuedNotices] = useState<
-    { id: string; title: string; body: string; url: string }[]
-  >([]);
+  const [shown, setShown] = useState<ReadonlySet<string>>(() => new Set());
+  const notice = said ? undefined : data?.notices.find((n) => !shown.has(n.id));
+  const toast: Toast | null =
+    said ??
+    (notice
+      ? {
+          id: 'notice:' + notice.id,
+          message: notice.title,
+          detail: notice.body,
+          url: notice.url,
+        }
+      : null);
+  /** The toast on screen goes; the next notice, if any, follows. */
+  const noticeId = notice?.id;
+  const dismiss = useCallback(() => {
+    if (noticeId === undefined) setSaid(null);
+    else setShown((old) => new Set(old).add(noticeId));
+  }, [noticeId]);
+  const id = toast?.id;
+  const lasting = toast?.url ? 8000 : 4000;
   useEffect(() => {
-    if (!toast) return;
-    const timer = setTimeout(
-      () => {
-        setToast(null);
-      },
-      toast.url ? 8000 : 4000,
-    );
+    if (id === undefined) return;
+    const timer = setTimeout(dismiss, lasting);
     return () => {
       clearTimeout(timer);
     };
-  }, [toast]);
-  const notices = data?.notices;
-  useEffect(() => {
-    const fresh = (notices ?? []).filter((n) => !noticed.current.has(n.id));
-    if (fresh.length === 0) return;
-    for (const n of fresh) noticed.current.add(n.id);
-    setQueuedNotices((old) => [...old, ...fresh]);
-  }, [notices]);
-  // The next notice shows once the one before it has gone.
-  useEffect(() => {
-    const [next, ...rest] = queuedNotices;
-    if (toast || !next) return;
-    setQueuedNotices(rest);
-    setToast({
-      id: Date.now(),
-      message: next.title,
-      detail: next.body,
-      url: next.url,
-    });
-  }, [toast, queuedNotices]);
+  }, [id, lasting, dismiss]);
   const notify = (message: string) => {
-    setToast({ id: Date.now(), message });
+    setSaid({ id: Date.now(), message });
   };
-  return { toast, setToast, notify };
+  return { toast, dismiss, notify };
 }
 export type Notices = ReturnType<typeof useNotices>;

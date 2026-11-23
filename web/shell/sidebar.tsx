@@ -14,8 +14,14 @@ import { useNavigation, useScreen, useActions } from './contexts.js';
 export function Sidebar() {
   const { focus, setFocus, setDraft, closeFocus, openSettings } =
     useNavigation();
-  const { data, phone, sidebar, inSettings, settingsSection, waiting } =
-    useScreen();
+  const {
+    data,
+    phone,
+    sidebar: { sidebarRef, onSearch, pad, rowToggle, toggle },
+    inSettings,
+    settingsSection,
+    waiting,
+  } = useScreen();
   const { signOut, signOutEverywhere, notify, commands, remote } = useActions();
   const teamName = (
     <TeamMenu data={data} onSettings={openSettings}>
@@ -29,12 +35,7 @@ export function Sidebar() {
     </TeamMenu>
   );
   return (
-    <aside
-      className="sidebar"
-      id="sidebar"
-      ref={sidebar.sidebarRef}
-      aria-label="侧栏"
-    >
+    <aside className="sidebar" id="sidebar" ref={sidebarRef} aria-label="侧栏">
       {inSettings && !phone ? (
         <SettingsNav
           current={settingsSection}
@@ -53,19 +54,19 @@ export function Sidebar() {
             <SidebarSearch
               commands={commands}
               remote={remote}
-              onOpen={sidebar.onSearch}
+              onOpen={onSearch}
               end={
-                sidebar.pad && (
+                pad && (
                   <button
                     type="button"
-                    ref={sidebar.rowToggle}
+                    ref={rowToggle}
                     className="quiet icon-button sidebar-toggle"
                     aria-label="收起侧栏"
                     title="收起侧栏"
                     aria-expanded="true"
                     aria-controls="sidebar"
                     aria-keyshortcuts="Meta+Backslash Control+Backslash"
-                    onClick={sidebar.toggle}
+                    onClick={toggle}
                   >
                     <SidebarIcon size={20} />
                   </button>

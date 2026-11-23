@@ -144,12 +144,13 @@ export function useWorkspace(place: Place) {
     setRevision((n) => n + 1);
     readAll();
   }, [readAll]);
+  // A refresh asked for, or a slow one, lasts until loading ends.
+  if (status !== 'loading' && (manual || slow)) {
+    setManual(false);
+    setSlow(false);
+  }
   useEffect(() => {
-    if (status !== 'loading') {
-      setManual(false);
-      setSlow(false);
-      return;
-    }
+    if (status !== 'loading') return;
     const timer = setTimeout(() => {
       setSlow(true);
     }, 800);
@@ -162,15 +163,16 @@ export function useWorkspace(place: Place) {
   // carries it; decided once per task opened. One on the board is already
   // on screen: opening it reads nothing.
   const focusTask = focus?.kind === 'task' ? focus.id : '';
-  const taskReach = useRef({ id: '', reach: false });
-  if (taskReach.current.id !== focusTask)
-    taskReach.current = {
+  const [taskReach, setTaskReach] = useState({ id: '', reach: false });
+  if (taskReach.id !== focusTask)
+    setTaskReach({
       id: focusTask,
       reach:
         focusTask !== '' &&
         !(data?.tasks.items.some((task) => task.id === focusTask) ?? false),
-    };
-  const openTaskId = taskReach.current.reach ? focusTask : '';
+    });
+  const openTaskId =
+    taskReach.id === focusTask && taskReach.reach ? focusTask : '';
   const query = useMemo(() => {
     const query = new URLSearchParams(cursors);
     if (selection.channel) query.set('channelId', selection.channel);
@@ -179,6 +181,13 @@ export function useWorkspace(place: Place) {
     return query.toString();
   }, [cursors, selection.channel, selection.topic, openTaskId]);
   const paged = Object.keys(cursors).length > 0;
+  // Each read, of a new place or a refresh, loads until it is answered.
+  const reading = query + '#' + String(revision);
+  const [read, setRead] = useState(reading);
+  if (read !== reading) {
+    setRead(reading);
+    setStatus((previous) => (previous === 'signedout' ? previous : 'loading'));
+  }
   // The place the snapshot on screen was read for.
   const shownPlace = useRef<string | null>(null);
   // How many snapshots the stream has brought: a read answered after a
@@ -228,7 +237,6 @@ export function useWorkspace(place: Place) {
   // started); a new place, and every refresh, is read at once.
   const streamed = useRef(true);
   useEffect(() => {
-    setStatus((previous) => (previous === 'signedout' ? previous : 'loading'));
     begin('workspace');
     if (streamed.current) {
       streamed.current = false;

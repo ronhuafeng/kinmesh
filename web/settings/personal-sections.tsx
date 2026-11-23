@@ -50,8 +50,12 @@ export function Unread({ what, retry }: { what: string; retry: () => void }) {
 export function ProfileSection({ data }: { data: WorkspaceSnapshot }) {
   const [profile, setProfile] = useState<z.infer<typeof Profile> | null>(null);
   const [failed, setFailed] = useState(false);
+  const [attempt, setAttempt] = useState(0);
   const load = () => {
     setFailed(false);
+    setAttempt((n) => n + 1);
+  };
+  useEffect(() => {
     void api('/api/me/profile').then(
       (raw) => {
         setProfile(Profile.parse(raw));
@@ -60,8 +64,7 @@ export function ProfileSection({ data }: { data: WorkspaceSnapshot }) {
         setFailed(true);
       },
     );
-  };
-  useEffect(load, []);
+  }, [attempt]);
   return (
     <>
       <div className="settings-identity">
@@ -94,8 +97,12 @@ export function AccountSection({
   const [sessions, setSessions] = useState<z.infer<typeof Sessions>>([]);
   const [browsers, setBrowsers] = useState<z.infer<typeof Browsers>>([]);
   const [failed, setFailed] = useState(false);
+  const [attempt, setAttempt] = useState(0);
   const load = () => {
     setFailed(false);
+    setAttempt((n) => n + 1);
+  };
+  useEffect(() => {
     const failing = () => {
       setFailed(true);
     };
@@ -105,8 +112,7 @@ export function AccountSection({
     void api('/api/push/browsers').then((raw) => {
       setBrowsers(Browsers.parse(raw));
     }, failing);
-  };
-  useEffect(load, []);
+  }, [attempt]);
   const end = (path: string, id: string) =>
     void action.send(path, { id }).then((done) => {
       if (done !== undefined) load();

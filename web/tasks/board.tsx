@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { Task } from '../../src/domain/tasks.js';
 import { pageOf, memberKey } from '../../src/domain/communication.js';
 import { api } from '../shared/api.js';
@@ -181,9 +181,11 @@ export function Board({
   const [column, setColumn] = useState<StageId>(firstAsk?.id ?? 'proposed');
   // One stage at a time shows the stage of the task that is open.
   const openStage = items.find((t) => t.id === openId)?.state.status;
-  useEffect(() => {
+  const [shownStage, setShownStage] = useState<typeof openStage>(undefined);
+  if (shownStage !== openStage) {
+    setShownStage(openStage);
     if (openStage) setColumn(stageOf(openStage));
-  }, [openStage]);
+  }
   return (
     <section aria-label="任务看板">
       <div className="board-filter" role="group" aria-label="筛选任务">

@@ -5,7 +5,7 @@ import { useActions } from './contexts.js';
  * stays a button that opens what it is about.
  */
 export function Toasts() {
-  const { toast, setToast } = useActions();
+  const { toast, dismiss } = useActions();
   return (
     <div className="toast-region" role="status">
       {toast &&
@@ -16,7 +16,7 @@ export function Toasts() {
             key={toast.id}
             onClick={() => {
               const url = toast.url;
-              setToast(null);
+              dismiss();
               if (!url) return;
               window.history.pushState(null, '', url);
               window.dispatchEvent(new PopStateEvent('popstate'));
