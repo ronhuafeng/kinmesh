@@ -1504,6 +1504,41 @@ test('the agent panel still walks an operator through a self-run worker binding'
 });
 
 /**
+ * Proves every notice in one update is shown, one after another, each a
+ * button that opens what it is about, inside the page's one live region.
+ */
+test('two notices arriving together are both shown, one after the other', async ({
+  page,
+  hub,
+}) => {
+  await withoutStream(page);
+  await signIn(page, hub);
+  // MOCK only the notices; the rest of the workspace is the hub's.
+  await page.route('**/api/workspace?*', async (route) => {
+    const response = await route.fetch();
+    const body = z.record(z.string(), z.unknown()).parse(await response.json());
+    await route.fulfill({
+      response,
+      json: {
+        ...body,
+        // A snapshot that says something new comes with a new revision.
+        revision: 'f'.repeat(64),
+        notices: [
+          { id: 'n1', title: 'Ada 提到了你', body: 'first', url: '/' },
+          { id: 'n2', title: 'Pi 回复了你', body: 'second', url: '/' },
+        ],
+      },
+    });
+  });
+  await refreshNow(page);
+  const first = page.getByRole('button', { name: /Ada 提到了你/ });
+  await expect(first).toBeVisible();
+  await expect(page.getByRole('status')).toContainText('Ada 提到了你');
+  await first.click();
+  await expect(page.getByRole('button', { name: /Pi 回复了你/ })).toBeVisible();
+});
+
+/**
  * Proves an action that doesn't happen says so: a refused pause, and signing
  * out while Kinmesh can't be reached.
  */
