@@ -36,6 +36,7 @@ import {
 import type { TaskDraft } from './tasks.js';
 import { joinedAgents, memberName, otherPeople } from './names.js';
 import { plainText } from './markdown.js';
+import { Broken, reloadOnce } from './boundary.js';
 import {
   ChannelIcon,
   Avatar,
@@ -230,6 +231,14 @@ const Opened = z.strictObject({
   url: z.string().startsWith('/'),
 });
 /** The address for a place; the inverse of readRoute. */
+/** An event's JSON, or undefined when it isn't JSON (so it reads as unreadable). */
+function parsed(text: string): unknown {
+  try {
+    return JSON.parse(text) as unknown;
+  } catch {
+    return undefined;
+  }
+}
 function routeUrl(place: {
   channel: string;
   topic: string;
@@ -299,6 +308,11 @@ export function App() {
   const [lastOk, setLastOk] = useState(false);
   // The last read failed; it stays so through the retries that follow.
   const [unreachable, setUnreachable] = useState(false);
+  // The hub sent what this page can't read, and reloading didn't help.
+  const [unreadable, setUnreadable] = useState(false);
+  const outdated = useCallback(() => {
+    if (!reloadOnce()) setUnreadable(true);
+  }, []);
   const [revision, setRevision] = useState(0);
   const [manual, setManual] = useState(false);
   const [slow, setSlow] = useState(false);
@@ -522,7 +536,9 @@ export function App() {
         // An answer for a place already left says nothing about this one.
         if (controller.signal.aborted || streamedCount.current !== before)
           return;
-        show(WorkspaceSnapshot.parse(raw), place, selection.channel);
+        const next = WorkspaceSnapshot.safeParse(raw);
+        if (next.success) show(next.data, place, selection.channel);
+        else outdated();
       })
       .catch((cause: unknown) => {
         if (controller.signal.aborted) return;
@@ -560,6 +576,7 @@ export function App() {
     begin,
     show,
     drop,
+    outdated,
   ]);
   // The address follows the place. Going somewhere new adds a history
   // entry, so Back returns; a topic switch only rewrites the address.
@@ -657,14 +674,21 @@ export function App() {
     const onWorkspace = (event: Event) => {
       if (!(event instanceof MessageEvent) || typeof event.data !== 'string')
         return;
-      const next = WorkspaceSnapshot.parse(JSON.parse(event.data) as unknown);
+      const next = WorkspaceSnapshot.safeParse(parsed(event.data));
+      if (!next.success) {
+        outdated();
+        return;
+      }
       streamedCount.current++;
       clearTimeout(silent);
-      show(next, place, selection.channel);
+      show(next.data, place, selection.channel);
     };
     const onRevisions = (event: Event) => {
-      if (event instanceof MessageEvent && typeof event.data === 'string')
-        receive(Revisions.parse(JSON.parse(event.data) as unknown));
+      if (!(event instanceof MessageEvent) || typeof event.data !== 'string')
+        return;
+      const next = Revisions.safeParse(parsed(event.data));
+      if (next.success) receive(next.data);
+      else outdated();
     };
     events.addEventListener('workspace', onWorkspace);
     events.addEventListener('revisions', onRevisions);
@@ -703,6 +727,7 @@ export function App() {
     readAll,
     receive,
     streamTry,
+    outdated,
   ]);
   // While the hub cannot be reached, nothing can say it is back: ask again.
   useEffect(() => {
@@ -783,6 +808,7 @@ export function App() {
       anyUnread ? navigator.setAppBadge() : navigator.clearAppBadge()
     ).catch(() => undefined);
   }, [anyUnread]);
+  if (unreadable) return <Broken />;
   if (status === 'signedout') return <Auth denied={denied} />;
   if (!data) {
     const failed = unreachable;
