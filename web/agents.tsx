@@ -438,7 +438,7 @@ function Requests({
     <section aria-label="请求">
       <h3>本频道的请求</h3>
       <ul className="requests">
-        {requests.slice(0, 5).map((d) => {
+        {requests.map((d) => {
           const { text, tone } = deliveryText(d, agent.name, connected);
           // On the agent's own page its name goes without saying.
           const outcome = text.startsWith(agent.name)

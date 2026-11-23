@@ -1,4 +1,6 @@
 import { createContext, useContext, useEffect, useRef, useState } from 'react';
+import type { z } from 'zod';
+import { pageOf } from '../src/domain/communication.js';
 
 export const MutationPermission = createContext(true);
 /** True only while disconnected, as opposed to a brief background refresh. */
@@ -35,6 +37,32 @@ export async function api(
   });
   if (!response.ok) throw new HttpError(response.status);
   return response.status === 204 ? null : response.json();
+}
+/**
+ * Every page of a list, following its cursor: a task's whole history, not
+ * only its first page.
+ */
+export async function everyPage<T extends z.ZodType>(
+  path: string,
+  item: T,
+  signal: AbortSignal,
+) {
+  const items: z.infer<T>[] = [];
+  let cursor: string | null = null;
+  // At most 50 pages of 100: far past any task's history, never a loop.
+  for (let page = 0; page < 50; page++) {
+    const raw = await api(
+      path +
+        '?limit=100' +
+        (cursor === null ? '' : '&cursor=' + encodeURIComponent(cursor)),
+      { signal },
+    );
+    const read = pageOf(item).parse(raw);
+    items.push(...read.items);
+    cursor = read.nextCursor;
+    if (cursor === null) break;
+  }
+  return items;
 }
 /** A form field's text, or '' when it is missing or a file. */
 export const value = (form: FormData, key: string) => {

@@ -11,11 +11,11 @@ import {
   TaskResult,
 } from '../src/domain/tasks.js';
 import type { Task } from '../src/domain/tasks.js';
-import { Member, memberKey, pageOf } from '../src/domain/communication.js';
+import { Member, memberKey } from '../src/domain/communication.js';
 import type { Message } from '../src/domain/communication.js';
 import type { WorkspaceSnapshot } from '../src/workspace/contracts.js';
 import { threadLink } from '../src/workspace/links.js';
-import { api, Offline, value } from './api.js';
+import { everyPage, Offline, value } from './api.js';
 import { ActionForm, Field, Notice, SubmitGroup } from './forms.js';
 import { DeliveryLine, taskDeliveries } from './deliveries.js';
 import { joinedAgents, memberName, otherPeople, someoneOf } from './names.js';
@@ -296,12 +296,12 @@ function TaskHistory({
     let retry: ReturnType<typeof setTimeout> | undefined;
     const read = (attempt: number) => {
       void Promise.all([
-        api(path + '/history', { signal: controller.signal }),
-        api(path + '/executions', { signal: controller.signal }),
+        everyPage(path + '/history', TaskEvent, controller.signal),
+        everyPage(path + '/executions', TaskExecution, controller.signal),
       ])
         .then(([events, refs]) => {
-          setHistory(pageOf(TaskEvent).parse(events).items);
-          setLinks(pageOf(TaskExecution).parse(refs).items);
+          setHistory(events);
+          setLinks(refs);
           setFailing(false);
         })
         .catch(() => {
