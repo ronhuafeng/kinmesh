@@ -57,7 +57,10 @@ import {
   MessageId,
   MessageReactions,
   Mutation,
+  PINS_MOST,
   type PageInput,
+  PinInput,
+  Pinned,
   Participant,
   ParticipantInput,
   VisibilityInput,
@@ -443,6 +446,33 @@ export function communicationRepository(
     const [found] = await withMentions([row]);
     if (found === undefined) throw new DomainError('not-found');
     return found;
+  }
+  /** A channel's pinned messages, the latest pinned first. */
+  async function pinsOf(channelId: ChannelId) {
+    const rows = await q()
+      .select({
+        pin: s.channelPins,
+        message: s.messages,
+      })
+      .from(s.channelPins)
+      .innerJoin(
+        s.messages,
+        and(
+          eq(s.messages.id, s.channelPins.messageId),
+          eq(s.messages.channelId, s.channelPins.channelId),
+        ),
+      )
+      .where(eq(s.channelPins.channelId, channelId))
+      .orderBy(desc(s.channelPins.pinnedAt))
+      .limit(PINS_MOST);
+    const messages = await withMentions(rows.map((r) => r.message));
+    return rows.map((r, i) =>
+      Pinned.parse({
+        message: messages[i],
+        pinnedBy: r.pin.pinnedBy,
+        pinnedAt: new Date(r.pin.pinnedAt).toISOString(),
+      }),
+    );
   }
   const topicOf = (row: typeof s.topics.$inferSelect) =>
     Topic.parse({ ...row, author: decode(row.author) });
@@ -923,6 +953,57 @@ export function communicationRepository(
               ),
             );
         return reactionsOf(channelId, [messageId]);
+      });
+    },
+    /**
+     * A person in the channel pins a message there, or unpins it. Doing what
+     * is done changes nothing; a channel keeps at most `PINS_MOST`.
+     */
+    pin(
+      p: Principal,
+      teamId: TeamId,
+      channelId: ChannelId,
+      messageId: MessageId,
+      input: z.infer<typeof PinInput>,
+    ) {
+      const { on } = PinInput.parse(input);
+      return atomic(async () => {
+        if (p.kind !== 'human') throw new DomainError('forbidden');
+        const { participant } = await access(p, teamId, channelId);
+        if (participant?.state !== 'joined') throw new DomainError('not-found');
+        await message(channelId, messageId);
+        if (on) {
+          const [count] = await q()
+            .select({ n: sql<number>`count(*)::int` })
+            .from(s.channelPins)
+            .where(eq(s.channelPins.channelId, channelId));
+          if ((count?.n ?? 0) >= PINS_MOST) throw new DomainError('conflict');
+          await q()
+            .insert(s.channelPins)
+            .values({
+              channelId,
+              messageId,
+              pinnedBy: p.humanId,
+              pinnedAt: Date.now(),
+            })
+            .onConflictDoNothing();
+        } else
+          await q()
+            .delete(s.channelPins)
+            .where(
+              and(
+                eq(s.channelPins.channelId, channelId),
+                eq(s.channelPins.messageId, messageId),
+              ),
+            );
+        return pinsOf(channelId);
+      });
+    },
+    /** A channel's pinned messages, for whoever can read it. */
+    pins(p: Principal, teamId: TeamId, channelId: ChannelId) {
+      return atomic(async () => {
+        await access(p, teamId, channelId);
+        return pinsOf(channelId);
       });
     },
     /** The reactions to these messages of a channel the person can read. */

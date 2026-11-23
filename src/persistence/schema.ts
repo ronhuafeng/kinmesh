@@ -989,3 +989,22 @@ export const messageReactions = pgTable(
     ),
   ],
 );
+/** A message pinned in its channel: by whom and when, until unpinned. */
+export const channelPins = pgTable(
+  'channel_pins',
+  {
+    channelId: text('channel_id').notNull(),
+    messageId: text('message_id').notNull(),
+    pinnedBy: text('pinned_by')
+      .notNull()
+      .references(() => humans.id),
+    pinnedAt: millis('pinned_at').notNull(),
+  },
+  (t) => [
+    primaryKey({ columns: [t.channelId, t.messageId] }),
+    foreignKey({
+      columns: [t.messageId, t.channelId],
+      foreignColumns: [messages.id, messages.channelId],
+    }),
+  ],
+);

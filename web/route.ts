@@ -9,7 +9,7 @@ import type { BoardFilter, TaskDraft } from './tasks.js';
  * the address each place is kept at (`readRoute` and `routeUrl`, inverses).
  */
 /** Tabs, plus one agent's own page reached from them. */
-export type View = 'chat' | 'board' | 'team' | 'files' | 'agent';
+export type View = 'chat' | 'board' | 'team' | 'files' | 'pins' | 'agent';
 export type Tab = Exclude<View, 'agent'>;
 export type Focus =
   | { kind: 'task' | 'worker'; id: string }
@@ -39,7 +39,12 @@ export function readRoute() {
   let agent = agentParam('agent');
   const asked = query.get('view');
   let view: View =
-    asked === 'board' || asked === 'team' || asked === 'files' ? asked : 'chat';
+    asked === 'board' ||
+    asked === 'team' ||
+    asked === 'files' ||
+    asked === 'pins'
+      ? asked
+      : 'chat';
   let focus: Focus = null;
   let draft: TaskDraft | null = null;
   if (task === 'new') {
@@ -105,7 +110,8 @@ export function routeUrl(place: {
   else if (
     place.view === 'board' ||
     place.view === 'team' ||
-    place.view === 'files'
+    place.view === 'files' ||
+    place.view === 'pins'
   ) {
     query.set('view', place.view);
     if (place.view === 'board') {

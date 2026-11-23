@@ -16,6 +16,8 @@ import {
 import {
   MessageId,
   MessageReactions,
+  PINS_MOST,
+  Pinned,
   REACTIONS,
   TopicId,
 } from '../domain/communication.js';
@@ -84,6 +86,8 @@ export const WorkspaceSnapshot = z.strictObject({
   firstUnread: MessageId.nullable(),
   /** The reactions to the messages shown, by message and reaction. */
   reactions: z.array(MessageReactions).max(REACH * REACTIONS.length),
+  /** The open channel's pinned messages, the latest pinned first. */
+  pinned: z.array(Pinned).max(PINS_MOST),
   human: Person,
   /** The channels you muted or follow; every other is at the default. */
   levels: z

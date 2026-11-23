@@ -3478,6 +3478,39 @@ test('a reaction is added from a message’s actions and taken back from its pil
 });
 
 /**
+ * Proves a message is pinned from its actions, the channel's 置顶 view lists
+ * it and opens it, and it is unpinned there.
+ */
+test('a message is pinned, listed in the 置顶 view, opened from it, and unpinned', async ({
+  page,
+  hub,
+}) => {
+  await signIn(page, hub);
+  const composer = page.getByRole('form', { name: '给团队发消息' });
+  await composer.getByLabel('消息', { exact: true }).fill('We ship on Friday');
+  await composer.getByRole('button', { name: '发送消息' }).click();
+  const message = page
+    .getByRole('list', { name: '频道消息' })
+    .getByRole('listitem')
+    .filter({ hasText: 'We ship on Friday' });
+  // No pins, no view for them.
+  await expect(page.getByRole('tab', { name: '置顶' })).toHaveCount(0);
+  await message.hover();
+  await message
+    .locator('.message-actions')
+    .getByRole('button', { name: '置顶', exact: true })
+    .click();
+  await page.getByRole('tab', { name: '置顶' }).click();
+  const pins = page.getByRole('list', { name: '置顶的消息' });
+  await expect(pins).toContainText('We ship on Friday');
+  await pins.getByRole('button', { name: /We ship on Friday/ }).click();
+  await expect(message).toBeInViewport();
+  await page.getByRole('tab', { name: '置顶' }).click();
+  await pins.getByRole('button', { name: '取消置顶' }).click();
+  await expect(page.getByText('这个频道还没有置顶的消息。')).toBeVisible();
+});
+
+/**
  * Proves a code block and a message each copy as written: the code without
  * the button's word, the message as its Markdown.
  */
