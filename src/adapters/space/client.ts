@@ -4,8 +4,8 @@ import { request as httpsRequest } from 'node:https';
 import type { Readable } from 'node:stream';
 import { pipeline } from 'node:stream/promises';
 import { z } from 'zod';
-import { ExecutionFailure } from '../domain/execution.js';
-import type { SpaceProvisioner } from './config.js';
+import { ExecutionFailure } from '../../domain/execution.js';
+import type { SpaceProvisioner } from './provisioner.js';
 
 /**
  * Makes `directory` in the space a T3 project, if it isn't one, and answers

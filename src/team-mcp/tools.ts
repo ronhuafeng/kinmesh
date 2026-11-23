@@ -22,7 +22,7 @@ import {
   TaskExecution,
   TaskResult,
 } from '../domain/tasks.js';
-import { resolvePrincipal } from '../server/principals.js';
+import { resolvePrincipal } from '../persistence/principals.js';
 import type { Store } from '../persistence/store.js';
 import type { AttachmentStore } from '../persistence/attachment-store.js';
 import { Attachment, AttachmentId } from '../domain/attachments.js';

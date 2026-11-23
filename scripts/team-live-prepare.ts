@@ -8,7 +8,7 @@ import { DatabaseUrl } from '../src/persistence/database.js';
 import { disposableDatabase } from '../src/persistence/disposable.js';
 import { ProfileInput } from '../src/domain/agents.js';
 import { LiveContext } from '../src/team-mcp/live-context.js';
-import { TeamEndpoint } from '../src/team-mcp/client.js';
+import { TeamEndpoint } from '../src/adapters/team-mcp/client.js';
 let store: Store | undefined;
 let prepared: { url: string; drop: () => Promise<void> } | undefined;
 let complete = false;

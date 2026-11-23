@@ -1,7 +1,7 @@
 import { setTimeout as delay } from 'node:timers/promises';
 import type { Store } from '../persistence/store.js';
 import { refused } from '../persistence/database.js';
-import { loadAgentToken } from '../team-mcp/client.js';
+import { loadAgentToken } from '../adapters/team-mcp/client.js';
 import { z } from 'zod';
 import {
   ExecutionFailure,
@@ -30,20 +30,21 @@ import {
   spaceDirectory,
 } from '../domain/inbox.js';
 import type { Launch } from '../domain/execution.js';
-import { WorkerBinding, type WorkerConfig } from './config.js';
+import { WorkerBinding, type WorkerConfig } from '../runtime/worker-config.js';
 import {
   agentTokenFile,
   managedDirectory,
   t3AuthFile,
   t3DeploymentFile,
-} from './managed.js';
+} from '../runtime/managed.js';
 import type { BackendFactory } from './t3.js';
+import { SignInEnded } from './sign-in-ended.js';
 import {
   spacePlacer,
   spaceProvisioner,
   type FilePlacer,
   type Provisioner,
-} from './space.js';
+} from '../adapters/space/client.js';
 import {
   attachmentStore,
   storeConfig,
@@ -210,13 +211,6 @@ class EnvironmentChanged extends Error {
 /** The run started under a credential or T3 authority the agent no longer has. */
 class AuthorityChanged extends Error {
   override readonly name = 'AuthorityChanged';
-}
-/**
- * The team's T3 sign-in ended. Nothing is sent to T3 under it; the delivery
- * waits for a new sign-in, which is the same authority, so it goes on.
- */
-export class SignInEnded extends Error {
-  override readonly name = 'SignInEnded';
 }
 /** The worker doesn't serve the agent's newly chosen provider yet. */
 class CatchingUp extends Error {

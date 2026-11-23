@@ -3,7 +3,7 @@ import { join } from 'node:path';
 import { rawDatabase } from './raw.js';
 import { z } from 'zod';
 import { Delivery, Result } from '../src/domain/inbox.js';
-import { Binding, WorkerConfig } from '../src/inbox/config.js';
+import { Binding, WorkerConfig } from '../src/runtime/worker-config.js';
 import { T3Backend } from '../src/adapters/t3/backend.js';
 import type { BackendFactory } from '../src/inbox/t3.js';
 import { taskFixture } from './task-helpers.js';

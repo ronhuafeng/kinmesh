@@ -9,7 +9,7 @@ import {
   sniff,
 } from '../domain/attachments.js';
 import { ChannelId, TeamId } from '../domain/contracts.js';
-import type { FileRemover } from '../inbox/space.js';
+import type { FileRemover } from '../adapters/space/client.js';
 import { OperationKey } from '../domain/communication.js';
 import { DomainError } from '../domain/errors.js';
 import type { Store } from '../persistence/store.js';

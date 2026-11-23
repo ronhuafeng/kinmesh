@@ -1,0 +1,23 @@
+import type { Principal } from '../domain/agents.js';
+import { DomainError } from '../domain/errors.js';
+import type { Store } from './store.js';
+
+/** Only call with credentials from the verified session plugin or HTTP Authorization.
+ * Actor labels, role messages and tool arguments are never credential inputs. */
+export async function resolvePrincipal(
+  store: Store,
+  authorization: string | undefined,
+  sessionToken: unknown,
+): Promise<Principal> {
+  if (authorization !== undefined) {
+    // Reject mixed authority rather than silently choosing the more privileged principal.
+    if (sessionToken !== undefined) throw new DomainError('invalid');
+    const bearer = /^Bearer (kma_[A-Za-z0-9_-]{43})$/.exec(authorization)?.[1];
+    if (bearer === undefined) throw new DomainError('unauthenticated');
+    return store.agents.resolveToken(bearer);
+  }
+  // A session lives on the server: revoked, idle or too old, it ends here.
+  const humanId = await store.sessions.resolve(sessionToken, Date.now());
+  if (humanId === undefined) throw new DomainError('unauthenticated');
+  return { kind: 'human', humanId };
+}

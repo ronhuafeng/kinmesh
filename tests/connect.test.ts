@@ -16,12 +16,12 @@ import {
   t3AuthFile,
   t3DeploymentFile,
   writeAgentToken,
-} from '../src/inbox/managed.js';
+} from '../src/runtime/managed.js';
 import { managedBindings, runWorker } from '../src/inbox/worker.js';
 import { EventEmitter } from 'node:events';
 import { WORKER_GRANT } from '../src/server/connect.js';
 import { inboxFixture } from './inbox-helpers.js';
-import { loadAgentToken } from '../src/team-mcp/client.js';
+import { loadAgentToken } from '../src/adapters/team-mcp/client.js';
 import { WorkspaceSnapshot } from '../src/workspace/contracts.js';
 import { agentFixture, profileInput } from './agent-helpers.js';
 import { signInAs, standInFeishu } from './feishu.js';

@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { WorkerConfig } from './config.js';
+import { WorkerConfig } from './worker-config.js';
 
 /**
  * Which database a process uses: its name and the object ID PostgreSQL gave

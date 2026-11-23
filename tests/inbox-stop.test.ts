@@ -14,7 +14,7 @@ import {
   managedDirectory,
   privateDirectory,
   t3AuthFile,
-} from '../src/inbox/managed.js';
+} from '../src/runtime/managed.js';
 
 type Fixture = Awaited<ReturnType<typeof inboxFixture>>;
 const signal = () => new AbortController().signal;

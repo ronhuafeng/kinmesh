@@ -10,7 +10,7 @@ import {
   spaceProvisioner,
   type FilePlacer,
   type Provisioner,
-} from '../src/inbox/space.js';
+} from '../src/adapters/space/client.js';
 import { createHash } from 'node:crypto';
 import { Readable } from 'node:stream';
 import { spaceDirectory } from '../src/domain/inbox.js';

@@ -9,11 +9,8 @@ import { z } from 'zod';
 import { DatabaseUrl } from '../persistence/database.js';
 import { AgentId } from '../domain/contracts.js';
 import { Endpoint } from '../adapters/t3/oauth.js';
-export const SpaceProvisioner = z.strictObject({
-  endpoint: z.url({ protocol: /^https?$/ }).max(4096),
-  tokenFile: z.string().min(1).max(4096),
-});
-export type SpaceProvisioner = z.infer<typeof SpaceProvisioner>;
+import { SpaceProvisioner } from '../adapters/space/provisioner.js';
+
 /** An agent the operator's configuration file binds; the operator asserts Team MCP. */
 export const Binding = z.strictObject({
   agentId: AgentId,

@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { connectAgent, TeamEndpoint } from '../src/team-mcp/client.js';
+import { connectAgent, TeamEndpoint } from '../src/adapters/team-mcp/client.js';
 import { outcome } from '../src/team-mcp/tools.js';
 import { ChannelView, pageOf } from '../src/domain/communication.js';
 let client: Awaited<ReturnType<typeof connectAgent>> | undefined;

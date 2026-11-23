@@ -9,7 +9,7 @@ import { Task, TaskResult } from '../../src/domain/tasks.js';
 import { pageOf } from '../../src/domain/communication.js';
 import { WorkspaceSnapshot } from '../../src/workspace/contracts.js';
 import { saveCredential } from '../../src/adapters/t3/oauth.js';
-import { managedDirectory, t3AuthFile } from '../../src/inbox/managed.js';
+import { managedDirectory, t3AuthFile } from '../../src/runtime/managed.js';
 import { test, expect } from './fixture.js';
 import {
   agentRow,

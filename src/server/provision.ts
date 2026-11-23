@@ -13,7 +13,7 @@ import {
   privateDirectory,
   t3AuthFile,
   t3DeploymentFile,
-} from '../inbox/managed.js';
+} from '../runtime/managed.js';
 import type { Store } from '../persistence/store.js';
 
 /** What `t3 auth session issue --json` prints; only these fields are kept. */

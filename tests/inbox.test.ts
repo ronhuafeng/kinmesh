@@ -15,7 +15,10 @@ import {
 import { MessageId } from '../src/domain/communication.js';
 import { DomainError } from '../src/domain/errors.js';
 import { deliver, assistantResult } from '../src/inbox/worker.js';
-import { loadWorkerConfig, WorkerConfig } from '../src/inbox/config.js';
+import {
+  loadWorkerConfig,
+  WorkerConfig,
+} from '../src/runtime/worker-config.js';
 import { t3Factory } from '../src/inbox/t3.js';
 import { T3Backend } from '../src/adapters/t3/backend.js';
 import { postInput, key } from './communication-helpers.js';

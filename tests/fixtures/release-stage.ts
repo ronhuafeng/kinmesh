@@ -6,7 +6,7 @@ import { randomUUID } from 'node:crypto';
 import { LiveContext } from '../../src/team-mcp/live-context.js';
 import { openStore } from '../../src/persistence/store.js';
 import { isDisposable } from '../../src/persistence/disposable.js';
-import { loadAgentToken } from '../../src/team-mcp/client.js';
+import { loadAgentToken } from '../../src/adapters/team-mcp/client.js';
 
 assert.equal(process.env.NODE_OPTIONS, undefined);
 assert.equal(process.env.KINMESH_SHARED_SECRET, undefined);
