@@ -1,8 +1,8 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
-import { deliveryText, stoppable, took } from '../web/deliveries.js';
-import type { DeliveryView } from '../web/deliveries.js';
+import { deliveryText, stoppable, took } from '../web/shared/deliveries.js';
+import type { DeliveryView } from '../web/shared/deliveries.js';
 import { AgentId } from '../src/domain/contracts.js';
 
 const delivery = (

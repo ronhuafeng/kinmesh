@@ -12,30 +12,40 @@ import { flushSync } from 'react-dom';
 import { z } from 'zod';
 import * as Tabs from '@radix-ui/react-tabs';
 import { PageRef, Revisions, pageParam } from '../src/workspace/events.js';
-import { LiveContext, takeStream, useRevisions } from './live.js';
+import { LiveContext } from './shared/live.js';
+import { takeStream, useRevisions } from './shell/use-revisions.js';
 import { Author } from '../src/domain/agents.js';
 import { ChannelView, TeamFile } from '../src/domain/communication.js';
 import { WorkspaceSnapshot } from '../src/workspace/contracts.js';
-import { Auth, SIGNED_OUT } from './auth.js';
-import { api, HttpError, MutationPermission, Offline, request } from './api.js';
-import { ActionForm, AddButton, InlineField } from './forms.js';
-import { AgentPage, Team } from './agents.js';
-import { OwnWorkerPage } from './setup.js';
-import { ChannelTopics, Chat, showMessage } from './chat.js';
+import { Auth, SIGNED_OUT } from './shell/auth.js';
 import {
-  Board,
+  api,
+  HttpError,
+  MutationPermission,
+  Offline,
+  request,
+} from './shared/api.js';
+import { AddButton } from './shared/add-button.js';
+import { InlineField } from './shared/inline-field.js';
+import { AgentPage } from './agents/agent-page.js';
+import { Team } from './agents/team.js';
+import { OwnWorkerPage } from './agents/own-worker-page.js';
+import { ChannelTopics } from './chat/topics.js';
+import { Chat } from './chat/chat.js';
+import { showMessage } from './chat/show-message.js';
+import { Board } from './tasks/board.js';
+import {
   blankDraft,
   draftFromMessage,
-  humanAsk,
   keepDraft,
-  NewTaskPage,
-  statusLabel,
-  TaskPage,
-} from './tasks.js';
-import type { BoardFilter, TaskDraft } from './tasks.js';
-import { joinedAgents, memberName, otherPeople } from './names.js';
-import { plainText } from './markdown.js';
-import { Broken, reloadOnce } from './boundary.js';
+  type TaskDraft,
+} from './shared/task-draft.js';
+import { humanAsk, statusLabel } from './shared/task-status.js';
+import { NewTaskPage } from './tasks/new-task-page.js';
+import { TaskPage } from './tasks/task-page.js';
+import type { BoardFilter } from './shared/board-filter.js';
+import { joinedAgents, memberName, otherPeople } from './shared/names.js';
+import { Broken, reloadOnce } from './shell/broken.js';
 import {
   readRoute,
   routeUrl,
@@ -44,36 +54,39 @@ import {
   type Tab,
   type Target,
   type View,
-} from './route.js';
-import {
-  ChannelIcon,
-  Avatar,
-  AvatarImages,
-  HeaderStart,
-  Page,
-  Presence,
-  listTime,
-  usePhone,
-  workerConnected,
-} from './ui.js';
-import { SearchPage, SidebarSearch, type Remote } from './palette.js';
-import { useSidebar } from './sidebar.js';
-import { InboxPage, attentionCount, badgeOf } from './inbox.js';
-import { FIRST, SettingsNav, SettingsPage } from './settings-map.js';
-import { Files } from './files.js';
-import { Pins } from './pins.js';
-import { ListRow } from './settings.js';
-import { sharedId, takeShared, type Shared } from './share.js';
-import {
-  AccountMenu,
-  ChannelMenu,
-  Mark,
-  MemberMenu,
-  TeamMenu,
-} from './menus.js';
-import { levelOf, setLevel } from './levels.js';
+} from './shell/route.js';
+import { ChannelIcon } from './shared/channel-icon.js';
+import { Avatar, AvatarImages } from './shared/avatar.js';
+import { HeaderStart, Page } from './shared/page.js';
+import { Presence } from './shared/presence.js';
+import { usePhone } from './shared/use-phone.js';
+import { workerConnected } from './shared/format.js';
+import { SearchPage } from './search/search-page.js';
+import { SidebarSearch } from './search/sidebar-search.js';
+import type { Remote, Command } from './search/command.js';
+import { useSidebar } from './shell/use-sidebar.js';
+import { InboxPage } from './inbox/inbox-page.js';
+import { attentionCount, badgeOf } from './inbox/attention.js';
+import { FIRST } from './settings/sections.js';
+import { SettingsNav } from './settings/settings-nav.js';
+import { SettingsPage } from './settings/settings-page.js';
+import { Files } from './shared/files.js';
+import { Pins } from './chat/pins.js';
+import { ListRow } from './shared/list-row.js';
+import { sharedId, takeShared, type Shared } from './shared/share.js';
+import { AccountMenu } from './shell/account-menu.js';
+import { ChannelMenu } from './shell/channel-menu.js';
+import { Mark } from './shell/mark.js';
+import { MemberMenu } from './shell/member-menu.js';
+import { TeamMenu } from './shell/team-menu.js';
+import { levelOf, setLevel } from './shared/levels.js';
 import type { ChannelLevel } from '../src/domain/notify.js';
-import { closeSettled, pushSupported, renew, unsubscribe } from './push.js';
+import {
+  closeSettled,
+  pushSupported,
+  renew,
+  unsubscribe,
+} from './shared/push.js';
 import {
   BackIcon,
   HashIcon,
@@ -81,8 +94,13 @@ import {
   SearchIcon,
   SettingsIcons,
   SidebarIcon,
-} from './icons.js';
-import type { Command } from './palette.js';
+} from './shared/icons.js';
+import { byActivity } from './shell/by-activity.js';
+import { ChannelRow } from './shell/channel-row.js';
+import { JoinableChannels } from './shell/joinable-channels.js';
+import { ArchivedBar } from './shell/archived-bar.js';
+import { JoinBar } from './shell/join-bar.js';
+
 /** True when a refresh moved at least one visible task to another status. */
 function statusesMoved(
   before: WorkspaceSnapshot | null,
@@ -2152,158 +2170,5 @@ export function App() {
         </AvatarImages.Provider>
       </LiveContext.Provider>
     </MutationPermission>
-  );
-}
-/**
- * Channels you are not in but may join, muted under the rest: public ones
- * open to look in, and every one is one click from joining.
- */
-function JoinableChannels({
-  teamId,
-  channels,
-  current,
-  onOpen,
-  onDone,
-}: {
-  teamId: string;
-  channels: WorkspaceSnapshot['publicChannels'];
-  /** The one open to look in. */
-  current: string | null;
-  onOpen: (id: string) => void;
-  onDone: (id: string) => void;
-}) {
-  if (channels.length === 0) return null;
-  return (
-    <ul className="left-channels" aria-label="可加入的频道">
-      {channels.map((c) => (
-        <li key={c.id}>
-          {c.visibility === 'public' ? (
-            <button
-              type="button"
-              aria-current={current === c.id ? 'page' : undefined}
-              onClick={() => {
-                onOpen(c.id);
-              }}
-            >
-              <span aria-hidden="true">#</span> {c.name}
-            </button>
-          ) : (
-            <span>
-              <span aria-hidden="true">#</span> {c.name}
-            </span>
-          )}
-          <ActionForm
-            title={'加入 ' + c.name}
-            path={`/api/teams/${teamId}/channels/${c.id}/subscribe`}
-            build={() => ({})}
-            submit="加入"
-            onDone={() => {
-              onDone(c.id);
-            }}
-          />
-        </li>
-      ))}
-    </ul>
-  );
-}
-/** Where a channel you only look in would take a message: joining it. */
-function JoinBar({
-  teamId,
-  channel,
-  onDone,
-}: {
-  teamId: string;
-  channel: { id: string; name: string };
-  onDone: () => void;
-}) {
-  return (
-    <div className="join-bar">
-      <ActionForm
-        title={'加入 ' + channel.name}
-        path={`/api/teams/${teamId}/channels/${channel.id}/subscribe`}
-        build={() => ({})}
-        submit={'加入 #' + channel.name}
-        onDone={onDone}
-      />
-    </div>
-  );
-}
-/**
- * In place of the composer in an archived channel: it is read, not written
- * to, until someone brings it back.
- */
-function ArchivedBar({
-  teamId,
-  channel,
-  onDone,
-}: {
-  teamId: string;
-  channel: { id: string; name: string };
-  onDone: () => void;
-}) {
-  return (
-    <div className="join-bar archived-bar">
-      <p className="muted">#{channel.name} 已归档。</p>
-      <ActionForm
-        title={'恢复 ' + channel.name}
-        path={`/api/teams/${teamId}/channels/${channel.id}/archive`}
-        build={() => ({ archived: false })}
-        submit="恢复频道"
-        onDone={onDone}
-      />
-    </div>
-  );
-}
-/**
- * A phone lists channels as conversations: the newest message first (by
- * name among those without one).
- */
-function byActivity(
-  channels: WorkspaceSnapshot['channels']['items'],
-  latest: WorkspaceSnapshot['latest'],
-) {
-  const at = new Map(latest.map((l) => [l.channelId, l.createdAt]));
-  return [...channels].sort((a, b) => {
-    const x = at.get(a.id) ?? '';
-    const y = at.get(b.id) ?? '';
-    return x === y ? a.name.localeCompare(b.name, 'zh-CN') : x < y ? 1 : -1;
-  });
-}
-/** A channel on a phone's Home: its name and time, then "作者：正文". */
-function ChannelRow({
-  data,
-  channelId,
-  name,
-  person,
-  latest,
-  id,
-}: {
-  data: WorkspaceSnapshot;
-  channelId: string;
-  name: string;
-  /** Who your own conversation is with, shown by their face. */
-  person: string | undefined;
-  latest: WorkspaceSnapshot['latest'][number] | undefined;
-  id: string;
-}) {
-  return (
-    <span className="channel-row">
-      {person === undefined ? (
-        <ChannelIcon id={channelId} name={name} />
-      ) : (
-        <Avatar kind="human" name={name} id={person} />
-      )}
-      <span className="channel-row-name">{name}</span>
-      {latest && (
-        <>
-          <time className="channel-row-time" dateTime={latest.createdAt}>
-            {listTime(latest.createdAt)}
-          </time>
-          <span className="channel-row-last" id={id}>
-            {memberName(latest.author, data)}：{plainText(latest.excerpt)}
-          </span>
-        </>
-      )}
-    </span>
   );
 }

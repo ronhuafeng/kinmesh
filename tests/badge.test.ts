@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { badgeOf } from '../web/inbox.js';
+import { badgeOf } from '../web/inbox/attention.js';
 
 /** The app's badge follows one rule, whatever changed last. */
 await test('the badge counts decisions; else a dot while anything is unread; else nothing', () => {

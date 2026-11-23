@@ -2,9 +2,10 @@ import type { Source } from './sources.js';
 
 /**
  * Where a file sits. `src` goes up from the domain to the three processes,
- * which stand side by side; `web` goes up from its shared modules through
- * its features to the shell that composes them; tests, scripts and
- * deployment code use anything and are used by nothing.
+ * which stand side by side; `web` goes up from `web/shared` through its
+ * feature folders to the shell (`web/shell`, `web/app.tsx` and the entries)
+ * that composes them; tests, scripts and deployment code use anything and
+ * are used by nothing.
  */
 type Layer =
   | { kind: 'src'; name: string; rank: number }
@@ -20,7 +21,12 @@ const SRC_RANK: Record<string, number> = {
   'team-mcp': 4,
 };
 /** The bundles the page loads first; they compose like the shell. */
-const WEB_ENTRIES = new Set(['web/main.tsx', 'web/boot.ts', 'web/sw.ts']);
+const WEB_ENTRIES = new Set([
+  'web/main.tsx',
+  'web/boot.ts',
+  'web/sw.ts',
+  'web/hash-worker.ts',
+]);
 export function layerOf(path: string): Layer {
   const src = /^src\/([^/]+)\//.exec(path);
   if (src?.[1] !== undefined && src[1] in SRC_RANK)
@@ -29,18 +35,27 @@ export function layerOf(path: string): Layer {
   if (/^src\/[^/]+$/.test(path))
     return { kind: 'src', name: 'domain', rank: 0 };
   if (path.startsWith('web/')) {
-    if (
-      path === 'web/app.tsx' ||
-      WEB_ENTRIES.has(path) ||
-      path.startsWith('web/shell/')
-    )
+    const folder = /^web\/([^/]+)\//.exec(path)?.[1];
+    if (folder === 'shared') return { kind: 'web', name: 'shared' };
+    if (folder === undefined || folder === 'shell')
       return { kind: 'web', name: 'shell' };
-    const feature = /^web\/([^/]+)\//.exec(path)?.[1];
-    return feature === undefined
-      ? { kind: 'web', name: 'shared' }
-      : { kind: 'web', name: `feature:${feature}` };
+    return { kind: 'web', name: `feature:${folder}` };
   }
   return { kind: 'consumer' };
+}
+/** The root of `web` holds the page's entries and the app; everything else has a folder. */
+export function checkWebRoot(sources: Source[]): string[] {
+  return sources
+    .filter(
+      (s) =>
+        /^web\/[^/]+\.tsx?$/.test(s.path) &&
+        !WEB_ENTRIES.has(s.path) &&
+        s.path !== 'web/app.tsx' &&
+        !s.path.endsWith('.d.ts'),
+    )
+    .map(
+      (s) => `${s.path}: belongs in web/shared, a feature folder or web/shell`,
+    );
 }
 const describe = (layer: Layer) =>
   layer.kind === 'consumer'

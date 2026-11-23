@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { historySentence } from '../web/tasks.js';
+import { historySentence } from '../web/tasks/history-sentence.js';
 import { WorkspaceSnapshot } from '../src/workspace/contracts.js';
 import { taskFixture } from './task-helpers.js';
 

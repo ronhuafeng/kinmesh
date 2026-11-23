@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { describe } from '../web/mermaid.js';
+import { describe } from '../web/shared/mermaid.js';
 
 /** An untitled diagram is named by what it shows, for a screen reader. */
 await test('an untitled diagram is described by its first node names', () => {

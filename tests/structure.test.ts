@@ -36,8 +36,8 @@ await test('layers depend downward only, and nothing imports in a circle', () =>
     'src/inbox/b.ts': 'export const b = 1;',
   });
   refused({
-    'web/a.ts':
-      "import { b } from '../src/persistence/b.js'; export const a = b;",
+    'web/shared/a.ts':
+      "import { b } from '../../src/persistence/b.js'; export const a = b;",
     'src/persistence/b.ts': 'export const b = 1;',
   });
   refused({
@@ -45,9 +45,11 @@ await test('layers depend downward only, and nothing imports in a circle', () =>
     'web/tasks/b.ts': 'export const b = 1;',
   });
   refused({
-    'web/a.ts': "import { b } from './chat/b.js'; export const a = b;",
+    'web/shared/a.ts': "import { b } from '../chat/b.js'; export const a = b;",
     'web/chat/b.ts': 'export const b = 1;',
   });
+  // The root of web holds only the entries and the app.
+  refused({ 'web/helpers.ts': 'export const h = 1;' });
   refused({
     'src/domain/a.ts':
       "import { t } from '../../tests/t.js'; export const a = t;",
@@ -65,15 +67,15 @@ await test('layers depend downward only, and nothing imports in a circle', () =>
 await test('a UI file gives one component or hook; the shell holds no state', () => {
   assert.deepEqual(
     check({
-      'web/a.tsx':
+      'web/shared/a.tsx':
         'export function A() { return null; } export const label = "a"; function Part() { return null; } void Part;',
-      'web/use-b.ts': 'export function useB() { return 1; }',
+      'web/shared/use-b.ts': 'export function useB() { return 1; }',
     }),
     [],
   );
   assert.match(
     check({
-      'web/a.tsx':
+      'web/shared/a.tsx':
         'export function A() { return null; } export const B = memo(function B() { return null; });',
     }).join(),
     /gives 2 components or hooks/,
