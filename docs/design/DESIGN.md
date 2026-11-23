@@ -412,7 +412,11 @@ fallback.
   state — the request it is on and whether that waits on an approval, 空闲, or
   未运行 — then its requests in this channel and its runs; under a hairline, 设置
   holds the status card with its actions and About (every fact visible, picture to
-  change, Team MCP credential). Runs are a table, one T3 reference per run (its thread; the run on hover). A run shows what the agent last reported apart from what T3 confirms on
+  change, Team MCP credential). In About its name and role change in place: they read
+  as values until touched, Enter or leaving the field keeps a new name, Esc puts it
+  back. **停用智能体** (danger colour) takes a second press that says what it does
+  (确认停用：_name_ 不再接新的请求); a disabled agent is left out of the @ list, and
+  **重新启用智能体** brings it back. Runs are a table, one T3 reference per run (its thread; the run on hover). A run shows what the agent last reported apart from what T3 confirms on
   **在 T3 中查看**; **在 T3 中打开** appears only when T3 supplied the link.
 - **Agent setup**: one next step at a time. First **连接 T3**, once per team: a T3
   on this machine is found on its own, otherwise paste its MCP URL; approve in T3,

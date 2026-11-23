@@ -1365,6 +1365,61 @@ test('the T3 step says when it can’t read T3, recovers, and keeps a sign-in un
   ).toBeVisible();
 });
 
+/**
+ * Proves an agent's name and role change in place on its page, and that
+ * disabling it (a second press) keeps it out of the @ list until enabled.
+ */
+test('an agent is renamed, given another role, disabled and enabled from its page', async ({
+  page,
+  context,
+  hub,
+}) => {
+  await signIn(page, hub);
+  await register(page, 'Ada', 'developer');
+  await openAgent(page, 'Ada');
+  const about = page.getByRole('complementary', { name: '关于' });
+  const name = about.getByLabel('名称');
+  await name.fill('Ada Lovelace');
+  await name.press('Enter');
+  await expect(
+    page.getByRole('heading', { name: 'Ada Lovelace', exact: true }),
+  ).toBeVisible();
+  await about.getByLabel('角色').selectOption('reviewer');
+  await expect
+    .poll(async () => {
+      const state = await snapshot(context.request, hub.origin);
+      return state.agents.find((a) => a.name === 'Ada Lovelace')?.role;
+    })
+    .toBe('reviewer');
+  const disable = about.getByRole('button', { name: '停用智能体' });
+  await disable.click();
+  await about.getByRole('button', { name: /^确认停用：Ada Lovelace/ }).click();
+  await expect(
+    about.getByRole('button', { name: '重新启用智能体' }),
+  ).toBeVisible();
+  // Disabled, it isn't offered in the @ list.
+  await page.keyboard.press('Escape');
+  await page.getByRole('tab', { name: '聊天', exact: true }).click();
+  const field = page
+    .getByRole('form', { name: '给团队发消息' })
+    .getByLabel('消息', { exact: true });
+  await field.pressSequentially('@Ada');
+  await expect(page.getByRole('listbox', { name: '可提及的成员' })).toHaveCount(
+    0,
+  );
+  await field.fill('');
+  await openAgent(page, 'Ada Lovelace');
+  await page
+    .getByRole('complementary', { name: '关于' })
+    .getByRole('button', { name: '重新启用智能体' })
+    .click();
+  await expect(
+    page
+      .getByRole('complementary', { name: '关于' })
+      .getByRole('button', { name: '停用智能体' }),
+  ).toBeVisible();
+});
+
 test('a T3 on another computer: the person pastes the address its approval opened', async ({
   page,
   hub,

@@ -1821,13 +1821,16 @@ export function Chat({
             setReplying(null);
           }}
           members={[
-            ...joinedAgents(data).map((a): Mentionable => ({
-              kind: 'agent',
-              id: a.id,
-              name: a.name,
-              handle: null,
-              online: workerConnected(data.wake, a.id),
-            })),
+            // A disabled agent takes no requests, so it isn't offered.
+            ...joinedAgents(data)
+              .filter((a) => a.lifecycle === 'active')
+              .map((a): Mentionable => ({
+                kind: 'agent',
+                id: a.id,
+                name: a.name,
+                handle: null,
+                online: workerConnected(data.wake, a.id),
+              })),
             ...otherPeople(data).map((p): Mentionable => ({
               kind: 'human',
               id: p.id,

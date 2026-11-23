@@ -3814,6 +3814,35 @@ span.person {
   padding: 0;
   font-size: 0.78rem;
 }
+/* Name and role change in place: they read as values until touched. */
+.agent-about .about-field {
+  width: 100%;
+  max-width: 12rem;
+  margin: -0.2rem -0.4rem;
+  padding: 0.2rem 0.4rem;
+  border: var(--hairline-width) solid transparent;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--ink);
+  font: inherit;
+  text-align: right;
+}
+.agent-about .about-field:hover:not(:disabled) {
+  border-color: var(--hairline-strong);
+}
+.agent-about .about-field:focus-visible {
+  border-color: var(--focus);
+  outline: none;
+  background: var(--paper);
+}
+.about-link[data-danger] {
+  color: var(--danger);
+}
+.agent-about select.about-field {
+  appearance: none;
+  text-align-last: right;
+  cursor: pointer;
+}
 .about-link {
   justify-self: start;
   padding: 0.75rem 0 0;
