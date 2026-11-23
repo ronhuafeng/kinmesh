@@ -8,16 +8,30 @@ workspace (`web/`), and T3 Code as the agents' runtime. Start with
 | Code              | Responsibility                                                |
 | ----------------- | ------------------------------------------------------------- |
 | `src/domain`      | Strict TypeScript/Zod contracts and pure policy               |
+| `src/adapters`    | Clients of T3 (official MCP SDK only), the space and Team MCP |
+| `src/workspace`   | Workspace snapshot and AG-UI contracts                        |
 | `src/persistence` | Drizzle/PostgreSQL state, migrations, audit, receipts, outbox |
+| `src/runtime`     | What the processes share as they run: worker config, files    |
 | `src/server`      | Fastify HTTP, principals, authorization, worker supervision   |
 | `src/inbox`       | The Inbox worker                                              |
 | `src/team-mcp`    | The standalone Team MCP service                               |
-| `src/adapters/t3` | The T3 adapter (official MCP SDK only)                        |
-| `src/workspace`   | Workspace snapshot and AG-UI contracts                        |
-| `web`             | The React workspace                                           |
+| `web`             | The React workspace: `shared`, a folder per part, `shell`     |
 
 Reuse → Adapt → Extend → Build: prefer maintained libraries and supported external
 interfaces. Never import, patch or read T3 internals.
+
+## Structure
+
+Code is placed by structure, never by size; `npm run architecture` checks it in CI.
+
+- Layers depend downward only, in the table's order (the three processes side by side;
+  in `web`, shared, then parts, then the shell), and no imports form a cycle.
+- One responsibility per file: a file's exports belong together, and unrelated parts
+  are separate files.
+- State lives in the module that owns it; composition roots (`web/app.tsx`, the store,
+  `createApp`) only wire modules together.
+- There is no line limit: a cohesive file may be long, and a short one may still need
+  splitting.
 
 ## UI
 
@@ -35,6 +49,7 @@ Locally, check what you changed and leave the full suites to CI:
 ```sh
 npm run typecheck
 npx eslint <changed files>
+npm run architecture
 npx vite build          # UI changes
 npm run db:generate     # only after an intentional schema change; review the SQL, never edit applied migrations
 ```
