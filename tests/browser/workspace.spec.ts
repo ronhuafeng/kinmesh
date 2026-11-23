@@ -956,6 +956,89 @@ test('a request waiting for an approval in T3 is stopped from its line, and one 
   ).toMatchObject({ reason: 'stop-requested', stopRequested: true });
 });
 
+/**
+ * Proves an `@` reaches only the agent it names, even when another's name
+ * starts it: the one chosen from the list, or the whole name typed. And that
+ * the step a run is on stays inside its message, cut to one line, however
+ * long.
+ */
+test('@ reaches only the agent chosen or named in full, and a long step stays inside its message', async ({
+  page,
+  hub,
+}) => {
+  await signIn(page, hub);
+  await register(page, 'Pi', 'developer');
+  await register(page, 'Pi 2', 'developer');
+  await page.getByRole('tab', { name: '聊天', exact: true }).click();
+  const composer = page.getByRole('form', { name: '给团队发消息' });
+  const field = composer.getByLabel('消息', { exact: true });
+  const responsesTo = (text: string) =>
+    page
+      .getByRole('list', { name: '频道消息' })
+      .getByRole('listitem')
+      .filter({ hasText: text })
+      .first()
+      .getByRole('list', { name: '智能体响应' });
+  // Chosen from the list: `@Pi` offers both, and Pi 2 is the one chosen.
+  await field.pressSequentially('@Pi');
+  await page
+    .getByRole('listbox', { name: '可提及的成员' })
+    .getByRole('option', { name: /Pi 2/ })
+    .click();
+  await field.pressSequentially('report on the MCP design');
+  await composer.getByRole('button', { name: '发送消息' }).click();
+  const responses = responsesTo('report on the MCP design');
+  await expect(responses.getByRole('listitem')).toHaveCount(1);
+  await expect(responses).toContainText('Pi 2 离线');
+  // Typed in full, without the list.
+  await field.fill('@Pi 2 draw its architecture');
+  await composer.getByRole('button', { name: '发送消息' }).click();
+  const typed = responsesTo('draw its architecture');
+  await expect(typed.getByRole('listitem')).toHaveCount(1);
+  await expect(typed).toContainText('Pi 2 离线');
+  const message = page
+    .getByRole('list', { name: '频道消息' })
+    .getByRole('listitem')
+    .filter({ hasText: 'report on the MCP design' })
+    .first();
+  // Its run is under way in T3, on a step far longer than the message.
+  const step = `/bin/bash -lc "cd ppap && cat AGENTS.md | rg -n 'MCP|design|architecture' ${'docs/ '.repeat(30)}"`;
+  const sql = rawDatabase(hub.database);
+  try {
+    await sql
+      .prepare(
+        "UPDATE agent_inbox SET state = 'waiting', reason = 'execution-active', step = ?, reference = ? WHERE state = 'ready'",
+      )
+      .run(
+        step,
+        JSON.stringify({
+          backend: 't3',
+          environmentId: 'env-mock',
+          threadId: 'thread-mock',
+          runId: 'run-mock',
+        }),
+      );
+  } finally {
+    await sql.close();
+  }
+  const shown = responses.locator('.delivery-step');
+  await expect(shown).toContainText('cd ppap');
+  const [row, lines] = await Promise.all([
+    message.boundingBox(),
+    responses.boundingBox(),
+  ]);
+  expect(row && lines && lines.x + lines.width <= row.x + row.width).toBe(true);
+  // Cut, not wrapped, and the page never scrolls sideways.
+  expect(await shown.evaluate((el) => el.scrollWidth > el.clientWidth)).toBe(
+    true,
+  );
+  expect(
+    await page.evaluate(
+      () => document.documentElement.scrollWidth <= window.innerWidth,
+    ),
+  ).toBe(true);
+});
+
 test('a week before T3’s sign-in ends anyone reconnects it from the Inbox; once it ends, requests wait and say why', async ({
   page,
   context,

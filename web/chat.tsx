@@ -61,20 +61,43 @@ function matches(member: Mentionable, query: string) {
     (word) => word !== '' && word.toLowerCase().startsWith(typed),
   );
 }
-/** `@Name` (or a person's `@handle`) typed in full counts as a mention. */
-function mentionedIn(body: string, members: Mentionable[]) {
-  return members.filter((m) =>
-    [m.name, m.handle].some(
-      (said) =>
-        said !== null &&
-        new RegExp(
-          '(?:^|\\s)@' +
-            said.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') +
-            '(?![\\p{L}\\p{N}_-])',
-          'iu',
-        ).test(body),
-    ),
-  );
+/**
+ * Who a message mentions: everyone chosen from the `@` list, by their ID,
+ * and whoever's `@Name` (or a person's `@handle`) is typed in full. Each `@`
+ * names one member: the one chosen there, else the longest name that follows
+ * it, so `@小助手 2 号` is never also `@小助手`.
+ */
+function mentionedIn(
+  body: string,
+  members: Mentionable[],
+  chosen: Mentionable[],
+) {
+  const named = new Map<
+    number,
+    { member: Mentionable; length: number; chosen: boolean }
+  >();
+  const find = (member: Mentionable, said: string, picked: boolean) => {
+    const found = new RegExp(
+      '(?:^|\\s)@' +
+        said.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') +
+        '(?![\\p{L}\\p{N}_-])',
+      'giu',
+    );
+    for (const match of body.matchAll(found)) {
+      const at = match.index + match[0].length - said.length;
+      const kept = named.get(at);
+      if (!kept || (!kept.chosen && (picked || said.length > kept.length)))
+        named.set(at, { member, length: said.length, chosen: picked });
+    }
+  };
+  for (const member of chosen) find(member, member.name, true);
+  for (const member of members)
+    for (const said of [member.name, member.handle])
+      if (said !== null && said !== '') find(member, said, false);
+  const mentioned = [...chosen];
+  for (const { member } of named.values())
+    if (!mentioned.some((m) => m.id === member.id)) mentioned.push(member);
+  return mentioned;
 }
 function Composer({
   channelPath,
@@ -262,10 +285,7 @@ function Composer({
           );
           if (body === '' && attached.length === 0)
             throw new Error('Nothing to send');
-          const mentioned = [...chips];
-          for (const member of mentionedIn(body, members))
-            if (!mentioned.some((m) => m.id === member.id))
-              mentioned.push(member);
+          const mentioned = mentionedIn(body, members, chips);
           return {
             body,
             topicId: topicId || null,
