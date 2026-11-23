@@ -2,11 +2,12 @@ import ts from 'typescript';
 import type { Source } from './sources.js';
 
 /**
- * A composition root assembles a process or the app: `main`, `app` or
- * `store` in `src` or `web`. It wires modules together and nothing more.
+ * A composition root assembles the app or a service from modules: `app` or
+ * `store` in `src` or `web`. It wires them together and nothing more. A
+ * process's entry (`main`) is where its lifecycle lives, and is not one.
  */
 export const isRoot = (path: string) =>
-  /^(?:src|web)\/(?:.+\/)?(?:main|app|store)\.tsx?$/.test(path);
+  /^(?:src|web)\/(?:.+\/)?(?:app|store)\.tsx?$/.test(path);
 const REACT_STATE = new Set([
   'useState',
   'useReducer',
