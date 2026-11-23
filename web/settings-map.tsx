@@ -304,16 +304,32 @@ const Profile = z.object({
   email: z.string().nullable(),
   team: z.string(),
 });
+/** A read that failed: said where it would have shown, with a retry. */
+function Unread({ what, retry }: { what: string; retry: () => void }) {
+  return (
+    <Notice>
+      读不到{what}。
+      <button type="button" className="link-button" onClick={retry}>
+        再试一次
+      </button>
+    </Notice>
+  );
+}
 function ProfileSection({ data }: { data: WorkspaceSnapshot }) {
   const [profile, setProfile] = useState<z.infer<typeof Profile> | null>(null);
-  useEffect(() => {
+  const [failed, setFailed] = useState(false);
+  const load = () => {
+    setFailed(false);
     void api('/api/me/profile').then(
       (raw) => {
         setProfile(Profile.parse(raw));
       },
-      () => undefined,
+      () => {
+        setFailed(true);
+      },
     );
-  }, []);
+  };
+  useEffect(load, []);
   return (
     <>
       <div className="settings-identity">
@@ -331,6 +347,7 @@ function ProfileSection({ data }: { data: WorkspaceSnapshot }) {
         <Row label="邮箱">{profile?.email ?? '—'}</Row>
         <Row label="团队">{profile?.team ?? data.team.name}</Row>
       </Group>
+      {failed && <Unread what="账号信息" retry={load} />}
     </>
   );
 }
@@ -364,19 +381,18 @@ function AccountSection({
   const action = useRequest();
   const [sessions, setSessions] = useState<z.infer<typeof Sessions>>([]);
   const [browsers, setBrowsers] = useState<z.infer<typeof Browsers>>([]);
+  const [failed, setFailed] = useState(false);
   const load = () => {
-    void api('/api/me/sessions').then(
-      (raw) => {
-        setSessions(Sessions.parse(raw));
-      },
-      () => undefined,
-    );
-    void api('/api/push/browsers').then(
-      (raw) => {
-        setBrowsers(Browsers.parse(raw));
-      },
-      () => undefined,
-    );
+    setFailed(false);
+    const failing = () => {
+      setFailed(true);
+    };
+    void api('/api/me/sessions').then((raw) => {
+      setSessions(Sessions.parse(raw));
+    }, failing);
+    void api('/api/push/browsers').then((raw) => {
+      setBrowsers(Browsers.parse(raw));
+    }, failing);
   };
   useEffect(load, []);
   const end = (path: string, id: string) =>
@@ -385,6 +401,7 @@ function AccountSection({
     });
   return (
     <>
+      {failed && <Unread what="登录的设备" retry={load} />}
       <Group title="登录的设备">
         {sessions.map((s) => (
           <Row
