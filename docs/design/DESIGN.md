@@ -135,17 +135,12 @@ button text.
 
 ## Typography
 
-- One UI face, the system's: `-apple-system, BlinkMacSystemFont, "SF Pro Text",
+- One face, the system's: `-apple-system, BlinkMacSystemFont, "SF Pro Text",
 "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", system-ui, sans-serif`.
   Headings 600–700 with slight negative tracking; no serif, no uppercase labels.
-- Monospace only for code and identifiers (T3 references, IDs); times and labels
-  are set in the UI face. Times, dates and numbers use tabular figures.
-- The monospace is Maple Mono (Normal, no ligatures) at half an em, self-hosted;
-  its Chinese is the system's Chinese face, one em wide, so a Chinese character is
-  exactly two columns and code mixing Chinese and Latin keeps its columns. Chinese
-  punctuation in code keeps its full width. A visit whose font is not there in time
-  keeps the system's `ui-monospace` throughout; code never changes width while it is
-  read.
+- Monospace (the system's `ui-monospace` / SF Mono) only for code and identifiers
+  (T3 references, IDs); times and labels are set in the UI face. Times, dates and
+  numbers use tabular figures.
 - The scale, on a 16 px root (`--text-body`, `--text-ui`, `--text-small`): what is
   read — messages, a task's text — 16 px on a wide screen and 17 px on a phone;
   controls, sidebar rows, names and fields 15 px (fields 16 px on a phone); secondary
@@ -270,7 +265,7 @@ fallback.
   and http(s) links opening in a new tab. A bare address is a link wherever it starts
   and stops before Chinese text or trailing punctuation. A message's headings sit
   under the page's own: `#` and `##` one step above the text, the rest as bold text. A
-  fenced code block (``` or ~~~) is one rounded block in the monospace, never
+  fenced code block (``` or ~~~) is one rounded block in the system monospace, never
   boxed line by line, and keeps its language. In a declared language it is highlighted
   by class only, its keywords, strings, numbers, names, types, attributes and comments
   each in one tint (diff additions and deletions in green and the danger colour), the
