@@ -14,6 +14,7 @@ import { reactionRepository } from './reactions.js';
 import { pinRepository } from './pins.js';
 import { asc } from 'drizzle-orm';
 import { AVATAR_LIMIT, agentRepository, avatarType } from './agents.js';
+import { agentEventRepository } from './agent-events.js';
 import type { Principal } from '../domain/agents.js';
 import { DomainError } from '../domain/errors.js';
 import { operationJournal } from './operations.js';
@@ -60,6 +61,7 @@ export async function openStore(url: string) {
   const d = await openDatabase(url);
   const { q, atomic } = d;
   const agentStore = agentRepository(d);
+  const agentEvents = agentEventRepository(d, agentStore);
   // What every channel's repositories share, made once so a read asks each
   // question once.
   const gate = channelAccess(d, agentStore);
@@ -95,7 +97,15 @@ export async function openStore(url: string) {
       listen: d.listen,
       /** Which database this is, to tell it from a replacement. */
       identity: d.identity,
-      inbox: inboxRepository(d, agentStore, channels, topics, messages, tasks),
+      inbox: inboxRepository(
+        d,
+        agentStore,
+        agentEvents,
+        channels,
+        topics,
+        messages,
+        tasks,
+      ),
       /** What the workspace shows a person about deliveries and workers. */
       inboxViews: inboxViews(d, agentStore, channels),
       tasks,
@@ -107,6 +117,7 @@ export async function openStore(url: string) {
       pins: pinRepository(d, gate, views),
       operations: operationJournal(d),
       agents: agentStore,
+      agentEvents,
       managed: managedRepository(d, agentStore),
       /** What notifies a person, their browsers, and what is sent to them. */
       notifications: notificationRepository(d),

@@ -16,6 +16,7 @@ import { z } from 'zod';
 import type { AnyPgColumn } from 'drizzle-orm/pg-core';
 import * as s from './schema.js';
 import type { agentRepository } from './agents.js';
+import type { agentEventRepository } from './agent-events.js';
 import type { channelRepository } from './channels.js';
 import type { topicRepository } from './topics.js';
 import type { messageRepository } from './messages.js';
@@ -70,6 +71,7 @@ const CLAIM_LOCK = 0x6b696e6d657368n;
 export function inboxRepository(
   d: Database,
   agents: ReturnType<typeof agentRepository>,
+  agentEvents: ReturnType<typeof agentEventRepository>,
   channels: ReturnType<typeof channelRepository>,
   topics: ReturnType<typeof topicRepository>,
   messages: ReturnType<typeof messageRepository>,
@@ -815,7 +817,7 @@ export function inboxRepository(
             providerSessionId: null,
             invocationId: c.id,
           }));
-        await agents.runtimeEvent(
+        await agentEvents.runtimeEvent(
           p,
           c.teamId,
           c.agentId,

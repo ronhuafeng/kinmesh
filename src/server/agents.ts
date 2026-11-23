@@ -221,7 +221,7 @@ export function registerAgents(
       return reply
         .code(201)
         .send(
-          await store.agents.runtimeEvent(
+          await store.agentEvents.runtimeEvent(
             principal(request),
             teamId,
             agentId,
