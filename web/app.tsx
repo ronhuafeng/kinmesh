@@ -34,7 +34,7 @@ import {
   statusLabel,
   TaskPage,
 } from './tasks.js';
-import type { TaskDraft } from './tasks.js';
+import type { BoardFilter, TaskDraft } from './tasks.js';
 import { joinedAgents, memberName, otherPeople } from './names.js';
 import { plainText } from './markdown.js';
 import { Broken, reloadOnce } from './boundary.js';
@@ -236,7 +236,15 @@ function readRoute() {
     channel && message.success && view === 'chat' && focus === null
       ? { channel, topic, id: message.data }
       : null;
-  return { channel, topic, view, agent, focus, draft, target };
+  // How the board is narrowed: whose tasks, which topic's.
+  const who = query.get('who') ?? '';
+  const about = valid(TopicId)('about');
+  const boardFilter: BoardFilter = {
+    who:
+      who === 'mine' || /^(human|agent):[0-9a-f-]{36}$/.test(who) ? who : 'all',
+    topic: about,
+  };
+  return { channel, topic, view, agent, focus, draft, target, boardFilter };
 }
 /** A message a conversation is opened at, and where. */
 interface Target {
@@ -266,6 +274,7 @@ function routeUrl(place: {
   focus: Focus;
   newTask: boolean;
   target: Target | null;
+  boardFilter: BoardFilter;
 }) {
   const query = new URLSearchParams();
   if (place.channel) query.set('channel', place.channel);
@@ -283,9 +292,14 @@ function routeUrl(place: {
     place.view === 'board' ||
     place.view === 'team' ||
     place.view === 'files'
-  )
+  ) {
     query.set('view', place.view);
-  else if (
+    if (place.view === 'board') {
+      if (place.boardFilter.who !== 'all')
+        query.set('who', place.boardFilter.who);
+      if (place.boardFilter.topic) query.set('about', place.boardFilter.topic);
+    }
+  } else if (
     place.target?.channel === place.channel &&
     place.target.topic === place.topic &&
     place.view === 'chat'
@@ -312,6 +326,10 @@ export function App() {
   // The message a conversation is opened at; it counts only while that
   // channel and topic are open, and the address keeps it for a reload.
   const [target, setTarget] = useState<Target | null>(initial.target);
+  // How the board is narrowed, kept in the address.
+  const [boardFilter, setBoardFilter] = useState<BoardFilter>(
+    initial.boardFilter,
+  );
   // The agent whose page is open, and the tab Esc returns to from it.
   const [agentId, setAgentId] = useState(initial.agent);
   const [backTo, setBackTo] = useState<Tab>('team');
@@ -626,6 +644,7 @@ export function App() {
       focus,
       newTask: newTask !== null,
       target,
+      boardFilter,
     }),
   );
   useEffect(() => {
@@ -637,6 +656,7 @@ export function App() {
       focus,
       newTask: newTask !== null,
       target,
+      boardFilter,
     });
     const here = window.location.pathname + window.location.search;
     if (next !== here) {
@@ -653,6 +673,7 @@ export function App() {
     focus,
     newTask,
     target,
+    boardFilter,
   ]);
   // Back and Forward go to the place their address names.
   useEffect(() => {
@@ -669,6 +690,7 @@ export function App() {
       setFocus(place.focus);
       setDraft(place.draft);
       setTarget(place.target);
+      setBoardFilter(place.boardFilter);
     };
     window.addEventListener('popstate', onPop);
     return () => {
@@ -1974,6 +1996,8 @@ export function App() {
                               openTask={openTask}
                               onNewTask={startNewTask}
                               openId={focus?.kind === 'task' ? focus.id : null}
+                              filter={boardFilter}
+                              onFilter={setBoardFilter}
                             />
                           ) : (
                             <div className="empty">

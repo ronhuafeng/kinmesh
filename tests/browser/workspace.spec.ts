@@ -1463,6 +1463,76 @@ test('an agent is taken out of a channel from its row, and a left channel is rej
   ).toBeVisible();
 });
 
+/**
+ * Proves the board reaches past its newest hundred tasks, and narrows to
+ * yours, keeping that in the address across a reload.
+ */
+test('the board reaches older tasks and narrows to yours, kept across a reload', async ({
+  page,
+  browser,
+  context,
+  hub,
+}) => {
+  test.setTimeout(120_000);
+  await signIn(page, hub, 'ada@example.com');
+  const state = await snapshot(context.request, hub.origin);
+  if (!state.channel) throw new Error('Local channel missing');
+  const tasks = `${hub.origin}/api/teams/${state.team.id}/channels/${state.channel.id}/tasks`;
+  const create = (request: APIRequestContext, title: string) =>
+    request.post(tasks, {
+      data: {
+        operationKey: randomUUID(),
+        title,
+        description: '',
+        criteria: ['done'],
+        topicId: null,
+        owner: null,
+        reviewer: null,
+        sourceMessageId: null,
+        sourceEventId: null,
+      },
+    });
+  // The oldest first, then a hundred more: the board holds the newest 100.
+  expect((await create(context.request, 'The very first task')).status()).toBe(
+    201,
+  );
+  for (let n = 0; n < 100; n++)
+    expect((await create(context.request, `Task ${String(n)}`)).status()).toBe(
+      201,
+    );
+  // Someone else's task: not Ada's.
+  const theirs = await browser.newContext();
+  try {
+    const grace = await theirs.newPage();
+    await signIn(grace, hub, 'grace@example.com');
+    expect((await create(theirs.request, 'Grace decides this')).status()).toBe(
+      201,
+    );
+  } finally {
+    await theirs.close();
+  }
+  await page.getByRole('tab', { name: '看板', exact: true }).click();
+  const board = page.getByRole('region', { name: '任务看板' });
+  await expect(board.getByText('Grace decides this')).toBeVisible();
+  await expect(board.getByText('The very first task')).toHaveCount(0);
+  await board.getByRole('button', { name: '更早的任务' }).click();
+  await expect(board.getByText('The very first task')).toBeVisible();
+  // Yours: Grace's task goes, and the address keeps it.
+  await board.getByRole('button', { name: '我的', exact: true }).click();
+  await expect(board.getByText('Grace decides this')).toHaveCount(0);
+  await expect(page).toHaveURL(/who=mine/);
+  await page.reload();
+  await expect(
+    page
+      .getByRole('region', { name: '任务看板' })
+      .getByRole('button', { name: '我的', exact: true }),
+  ).toHaveAttribute('aria-pressed', 'true');
+  await expect(
+    page.getByRole('region', { name: '任务看板' }).getByText('Task 99'),
+  ).toBeVisible();
+  await expect(page.getByText('Grace decides this')).toHaveCount(0);
+});
+
 test('a T3 on another computer: the person pastes the address its approval opened', async ({
   page,
   hub,
