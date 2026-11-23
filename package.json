@@ -55,6 +55,8 @@
     "ajv": "8.20.0",
     "drizzle-orm": "^0.45.4",
     "fastify": "^5.12.8",
+    "hast-util-to-jsx-runtime": "2.3.7",
+    "lowlight": "3.3.0",
     "lucide-react": "1.73.0",
     "mermaid": "12.3.0",
     "open": "^11.0.4",

@@ -2914,6 +2914,37 @@ a.button-link {
   background: none;
   font-size: inherit;
 }
+/* Code in its language, coloured from the tints: a few kinds of token, the
+ * rest the text's own ink (DESIGN.md, Rich content). */
+.message-text pre :is(.hljs-keyword, .hljs-selector-tag, .hljs-built_in) {
+  color: var(--tint-indigo-text);
+}
+.message-text pre :is(.hljs-string, .hljs-regexp, .hljs-symbol) {
+  color: var(--tint-green-text);
+}
+.message-text pre :is(.hljs-number, .hljs-literal) {
+  color: var(--tint-orange-text);
+}
+.message-text pre :is(.hljs-title, .hljs-section) {
+  color: var(--tint-blue-text);
+}
+.message-text pre :is(.hljs-type, .hljs-title.class_) {
+  color: var(--tint-teal-text);
+}
+.message-text pre :is(.hljs-attr, .hljs-attribute, .hljs-property) {
+  color: var(--tint-pink-text);
+}
+.message-text pre :is(.hljs-comment, .hljs-meta, .hljs-quote) {
+  color: var(--ink-subtle);
+}
+.message-text pre .hljs-addition {
+  color: var(--tint-green-text);
+  background: var(--tint-green);
+}
+.message-text pre .hljs-deletion {
+  color: var(--danger);
+  background: var(--danger-soft);
+}
 .message-text blockquote {
   margin: 0 0 0.55em;
   padding-left: 0.75rem;

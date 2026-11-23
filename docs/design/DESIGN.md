@@ -264,18 +264,22 @@ fallback.
   strikethrough (also beside Chinese punctuation), a hairline rule, tables, images,
   and http(s) links opening in a new tab. A bare address is a link wherever it starts
   and stops before Chinese text or trailing punctuation. A message's headings sit
-  under the page's own: `#` and `##` one step above the text, the rest as bold text.
-  A fenced code block (``` or ~~~) is one rounded block in the
-  system monospace, never boxed line by line, and keeps its language. A `mermaid`
-  block is drawn as its diagram: Mermaid loads only when a message holds one, at its
-  strict security level, laid out by dagre (ELK is never loaded unless a diagram
-  asks for it), themed from the tokens for light or dark, and the drawing is
-  shown as an image, so it runs nothing; its space is kept and it fades in; one that
-  can't be drawn stays its code, silently. A table has hairline rows, a heavier head
-  and scrolls sideways inside the message when wide. An image from this site is
-  rounded, at most the message's width, and opens its original; one from elsewhere is
-  its link, since the page loads images only from here. Links stay text links: there
-  are no previews, which would need the server to fetch other sites.
+  under the page's own: `#` and `##` one step above the text, the rest as bold text. A
+  fenced code block (``` or ~~~) is one rounded block in the system monospace, never
+  boxed line by line, and keeps its language. In a declared language it is highlighted
+  by class only, its keywords, strings, numbers, names, types, attributes and comments
+  each in one tint (diff additions and deletions in green and the danger colour), the
+  rest in the text's ink; the highlighter loads only when a message has such a block,
+  and until then, or in a language it doesn't know, the block is its plain code in the
+  same box. A `mermaid` block is drawn as its diagram: Mermaid loads only when a
+  message holds one, at its strict security level, laid out by dagre (ELK is never
+  loaded unless a diagram asks for it), themed from the tokens for light or dark, and
+  the drawing is shown as an image, so it runs nothing; its space is kept and it fades
+  in; one that can't be drawn stays its code, silently. A table has hairline rows, a
+  heavier head and scrolls sideways inside the message when wide. An image from this
+  site is rounded, at most the message's width, and opens its original; one from
+  elsewhere is its link, since the page loads images only from here. Links stay text
+  links: there are no previews, which would need the server to fetch other sites.
 - **Mentions and replies**: a mention already written as `@Name` gets no second chip. An
   agent's reply shows the message it answers, unless it is the very next message,
   and carries a line only for an exception (failed, stopped, shortened); what ran it
