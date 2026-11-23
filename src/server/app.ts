@@ -225,7 +225,7 @@ export async function createApp(
   const feishu = options.feishu ?? feishuClient(config.feishu);
   registerLogin(app, store, config, feishu);
   app.post('/api/logout', async (request, reply) => {
-    await store.notifications.signedOut(request.session.get('session'));
+    await store.browsers.signedOut(request.session.get('session'));
     await store.sessions.revoke(request.session.get('session'), Date.now());
     request.session.delete();
     return reply.code(204).send();
@@ -234,7 +234,7 @@ export async function createApp(
   app.post('/api/me/sessions/end', async (request, reply) => {
     const principal = request.principal;
     if (principal?.kind !== 'human') throw new DomainError('forbidden');
-    await store.notifications.signedOutEverywhere(principal.humanId);
+    await store.browsers.signedOutEverywhere(principal.humanId);
     await store.sessions.revokeAll(principal.humanId, Date.now());
     request.session.delete();
     return reply.code(204).send();

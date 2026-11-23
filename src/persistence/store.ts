@@ -4,6 +4,8 @@ import { teamMcpPresenceRepository } from './team-mcp-presence.js';
 import { spaceRepository } from './spaces.js';
 import { inboxBindingRepository } from './inbox-bindings.js';
 import { notificationRepository } from './notify.js';
+import { quietRepository } from './quiet.js';
+import { browserRepository } from './browsers.js';
 import { inboxRepository } from './inbox.js';
 import { inboxViews } from './inbox-views.js';
 import { taskRepository } from './tasks.js';
@@ -131,6 +133,10 @@ export async function openStore(url: string) {
       teamMcpPresence: teamMcpPresenceRepository(d, agentStore),
       /** What notifies a person, their browsers, and what is sent to them. */
       notifications: notificationRepository(d),
+      /** How each person set Kinmesh to reach them. */
+      quiet: quietRepository(d),
+      /** The browsers each person is notified in. */
+      browsers: browserRepository(d),
       close: d.close,
       /**
        * The person a Feishu identity is. Their first sign-in makes them a

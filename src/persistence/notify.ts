@@ -1,13 +1,9 @@
 import { randomUUID } from 'node:crypto';
-import { and, eq, gt, inArray, isNotNull, isNull, lte, sql } from 'drizzle-orm';
-import type { z } from 'zod';
+import { and, eq, gt, inArray, isNotNull, lte, sql } from 'drizzle-orm';
 import { OutboxFact } from '../domain/communication.js';
 import { Author } from '../domain/agents.js';
-import { SESSION_LIFETIME_MS, type HumanId } from '../domain/contracts.js';
 import {
   NOTIFY_DELAY_MS,
-  NotifyHours,
-  PushSubscriptionInput,
   ChannelLevel,
   interrupts,
   type NotificationKind,
@@ -15,13 +11,7 @@ import {
 import { actingMember } from '../domain/tasks.js';
 import * as s from './schema.js';
 import { messageText } from './attachments.js';
-import {
-  dbNow,
-  digest,
-  together,
-  type Database,
-  type Query,
-} from './database.js';
+import { dbNow, type Database, type Query } from './database.js';
 
 /** The person whose act started a causal chain, if a person's did. */
 async function rootPerson(db: Query, eventId: string | null) {
@@ -235,98 +225,6 @@ export function notificationRepository(d: Database) {
   const { q, atomic } = d;
   return {
     /**
-     * How the person set Kinmesh to reach them: channels they muted or
-     * follow, how fast Feishu finds them, their hours and their pause.
-     */
-    async quiet(humanId: HumanId, teamId: string) {
-      const [channels, member] = await together([
-        q()
-          .select({
-            id: s.channelParticipants.channelId,
-            level: s.channelParticipants.level,
-          })
-          .from(s.channelParticipants)
-          .where(
-            and(
-              eq(s.channelParticipants.teamId, teamId),
-              eq(s.channelParticipants.memberKey, 'human:' + humanId),
-              eq(s.channelParticipants.state, 'joined'),
-              sql`${s.channelParticipants.level} <> 'default'`,
-            ),
-          ),
-        q()
-          .select({
-            pausedUntil: s.memberships.pausedUntil,
-            forwardAfterMs: s.memberships.forwardAfterMs,
-            notifyHours: s.memberships.notifyHours,
-            now: dbNow,
-          })
-          .from(s.memberships)
-          .where(
-            and(
-              eq(s.memberships.humanId, humanId),
-              eq(s.memberships.teamId, teamId),
-            ),
-          )
-          .limit(1),
-      ]);
-      const until = member[0]?.pausedUntil ?? null;
-      const forward = member[0]?.forwardAfterMs ?? null;
-      return {
-        forwardAfter: forward === null ? null : forward / 60_000,
-        hours: member[0]?.notifyHours
-          ? NotifyHours.parse(JSON.parse(member[0].notifyHours))
-          : null,
-        levels: channels
-          .map((c) => ({ channelId: c.id, level: ChannelLevel.parse(c.level) }))
-          .sort((a, b) => (a.channelId < b.channelId ? -1 : 1)),
-        pausedUntil:
-          until !== null && until > Number(member[0]?.now)
-            ? new Date(until).toISOString()
-            : null,
-      };
-    },
-    /** The hours notifications may reach the person; null: any time. */
-    hours(humanId: HumanId, teamId: string, hours: NotifyHours | null) {
-      return atomic(async () => {
-        await q()
-          .update(s.memberships)
-          .set({ notifyHours: hours === null ? null : JSON.stringify(hours) })
-          .where(
-            and(
-              eq(s.memberships.humanId, humanId),
-              eq(s.memberships.teamId, teamId),
-            ),
-          );
-      });
-    },
-    async hoursOf(humanId: string) {
-      const row = (
-        await q()
-          .select({ hours: s.memberships.notifyHours })
-          .from(s.memberships)
-          .where(eq(s.memberships.humanId, humanId))
-          .limit(1)
-      )[0];
-      return row?.hours ? NotifyHours.parse(JSON.parse(row.hours)) : null;
-    },
-    /** Until when a person paused, if they did and it hasn't ended. */
-    async pausedUntilOf(humanId: string) {
-      const row = (
-        await q()
-          .select({ until: s.memberships.pausedUntil })
-          .from(s.memberships)
-          .where(
-            and(
-              eq(s.memberships.humanId, humanId),
-              gt(s.memberships.pausedUntil, dbNow),
-            ),
-          )
-          .limit(1)
-      )[0];
-      return row?.until ?? null;
-    },
-    /**
      * In the person's quiet time a notification is held, to be summed up
      * once it ends; one going to Feishu then is left to that summary.
      */
@@ -393,20 +291,6 @@ export function notificationRepository(d: Database) {
         .orderBy(s.notifications.createdAt)
         .limit(5);
     },
-    /** How long a notification may stay unread before it goes to Feishu. */
-    forwardAfter(humanId: HumanId, teamId: string, minutes: number | null) {
-      return atomic(async () => {
-        await q()
-          .update(s.memberships)
-          .set({ forwardAfterMs: minutes === null ? null : minutes * 60_000 })
-          .where(
-            and(
-              eq(s.memberships.humanId, humanId),
-              eq(s.memberships.teamId, teamId),
-            ),
-          );
-      });
-    },
     /**
      * Takes up to `limit` notifications whose time to go to Feishu has come,
      * each once, with the person's Feishu identity: the caller sends or drops
@@ -447,132 +331,6 @@ export function notificationRepository(d: Database) {
         return due;
       });
     },
-    /** Nothing notifies the person until `until` (null: from now on again). */
-    pause(humanId: HumanId, teamId: string, until: number | null) {
-      return atomic(async () => {
-        await q()
-          .update(s.memberships)
-          .set({ pausedUntil: until })
-          .where(
-            and(
-              eq(s.memberships.humanId, humanId),
-              eq(s.memberships.teamId, teamId),
-            ),
-          );
-      });
-    },
-    /**
-     * This browser now notifies this person, held by the session it was
-     * turned on in (taking it over from an earlier one, or from someone who
-     * used the browser before).
-     */
-    subscribe(
-      humanId: HumanId,
-      session: string,
-      input: z.infer<typeof PushSubscriptionInput>,
-    ) {
-      const { endpoint, keys } = PushSubscriptionInput.parse(input);
-      const sessionHash = digest(session);
-      return atomic(async () => {
-        await q()
-          .insert(s.pushSubscriptions)
-          .values({
-            endpoint,
-            humanId,
-            sessionHash,
-            p256dh: keys.p256dh,
-            auth: keys.auth,
-            createdAt: dbNow,
-          })
-          .onConflictDoUpdate({
-            target: s.pushSubscriptions.endpoint,
-            set: {
-              humanId,
-              sessionHash,
-              p256dh: keys.p256dh,
-              auth: keys.auth,
-              createdAt: dbNow,
-            },
-          });
-      });
-    },
-    /**
-     * A browser already notifying this person is held by this session now,
-     * so it lasts as long as their newest sign-in on it. One that notifies
-     * someone else, or nobody, is left as it is.
-     */
-    renew(humanId: HumanId, session: string, endpoint: string) {
-      return atomic(async () => {
-        await q()
-          .update(s.pushSubscriptions)
-          .set({ sessionHash: digest(session) })
-          .where(
-            and(
-              eq(s.pushSubscriptions.endpoint, endpoint),
-              eq(s.pushSubscriptions.humanId, humanId),
-            ),
-          );
-      });
-    },
-    unsubscribe(humanId: HumanId, endpoint: string) {
-      return atomic(async () => {
-        await q()
-          .delete(s.pushSubscriptions)
-          .where(
-            and(
-              eq(s.pushSubscriptions.endpoint, endpoint),
-              eq(s.pushSubscriptions.humanId, humanId),
-            ),
-          );
-      });
-    },
-    /** Signing out of a session ends the notifications it turned on. */
-    async signedOut(session: unknown) {
-      if (typeof session !== 'string' || session === '') return;
-      await q()
-        .delete(s.pushSubscriptions)
-        .where(eq(s.pushSubscriptions.sessionHash, digest(session)));
-    },
-    async signedOutEverywhere(humanId: HumanId) {
-      await q()
-        .delete(s.pushSubscriptions)
-        .where(eq(s.pushSubscriptions.humanId, humanId));
-    },
-    /**
-     * A person's browsers receiving notifications: a short id made from the
-     * endpoint (which is a credential and never leaves the hub), the push
-     * service's host, and when it was turned on.
-     */
-    async browserList(humanId: HumanId) {
-      const rows = await browsersOf(humanId);
-      const when = await q()
-        .select({
-          endpoint: s.pushSubscriptions.endpoint,
-          createdAt: s.pushSubscriptions.createdAt,
-        })
-        .from(s.pushSubscriptions)
-        .where(eq(s.pushSubscriptions.humanId, humanId));
-      return rows.map((b) => ({
-        id: digest(b.endpoint).slice(0, 16),
-        service: new URL(b.endpoint).host,
-        createdAt: new Date(
-          when.find((w) => w.endpoint === b.endpoint)?.createdAt ?? 0,
-        ).toISOString(),
-      }));
-    },
-    /** Removes one of a person's browsers, by the id `browserList` gave it. */
-    async forgetBrowser(humanId: HumanId, id: string) {
-      const rows = await q()
-        .select({ endpoint: s.pushSubscriptions.endpoint })
-        .from(s.pushSubscriptions)
-        .where(eq(s.pushSubscriptions.humanId, humanId));
-      const row = rows.find((r) => digest(r.endpoint).slice(0, 16) === id);
-      if (!row) return false;
-      await q()
-        .delete(s.pushSubscriptions)
-        .where(eq(s.pushSubscriptions.endpoint, row.endpoint));
-      return true;
-    },
     /** A notification went to Feishu as this card, saying this. */
     async cardSent(id: string, cardId: string, card: unknown) {
       await q()
@@ -596,17 +354,6 @@ export function notificationRepository(d: Database) {
         .set({ cardOpen: false })
         .where(eq(s.notifications.id, id));
     },
-    /** Whether what stays unread goes to the person in Feishu. */
-    async forwardsTo(humanId: string) {
-      const row = (
-        await q()
-          .select({ after: s.memberships.forwardAfterMs })
-          .from(s.memberships)
-          .where(eq(s.memberships.humanId, humanId))
-          .limit(1)
-      )[0];
-      return row?.after !== null && row?.after !== undefined;
-    },
     /** A person's Feishu identity, once they signed in with Feishu. */
     async unionOf(humanId: string) {
       const row = (
@@ -617,12 +364,6 @@ export function notificationRepository(d: Database) {
           .limit(1)
       )[0];
       return row?.union ?? null;
-    },
-    /** A browser its push service no longer knows. */
-    async gone(endpoint: string) {
-      await q()
-        .delete(s.pushSubscriptions)
-        .where(eq(s.pushSubscriptions.endpoint, endpoint));
     },
     /**
      * Takes up to `limit` notifications that are due, each once: the caller
@@ -782,36 +523,7 @@ export function notificationRepository(d: Database) {
       }
       return null;
     },
-    /** One of a person's browsers that receives notifications now, if it is. */
-    async browser(humanId: HumanId, endpoint: string) {
-      return (
-        (await browsersOf(humanId)).find((b) => b.endpoint === endpoint) ?? null
-      );
-    },
-    /** The browsers a person turned notifications on in, whose session is still within its lifetime. */
-    browsers: (humanId: string) => browsersOf(humanId),
   };
-  /** The browsers a person turned notifications on in, whose session is still within its lifetime. */
-  async function browsersOf(humanId: string) {
-    return await q()
-      .select({
-        endpoint: s.pushSubscriptions.endpoint,
-        p256dh: s.pushSubscriptions.p256dh,
-        auth: s.pushSubscriptions.auth,
-      })
-      .from(s.pushSubscriptions)
-      .innerJoin(
-        s.sessions,
-        eq(s.sessions.tokenHash, s.pushSubscriptions.sessionHash),
-      )
-      .where(
-        and(
-          eq(s.pushSubscriptions.humanId, humanId),
-          isNull(s.sessions.revokedAt),
-          gt(s.sessions.createdAt, sql`${dbNow} - ${SESSION_LIFETIME_MS}`),
-        ),
-      );
-  }
   /** A person or agent by the name the workspace shows. */
   async function nameOf(kind: 'human' | 'agent', id: string) {
     if (kind === 'human') {

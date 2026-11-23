@@ -219,7 +219,7 @@ await test('a browser notifies the person who turned it on, until they sign out 
     });
     assert.equal(subscribed.statusCode, 204);
     assert.deepEqual(
-      (await f.store.notifications.browsers(f.owner.id)).map((b) => b.endpoint),
+      (await f.store.browsers.browsers(f.owner.id)).map((b) => b.endpoint),
       [mine.endpoint],
     );
     // Not a push service's address: refused.
@@ -239,8 +239,8 @@ await test('a browser notifies the person who turned it on, until they sign out 
       payload: { endpoint: mine.endpoint },
     });
     assert.equal(renewed.statusCode, 204);
-    assert.equal((await f.store.notifications.browsers(grace.id)).length, 0);
-    assert.equal((await f.store.notifications.browsers(f.owner.id)).length, 1);
+    assert.equal((await f.store.browsers.browsers(grace.id)).length, 0);
+    assert.equal((await f.store.browsers.browsers(f.owner.id)).length, 1);
 
     // Signing out of the session that turned it on ends it.
     const out = await f.app.inject({
@@ -249,7 +249,7 @@ await test('a browser notifies the person who turned it on, until they sign out 
       cookies: f.cookies,
     });
     assert.equal(out.statusCode, 204);
-    assert.equal((await f.store.notifications.browsers(f.owner.id)).length, 0);
+    assert.equal((await f.store.browsers.browsers(f.owner.id)).length, 0);
 
     // Turned off from the browser: gone too.
     const hers = browser();
@@ -266,7 +266,7 @@ await test('a browser notifies the person who turned it on, until they sign out 
       payload: { endpoint: hers.endpoint },
     });
     assert.equal(off.statusCode, 204);
-    assert.equal((await f.store.notifications.browsers(grace.id)).length, 0);
+    assert.equal((await f.store.browsers.browsers(grace.id)).length, 0);
 
     // A test goes only to a browser that notifies the caller now: one
     // turned off is gone (410); one whose push service can't be reached

@@ -309,7 +309,7 @@ export function registerWorkspace(
       store.managed.teamBindings(principal, teamId),
       store.teamMcpPresence.teamMcpPresence(principal, teamId),
       store.agents.avatars(principal, teamId),
-      store.notifications.quiet(principal.humanId, teamId),
+      store.quiet.quiet(principal.humanId, teamId),
       channel
         ? store.topics.topics(principal, teamId, channel.id, {
             ...(query.topicsCursor ? { cursor: query.topicsCursor } : {}),

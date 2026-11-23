@@ -81,7 +81,7 @@ await test('your settings read you as Feishu gives you, and your sessions and br
       payload: { id: browser.id },
     });
     assert.equal(forget.statusCode, 204);
-    assert.equal((await f.store.notifications.browsers(f.owner.id)).length, 0);
+    assert.equal((await f.store.browsers.browsers(f.owner.id)).length, 0);
 
     // The team's bot can be tried: it messages the person who asks.
     const tried = await f.app.inject({
