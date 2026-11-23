@@ -109,10 +109,15 @@ function Composer({
   onSend,
   onDone,
   incoming,
+  replyTo = null,
+  onClearReply = () => undefined,
 }: {
   channelPath: string;
   topicId: string;
   members: Mentionable[];
+  /** The message this one answers, said above the field until sent or let go. */
+  replyTo?: { id: string; said: string } | null;
+  onClearReply?: () => void;
   /** What was shared to Kinmesh for this channel: attached, its text typed. */
   incoming?: { key: string; shared: Shared } | undefined;
   /** Takes a message on its way, so the field is free at once. */
@@ -279,6 +284,7 @@ function Composer({
           setQuery(null);
           setReady(false);
           keep(draftKey, null);
+          onClearReply();
           onDone();
         }}
         build={(f) => {
@@ -295,12 +301,25 @@ function Composer({
             mentions: mentioned
               .slice(0, 20)
               .map((m) => ({ kind: m.kind, id: z.uuid().parse(m.id) })),
-            sourceMessageId: null,
+            sourceMessageId: replyTo?.id ?? null,
             sourceEventId: null,
             attachments: attached,
           };
         }}
       >
+        {replyTo && (
+          <p className="composer-reply">
+            <span>回复 {replyTo.said}</span>
+            <button
+              type="button"
+              className="quiet"
+              aria-label="不再回复这条消息"
+              onClick={onClearReply}
+            >
+              ×
+            </button>
+          </p>
+        )}
         {files.length > 0 && (
           <ul className="composer-files" aria-label="附件">
             {files.map((p) => (
@@ -1132,6 +1151,7 @@ function useEarlier(older: string | null, onEarlier: (cursor: string) => void) {
 interface RowActions {
   choose: (id: string) => void;
   open: (id: string) => void;
+  reply: (id: string) => void;
   makeTask: (m: ChatMessage) => void;
   openAgent: (id: string) => void;
   done: () => void;
@@ -1366,6 +1386,15 @@ const MessageRow = memo(function MessageRow({
                 type="button"
                 className="quiet"
                 onClick={() => {
+                  act.reply(m.id);
+                }}
+              >
+                回复
+              </button>
+              <button
+                type="button"
+                className="quiet"
+                onClick={() => {
                   act.makeTask(m);
                 }}
               >
@@ -1483,6 +1512,11 @@ export function Chat({
   const { divider, fresh, heard } = useArrivals(shown, messages, data.human.id);
   // The message tapped on a touch screen, which shows its actions.
   const [chosen, setChosen] = useState<string | null>(null);
+  // The message the next one answers, chosen with 回复, in this place.
+  const [replying, setReplying] = useState<{
+    place: string;
+    id: string;
+  } | null>(null);
   const reading = useReadingPosition(shown, messages);
   const earlier = useEarlier(older, reachOlder);
   // A message opened here is reached however far back it is, shown and
@@ -1515,9 +1549,17 @@ export function Chat({
     onDone,
     outbox,
     onOpenMessage,
+    shown,
   });
   useLayoutEffect(() => {
-    latest.current = { onMakeTask, openAgent, onDone, outbox, onOpenMessage };
+    latest.current = {
+      onMakeTask,
+      openAgent,
+      onDone,
+      outbox,
+      onOpenMessage,
+      shown,
+    };
   });
   const [act] = useState<RowActions>(() => ({
     choose: (id) => {
@@ -1525,6 +1567,12 @@ export function Chat({
     },
     open: (id) => {
       latest.current.onOpenMessage(id);
+    },
+    reply: (id) => {
+      setReplying({ place: latest.current.shown, id });
+      document
+        .querySelector<HTMLTextAreaElement>('.composer textarea')
+        ?.focus();
     },
     makeTask: (m) => {
       latest.current.onMakeTask(m);
@@ -1718,7 +1766,7 @@ export function Chat({
               : undefined;
           // A reply right under what it answers needs neither the quote
           // nor the "replied" line to say so.
-          const answers = replyTo.get(m.id);
+          const answers = replyTo.get(m.id) ?? m.sourceMessageId ?? undefined;
           const quoted = answers !== undefined && answers !== previous?.id;
           const following = rows[index + 1]?.m.id;
           return (
@@ -1764,6 +1812,14 @@ export function Chat({
           channelPath={channelPath}
           topicId={topic}
           incoming={incoming}
+          replyTo={
+            replying?.place === shown
+              ? { id: replying.id, said: replySource(replying.id) }
+              : null
+          }
+          onClearReply={() => {
+            setReplying(null);
+          }}
           members={[
             ...joinedAgents(data).map((a): Mentionable => ({
               kind: 'agent',

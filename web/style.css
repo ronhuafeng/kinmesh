@@ -1536,6 +1536,30 @@ button.author-link:hover:not(:disabled) {
   border-radius: 999px;
   color: var(--ink-muted);
 }
+/* What the message answers, above the text: the same quiet quote a reply
+ * shows in the conversation, and × to let it go. */
+.composer-reply {
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  min-width: 0;
+  margin: 0.25rem 0 0;
+  padding-left: 0.6rem;
+  border-left: 2px solid var(--hairline-strong);
+  color: var(--ink-muted);
+  font-size: 13px;
+}
+.composer-reply span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.composer-reply button {
+  flex: none;
+  padding: 0 0.45rem;
+}
 /* What is attached, above the text: images as small squares, other files
  * by name. Uploading reads quieter until it is there. */
 .composer-files {
