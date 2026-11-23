@@ -64,9 +64,11 @@ import {
   Participant,
   ParticipantInput,
   VisibilityInput,
+  ArchiveInput,
   PostInput,
   ReactInput,
   ReadInput,
+  RenameInput,
   Topic,
   TopicId,
   TopicInput,
@@ -148,9 +150,13 @@ export function communicationRepository(
       channel.visibility === 'public' &&
       participant?.state !== 'removed';
     if (!belongs && !previewing) throw new DomainError('not-found');
+    // An archived channel is read, never written to.
+    const { archivedAt, ...kept } = channel;
+    if (write && archivedAt !== null) throw new DomainError('conflict');
     return {
-      channel: ChannelView.parse(channel),
+      channel: ChannelView.parse(kept),
       participant: belongs ? participant : null,
+      archived: archivedAt !== null,
     };
   }
   /** A person of the team, joined to the channel when one is named. */
@@ -688,6 +694,7 @@ export function communicationRepository(
                 eq(s.channels.teamId, teamId),
                 eq(s.channelParticipants.memberKey, memberKey(member(p))),
                 eq(s.channelParticipants.state, 'left'),
+                isNull(s.channels.archivedAt),
               ),
             )
             .orderBy(asc(s.channels.position))
@@ -722,12 +729,149 @@ export function communicationRepository(
                 eq(s.channels.teamId, teamId),
                 eq(s.channels.visibility, 'public'),
                 isNull(s.channelParticipants.channelId),
+                isNull(s.channels.archivedAt),
               ),
             )
             .orderBy(asc(s.channels.position))
             .limit(100)
         ).map((row) => ChannelView.parse(row));
       });
+    },
+    /**
+     * A person in a channel names it again, on the record. Its folder in the
+     * space keeps the name it was given first.
+     */
+    rename(
+      p: Principal,
+      teamId: TeamId,
+      channelId: ChannelId,
+      input: z.infer<typeof RenameInput>,
+    ) {
+      return atomic(async () => {
+        await person(p, teamId, channelId);
+        const data = RenameInput.parse(input);
+        return mutation(
+          p,
+          teamId,
+          channelId,
+          'rename',
+          data,
+          ChannelView,
+          async () => {
+            const { channel } = await access(p, teamId, channelId, true);
+            if (channel.name === data.name) return channel;
+            const taken = (
+              await q()
+                .select({ id: s.channels.id })
+                .from(s.channels)
+                .where(
+                  and(
+                    eq(s.channels.teamId, teamId),
+                    eq(s.channels.name, data.name),
+                  ),
+                )
+                .limit(1)
+            )[0];
+            if (taken) throw new DomainError('conflict');
+            await q()
+              .update(s.channels)
+              .set({ name: data.name })
+              .where(eq(s.channels.id, channelId));
+            await fact(
+              p,
+              teamId,
+              channelId,
+              data.operationKey,
+              'channel.changed',
+              { name: data.name },
+            );
+            return ChannelView.parse({ ...channel, name: data.name });
+          },
+        );
+      });
+    },
+    /**
+     * A person in a channel archives it, or brings it back, on the record.
+     * Archived, it leaves everyone's lists and takes nothing new; it is
+     * still read and searched.
+     */
+    archive(
+      p: Principal,
+      teamId: TeamId,
+      channelId: ChannelId,
+      input: z.infer<typeof ArchiveInput>,
+    ) {
+      return atomic(async () => {
+        await agents.person(p, teamId);
+        const data = ArchiveInput.parse(input);
+        return mutation(
+          p,
+          teamId,
+          channelId,
+          'archive',
+          data,
+          ChannelView,
+          async () => {
+            const { channel, participant, archived } = await access(
+              p,
+              teamId,
+              channelId,
+            );
+            if (participant?.state !== 'joined')
+              throw new DomainError('not-found');
+            if (archived !== data.archived) {
+              await q()
+                .update(s.channels)
+                .set({ archivedAt: data.archived ? Date.now() : null })
+                .where(eq(s.channels.id, channelId));
+              await fact(
+                p,
+                teamId,
+                channelId,
+                data.operationKey,
+                'channel.changed',
+                { archived: data.archived },
+              );
+            }
+            return channel;
+          },
+        );
+      });
+    },
+    /** The archived channels the person is in, to open or bring back. */
+    archivedChannels(p: Principal, teamId: TeamId) {
+      return atomic(async () => {
+        await team(p, teamId);
+        return (
+          await q()
+            .select({
+              id: s.channels.id,
+              teamId: s.channels.teamId,
+              name: s.channels.name,
+              visibility: s.channels.visibility,
+              position: s.channels.position,
+            })
+            .from(s.channels)
+            .innerJoin(
+              s.channelParticipants,
+              eq(s.channels.id, s.channelParticipants.channelId),
+            )
+            .where(
+              and(
+                eq(s.channels.teamId, teamId),
+                eq(s.channelParticipants.memberKey, memberKey(member(p))),
+                eq(s.channelParticipants.state, 'joined'),
+                isNotNull(s.channels.archivedAt),
+              ),
+            )
+            .orderBy(asc(s.channels.position))
+            .limit(100)
+        ).map((row) => ChannelView.parse(row));
+      });
+    },
+    /** Whether a channel the person can read is archived. */
+    isArchived(p: Principal, teamId: TeamId, channelId: ChannelId) {
+      return atomic(async () => (await access(p, teamId, channelId)).archived);
     },
     /** A person in a channel makes it public or private, on the record. */
     setVisibility(
@@ -777,6 +921,7 @@ export function communicationRepository(
           eq(s.channels.teamId, teamId),
           eq(s.channelParticipants.memberKey, memberKey(member(p))),
           eq(s.channelParticipants.state, 'joined'),
+          isNull(s.channels.archivedAt),
         );
         return page(
           input,

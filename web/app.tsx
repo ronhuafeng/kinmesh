@@ -223,6 +223,8 @@ export function App() {
   // A phone stacks the places: Home, a channel, a page.
   const phone = usePhone();
   const [addingChannel, setAddingChannel] = useState(false);
+  // The channel being named again, in place in its row.
+  const [renaming, setRenaming] = useState<string | null>(null);
   const [data, setData] = useState<WorkspaceSnapshot | null>(null);
   const [status, setStatus] = useState<
     'loading' | 'ready' | 'offline' | 'signedout'
@@ -1307,92 +1309,119 @@ export function App() {
                         : data.channels.items
                       ).map((c) => (
                         <Fragment key={c.id}>
-                          <ChannelMenu
-                            data={data}
-                            channelId={c.id}
-                            channelName={c.name}
-                            onLeave={leaveChannelById}
-                            onFailed={notify}
-                          >
-                            <button
-                              // On a phone the row also shows the newest message,
-                              // which describes it rather than naming it.
-                              {...(phone
-                                ? {
-                                    'aria-label': c.name,
-                                    'aria-describedby': 'latest-' + c.id,
-                                  }
-                                : {})}
-                              data-muted={
-                                levelOf(data, c.id) === 'mute'
-                                  ? 'true'
-                                  : undefined
-                              }
-                              data-unread={
-                                data.latest.find((l) => l.channelId === c.id)
-                                  ?.unread
-                                  ? 'true'
-                                  : undefined
-                              }
-                              aria-current={
-                                // Only one place is current: a channel while you are
-                                // in its chat or board.
-                                channel?.id === c.id &&
-                                (tabValue === 'chat' || tabValue === 'board') &&
-                                !(phone && screen === 'home')
-                                  ? 'page'
-                                  : undefined
-                              }
-                              onClick={() => {
-                                selectChannel(c.id);
+                          {renaming === c.id && channelPath !== null ? (
+                            <InlineField
+                              name="name"
+                              label="频道名称"
+                              placeholder="频道名称"
+                              maxLength={80}
+                              path={`/api/teams/${data.team.id}/channels/${c.id}/rename`}
+                              initial={c.name}
+                              taken="这个名称已被占用"
+                              onClose={() => {
+                                setRenaming(null);
+                              }}
+                              onCreated={() => {
+                                refresh();
+                              }}
+                            />
+                          ) : (
+                            <ChannelMenu
+                              data={data}
+                              channelId={c.id}
+                              channelName={c.name}
+                              onLeave={leaveChannelById}
+                              onFailed={notify}
+                              onRename={setRenaming}
+                              onArchived={(id) => {
+                                if (id === channel?.id) selectChannel('');
+                                refresh();
                               }}
                             >
-                              {phone ? (
-                                <ChannelRow
-                                  data={data}
-                                  channelId={c.id}
-                                  name={c.name}
-                                  latest={data.latest.find(
-                                    (l) => l.channelId === c.id,
-                                  )}
-                                  id={'latest-' + c.id}
-                                />
-                              ) : (
-                                <>
-                                  <ChannelIcon id={c.id} name={c.name} />
-                                  <span className="channel-name" title={c.name}>
-                                    {c.name}
-                                  </span>
-                                </>
-                              )}
-                              {/* You follow it: every message notifies you. */}
-                              {levelOf(data, c.id) === 'follow' && (
-                                <span
-                                  className="channel-follow"
-                                  title="每条消息都通知你"
-                                >
-                                  <SettingsIcons.bell size={16} />
-                                </span>
-                              )}
-                              {/* Something in this channel waits on you; once
-                            nothing does, the dot fades out. */}
-                              <span
-                                className="waiting-dot"
-                                data-on={
-                                  waitingIn.has(c.id) ? 'true' : undefined
+                              <button
+                                // On a phone the row also shows the newest message,
+                                // which describes it rather than naming it.
+                                {...(phone
+                                  ? {
+                                      'aria-label': c.name,
+                                      'aria-describedby': 'latest-' + c.id,
+                                    }
+                                  : {})}
+                                data-muted={
+                                  levelOf(data, c.id) === 'mute'
+                                    ? 'true'
+                                    : undefined
                                 }
-                                {...(waitingIn.has(c.id)
-                                  ? { title: '等你处理' }
-                                  : { 'aria-hidden': true })}
+                                data-unread={
+                                  data.latest.find((l) => l.channelId === c.id)
+                                    ?.unread
+                                    ? 'true'
+                                    : undefined
+                                }
+                                aria-current={
+                                  // Only one place is current: a channel while you are
+                                  // in its chat or board.
+                                  channel?.id === c.id &&
+                                  (tabValue === 'chat' ||
+                                    tabValue === 'board') &&
+                                  !(phone && screen === 'home')
+                                    ? 'page'
+                                    : undefined
+                                }
+                                onClick={() => {
+                                  selectChannel(c.id);
+                                }}
                               >
-                                {waitingIn.has(c.id) && (
-                                  <span className="visually-hidden">
-                                    等你处理
+                                {phone ? (
+                                  <ChannelRow
+                                    data={data}
+                                    channelId={c.id}
+                                    name={c.name}
+                                    latest={data.latest.find(
+                                      (l) => l.channelId === c.id,
+                                    )}
+                                    id={'latest-' + c.id}
+                                  />
+                                ) : (
+                                  <>
+                                    <ChannelIcon id={c.id} name={c.name} />
+                                    <span
+                                      className="channel-name"
+                                      title={c.name}
+                                    >
+                                      {c.name}
+                                    </span>
+                                  </>
+                                )}
+                                {/* You follow it: every message notifies you. */}
+                                {levelOf(data, c.id) === 'follow' && (
+                                  <span
+                                    className="channel-follow"
+                                    title="每条消息都通知你"
+                                  >
+                                    <SettingsIcons.bell size={16} />
                                   </span>
                                 )}
-                              </span>
-                            </button>
-                          </ChannelMenu>
+                                {/* Something in this channel waits on you; once
+                              nothing does, the dot fades out. */}
+                                <span
+                                  className="waiting-dot"
+                                  data-on={
+                                    waitingIn.has(c.id) ? 'true' : undefined
+                                  }
+                                  {...(waitingIn.has(c.id)
+                                    ? { title: '等你处理' }
+                                    : { 'aria-hidden': true })}
+                                >
+                                  {waitingIn.has(c.id) && (
+                                    <span className="visually-hidden">
+                                      等你处理
+                                    </span>
+                                  )}
+                                </span>
+                              </button>
+                            </ChannelMenu>
+                          )}
                           {channel?.id === c.id && channelPath && (
                             <ChannelTopics
                               data={data}
@@ -1875,7 +1904,15 @@ export function App() {
                               }}
                               incoming={incoming}
                               join={
-                                looking ? (
+                                data.channelArchived ? (
+                                  <MutationPermission value={canAct}>
+                                    <ArchivedBar
+                                      teamId={data.team.id}
+                                      channel={channel}
+                                      onDone={refresh}
+                                    />
+                                  </MutationPermission>
+                                ) : looking ? (
                                   <MutationPermission value={canAct}>
                                     <JoinBar
                                       teamId={data.team.id}
@@ -2138,6 +2175,32 @@ function JoinBar({
         path={`/api/teams/${teamId}/channels/${channel.id}/subscribe`}
         build={() => ({})}
         submit={'加入 #' + channel.name}
+        onDone={onDone}
+      />
+    </div>
+  );
+}
+/**
+ * In place of the composer in an archived channel: it is read, not written
+ * to, until someone brings it back.
+ */
+function ArchivedBar({
+  teamId,
+  channel,
+  onDone,
+}: {
+  teamId: string;
+  channel: { id: string; name: string };
+  onDone: () => void;
+}) {
+  return (
+    <div className="join-bar archived-bar">
+      <p className="muted">#{channel.name} 已归档。</p>
+      <ActionForm
+        title={'恢复 ' + channel.name}
+        path={`/api/teams/${teamId}/channels/${channel.id}/archive`}
+        build={() => ({ archived: false })}
+        submit="恢复频道"
         onDone={onDone}
       />
     </div>

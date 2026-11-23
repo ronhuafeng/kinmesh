@@ -318,6 +318,8 @@ export function ChannelMenu({
   channelName,
   onLeave,
   onFailed,
+  onRename,
+  onArchived,
   children,
 }: {
   data: WorkspaceSnapshot;
@@ -326,9 +328,14 @@ export function ChannelMenu({
   onLeave: (channelId: string) => void;
   /** Says an action didn't happen, where the person will see it. */
   onFailed: (message: string) => void;
+  /** Names the channel again, in place in its row. */
+  onRename: (channelId: string) => void;
+  onArchived: (channelId: string) => void;
   children: ReactNode;
 }) {
   const level = levelOf(data, channelId);
+  // Archiving takes a second press, which says what it does.
+  const [archiving, setArchiving] = useState(false);
   const visibility =
     data.channels.items.find((c) => c.id === channelId)?.visibility ??
     'private';
@@ -338,6 +345,7 @@ export function ChannelMenu({
     <ContextMenu.Root
       onOpenChange={() => {
         setOpening(false);
+        setArchiving(false);
       }}
     >
       <ContextMenu.Trigger asChild>{children}</ContextMenu.Trigger>
@@ -408,6 +416,47 @@ export function ChannelMenu({
                 : opening
                   ? '确认：团队里所有人都能查看'
                   : '设为公开…'}
+            </span>
+          </ContextMenu.Item>
+          <ContextMenu.Item
+            className="menu-item"
+            onSelect={() => {
+              onRename(channelId);
+            }}
+          >
+            <span className="menu-icon">
+              <SettingsIcons.pencil size={16} />
+            </span>
+            <span className="menu-label">重命名…</span>
+          </ContextMenu.Item>
+          <ContextMenu.Item
+            className="menu-item"
+            onSelect={(event) => {
+              if (!archiving) {
+                event.preventDefault();
+                setArchiving(true);
+                return;
+              }
+              void request(
+                `/api/teams/${data.team.id}/channels/${channelId}/archive`,
+                { operationKey: crypto.randomUUID(), archived: true },
+              ).then(
+                () => {
+                  onArchived(channelId);
+                },
+                () => {
+                  onFailed('没能归档，请再试一次。');
+                },
+              );
+            }}
+          >
+            <span className="menu-icon">
+              <SettingsIcons.archive size={16} />
+            </span>
+            <span className="menu-label">
+              {archiving
+                ? '确认：从列表移走，仍可查看和搜索'
+                : `归档 #${channelName}…`}
             </span>
           </ContextMenu.Item>
           <ContextMenu.Item

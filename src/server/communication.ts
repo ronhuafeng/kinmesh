@@ -2,6 +2,7 @@ import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { ChannelId, TeamId } from '../domain/contracts.js';
 import {
+  ArchiveInput,
   ChannelInput,
   MessageId,
   Mutation,
@@ -11,6 +12,7 @@ import {
   PostInput,
   ReactInput,
   ReadInput,
+  RenameInput,
   TopicId,
   TopicInput,
   VisibilityInput,
@@ -215,6 +217,26 @@ export function registerCommunication(app: FastifyInstance, store: Store) {
       teamId,
       channelId,
       messageId,
+    );
+  });
+  /** A person in the channel names it again. */
+  app.post(channel + '/rename', async (request) => {
+    const { teamId, channelId } = ChannelPath.parse(request.params);
+    return store.communication.rename(
+      principal(request),
+      teamId,
+      channelId,
+      RenameInput.parse(request.body),
+    );
+  });
+  /** A person in the channel archives it, or brings it back. */
+  app.post(channel + '/archive', async (request) => {
+    const { teamId, channelId } = ChannelPath.parse(request.params);
+    return store.communication.archive(
+      principal(request),
+      teamId,
+      channelId,
+      ArchiveInput.parse(request.body),
     );
   });
   /** A person pins a message in the channel or unpins it; the answer is its pins. */

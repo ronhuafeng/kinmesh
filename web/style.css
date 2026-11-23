@@ -1384,6 +1384,17 @@ button.author-link:hover:not(:disabled) {
   font-size: 13px;
   animation: fade-rise var(--dur) var(--ease-out);
 }
+/* An archived channel says so where the composer would be, with the way
+ * back. */
+.archived-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+}
+.archived-bar p {
+  margin: 0;
+}
 /* A channel you only look in holds joining it where the composer would be. */
 .composer,
 .join-bar {
