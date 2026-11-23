@@ -957,6 +957,37 @@ test('a request waiting for an approval in T3 is stopped from its line, and one 
 });
 
 /**
+ * Proves removing a mention takes it back: the chip and the `@Name` written
+ * for it go, and the message reaches no agent.
+ */
+test('removing a mention chip takes the mention out of the message', async ({
+  page,
+  hub,
+}) => {
+  await signIn(page, hub);
+  await register(page, 'Ada', 'developer');
+  await page.getByRole('tab', { name: '聊天', exact: true }).click();
+  const composer = page.getByRole('form', { name: '给团队发消息' });
+  const field = composer.getByLabel('消息', { exact: true });
+  await field.pressSequentially('@Ad');
+  await page
+    .getByRole('listbox', { name: '可提及的成员' })
+    .getByRole('option', { name: /Ada/ })
+    .click();
+  await field.pressSequentially('only a note');
+  await composer.getByRole('button', { name: '移除对 Ada 的提及' }).click();
+  await expect(field).toHaveValue('only a note');
+  await expect(composer.getByRole('list', { name: '提及' })).toHaveCount(0);
+  await composer.getByRole('button', { name: '发送消息' }).click();
+  const sent = page
+    .getByRole('list', { name: '频道消息' })
+    .getByRole('listitem')
+    .filter({ hasText: 'only a note' });
+  await expect(sent).toBeVisible();
+  await expect(sent.getByRole('list', { name: '智能体响应' })).toHaveCount(0);
+});
+
+/**
  * Proves an `@` reaches only the agent it names, even when another's name
  * starts it: the one chosen from the list, or the whole name typed. And that
  * the step a run is on stays inside its message, cut to one line, however
