@@ -10,6 +10,7 @@ import type { ReactNode } from 'react';
 import { z } from 'zod';
 import { MutationPermission, useAction, value } from './api.js';
 import { PlusIcon } from './icons.js';
+import { composing } from './ui.js';
 /** A labelled input; a hint is said in the input itself, as its placeholder. */
 export function Field({
   label,
@@ -302,7 +303,7 @@ export function InlineField({
         // field with the caret, ready to be corrected.
         readOnly={action.busy}
         onKeyDown={(event) => {
-          if (event.key !== 'Escape') return;
+          if (event.key !== 'Escape' || composing(event)) return;
           event.preventDefault();
           onClose();
         }}

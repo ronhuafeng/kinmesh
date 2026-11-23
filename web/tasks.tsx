@@ -21,7 +21,7 @@ import { DeliveryLine, taskDeliveries } from './deliveries.js';
 import { joinedAgents, memberName, otherPeople, someoneOf } from './names.js';
 import type { Someone } from './names.js';
 import { LEGACY_FOOTER } from './replies.js';
-import { Avatar, Page, cjk, shortTime } from './ui.js';
+import { Avatar, Page, cjk, composing, shortTime } from './ui.js';
 import { PlusIcon } from './icons.js';
 import type { Status } from './ui.js';
 
@@ -636,6 +636,7 @@ function CriteriaInput({ initial }: { initial: string[] }) {
               setRows((old) => old.map((v, i) => (i === index ? next : v)));
             }}
             onKeyDown={(e) => {
+              if (composing(e)) return;
               if (e.key === 'Enter') {
                 e.preventDefault();
                 focus.current = index + 1;

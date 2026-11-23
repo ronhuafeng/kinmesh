@@ -30,6 +30,7 @@ import {
   Avatar,
   Presence,
   clockTime,
+  composing,
   dayLabel,
   dayOf,
   shortTime,
@@ -461,6 +462,7 @@ function Composer({
                 setQuery(null);
               }}
               onKeyDown={(e) => {
+                if (composing(e)) return;
                 if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') {
                   // The submit handler still refuses while sending is paused.
                   e.preventDefault();

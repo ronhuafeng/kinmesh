@@ -160,6 +160,20 @@ function useMedia(media: string) {
   );
 }
 /** True on a phone-sized screen, where places stack instead of sitting side by side. */
+/**
+ * Whether a key belongs to an input method still composing (pinyin, kana):
+ * Enter commits its candidate and Escape cancels it, so the page acts on
+ * neither.
+ */
+export function composing(
+  event: KeyboardEvent | { nativeEvent: KeyboardEvent },
+) {
+  const key = 'nativeEvent' in event ? event.nativeEvent : event;
+  // Safari sends the Enter that commits a candidate with isComposing false;
+  // only its keyCode, 229, says the input method took it.
+  // eslint-disable-next-line @typescript-eslint/no-deprecated
+  return key.isComposing || key.key === 'Process' || key.keyCode === 229;
+}
 export function usePhone() {
   return useMedia('(max-width: 575px)');
 }
@@ -214,6 +228,7 @@ export function Page({
     const onKey = (e: KeyboardEvent) => {
       if (
         e.key !== 'Escape' ||
+        composing(e) ||
         e.defaultPrevented ||
         document.querySelector('dialog[open]')
       )
