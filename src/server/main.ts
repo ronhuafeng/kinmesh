@@ -1,4 +1,112 @@
-import { runHub } from './hub-process.js';
-
+import { createApp } from './app.js';
+import { loadConfig } from './config.js';
+import { openStore, type Store } from '../persistence/store.js';
+import { InboxSupervisor } from './inbox-supervisor.js';
+import { once } from 'node:events';
+import { reportFailure } from '../diagnostics.js';
 process.umask(0o077);
-await runHub();
+const stopping = new AbortController();
+for (const signal of ['SIGTERM', 'SIGINT'])
+  process.once(signal, () => {
+    stopping.abort();
+  });
+let store: Store | undefined;
+let app: Awaited<ReturnType<typeof createApp>> | undefined;
+let supervisor: InboxSupervisor | undefined;
+stopping.signal.addEventListener(
+  'abort',
+  () => {
+    void supervisor?.stop().catch(() => {
+      process.exitCode = 1;
+    });
+  },
+  { once: true },
+);
+try {
+  const config = loadConfig(process.env);
+  const path = process.env.KINMESH_INBOX_CONFIG;
+  const fatal = () => {
+    process.exitCode = 1;
+    stopping.abort();
+  };
+  const identify = () => {
+    if (store === undefined) throw new Error('Store not open');
+    return store.identity();
+  };
+  const supervise = (inboxConfig: string | undefined) =>
+    new InboxSupervisor(
+      inboxConfig,
+      config.database,
+      config.state,
+      identify,
+      fatal,
+      config.space,
+    );
+  if (path !== undefined) supervisor = supervise(path);
+  store = await openStore(config.database);
+  // Agents connected from the workspace need the hub's worker even without
+  // an operator configuration; with none, no worker runs.
+  if (
+    supervisor === undefined &&
+    (await store.managed.workerBindings()).length > 0
+  )
+    supervisor = supervise(undefined);
+  let starting: Promise<void> | undefined;
+  const ensureWorker = () => {
+    if (supervisor !== undefined || stopping.signal.aborted)
+      return Promise.resolve();
+    starting ??= (async () => {
+      const started = supervise(undefined);
+      // Visible to shutdown at once, so a stop during start cannot orphan it.
+      supervisor = started;
+      try {
+        await started.prepare();
+        await started.activate();
+      } catch (error) {
+        supervisor = undefined;
+        await started.stop();
+        starting = undefined;
+        throw error;
+      }
+    })();
+    return starting;
+  };
+  app = await createApp(
+    config,
+    store,
+    () => !stopping.signal.aborted && (supervisor?.ready() ?? true),
+    async () => {
+      await supervisor?.stop();
+    },
+    { ensureWorker },
+  );
+  stopping.signal.throwIfAborted();
+  await supervisor?.prepare();
+  stopping.signal.throwIfAborted();
+  await app.listen({ host: config.host, port: config.port });
+  stopping.signal.throwIfAborted();
+  await supervisor?.activate();
+  stopping.signal.throwIfAborted();
+  console.info('Kinmesh Team Hub ready on its configured address.');
+  await once(stopping.signal, 'abort');
+} catch (error) {
+  if (!stopping.signal.aborted) {
+    console.error(
+      'Kinmesh startup failed. Check local configuration and database availability.',
+    );
+    reportFailure('hub_startup_failed', error);
+    process.exitCode = 1;
+  }
+} finally {
+  try {
+    // Abort pending startup handshakes/backoff immediately on a shutdown signal.
+    await supervisor?.stop();
+    await app?.close();
+  } catch (error) {
+    console.error('Kinmesh shutdown failed. Check local process supervision.');
+    reportFailure('hub_shutdown_failed', error);
+    process.exitCode = 1;
+  } finally {
+    await store?.close();
+  }
+}
