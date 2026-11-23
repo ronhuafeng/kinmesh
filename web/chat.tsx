@@ -14,7 +14,7 @@ import { Message, REACH } from '../src/domain/communication.js';
 import { Attachment } from '../src/domain/attachments.js';
 import type { Shared } from './share.js';
 import type { WorkspaceSnapshot } from '../src/workspace/contracts.js';
-import { MutationPermission, api, request, value } from './api.js';
+import { HttpError, MutationPermission, api, request, value } from './api.js';
 import { ActionForm, AddButton, Field, InlineField } from './forms.js';
 import { AttachIcon, SendIcon, SettingsIcons } from './icons.js';
 import {
@@ -768,8 +768,24 @@ const Outgoing = z.object({
   /** The message the server made, once it has said so. */
   id: z.string().nullable(),
   failed: z.boolean(),
+  /** Why the hub refused it for good, when it did: sending again can't help. */
+  refused: z.string().nullable().default(null),
 });
 type Outgoing = z.infer<typeof Outgoing>;
+/**
+ * Why the hub refused a message, when sending it again can't succeed: a
+ * client error other than a timeout (408) or a rate limit (429).
+ */
+function refusal(cause: unknown) {
+  if (!(cause instanceof HttpError)) return null;
+  const { status } = cause;
+  if (status < 400 || status >= 500 || status === 408 || status === 429)
+    return null;
+  if (status === 403) return '你已不能在这个频道发消息。';
+  if (status === 404) return '这个频道或话题已经不在了。';
+  if (status === 400) return '内容或附件已经不能这样发了。';
+  return cause.message;
+}
 /**
  * The messages written here that the conversation doesn't show yet, sent
  * one after another so they land in the order written. What hasn't been
@@ -811,8 +827,8 @@ function useOutbox(channelPath: string, onSent: () => void) {
         });
         update(entry.key, { id: z.object({ id: z.string() }).parse(raw).id });
         sent.current();
-      } catch {
-        update(entry.key, { failed: true });
+      } catch (cause) {
+        update(entry.key, { failed: true, refused: refusal(cause) });
       }
     });
   };
@@ -823,8 +839,8 @@ function useOutbox(channelPath: string, onSent: () => void) {
       post(entry);
     },
     retry(entry: Outgoing) {
-      update(entry.key, { failed: false });
-      post({ ...entry, failed: false });
+      update(entry.key, { failed: false, refused: null });
+      post({ ...entry, failed: false, refused: null });
     },
     remove(keys: string[]) {
       setOutgoing((old) => old.filter((o) => !keys.includes(o.key)));
@@ -1249,17 +1265,19 @@ const MessageRow = memo(function MessageRow({
               // It stays where it was written, to be sent again with
               // the same key (posted once, whatever happened) or let go.
               <p className="delivery message-failed" data-tone="problem">
-                没发出去
-                <button
-                  type="button"
-                  className="link-button"
-                  disabled={!permitted}
-                  onClick={() => {
-                    act.retry(o);
-                  }}
-                >
-                  重试
-                </button>
+                {o.refused ? '没发出去：' + o.refused : '没发出去'}
+                {!o.refused && (
+                  <button
+                    type="button"
+                    className="link-button"
+                    disabled={!permitted}
+                    onClick={() => {
+                      act.retry(o);
+                    }}
+                  >
+                    重试
+                  </button>
+                )}
                 <button
                   type="button"
                   className="link-button"
@@ -1609,6 +1627,7 @@ export function Chat({
               after,
               id: null,
               failed: false,
+              refused: null,
             });
           }}
           onDone={reading.sent}
