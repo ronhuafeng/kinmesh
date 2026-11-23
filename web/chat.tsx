@@ -32,6 +32,7 @@ import { DeliveryLine } from './deliveries.js';
 import { Markdown, plainText } from './markdown.js';
 import { Composer, type Mentionable } from './composer.js';
 import { ReactButton, Reactions } from './reactions.js';
+import { EditMessage, WithdrawButton } from './message-edit.js';
 import { useOutbox, type Outgoing } from './outbox.js';
 import { ReplyOrigin, answerOnly, type ReplyView } from './replies.js';
 import type { DeliveryView } from './deliveries.js';
@@ -638,7 +639,7 @@ const sameAuthorOf = (a: ChatMessage['author'], b: ChatMessage['author']) =>
     ? b.kind === 'human' && a.humanId === b.humanId
     : b.kind === 'agent' && a.agentId === b.agentId;
 const MessageRow = memo(function MessageRow({
-  m,
+  m: given,
   o,
   newDay,
   sameAuthor,
@@ -658,6 +659,32 @@ const MessageRow = memo(function MessageRow({
   permitted,
   act,
 }: RowProps) {
+  const [editing, setEditing] = useState(false);
+  // What its author just saved shows at once, until the workspace has it.
+  const [changed, setChanged] = useState<ChatMessage | null>(null);
+  const m =
+    changed !== null &&
+    ((changed.withdrawnAt !== null && given.withdrawnAt === null) ||
+      (changed.editedAt ?? '') > (given.editedAt ?? ''))
+      ? {
+          ...given,
+          body: changed.body,
+          editedAt: changed.editedAt,
+          withdrawnAt: changed.withdrawnAt,
+        }
+      : given;
+  const saved = (value: unknown) => {
+    setChanged(Message.parse(value));
+    act.done();
+  };
+  const path = `/api/teams/${data.team.id}/channels/${m.channelId}/messages/${m.id}`;
+  const withdrawn = m.withdrawnAt !== null;
+  // Only its author changes what a message says, until it is withdrawn.
+  const mine =
+    o === undefined &&
+    !withdrawn &&
+    m.author.kind === 'human' &&
+    m.author.humanId === data.human.id;
   return (
     <>
       {newDay && (
@@ -680,7 +707,7 @@ const MessageRow = memo(function MessageRow({
         onClick={(event) => {
           if (
             event.target instanceof Element &&
-            event.target.closest('a, button')
+            event.target.closest('a, button, textarea')
           )
             return;
           act.choose(m.id);
@@ -744,10 +771,31 @@ const MessageRow = memo(function MessageRow({
               {quote.text}
             </button>
           )}
-          {m.body !== '' && (
-            <div className="message-text">
-              <MessageText text={answerOnly(m.body, reply)} />
-            </div>
+          {withdrawn ? (
+            <p className="message-removed">这条消息已撤回</p>
+          ) : editing ? (
+            <EditMessage
+              path={path}
+              body={m.body}
+              hasFiles={m.attachments.length > 0}
+              onClose={() => {
+                setEditing(false);
+              }}
+              onSaved={saved}
+            />
+          ) : (
+            m.body !== '' && (
+              <div className="message-text">
+                <MessageText text={answerOnly(m.body, reply)} />
+              </div>
+            )
+          )}
+          {m.editedAt !== null && !withdrawn && !editing && (
+            <p className="message-edited">
+              <time dateTime={m.editedAt} title={shortTime(m.editedAt)}>
+                已编辑
+              </time>
+            </p>
           )}
           {m.attachments.length > 0 && (
             <MessageFiles
@@ -763,17 +811,17 @@ const MessageRow = memo(function MessageRow({
               <time dateTime={r.removedAt}>{shortTime(r.removedAt)}</time>
             </p>
           ))}
-          {o === undefined && (
+          {o === undefined && !withdrawn && (
             <Reactions
               list={reactions}
-              path={`/api/teams/${data.team.id}/channels/${m.channelId}/messages/${m.id}`}
+              path={path}
               data={data}
               permitted={permitted}
               onDone={act.done}
             />
           )}
           {reply && <ReplyOrigin reply={reply} />}
-          {mentions.length > 0 && (
+          {mentions.length > 0 && !withdrawn && (
             <ul className="mentions" aria-label="已提及">
               {mentions.map((member) => (
                 <li
@@ -801,95 +849,115 @@ const MessageRow = memo(function MessageRow({
               ))}
             </ul>
           )}
-          {o === undefined ? (
-            <div className="message-actions">
-              {/* As written: its Markdown, never a reply's provenance. */}
-              {m.body.trim() !== '' && (
-                <CopyButton
-                  text={answerOnly(m.body, reply)}
-                  label="复制"
-                  className="quiet"
-                />
-              )}
-              {/* Its address: opening it shows this message in its channel. */}
-              <CopyButton
-                text={
-                  window.location.origin +
-                  '/?channel=' +
-                  m.channelId +
-                  '&message=' +
-                  m.id
-                }
-                label="复制链接"
-                className="quiet"
-              />
-              <ReactButton
-                path={`/api/teams/${data.team.id}/channels/${m.channelId}/messages/${m.id}`}
-                mine={reactions
-                  .filter((r) => r.humanIds.includes(data.human.id))
-                  .map((r) => r.emoji)}
-                permitted={permitted}
-                onDone={act.done}
-              />
-              <button
-                type="button"
-                className="quiet"
-                disabled={!permitted}
-                onClick={() => {
-                  act.pin(m.id, !pinned);
-                }}
-              >
-                {pinned ? '取消置顶' : '置顶'}
-              </button>
-              <button
-                type="button"
-                className="quiet"
-                onClick={() => {
-                  act.reply(m.id);
-                }}
-              >
-                回复
-              </button>
-              <button
-                type="button"
-                className="quiet"
-                onClick={() => {
-                  act.makeTask(m);
-                }}
-              >
-                转为任务
-              </button>
-            </div>
-          ) : (
-            o.failed && (
-              // It stays where it was written, to be sent again with
-              // the same key (posted once, whatever happened) or let go.
-              <p className="delivery message-failed" data-tone="problem">
-                {o.refused ? '没发出去：' + o.refused : '没发出去'}
-                {!o.refused && (
+          {o === undefined
+            ? !withdrawn &&
+              !editing && (
+                <div className="message-actions">
+                  {/* As written: its Markdown, never a reply's provenance. */}
+                  {m.body.trim() !== '' && (
+                    <CopyButton
+                      text={answerOnly(m.body, reply)}
+                      label="复制"
+                      className="quiet"
+                    />
+                  )}
+                  {/* Its address: opening it shows this message in its channel. */}
+                  <CopyButton
+                    text={
+                      window.location.origin +
+                      '/?channel=' +
+                      m.channelId +
+                      '&message=' +
+                      m.id
+                    }
+                    label="复制链接"
+                    className="quiet"
+                  />
+                  <ReactButton
+                    path={path}
+                    mine={reactions
+                      .filter((r) => r.humanIds.includes(data.human.id))
+                      .map((r) => r.emoji)}
+                    permitted={permitted}
+                    onDone={act.done}
+                  />
+                  <button
+                    type="button"
+                    className="quiet"
+                    disabled={!permitted}
+                    onClick={() => {
+                      act.pin(m.id, !pinned);
+                    }}
+                  >
+                    {pinned ? '取消置顶' : '置顶'}
+                  </button>
+                  <button
+                    type="button"
+                    className="quiet"
+                    onClick={() => {
+                      act.reply(m.id);
+                    }}
+                  >
+                    回复
+                  </button>
+                  <button
+                    type="button"
+                    className="quiet"
+                    onClick={() => {
+                      act.makeTask(m);
+                    }}
+                  >
+                    转为任务
+                  </button>
+                  {mine && (
+                    <button
+                      type="button"
+                      className="quiet"
+                      disabled={!permitted}
+                      onClick={() => {
+                        setEditing(true);
+                      }}
+                    >
+                      编辑
+                    </button>
+                  )}
+                  {mine && m.attachments.length === 0 && (
+                    <WithdrawButton
+                      path={path}
+                      permitted={permitted}
+                      onSaved={saved}
+                    />
+                  )}
+                </div>
+              )
+            : o.failed && (
+                // It stays where it was written, to be sent again with
+                // the same key (posted once, whatever happened) or let go.
+                <p className="delivery message-failed" data-tone="problem">
+                  {o.refused ? '没发出去：' + o.refused : '没发出去'}
+                  {!o.refused && (
+                    <button
+                      type="button"
+                      className="link-button"
+                      disabled={!permitted}
+                      onClick={() => {
+                        act.retry(o);
+                      }}
+                    >
+                      重试
+                    </button>
+                  )}
                   <button
                     type="button"
                     className="link-button"
-                    disabled={!permitted}
                     onClick={() => {
-                      act.retry(o);
+                      act.remove(o.key);
                     }}
                   >
-                    重试
+                    删除
                   </button>
-                )}
-                <button
-                  type="button"
-                  className="link-button"
-                  onClick={() => {
-                    act.remove(o.key);
-                  }}
-                >
-                  删除
-                </button>
-              </p>
-            )
-          )}
+                </p>
+              )}
         </div>
       </li>
     </>
@@ -1161,6 +1229,8 @@ export function Chat({
   const replySource = (id: string) => {
     const source = byId.get(id);
     if (!source) return '之前的一条消息';
+    if (source.withdrawnAt !== null)
+      return `${memberName(source.author, data)}：这条消息已撤回`;
     const flat = (
       source.body || source.attachments.map((a) => a.name).join('、')
     )
@@ -1368,6 +1438,8 @@ export function Chat({
                 ...body,
                 attachments,
                 removedAttachments: [],
+                editedAt: null,
+                withdrawnAt: null,
                 id: key,
                 channelId: channel.id,
                 position: after + 1,

@@ -3554,6 +3554,47 @@ test('a message is pinned, listed in the 置顶 view, opened from it, and unpinn
 });
 
 /**
+ * Proves a person edits their message in place (Esc leaves it as it was),
+ * it then says 已编辑, and withdrawing it, asked twice, leaves only that it
+ * was withdrawn.
+ */
+test('a person edits their message in place and withdraws it', async ({
+  page,
+  hub,
+}) => {
+  await signIn(page, hub);
+  const composer = page.getByRole('form', { name: '给团队发消息' });
+  await composer.getByLabel('消息', { exact: true }).fill('Ship on Monday');
+  await composer.getByRole('button', { name: '发送消息' }).click();
+  const list = page.getByRole('list', { name: '频道消息' });
+  const sent = list.getByRole('listitem').filter({ hasText: 'Ship on Monday' });
+  await expect(sent).not.toHaveAttribute('data-pending', /.+/);
+  // By its place, not its words: they change as it is edited.
+  const message = page.locator(
+    '#' + ((await sent.getAttribute('id')) ?? 'missing'),
+  );
+  const actions = message.locator('.message-actions');
+  await message.hover();
+  await actions.getByRole('button', { name: '编辑' }).click();
+  const field = message.getByRole('textbox', { name: '编辑消息' });
+  await expect(field).toBeFocused();
+  await field.fill('Ship on Sunday');
+  await field.press('Escape');
+  await expect(message.locator('.message-text')).toHaveText('Ship on Monday');
+  await message.hover();
+  await actions.getByRole('button', { name: '编辑' }).click();
+  await field.fill('Ship on Tuesday');
+  await field.press('Enter');
+  await expect(message.locator('.message-text')).toHaveText('Ship on Tuesday');
+  await expect(message.locator('.message-edited')).toHaveText('已编辑');
+  await message.hover();
+  await actions.getByRole('button', { name: '撤回' }).click();
+  await actions.getByRole('button', { name: '确认撤回' }).click();
+  await expect(list.getByText('这条消息已撤回')).toBeVisible();
+  await expect(list).not.toContainText('Ship on Tuesday');
+});
+
+/**
  * Proves a code block and a message each copy as written: the code without
  * the button's word, the message as its Markdown.
  */

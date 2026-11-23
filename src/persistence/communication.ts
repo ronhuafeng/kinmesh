@@ -50,6 +50,7 @@ import {
   TeamFile,
   ChannelView,
   CommunicationFact,
+  EditInput,
   Event,
   OutboxFact,
   Member,
@@ -452,6 +453,45 @@ export function communicationRepository(
     const [found] = await withMentions([row]);
     if (found === undefined) throw new DomainError('not-found');
     return found;
+  }
+  /**
+   * A message of a channel the person is in that they wrote and have not
+   * withdrawn: the only kind they may change.
+   */
+  async function ownMessage(
+    p: Principal & { kind: 'human' },
+    teamId: TeamId,
+    channelId: ChannelId,
+    messageId: MessageId,
+  ) {
+    const { participant } = await access(p, teamId, channelId, true);
+    if (participant?.state !== 'joined') throw new DomainError('not-found');
+    const found = await message(channelId, messageId);
+    if (found.author.kind !== 'human' || found.author.humanId !== p.humanId)
+      throw new DomainError('forbidden');
+    if (found.withdrawnAt !== null) throw new DomainError('conflict');
+    return found;
+  }
+  /** Changes what a message says, keeping what it said before. */
+  async function changeMessage(
+    p: Principal & { kind: 'human' },
+    found: z.infer<typeof Message>,
+    kind: 'edit' | 'withdraw',
+    body: string,
+  ) {
+    const at = now();
+    await q().insert(s.messageEdits).values({
+      messageId: found.id,
+      channelId: found.channelId,
+      kind,
+      previousBody: found.body,
+      editedBy: p.humanId,
+      editedAt: at,
+    });
+    const change =
+      kind === 'edit' ? { body, editedAt: at } : { body, withdrawnAt: at };
+    await q().update(s.messages).set(change).where(eq(s.messages.id, found.id));
+    return Message.parse({ ...found, ...change });
   }
   /** A channel's pinned messages, the latest pinned first. */
   async function pinsOf(channelId: ChannelId) {
@@ -1144,6 +1184,68 @@ export function communicationRepository(
         return pinsOf(channelId);
       });
     },
+    /**
+     * Its author says a message again, on the record: what it said before is
+     * kept, and nothing that came of it (deliveries, tasks, notifications)
+     * changes. Saying the same again changes nothing.
+     */
+    edit(
+      p: Principal,
+      teamId: TeamId,
+      channelId: ChannelId,
+      messageId: MessageId,
+      input: z.infer<typeof EditInput>,
+    ) {
+      return atomic(async () => {
+        if (p.kind !== 'human') throw new DomainError('forbidden');
+        const data = EditInput.parse(input);
+        return mutation(
+          p,
+          teamId,
+          messageId,
+          'message.edit',
+          data,
+          Message,
+          async () => {
+            const found = await ownMessage(p, teamId, channelId, messageId);
+            if (found.body === data.body) return found;
+            if (data.body === '' && found.attachments.length === 0)
+              throw new DomainError('invalid');
+            return changeMessage(p, found, 'edit', data.body);
+          },
+        );
+      });
+    },
+    /**
+     * Its author withdraws a message: its text is gone (kept only in the
+     * record of what it said), and so is it from search. A message with
+     * files is withdrawn once they are removed. Final.
+     */
+    withdraw(
+      p: Principal,
+      teamId: TeamId,
+      channelId: ChannelId,
+      messageId: MessageId,
+      input: z.infer<typeof Mutation>,
+    ) {
+      return atomic(async () => {
+        if (p.kind !== 'human') throw new DomainError('forbidden');
+        const data = Mutation.parse(input);
+        return mutation(
+          p,
+          teamId,
+          messageId,
+          'message.withdraw',
+          data,
+          Message,
+          async () => {
+            const found = await ownMessage(p, teamId, channelId, messageId);
+            if (found.attachments.length > 0) throw new DomainError('conflict');
+            return changeMessage(p, found, 'withdraw', '');
+          },
+        );
+      });
+    },
     /** A channel's pinned messages, for whoever can read it. */
     pins(p: Principal, teamId: TeamId, channelId: ChannelId) {
       return atomic(async () => {
@@ -1211,7 +1313,12 @@ export function communicationRepository(
             createdAt: s.messages.createdAt,
           })
           .from(s.messages)
-          .where(eq(s.messages.channelId, s.channels.id))
+          .where(
+            and(
+              eq(s.messages.channelId, s.channels.id),
+              isNull(s.messages.withdrawnAt),
+            ),
+          )
           .orderBy(desc(s.messages.position))
           .limit(1)
           .as('newest');

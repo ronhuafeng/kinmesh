@@ -9,6 +9,7 @@ import {
   PageInput,
   ParticipantInput,
   PinInput,
+  EditInput,
   PostInput,
   ReactInput,
   ReadInput,
@@ -248,6 +249,28 @@ export function registerCommunication(app: FastifyInstance, store: Store) {
       channelId,
       messageId,
       PinInput.parse(request.body),
+    );
+  });
+  /** Its author says a message again; the answer is the message. */
+  app.post(channel + '/messages/:messageId/edit', async (request) => {
+    const { teamId, channelId, messageId } = MessagePath.parse(request.params);
+    return store.communication.edit(
+      principal(request),
+      teamId,
+      channelId,
+      messageId,
+      EditInput.parse(request.body),
+    );
+  });
+  /** Its author withdraws a message; the answer is the message, now empty. */
+  app.post(channel + '/messages/:messageId/withdraw', async (request) => {
+    const { teamId, channelId, messageId } = MessagePath.parse(request.params);
+    return store.communication.withdraw(
+      principal(request),
+      teamId,
+      channelId,
+      messageId,
+      Mutation.parse(request.body),
     );
   });
   /** A person adds or takes back a reaction; the answer is the message's reactions. */

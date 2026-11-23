@@ -162,6 +162,13 @@
       "when": 1795430572411,
       "tag": "0022_channel_archive",
       "breakpoints": true
+    },
+    {
+      "idx": 23,
+      "version": "7",
+      "when": 1795430920770,
+      "tag": "0023_message_edits",
+      "breakpoints": true
     }
   ]
 }

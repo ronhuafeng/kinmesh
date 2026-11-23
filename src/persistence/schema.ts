@@ -421,6 +421,10 @@ export const messages = pgTable(
     body: text('body').notNull(),
     sourceMessageId: text('source_message_id'),
     sourceEventId: text('source_event_id'),
+    /** When its author last changed the body; null if never. */
+    editedAt: text('edited_at'),
+    /** When its author withdrew it, and the body was emptied; null if not. */
+    withdrawnAt: text('withdrawn_at'),
   },
   (t) => [
     foreignKey({
@@ -992,6 +996,32 @@ export const messageReactions = pgTable(
       'message_reaction_emoji',
       sql`${t.emoji} IN ('👍','👀','✅','🎉','❤️','😄')`,
     ),
+  ],
+);
+/**
+ * What a message said before its author edited or withdrew it, one row per
+ * change, kept as it was written.
+ */
+export const messageEdits = pgTable(
+  'message_edits',
+  {
+    position: integer('position').primaryKey().generatedByDefaultAsIdentity(),
+    messageId: text('message_id').notNull(),
+    channelId: text('channel_id').notNull(),
+    kind: text('kind').notNull(),
+    previousBody: text('previous_body').notNull(),
+    editedBy: text('edited_by')
+      .notNull()
+      .references(() => humans.id),
+    editedAt: text('edited_at').notNull(),
+  },
+  (t) => [
+    foreignKey({
+      columns: [t.messageId, t.channelId],
+      foreignColumns: [messages.id, messages.channelId],
+    }),
+    index('message_edit_message').on(t.messageId, t.position),
+    check('message_edit_kind', sql`${t.kind} IN ('edit', 'withdraw')`),
   ],
 );
 /** A message pinned in its channel: by whom and when, until unpinned. */

@@ -42,6 +42,17 @@ await test('communication SQL constraints and immutable facts prevent cross-chan
     ]) {
       await assert.rejects(() => raw.exec('DELETE FROM ' + table));
     }
+    // Who said it, where and when never change; only the text, by its
+    // author's edit, and a withdrawn message not even that.
+    await assert.rejects(() =>
+      raw.prepare('UPDATE messages SET author=?').run('{}'),
+    );
+    await assert.rejects(() =>
+      raw.prepare('UPDATE messages SET channel_id=?').run(other.id),
+    );
+    await raw
+      .prepare('UPDATE messages SET withdrawn_at=?')
+      .run(new Date().toISOString());
     await assert.rejects(() =>
       raw.prepare('UPDATE messages SET body=?').run('rewrite'),
     );

@@ -285,8 +285,13 @@ fallback.
   and carries a line only for an exception (failed, stopped, shortened); what ran it
   lives with the run on the agent's page. A message's actions, **回应** (six reactions
   side by side, yours ticked), **置顶** (or **取消置顶**), **复制** (its text as written),
-  **复制链接** (its address), **回复** and **转为任务**, show on hover, and on touch once the
-  message is tapped; a code block offers **复制** on its corner the same way. 回复 puts
+  **复制链接** (its address), **回复** and **转为任务**, and on your own messages **编辑**
+  and **撤回**, show on hover, and on touch once the message is tapped; a code block
+  offers **复制** on its corner the same way. 编辑 turns the text into a field in place
+  (Enter or 保存 saves, Esc or 取消 leaves it as it was); an edited message says
+  **已编辑** small under its text, with when on hover. 撤回 asks once more (**确认撤回**)
+  and is offered once the message's files are removed; a withdrawn message keeps its
+  place and author and reads "这条消息已撤回", with no actions, reactions or mentions. 回复 puts
   the message above the field as the same quiet quote (× lets it go); the sent message
   quotes it, unless it is the very next message, and the quote opens it. Under a
   message its reactions show as pills, each with how many, yours in the primary tint;
