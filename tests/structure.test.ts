@@ -80,13 +80,41 @@ await test('a UI file gives one component or hook; the shell holds no state', ()
     }).join(),
     /gives 2 components or hooks/,
   );
-  assert.match(
+});
+
+await test('a composition root only wires modules together', () => {
+  // Composing: calls, single-expression callbacks, and a choice between
+  // single statements.
+  assert.deepEqual(
     check({
-      'web/app.tsx':
-        "import { useState } from 'react'; export function App() { const [a] = useState(0); return a; }",
-    }).join(),
-    /holds state/,
+      'src/server/app.ts':
+        "import { a } from './a.js'; export async function createApp(c) { const app = await a(c, () => c.ready); if (!app) return null; register(app); return app; }",
+      'src/server/a.ts': 'export const a = 1;',
+    }),
+    [],
   );
+  const refused = (source: string) => {
+    assert.match(
+      check({ 'src/inbox/main.ts': source }).join(),
+      /only wires modules together/,
+      source,
+    );
+  };
+  // State, data, requests and behaviour of its own, each refused.
+  refused('let started = false; void started;');
+  refused('export const seen = new Set();');
+  refused('setInterval(() => undefined, 1000);');
+  refused(
+    "import { useState } from 'react'; export function App() { return useState(0); }",
+  );
+  refused('export function open() { return q().select(); }');
+  refused("export function wire(app) { app.get('/x', h); }");
+  refused("export function wire(app) { app.addHook('onClose', h); }");
+  refused('function helper() { return 1; } export const x = helper();');
+  refused('export const run = () => { return 1; };');
+  refused('try { start(); } catch { stop(); }');
+  refused('for (const s of signals) listen(s);');
+  refused('if (ready) { start(); }');
 });
 
 await test('a repository writes one connected set of tables; routes serve one resource', () => {

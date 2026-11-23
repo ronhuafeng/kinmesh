@@ -1,0 +1,106 @@
+import { loadWorkerConfig } from '../runtime/worker-config.js';
+import { runWorker } from './worker.js';
+import { t3Factory } from './t3.js';
+import { openStore, type Store } from '../persistence/store.js';
+import { once } from 'node:events';
+import {
+  DatabaseIdentity,
+  sameDatabase,
+  Initialize,
+  Run,
+  WORKER_SHUTDOWN_MS,
+  type WorkerEvent,
+} from '../runtime/worker-lifecycle.js';
+import { reportFailure } from '../diagnostics.js';
+
+/**
+ * The Inbox worker's process: its configuration (from the supervising hub,
+ * or a file), its store, the command it was given, and a clean stop on a
+ * signal or when the hub that supervises it goes away.
+ */
+export async function runInbox() {
+  let store: Store | undefined;
+  const stopping = new AbortController();
+  const supervised = process.send !== undefined;
+  let orphanDeadline: NodeJS.Timeout | undefined;
+  for (const signal of ['SIGTERM', 'SIGINT'])
+    process.once(signal, () => {
+      stopping.abort();
+    });
+  if (supervised)
+    process.once('disconnect', () => {
+      stopping.abort();
+      orphanDeadline = setTimeout(() => {
+        process.exit(1);
+      }, WORKER_SHUTDOWN_MS);
+      orphanDeadline.unref();
+    });
+  if (supervised && !process.connected) stopping.abort();
+  async function notify(message: WorkerEvent) {
+    await new Promise<void>((done, reject) => {
+      if (!process.send || !process.connected) {
+        reject(new Error('Parent unavailable'));
+        return;
+      }
+      process.send(message, (error: Error | null) => {
+        if (error) reject(new Error('Parent unavailable'));
+        else done();
+      });
+    });
+  }
+  try {
+    const initialize = supervised
+      ? Initialize.parse(
+          (await once(process, 'message', { signal: stopping.signal }))[0],
+        )
+      : undefined;
+    const path = process.env.KINMESH_INBOX_CONFIG;
+    if (!initialize && !path) throw new Error('Missing configuration');
+    const config = initialize?.config ?? loadWorkerConfig(path ?? '');
+    stopping.signal.throwIfAborted();
+    store = await openStore(config.database);
+    if (initialize) {
+      const identity = DatabaseIdentity.parse(await store.identity());
+      if (!sameDatabase(identity, initialize.identity))
+        throw new Error('Database changed');
+      // Install the command listener before notifying the parent; no claims before HTTP bind.
+      const [run] = await Promise.all([
+        once(process, 'message', { signal: stopping.signal }),
+        notify({ type: 'inbox.prepared', identity }),
+      ]);
+      Run.parse(run[0]);
+      stopping.signal.throwIfAborted();
+    }
+    if (process.argv[2] === 'status')
+      console.info(JSON.stringify(await store.inbox.status()));
+    else if (process.argv[2] === 'resume' && process.argv[3]) {
+      await store.inbox.resume(process.argv[3]);
+      console.info('Inbox delivery resumed with its existing intent.');
+    } else if (process.argv.length === 2) {
+      console.info('Kinmesh Inbox worker ready.');
+      await runWorker(
+        store,
+        config,
+        t3Factory(store),
+        stopping.signal,
+        initialize
+          ? () =>
+              notify({ type: 'inbox.running', identity: initialize.identity })
+          : undefined,
+      );
+      console.info('Kinmesh Inbox worker stopped.');
+    } else throw new Error('Invalid command');
+  } catch (error) {
+    if (!stopping.signal.aborted) {
+      console.error(
+        'Inbox worker failed. Check private configuration, credentials and database availability.',
+      );
+      reportFailure('inbox_worker_failed', error);
+      process.exitCode = 1;
+    }
+  } finally {
+    await store?.close();
+    clearTimeout(orphanDeadline);
+    if (supervised && process.connected) process.disconnect?.();
+  }
+}
