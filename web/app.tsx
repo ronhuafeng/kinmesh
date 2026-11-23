@@ -11,11 +11,10 @@ import {
 import { flushSync } from 'react-dom';
 import { z } from 'zod';
 import * as Tabs from '@radix-ui/react-tabs';
-import { ChannelId, TaskId } from '../src/domain/contracts.js';
 import { PageRef, Revisions, pageParam } from '../src/workspace/events.js';
 import { LiveContext, takeStream, useRevisions } from './live.js';
-import { Agent, Author } from '../src/domain/agents.js';
-import { MessageId, TeamFile, TopicId } from '../src/domain/communication.js';
+import { Author } from '../src/domain/agents.js';
+import { TeamFile } from '../src/domain/communication.js';
 import { WorkspaceSnapshot } from '../src/workspace/contracts.js';
 import { Auth, SIGNED_OUT } from './auth.js';
 import { api, HttpError, MutationPermission, Offline } from './api.js';
@@ -29,7 +28,6 @@ import {
   draftFromMessage,
   humanAsk,
   keepDraft,
-  keptDraft,
   NewTaskPage,
   statusLabel,
   TaskPage,
@@ -38,6 +36,15 @@ import type { BoardFilter, TaskDraft } from './tasks.js';
 import { joinedAgents, memberName, otherPeople } from './names.js';
 import { plainText } from './markdown.js';
 import { Broken, reloadOnce } from './boundary.js';
+import {
+  readRoute,
+  routeUrl,
+  samePlace,
+  type Focus,
+  type Tab,
+  type Target,
+  type View,
+} from './route.js';
 import {
   ChannelIcon,
   Avatar,
@@ -75,15 +82,6 @@ import {
   SidebarIcon,
 } from './icons.js';
 import type { Command } from './palette.js';
-/** Tabs, plus one agent's own page reached from them. */
-type View = 'chat' | 'board' | 'team' | 'files' | 'agent';
-type Tab = Exclude<View, 'agent'>;
-type Focus =
-  | { kind: 'task' | 'worker'; id: string }
-  | { kind: 'inbox' | 'search' }
-  /** A settings section by id; '' is the map (a phone's list). */
-  | { kind: 'settings'; section: string }
-  | null;
 /** True when a refresh moved at least one visible task to another status. */
 function statusesMoved(
   before: WorkspaceSnapshot | null,
@@ -191,73 +189,11 @@ function animate(update: () => void) {
     flushSync(update);
   });
 }
-/**
- * Where you are, as the address says it, so a reload or a shared link opens
- * the same place: the channel and topic, the view, an agent's page, a task
- * (or "new"), the Inbox, Settings, or a hand-run worker.
- */
-function readRoute() {
-  const query = new URLSearchParams(window.location.search);
-  const valid =
-    (parse: { safeParse: (v: unknown) => { success: boolean } }) =>
-    (key: string) => {
-      const value = query.get(key);
-      return value !== null && parse.safeParse(value).success ? value : '';
-    };
-  const agentParam = valid(Agent.shape.id);
-  const channel = valid(ChannelId)('channel');
-  const topic = valid(TopicId)('topic');
-  const worker = agentParam('worker');
-  const task = query.get('task');
-  let agent = agentParam('agent');
-  const asked = query.get('view');
-  let view: View =
-    asked === 'board' || asked === 'team' || asked === 'files' ? asked : 'chat';
-  let focus: Focus = null;
-  let draft: TaskDraft | null = null;
-  if (task === 'new') {
-    view = 'board';
-    draft = keptDraft()?.draft ?? blankDraft(topic || null);
-  } else if (task !== null && TaskId.safeParse(task).success) {
-    view = 'board';
-    focus = { kind: 'task', id: task };
-  } else if (worker) {
-    view = 'agent';
-    agent = worker;
-    focus = { kind: 'worker', id: worker };
-  } else if (query.has('inbox')) focus = { kind: 'inbox' };
-  else if (query.has('settings'))
-    focus = { kind: 'settings', section: query.get('settings') ?? '' };
-  else if (query.has('search')) focus = { kind: 'search' };
-  if (agent && !worker) view = 'agent';
-  // A message the channel is opened at, while that channel is open.
-  const message = MessageId.safeParse(query.get('message'));
-  const target =
-    channel && message.success && view === 'chat' && focus === null
-      ? { channel, topic, id: message.data }
-      : null;
-  // How the board is narrowed: whose tasks, which topic's.
-  const who = query.get('who') ?? '';
-  const about = valid(TopicId)('about');
-  const boardFilter: BoardFilter = {
-    who:
-      who === 'mine' || /^(human|agent):[0-9a-f-]{36}$/.test(who) ? who : 'all',
-    topic: about,
-  };
-  return { channel, topic, view, agent, focus, draft, target, boardFilter };
-}
-/** A message a conversation is opened at, and where. */
-interface Target {
-  channel: string;
-  topic: string;
-  id: string;
-}
 /** A notification clicked while the workspace is open (`sw.js`). */
 const Opened = z.strictObject({
   kind: z.literal('open'),
   url: z.string().startsWith('/'),
 });
-/** The address for a place; the inverse of readRoute. */
 /** An event's JSON, or undefined when it isn't JSON (so it reads as unreadable). */
 function parsed(text: string): unknown {
   try {
@@ -265,57 +201,6 @@ function parsed(text: string): unknown {
   } catch {
     return undefined;
   }
-}
-function routeUrl(place: {
-  channel: string;
-  topic: string;
-  view: View;
-  agent: string;
-  focus: Focus;
-  newTask: boolean;
-  target: Target | null;
-  boardFilter: BoardFilter;
-}) {
-  const query = new URLSearchParams();
-  if (place.channel) query.set('channel', place.channel);
-  if (place.topic) query.set('topic', place.topic);
-  if (place.focus?.kind === 'task') query.set('task', place.focus.id);
-  else if (place.newTask) query.set('task', 'new');
-  else if (place.focus?.kind === 'worker') query.set('worker', place.focus.id);
-  else if (place.focus?.kind === 'inbox') query.set('inbox', '');
-  else if (place.focus?.kind === 'settings')
-    query.set('settings', place.focus.section);
-  else if (place.focus?.kind === 'search') query.set('search', '');
-  else if (place.view === 'agent' && place.agent)
-    query.set('agent', place.agent);
-  else if (
-    place.view === 'board' ||
-    place.view === 'team' ||
-    place.view === 'files'
-  ) {
-    query.set('view', place.view);
-    if (place.view === 'board') {
-      if (place.boardFilter.who !== 'all')
-        query.set('who', place.boardFilter.who);
-      if (place.boardFilter.topic) query.set('about', place.boardFilter.topic);
-    }
-  } else if (
-    place.target?.channel === place.channel &&
-    place.target.topic === place.topic &&
-    place.view === 'chat'
-  )
-    query.set('message', place.target.id);
-  const search = query.toString().replace(/=(?=&|$)/g, '');
-  return '/' + (search ? '?' + search : '');
-}
-/** Two addresses are the same place when only the topic differs. */
-function samePlace(a: string, b: string) {
-  const strip = (url: string) => {
-    const parsed = new URL(url, window.location.origin);
-    parsed.searchParams.delete('topic');
-    return parsed.search;
-  };
-  return strip(a) === strip(b);
 }
 export function App() {
   const [initial] = useState(readRoute);
@@ -883,6 +768,32 @@ export function App() {
       window.removeEventListener('keydown', onKey);
     };
   }, []);
+  // Pictures by member ID: agents' set here, people's from Feishu. One map
+  // while they are unchanged (the workspace keeps unchanged parts the same
+  // objects), so a toast or a status change redraws no Avatar.
+  const teamId = data?.team.id;
+  const avatars = data?.avatars;
+  const pictured = data?.people;
+  const avatarImages = useMemo(
+    () =>
+      new Map([
+        ...(avatars ?? []).map((a): [string, string] => [
+          a.agentId,
+          `/api/teams/${teamId ?? ''}/agents/${a.agentId}/avatar?v=${encodeURIComponent(a.updatedAt)}`,
+        ]),
+        ...(pictured ?? []).flatMap((p): [string, string][] =>
+          p.avatar === null
+            ? []
+            : [
+                [
+                  p.id,
+                  `/api/teams/${teamId ?? ''}/people/${p.id}/avatar?v=${encodeURIComponent(p.avatar)}`,
+                ],
+              ],
+        ),
+      ]),
+    [teamId, avatars, pictured],
+  );
   if (unreadable) return <Broken />;
   if (status === 'signedout') return <Auth denied={denied} />;
   if (!data) {
@@ -946,23 +857,6 @@ export function App() {
     focus?.kind === 'worker'
       ? data.agents.find((a) => a.id === focus.id)
       : undefined;
-  // Pictures by member ID: agents' set here, people's from Feishu.
-  const avatarImages = new Map([
-    ...data.avatars.map((a): [string, string] => [
-      a.agentId,
-      `/api/teams/${data.team.id}/agents/${a.agentId}/avatar?v=${encodeURIComponent(a.updatedAt)}`,
-    ]),
-    ...data.people.flatMap((p): [string, string][] =>
-      p.avatar === null
-        ? []
-        : [
-            [
-              p.id,
-              `/api/teams/${data.team.id}/people/${p.id}/avatar?v=${encodeURIComponent(p.avatar)}`,
-            ],
-          ],
-    ),
-  ]);
   // An open page: a task or a new one (on the board), or the Inbox,
   // Settings or a hand-run worker (on no tab).
   // A task just created is a page already, while its first refresh arrives.
