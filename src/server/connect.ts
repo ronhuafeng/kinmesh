@@ -134,8 +134,25 @@ export function registerConnect(
         stop: AbortController;
         /** Takes the approval's callback URL, pasted by the person. */
         submit?: (url: string) => boolean;
+        /** Who started it: only they are shown its approval page again. */
+        by: string;
+        /** T3's approval page, once T3 has named it. */
+        url?: string;
       }
     | undefined;
+  /** A principal as the one who started a sign-in. */
+  const starter = (p: Principal) =>
+    p.kind === 'human' ? 'human:' + p.humanId : 'agent:' + p.agentId;
+  /**
+   * The approval page of the sign-in under way, for the person who started
+   * it, so a reload or another of their tabs can still finish it.
+   */
+  const approvalFor = (caller: Principal, teamId: TeamId) =>
+    flow?.teamId === teamId &&
+    flow.state === 'waiting' &&
+    flow.by === starter(caller)
+      ? (flow.url ?? null)
+      : null;
   // A person's sign-in; the deployment's session is kept apart from it.
   const credentialFile = t3AuthFile(hub.directory);
   const sessions = (endpoint: string) => ({
@@ -177,6 +194,7 @@ export function registerConnect(
         expired: credential !== null && signInEnded(credential),
       },
       signIn: flow?.teamId === teamId ? flow.state : null,
+      authorizationUrl: approvalFor(caller, teamId),
       pasteCallback: hub.pasteCallback,
       provisioned: hub.provisioned,
       // A pairing code can be had here for the connected T3.
@@ -211,6 +229,7 @@ export function registerConnect(
           : null,
       pasteCallback: hub.pasteCallback,
       signIn: flow?.teamId === teamId ? flow.state : null,
+      authorizationUrl: approvalFor(caller, teamId),
     };
   };
   app.get('/api/teams/:teamId/t3', (request, reply) => {
@@ -275,6 +294,7 @@ export function registerConnect(
       teamId,
       state: 'waiting',
       stop,
+      by: starter(p),
     };
     flow = current;
     changes.emit();
@@ -299,7 +319,9 @@ export function registerConnect(
       },
       redirect(location, s) {
         s.throwIfAborted();
+        current.url = location.href;
         shown(location.href);
+        changes.emit();
         return Promise.resolve();
       },
     };

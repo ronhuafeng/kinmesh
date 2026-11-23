@@ -1268,6 +1268,55 @@ test('an agent whose channel invite fails still opens, with the way into the cha
   ).toHaveCount(0);
 });
 
+/**
+ * Proves the T3 step recovers: a failed read says so and is read again by
+ * itself, and a sign-in under way is still there to finish after a reload.
+ */
+test('the T3 step says when it can’t read T3, recovers, and keeps a sign-in under way across a reload', async ({
+  page,
+  hub,
+}) => {
+  await signIn(page, hub);
+  await register(page, 'Ada', 'developer');
+  // MOCK T3's status only: first unreadable, then a sign-in under way.
+  let unreadable = true;
+  await page.route('**/api/teams/*/t3', (route) =>
+    unreadable
+      ? route.fulfill({ status: 500, json: {} })
+      : route.fulfill({
+          json: {
+            connection: null,
+            signIn: 'waiting',
+            authorizationUrl: 'https://t3.example.com/authorize?state=x',
+            pasteCallback: true,
+            provisioned: false,
+            revision: 'waiting',
+          },
+        }),
+  );
+  await page.route('**/api/teams/*/t3/local', (route) =>
+    route.fulfill({ json: { endpoint: null } }),
+  );
+  await agentRow(page, 'Ada').click();
+  const agent = page.getByRole('region', { name: 'Ada', exact: true });
+  await expect(agent).toContainText('暂时读不到 T3 的状态');
+  // Read again by itself once T3 answers, it shows the approval this
+  // person started.
+  unreadable = false;
+  const approve = agent.getByRole('link', { name: '在 T3 中批准 ↗' });
+  await expect(approve).toHaveAttribute(
+    'href',
+    'https://t3.example.com/authorize?state=x',
+  );
+  // The agent's page is open again by its address.
+  await page.reload();
+  await expect(
+    page
+      .getByRole('region', { name: 'Ada', exact: true })
+      .getByRole('link', { name: '在 T3 中批准 ↗' }),
+  ).toBeVisible();
+});
+
 test('a T3 on another computer: the person pastes the address its approval opened', async ({
   page,
   hub,

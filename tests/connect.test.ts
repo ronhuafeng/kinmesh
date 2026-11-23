@@ -188,6 +188,24 @@ await test('a person connects T3 from the browser; the credential is saved priva
       authorizationUrl: 'https://t3.test/authorize?state=fixture',
     });
     assert.equal((await status()).signIn, 'waiting');
+    // Its approval page stays with the person who started it, so a reload
+    // can finish it; nobody else is handed it.
+    const approval = async (cookies: Record<string, string>) =>
+      z
+        .object({ authorizationUrl: z.string().nullable() })
+        .parse(
+          (
+            await f.app.inject({ method: 'GET', url: f.team + '/t3', cookies })
+          ).json<unknown>(),
+        ).authorizationUrl;
+    assert.equal(
+      await approval(f.cookies),
+      'https://t3.test/authorize?state=fixture',
+    );
+    assert.equal(
+      await approval(await signInAs(f.app, 'colleague@example.com')),
+      null,
+    );
     // One sign-in at a time.
     assert.equal(
       (
@@ -801,6 +819,7 @@ await test('from a week before T3’s sign-in ends every person is asked to reco
         fallback: null,
         pasteCallback: false,
         signIn: null,
+        authorizationUrl: null,
       });
     assert.equal(await expired(), false);
     // Ended: still asked, and T3 reads as needing a new sign-in.
