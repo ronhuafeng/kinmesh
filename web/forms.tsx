@@ -124,6 +124,9 @@ export function ActionForm({
           action.paused();
           return;
         }
+        // What the confirm button can't send yet, a key can't either: a
+        // message waits for the files still uploading.
+        if (!ready) return;
         const form = event.currentTarget;
         try {
           // Include the clicked button so one form can carry several decisions.
