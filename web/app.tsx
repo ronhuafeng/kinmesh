@@ -378,6 +378,10 @@ export function App() {
   } | null>(null);
   // In-page notices shown already, so a refresh doesn't show them again.
   const noticed = useRef(new Set<string>());
+  // Notices still to show, one after another.
+  const [queuedNotices, setQueuedNotices] = useState<
+    { id: string; title: string; body: string; url: string }[]
+  >([]);
   useEffect(() => {
     if (!toast) return;
     const timer = setTimeout(
@@ -777,16 +781,23 @@ export function App() {
   // instead of a notification; each once.
   const notices = data?.notices;
   useEffect(() => {
-    const fresh = notices?.find((n) => !noticed.current.has(n.id));
-    if (!fresh) return;
-    for (const n of notices ?? []) noticed.current.add(n.id);
+    const fresh = (notices ?? []).filter((n) => !noticed.current.has(n.id));
+    if (fresh.length === 0) return;
+    for (const n of fresh) noticed.current.add(n.id);
+    setQueuedNotices((old) => [...old, ...fresh]);
+  }, [notices]);
+  // The next notice shows once the one before it has gone.
+  useEffect(() => {
+    const [next, ...rest] = queuedNotices;
+    if (toast || !next) return;
+    setQueuedNotices(rest);
     setToast({
       id: Date.now(),
-      message: fresh.title,
-      detail: fresh.body,
-      url: fresh.url,
+      message: next.title,
+      detail: next.body,
+      url: next.url,
     });
-  }, [notices]);
+  }, [toast, queuedNotices]);
   // ⌘, (Ctrl+, elsewhere) opens settings, as in any Mac app.
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
@@ -2000,30 +2011,33 @@ export function App() {
                   </button>
                 </nav>
               )}
-              {toast &&
-                (toast.url ? (
-                  // A notice opens what it is about.
-                  <button
-                    type="button"
-                    className="toast toast-notice"
-                    key={toast.id}
-                    role="status"
-                    onClick={() => {
-                      const url = toast.url;
-                      setToast(null);
-                      if (!url) return;
-                      window.history.pushState(null, '', url);
-                      window.dispatchEvent(new PopStateEvent('popstate'));
-                    }}
-                  >
-                    <strong>{toast.message}</strong>
-                    {toast.detail && <span>{toast.detail}</span>}
-                  </button>
-                ) : (
-                  <div className="toast" key={toast.id} role="status">
-                    {toast.message}
-                  </div>
-                ))}
+              {/* One live region, always there, says each toast once; a
+                  notice inside it stays a button that opens what it is
+                  about. */}
+              <div className="toast-region" role="status">
+                {toast &&
+                  (toast.url ? (
+                    <button
+                      type="button"
+                      className="toast toast-notice"
+                      key={toast.id}
+                      onClick={() => {
+                        const url = toast.url;
+                        setToast(null);
+                        if (!url) return;
+                        window.history.pushState(null, '', url);
+                        window.dispatchEvent(new PopStateEvent('popstate'));
+                      }}
+                    >
+                      <strong>{toast.message}</strong>
+                      {toast.detail && <span>{toast.detail}</span>}
+                    </button>
+                  ) : (
+                    <div className="toast" key={toast.id}>
+                      {toast.message}
+                    </div>
+                  ))}
+              </div>
             </div>
           </Offline>
         </AvatarImages.Provider>
