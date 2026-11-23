@@ -386,7 +386,10 @@ fallback.
   title, then one line — what it asks of you — beside its owner/reviewer faces; a
   decision or rework is marked by an orange or red rule on its left. A new task
   starts from the dashed `+` card at the end of 待开始. Below 1024 px the stages are a
-  segmented control.
+  segmented control. Above the columns the board narrows: 全部 / 我的 (yours: you own,
+  review or decide on it), then a picker of owners and one of topics, each only when
+  the board holds more than one to choose; the address keeps the choice. 已完成 reaches
+  back past the newest hundred tasks with **更早的任务**.
 - **Task page** (new or existing, one layout): lifecycle bar — passed steps neutral
   grey, the current one in its board column's colour, what is ahead a hairline; large
   title; the description, unless it only repeats the title; on the left, in order of

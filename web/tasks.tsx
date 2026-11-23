@@ -10,12 +10,12 @@ import {
   TaskExecution,
   TaskResult,
 } from '../src/domain/tasks.js';
-import type { Task } from '../src/domain/tasks.js';
-import { Member, memberKey } from '../src/domain/communication.js';
+import { Task } from '../src/domain/tasks.js';
+import { Member, memberKey, pageOf } from '../src/domain/communication.js';
 import type { Message } from '../src/domain/communication.js';
 import type { WorkspaceSnapshot } from '../src/workspace/contracts.js';
 import { threadLink } from '../src/workspace/links.js';
-import { everyPage, Offline, value } from './api.js';
+import { api, everyPage, Offline, value } from './api.js';
 import { ActionForm, Field, Notice, SubmitGroup } from './forms.js';
 import { DeliveryLine, taskDeliveries } from './deliveries.js';
 import { joinedAgents, memberName, otherPeople, someoneOf } from './names.js';
@@ -1266,19 +1266,110 @@ export function draftFromMessage(
  * counts (the cards do). A new task starts as the last card of
  * Proposed; what needs you is gathered in the Inbox.
  */
+/** Whose tasks and which topic's the board shows; the address keeps it. */
+export interface BoardFilter {
+  /** 'all', 'mine', or one member's key (`agent:<id>`, `human:<id>`). */
+  who: string;
+  /** '' for every topic, else one topic's ID. */
+  topic: string;
+}
+export const ALL_TASKS: BoardFilter = { who: 'all', topic: '' };
+/** Whether a task is yours: you own it, review it, or decide on it. */
+function yours(task: Task, me: string) {
+  const owner = task.state.owner;
+  const reviewer = 'reviewer' in task.state ? task.state.reviewer : null;
+  return (
+    task.acceptorHumanId === me ||
+    (owner?.kind === 'human' && owner.id === me) ||
+    (reviewer?.kind === 'human' && reviewer.id === me)
+  );
+}
+/**
+ * The channel's tasks older than the board's newest (`data.tasks`), read a
+ * page at a time from the cursor each page gives.
+ */
+function useOlderTasks(path: string, first: string | null) {
+  const [state, setState] = useState<{
+    path: string;
+    items: Task[];
+    cursor: string | null | undefined;
+  }>({ path, items: [], cursor: undefined });
+  const current =
+    state.path === path
+      ? state
+      : { path, items: [] as Task[], cursor: undefined };
+  const cursor = current.cursor === undefined ? first : current.cursor;
+  const [busy, setBusy] = useState(false);
+  const load = () => {
+    if (cursor === null || busy) return;
+    setBusy(true);
+    void api(path + '?limit=100&cursor=' + encodeURIComponent(cursor))
+      .then((raw) => {
+        const page = pageOf(Task).parse(raw);
+        setState((old) => {
+          const kept = old.path === path ? old.items : [];
+          const ids = new Set(kept.map((t) => t.id));
+          return {
+            path,
+            items: [...kept, ...page.items.filter((t) => !ids.has(t.id))],
+            cursor: page.nextCursor,
+          };
+        });
+      })
+      .catch(() => undefined)
+      .finally(() => {
+        setBusy(false);
+      });
+  };
+  return { items: current.items, more: cursor !== null, load, busy };
+}
 export function Board({
   data,
   openTask,
   onNewTask,
   openId = null,
+  filter = ALL_TASKS,
+  onFilter = () => undefined,
 }: {
   data: WorkspaceSnapshot;
   openTask: (id: string) => void;
   onNewTask: () => void;
   /** The task whose page is open, beside the board on a wide tablet. */
   openId?: string | null;
+  filter?: BoardFilter;
+  onFilter?: (filter: BoardFilter) => void;
 }) {
-  const items = data.tasks.items;
+  const older = useOlderTasks(
+    `/api/teams/${data.team.id}/channels/${data.channel?.id ?? ''}/tasks`,
+    data.tasks.nextCursor,
+  );
+  const newest = new Set(data.tasks.items.map((t) => t.id));
+  const every = [
+    ...data.tasks.items,
+    ...older.items.filter((t) => !newest.has(t.id)),
+  ];
+  // Who and which topic the board can be narrowed to: only those it holds.
+  const owners = new Map<string, string>();
+  for (const t of every)
+    if (t.state.owner)
+      owners.set(memberKey(t.state.owner), memberName(t.state.owner, data));
+  const topics = [
+    ...new Set(every.flatMap((t) => (t.topicId ? [t.topicId] : []))),
+  ].map((id) => ({
+    id,
+    title: data.topics.items.find((topic) => topic.id === id)?.title ?? '话题',
+  }));
+  // A topic of another channel (kept from before) narrows nothing here.
+  const topic = topics.some((t) => t.id === filter.topic) ? filter.topic : '';
+  const items = every.filter(
+    (t) =>
+      (filter.who === 'all' ||
+        (filter.who === 'mine'
+          ? yours(t, data.human.id)
+          : t.state.owner !== null &&
+            memberKey(t.state.owner) === filter.who)) &&
+      (topic === '' || t.topicId === topic),
+  );
   const [showCancelled, setShowCancelled] = useState(false);
   const cancelled = items.filter((t) => t.state.status === 'cancelled');
   const byStage = new Map<StageId, Task[]>(stages.map((s) => [s.id, []]));
@@ -1296,6 +1387,59 @@ export function Board({
   }, [openStage]);
   return (
     <section aria-label="任务看板">
+      <div className="board-filter" role="group" aria-label="筛选任务">
+        <div className="segmented" role="group" aria-label="谁的任务">
+          {(
+            [
+              ['all', '全部'],
+              ['mine', '我的'],
+            ] as const
+          ).map(([who, label]) => (
+            <button
+              key={who}
+              type="button"
+              aria-pressed={filter.who === who}
+              onClick={() => {
+                onFilter({ ...filter, who });
+              }}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+        {owners.size > 1 && (
+          <select
+            aria-label="负责人"
+            value={owners.has(filter.who) ? filter.who : ''}
+            onChange={(event) => {
+              onFilter({ ...filter, who: event.currentTarget.value || 'all' });
+            }}
+          >
+            <option value="">所有负责人</option>
+            {[...owners].map(([key, name]) => (
+              <option key={key} value={key}>
+                {name}
+              </option>
+            ))}
+          </select>
+        )}
+        {topics.length > 0 && (
+          <select
+            aria-label="话题"
+            value={topic}
+            onChange={(event) => {
+              onFilter({ ...filter, topic: event.currentTarget.value });
+            }}
+          >
+            <option value="">所有话题</option>
+            {topics.map((t) => (
+              <option key={t.id} value={t.id}>
+                {t.title}
+              </option>
+            ))}
+          </select>
+        )}
+      </div>
       {/* A narrow board shows one stage at a time. */}
       <div className="column-switcher" role="group" aria-label="阶段">
         {stages.map((s) => (
@@ -1358,6 +1502,17 @@ export function Board({
                   }}
                 >
                   {showCancelled ? '隐藏已取消' : '显示已取消'}
+                </button>
+              )}
+              {/* Finished work goes back as far as the channel does. */}
+              {s.id === 'done' && older.more && (
+                <button
+                  type="button"
+                  className="quiet column-toggle"
+                  disabled={older.busy}
+                  onClick={older.load}
+                >
+                  更早的任务
                 </button>
               )}
             </section>
