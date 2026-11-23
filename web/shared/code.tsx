@@ -26,12 +26,11 @@ const drawn = new Map<string, Root | null>();
  */
 export function CodeBlock({ lang, source }: { lang: string; source: string }) {
   const key = lang + '\n' + source;
-  const [tree, setTree] = useState<Root | null>(() => drawn.get(key) ?? null);
+  // The highlighted tree lives in `drawn`; this only draws it once there.
+  const [, setReady] = useState<string | null>(null);
+  const tree = drawn.get(key) ?? null;
   useEffect(() => {
-    if (drawn.has(key)) {
-      setTree(drawn.get(key) ?? null);
-      return;
-    }
+    if (drawn.has(key)) return;
     let live = true;
     void highlighter()
       .then((low) =>
@@ -40,7 +39,7 @@ export function CodeBlock({ lang, source }: { lang: string; source: string }) {
       .then(
         (next) => {
           drawn.set(key, next);
-          if (live) setTree(next);
+          if (live) setReady(key);
         },
         () => undefined,
       );

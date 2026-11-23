@@ -54,6 +54,11 @@ export function useOutbox(channelPath: string, onSent: () => void) {
           .map((o) => ({ ...o, failed: true }))
       : [];
   });
+  // Which message each one sent became, once it arrived: it keeps the
+  // place, and the element, of what was shown for it.
+  const [became, setBecame] = useState<ReadonlyMap<string, string>>(
+    () => new Map(),
+  );
   useEffect(() => {
     const unconfirmed = outgoing.filter((o) => o.id === null);
     keep(storeKey, unconfirmed.length > 0 ? unconfirmed : null);
@@ -85,6 +90,7 @@ export function useOutbox(channelPath: string, onSent: () => void) {
   };
   return {
     outgoing,
+    became,
     send(entry: Outgoing) {
       setOutgoing((old) => [...old, entry]);
       post(entry);
@@ -92,6 +98,12 @@ export function useOutbox(channelPath: string, onSent: () => void) {
     retry(entry: Outgoing) {
       update(entry.key, { failed: false, refused: null });
       post({ ...entry, failed: false, refused: null });
+    },
+    /** Those that arrived, as `[message id, key]`, leave the outbox. */
+    land(arrived: [string, string][]) {
+      const keys = arrived.map(([, key]) => key);
+      setBecame((old) => new Map([...old, ...arrived]));
+      setOutgoing((old) => old.filter((o) => !keys.includes(o.key)));
     },
     remove(keys: string[]) {
       setOutgoing((old) => old.filter((o) => !keys.includes(o.key)));

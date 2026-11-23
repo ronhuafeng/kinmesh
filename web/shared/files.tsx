@@ -55,12 +55,18 @@ export function Files({
   const [failed, setFailed] = useState(false);
   const [attempt, setAttempt] = useState(0);
   // Older pages read so far for this list; a fresh first page keeps them.
-  const older = useRef<{ path: string; read: boolean }>({ path, read: false });
-  if (older.current.path !== path) older.current = { path, read: false };
+  // The list on screen, and whether older pages of it were read; a fresh
+  // first page keeps those.
+  const listed = useRef(path);
+  const older = useRef(false);
   const action = useAction({ 404: '这个文件已经不在了。' });
   // Read again whenever the workspace changes: a file shared or removed
   // anywhere shows here at once, and older pages already read stay.
   useEffect(() => {
+    if (listed.current !== path) {
+      listed.current = path;
+      older.current = false;
+    }
     let current = true;
     void api(path).then(
       (raw) => {
@@ -68,9 +74,9 @@ export function Files({
         const page = Page.parse(raw);
         setFailed(false);
         setFiles((old) =>
-          older.current.read ? joined(page.items, old) : page.items,
+          older.current ? joined(page.items, old) : page.items,
         );
-        if (!older.current.read) setNext(page.next);
+        if (!older.current) setNext(page.next);
       },
       () => {
         if (current) setFailed(true);
@@ -86,9 +92,9 @@ export function Files({
     void api(path + (channelId ? '&' : '?') + `before=${String(next)}`).then(
       (raw) => {
         // A page for a list no longer on screen is dropped.
-        if (older.current.path !== from) return;
+        if (listed.current !== from) return;
         const page = Page.parse(raw);
-        older.current.read = true;
+        older.current = true;
         setFailed(false);
         setFiles((old) => {
           const kept = old ?? [];

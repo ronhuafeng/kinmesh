@@ -1,4 +1,4 @@
-import { useEffect, useId, useRef, useState } from 'react';
+import { useEffect, useEffectEvent, useId, useRef, useState } from 'react';
 import { z } from 'zod';
 import type { Shared } from '../shared/share.js';
 import { value } from '../shared/api.js';
@@ -95,6 +95,14 @@ export function Composer({
   onDone: () => void;
 }) {
   const [chips, setChips] = useState<Mentionable[]>([]);
+  const input = useRef<HTMLTextAreaElement>(null);
+  // What was typed and not sent survives a reload, per channel.
+  const draftKey = 'message:' + channelPath;
+  const unsent = kept(draftKey);
+  // Send shows once there is something to send.
+  const [ready, setReady] = useState(
+    () => typeof unsent === 'string' && unsent.trim() !== '',
+  );
   // Files dropped, pasted or chosen: each uploads in turn, and the message
   // goes once they all have.
   const [files, setFiles] = useState<Pending[]>([]);
@@ -154,23 +162,25 @@ export function Composer({
   }
   // Shared to Kinmesh: its files attached and its text in the field, once.
   const placed = useRef<string | null>(null);
-  useEffect(() => {
-    if (!incoming || placed.current === incoming.key) return;
-    placed.current = incoming.key;
-    attach(incoming.shared.files);
+  const place = useEffectEvent((shared: NonNullable<typeof incoming>) => {
+    if (placed.current === shared.key) return;
+    placed.current = shared.key;
+    attach(shared.shared.files);
     const el = input.current;
-    if (el && incoming.shared.text !== '') {
-      el.value = (el.value ? el.value + '\n' : '') + incoming.shared.text;
+    if (el && shared.shared.text !== '') {
+      el.value = (el.value ? el.value + '\n' : '') + shared.shared.text;
       keep(draftKey, el.value);
       setReady(true);
     }
   });
+  useEffect(() => {
+    if (incoming) place(incoming);
+  }, [incoming]);
   const filesReady =
     files.length > 0 && files.every((f) => f.state === 'ready');
   const filesWaiting = files.some((f) => f.state !== 'ready');
   const [query, setQuery] = useState<string | null>(null);
   const [active, setActive] = useState(0);
-  const input = useRef<HTMLTextAreaElement>(null);
   const listId = useId();
   const candidates =
     query === null ? [] : members.filter((m) => matches(m, query)).slice(0, 8);
@@ -208,13 +218,6 @@ export function Composer({
     input.current?.focus({ preventScroll: true });
   }, [topicId]);
   const narrow = window.matchMedia('(max-width: 575px)').matches;
-  // What was typed and not sent survives a reload, per channel.
-  const draftKey = 'message:' + channelPath;
-  const unsent = kept(draftKey);
-  // Send shows once there is something to send.
-  const [ready, setReady] = useState(
-    () => typeof unsent === 'string' && unsent.trim() !== '',
-  );
   return (
     <div
       className="composer"

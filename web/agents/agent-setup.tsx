@@ -5,7 +5,7 @@ import {
   managedOf,
   t3Where,
 } from '../shared/t3.js';
-import { type ReactNode, useEffect, useState } from 'react';
+import { type ReactNode, useState } from 'react';
 import type { WorkspaceSnapshot } from '../../src/workspace/contracts.js';
 import { ActionForm, Notice } from '../shared/forms.js';
 import { workerConnected } from '../shared/format.js';
@@ -31,7 +31,10 @@ export function AgentSetup({
 }) {
   const { send, busy, error, permitted } = useSetupRequest();
   const [changing, setChanging] = useState(false);
-  const [reconnecting, setReconnecting] = useState(false);
+  // Reconnecting lasts until T3's connection is made again.
+  const [reconnectFrom, setReconnectFrom] = useState<{
+    connectedAt: string | undefined;
+  } | null>(null);
   const joined = data.joinedAgentIds.includes(agent.id);
   const awake = workerConnected(data.wake, agent.id);
   const managed = managedOf(data, agent.id);
@@ -39,9 +42,8 @@ export function AgentSetup({
   const t3Ready =
     connection !== null && connection.access !== 'read' && !connection.expired;
   const connectedAt = connection?.connectedAt;
-  useEffect(() => {
-    setReconnecting(false);
-  }, [connectedAt]);
+  const reconnecting =
+    reconnectFrom !== null && reconnectFrom.connectedAt === connectedAt;
   const base = `/api/teams/${data.team.id}/agents/${agent.id}`;
   let next: ReactNode = null;
   if (agent.lifecycle !== 'active')
@@ -100,7 +102,7 @@ export function AgentSetup({
                 type="button"
                 className="link-button"
                 onClick={() => {
-                  setReconnecting(true);
+                  setReconnectFrom({ connectedAt });
                 }}
               >
                 重新连接
@@ -128,7 +130,7 @@ export function AgentSetup({
               type="button"
               className="link-button"
               onClick={() => {
-                setReconnecting(true);
+                setReconnectFrom({ connectedAt });
               }}
             >
               重新连接

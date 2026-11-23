@@ -1,5 +1,6 @@
 import {
   useEffect,
+  useEffectEvent,
   useId,
   useRef,
   useState,
@@ -152,13 +153,11 @@ export function Results({
   const { results, current, listId, query } = search;
   const shown = results.map((command, index) => ({ command, index }));
   if (reversed) shown.reverse();
-  let lastGroup = '';
   return (
     <>
       <ul id={listId} role="listbox" aria-label="结果">
-        {shown.map(({ command, index }) => {
-          const heading = command.group !== lastGroup;
-          lastGroup = command.group;
+        {shown.map(({ command, index }, at) => {
+          const heading = command.group !== shown[at - 1]?.command.group;
           return [
             heading && (
               <li
@@ -251,6 +250,10 @@ export function SidebarSearch({
     if (open) hide(true);
     else show();
   });
+  /** A press outside the field and its results closes them. */
+  const hideOutside = useEffectEvent(() => {
+    hide(false);
+  });
   // The results hang under the field, outside the sidebar's scrolling box.
   useLayoutEffect(() => {
     const list = popup.current;
@@ -270,7 +273,8 @@ export function SidebarSearch({
     const outside = (e: PointerEvent) => {
       const target = e.target;
       if (!(target instanceof Node)) return;
-      if (!row.current?.contains(target) && !list.contains(target)) hide(false);
+      if (!row.current?.contains(target) && !list.contains(target))
+        hideOutside();
     };
     window.addEventListener('resize', place);
     document.addEventListener('scroll', place, true);
