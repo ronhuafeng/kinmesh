@@ -31,9 +31,15 @@ await test('what the workspace reads about a team checks who asks, not the route
       ],
       ['liveness', (p) => views.liveness(p, f.teamId)],
       ['bindings', (p) => managed.teamBindings(p, f.teamId)],
-      ['Team MCP presence', (p) => managed.teamMcpPresence(p, f.teamId)],
+      [
+        'Team MCP presence',
+        (p) => f.store.teamMcpPresence.teamMcpPresence(p, f.teamId),
+      ],
       ['people', (p) => f.store.people(p, f.teamId, Date.now())],
-      ['T3 connection', (p) => managed.teamConnection(p, f.teamId)],
+      [
+        'T3 connection',
+        (p) => f.store.t3Connections.teamConnection(p, f.teamId),
+      ],
     ];
     for (const [name, read] of reads)
       await read(owner).then(

@@ -134,11 +134,11 @@ await test(
           ?.messages.items.some((m) => m.body === 'Pushed, not polled'),
       );
       // Another process writes: the agent's worker starts.
-      await other.inbox.heartbeat([f.agent.id]);
+      await other.inboxBindings.heartbeat([f.agent.id]);
       assert.deepEqual(await place.next(), { workspace: await workspace() });
       // A later heartbeat changes nothing on screen.
       const awake = await workspace();
-      await other.inbox.heartbeat([f.agent.id]);
+      await other.inboxBindings.heartbeat([f.agent.id]);
       assert.equal(await workspace(), awake);
       // Another process commits, as the worker does: the database announces it.
       const writer = spawn(

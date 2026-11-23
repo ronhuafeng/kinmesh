@@ -166,7 +166,7 @@ export function registerConnect(
   };
   /** The team's T3 connection and any sign-in under way. */
   const t3Status = async (caller: Principal, teamId: TeamId) => {
-    const connection = await store.managed.connection(caller, teamId);
+    const connection = await store.t3Connections.connection(caller, teamId);
     const held = connection && sessions(connection.endpoint);
     // What runs use; when T3 honours nothing, the sign-in that ended.
     const credential =
@@ -210,7 +210,7 @@ export function registerConnect(
    * session it no longer provides is.
    */
   const renewal = async (caller: Principal, teamId: TeamId) => {
-    const connection = await store.managed.connection(caller, teamId);
+    const connection = await store.t3Connections.connection(caller, teamId);
     if (!connection) return null;
     const { person, deployment } = sessions(connection.endpoint);
     const now = Date.now();
@@ -247,7 +247,7 @@ export function registerConnect(
     const p = principal(request);
     const { teamId } = TeamPath.parse(request.params);
     if (p.kind !== 'human') throw new DomainError('forbidden');
-    const connection = await store.managed.connection(p, teamId);
+    const connection = await store.t3Connections.connection(p, teamId);
     if (pair === null || connection === null)
       return reply.code(409).send({ error: 'No pairing here' });
     const paired = await pair('Kinmesh', AbortSignal.timeout(30_000));
@@ -260,7 +260,7 @@ export function registerConnect(
   app.get('/api/teams/:teamId/t3/local', async (request, reply) => {
     reply.header('Cache-Control', 'no-store');
     const { teamId } = TeamPath.parse(request.params);
-    await store.managed.connection(principal(request), teamId);
+    await store.t3Connections.connection(principal(request), teamId);
     // A T3 on the hub's loopback is out of reach of a browser elsewhere.
     return {
       endpoint:
@@ -275,7 +275,7 @@ export function registerConnect(
       .strictObject({ endpoint: Endpoint, replace: z.boolean() })
       .parse(request.body);
     // A person of the team, checked before any file or network access.
-    const connected = await store.managed.connection(p, teamId);
+    const connected = await store.t3Connections.connection(p, teamId);
     // Beside the deployment's session, a person signs in to the same T3.
     if (hub.provisioned && connected?.endpoint !== endpoint)
       return reply
@@ -338,7 +338,7 @@ export function registerConnect(
           ceiling === undefined ? credential : { ...credential, ceiling },
           { replace },
         );
-        await store.managed.saveConnection(
+        await store.t3Connections.saveConnection(
           p,
           teamId,
           endpoint,
@@ -369,7 +369,7 @@ export function registerConnect(
     const { url } = z
       .strictObject({ url: z.string().max(8192) })
       .parse(request.body);
-    await store.managed.connection(principal(request), teamId);
+    await store.t3Connections.connection(principal(request), teamId);
     const current = flow;
     if (current?.teamId !== teamId || current.state !== 'waiting')
       throw new DomainError('conflict');
@@ -380,7 +380,7 @@ export function registerConnect(
   app.get('/api/teams/:teamId/t3/providers', async (request, reply) => {
     reply.header('Cache-Control', 'no-store');
     const { teamId } = TeamPath.parse(request.params);
-    const connection = await store.managed.connection(
+    const connection = await store.t3Connections.connection(
       principal(request),
       teamId,
     );

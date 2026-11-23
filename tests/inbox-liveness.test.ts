@@ -20,7 +20,7 @@ await test('worker liveness is projected per agent, ignores unknown IDs, goes st
         ).json<unknown>(),
       );
     assert.deepEqual((await snapshot()).wake, []);
-    await f.inbox.heartbeat([f.agent.id, randomUUID()]);
+    await f.store.inboxBindings.heartbeat([f.agent.id, randomUUID()]);
     const live = (await snapshot()).wake;
     assert.equal(live.length, 1);
     assert.equal(live[0]?.agentId, f.agent.id);
@@ -35,7 +35,7 @@ await test('worker liveness is projected per agent, ignores unknown IDs, goes st
       await raw.close();
     }
     assert.equal((await snapshot()).wake[0]?.connected, false);
-    await f.inbox.release([f.agent.id]);
+    await f.store.inboxBindings.release([f.agent.id]);
     assert.deepEqual((await snapshot()).wake, []);
   } finally {
     await f.dispose();

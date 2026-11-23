@@ -87,7 +87,7 @@ export function provisionedT3(
       { replace: true },
     );
     // Before anyone has signed in there is no team yet: try again later.
-    if ((await store.managed.provision(t3.endpoint, environmentId)) === 0)
+    if ((await store.t3Connections.provision(t3.endpoint, environmentId)) === 0)
       return false;
     applied = raw;
     return true;

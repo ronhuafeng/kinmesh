@@ -1,30 +1,10 @@
-import type {
-  Database,
-} from './database.js';
-import {
-  createHash,
-  randomBytes,
-  randomUUID,
-} from 'node:crypto';
-import {
-  and,
-  eq,
-  isNull,
-  asc,
-  desc,
-} from 'drizzle-orm';
-import {
-  z,
-} from 'zod';
+import type { Database } from './database.js';
+import { createHash, randomBytes, randomUUID } from 'node:crypto';
+import { and, eq, isNull, asc, desc } from 'drizzle-orm';
+import { z } from 'zod';
 import * as s from './schema.js';
-import {
-  referenceKey,
-  transactional,
-} from './transactional.js';
-import {
-  AgentId,
-  TeamId,
-} from '../domain/contracts.js';
+import { referenceKey, transactional } from './transactional.js';
+import { AgentId, TeamId } from '../domain/contracts.js';
 import {
   Agent,
   Grant,
@@ -37,12 +17,8 @@ import {
   Scope,
   CorrelationInput,
 } from '../domain/agents.js';
-import {
-  DomainError,
-} from '../domain/errors.js';
-import {
-  principalAuthor as author,
-} from '../domain/tasks.js';
+import { DomainError } from '../domain/errors.js';
+import { principalAuthor as author } from '../domain/tasks.js';
 
 function parseJson(value: string): unknown {
   return JSON.parse(value);

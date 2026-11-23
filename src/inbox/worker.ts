@@ -305,7 +305,7 @@ export async function deliver(
     // named once, which the provisioner makes a T3 project if it isn't one.
     const newTarget = async (): Promise<Launch['target']> => {
       if (space === null) return { kind: 'scratch' };
-      const directory = await store.inbox.space(
+      const directory = await store.spaces.space(
         claim,
         spaceDirectory(context.channelName, claim.channelId),
       );
@@ -324,7 +324,7 @@ export async function deliver(
       placed = {};
       if (attached.length > 0) {
         if (files === null) throw new ExecutionFailure('unavailable');
-        const directory = await store.inbox.space(
+        const directory = await store.spaces.space(
           claim,
           spaceDirectory(context.channelName, claim.channelId),
         );
@@ -684,13 +684,13 @@ export async function runWorker(
       );
       for (const b of config.bindings) next.set(b.agentId, b);
       const gone = [...bindings.keys()].filter((id) => !next.has(id));
-      if (gone.length > 0) await store.inbox.release(gone);
+      if (gone.length > 0) await store.inboxBindings.release(gone);
       // New or removed agents show their state now, not at the next beat.
       if (gone.length > 0 || [...next.keys()].some((id) => !bindings.has(id)))
         lastBeat = 0;
       bindings = next;
       if (Date.now() - lastBeat >= INBOX_HEARTBEAT_MS) {
-        await store.inbox.heartbeat([...bindings.keys()]);
+        await store.inboxBindings.heartbeat([...bindings.keys()]);
         lastBeat = Date.now();
       }
       while (running.size < INBOX_CAPACITY && bindings.size > 0 && !stopped()) {
@@ -724,7 +724,7 @@ export async function runWorker(
   } finally {
     await Promise.allSettled(running);
     try {
-      await store.inbox.release([...bindings.keys()]);
+      await store.inboxBindings.release([...bindings.keys()]);
     } catch {
       // Liveness goes stale on its own if the database is already gone.
     }

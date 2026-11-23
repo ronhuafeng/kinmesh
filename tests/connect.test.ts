@@ -448,8 +448,8 @@ await test('Team MCP presence is recorded per agent and shown as evidence', asyn
   const f = await connectFixture();
   try {
     const agent = await f.store.agents.resolveToken(f.grant.token);
-    await f.store.managed.seenByTeamMcp(agent);
-    await f.store.managed.seenByTeamMcp(f.principal);
+    await f.store.teamMcpPresence.seenByTeamMcp(agent);
+    await f.store.teamMcpPresence.seenByTeamMcp(f.principal);
     const snapshot = WorkspaceSnapshot.parse(
       (await f.call('GET', '/api/workspace')).json<unknown>(),
     );
@@ -477,14 +477,14 @@ await test('the hub’s worker serves a connected agent without a restart and le
     heartbeat: [string[]];
     release: [string[]];
   }>();
-  const inbox = {
-    ...f.store.inbox,
+  const inboxBindings = {
+    ...f.store.inboxBindings,
     heartbeat: async (ids: string[]) => {
-      await f.store.inbox.heartbeat(ids);
+      await f.store.inboxBindings.heartbeat(ids);
       writes.emit('heartbeat', ids);
     },
     release: async (ids: string[]) => {
-      await f.store.inbox.release(ids);
+      await f.store.inboxBindings.release(ids);
       writes.emit('release', ids);
     },
   };
@@ -499,7 +499,7 @@ await test('the hub’s worker serves a connected agent without a restart and le
       writes.on(kind, seen);
     });
   try {
-    await f.store.managed.saveConnection(
+    await f.store.t3Connections.saveConnection(
       f.principal,
       f.teamId,
       endpoint,
@@ -507,7 +507,7 @@ await test('the hub’s worker serves a connected agent without a restart and le
     );
     const passed = Promise.withResolvers<undefined>();
     const running = runWorker(
-      { ...f.store, inbox },
+      { ...f.store, inboxBindings },
       { ...f.workerConfig, bindings: [], pollMs: 100 },
       f.factory,
       stopping.signal,
@@ -559,7 +559,7 @@ await test('the hub’s worker credential is renewed in place while the agent st
   const f = await agentFixture();
   const raw = rawDatabase(f.dbPath);
   try {
-    await f.store.managed.saveConnection(
+    await f.store.t3Connections.saveConnection(
       f.principal,
       f.teamId,
       endpoint,
@@ -750,7 +750,7 @@ await test('beside the deployment’s session a person signs in to the same T3',
     const connect = (to: string) =>
       f.call('POST', f.team + '/t3/connect', { endpoint: to, replace: true });
     assert.equal((await connect(endpoint)).statusCode, 409);
-    await f.store.managed.provision(endpoint, credential.environmentId);
+    await f.store.t3Connections.provision(endpoint, credential.environmentId);
     // Another T3 is refused; the deployment's is offered.
     assert.equal((await connect('https://other.test/mcp')).statusCode, 409);
     assert.equal((await connect(endpoint)).statusCode, 200);
@@ -865,7 +865,7 @@ const T3Connection = z.object({
 await test('the deployment renews its own T3 session: nobody is asked, and an ended one still reads as ended', async () => {
   const f = await connectFixture({ provisioned: true });
   try {
-    await f.store.managed.provision(endpoint, credential.environmentId);
+    await f.store.t3Connections.provision(endpoint, credential.environmentId);
     saveCredential(t3DeploymentFile(f.directory), deployment(DAY));
     const snapshot = WorkspaceSnapshot.parse(
       (await f.call('GET', '/api/workspace')).json<unknown>(),
@@ -897,7 +897,7 @@ await test('the deployment renews its own T3 session: nobody is asked, and an en
 await test('runs use a person’s broader sign-in, and the deployment’s session once it ends', async () => {
   const f = await connectFixture({ provisioned: true });
   try {
-    await f.store.managed.provision(endpoint, credential.environmentId);
+    await f.store.t3Connections.provision(endpoint, credential.environmentId);
     const connection = async () =>
       T3Connection.parse((await f.call('GET', f.team + '/t3')).json<unknown>())
         .connection;

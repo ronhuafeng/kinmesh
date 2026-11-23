@@ -1,4 +1,8 @@
 import { managedRepository } from './managed.js';
+import { t3ConnectionRepository } from './t3-connections.js';
+import { teamMcpPresenceRepository } from './team-mcp-presence.js';
+import { spaceRepository } from './spaces.js';
+import { inboxBindingRepository } from './inbox-bindings.js';
 import { notificationRepository } from './notify.js';
 import { inboxRepository } from './inbox.js';
 import { inboxViews } from './inbox-views.js';
@@ -71,6 +75,16 @@ export async function openStore(url: string) {
   const topics = topicRepository(d, gate, facts, views);
   const messages = messageRepository(d, agentStore, gate, facts, views);
   const tasks = taskRepository(d, agentStore, channels, topics, messages);
+  const inbox = inboxRepository(
+    d,
+    agentStore,
+    agentEvents,
+    channels,
+    topics,
+    messages,
+    tasks,
+  );
+  const t3Connections = t3ConnectionRepository(d, agentStore);
   /** A mailbox's local part as a handle, numbered when already taken. */
   async function freeUsername(email: string) {
     const local = email
@@ -97,15 +111,9 @@ export async function openStore(url: string) {
       listen: d.listen,
       /** Which database this is, to tell it from a replacement. */
       identity: d.identity,
-      inbox: inboxRepository(
-        d,
-        agentStore,
-        agentEvents,
-        channels,
-        topics,
-        messages,
-        tasks,
-      ),
+      inbox,
+      spaces: spaceRepository(d, inbox),
+      inboxBindings: inboxBindingRepository(d),
       /** What the workspace shows a person about deliveries and workers. */
       inboxViews: inboxViews(d, agentStore, channels),
       tasks,
@@ -118,7 +126,9 @@ export async function openStore(url: string) {
       operations: operationJournal(d),
       agents: agentStore,
       agentEvents,
-      managed: managedRepository(d, agentStore),
+      managed: managedRepository(d, agentStore, t3Connections),
+      t3Connections,
+      teamMcpPresence: teamMcpPresenceRepository(d, agentStore),
       /** What notifies a person, their browsers, and what is sent to them. */
       notifications: notificationRepository(d),
       close: d.close,

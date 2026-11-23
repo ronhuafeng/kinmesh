@@ -303,6 +303,8 @@ export function inboxRepository(
       throw new DomainError('conflict');
   }
   return {
+    /** Refuses a claim this worker no longer holds. */
+    owned,
     get,
     async find(eventId: string, agentId: AgentId) {
       z.uuid().parse(eventId);
@@ -597,32 +599,6 @@ export function inboxRepository(
             afterPosition: positions.length ? Math.max(...positions) : null,
           },
         };
-      });
-    },
-    /**
-     * The delivery's channel's folder in the space: `named` the first time,
-     * the same folder ever after.
-     */
-    async space(c: Claim, named: string) {
-      return atomic(async () => {
-        await owned(c);
-        await q()
-          .insert(s.channelSpaces)
-          .values({
-            channelId: c.channelId,
-            teamId: c.teamId,
-            directory: named,
-          })
-          .onConflictDoNothing();
-        const row = (
-          await q()
-            .select({ directory: s.channelSpaces.directory })
-            .from(s.channelSpaces)
-            .where(eq(s.channelSpaces.channelId, c.channelId))
-            .limit(1)
-        )[0];
-        if (!row) throw new DomainError('conflict');
-        return row.directory;
       });
     },
     /**
@@ -1127,36 +1103,6 @@ export function inboxRepository(
           ? null
           : Reference.parse(decode(row.reference));
       });
-    },
-    /** Liveness only, never authority: unknown or foreign agent IDs are ignored. */
-    async heartbeat(agentIds: string[]) {
-      const ids = z.array(AgentId).parse(agentIds);
-      if (ids.length === 0) return;
-      await atomic(async () => {
-        for (const agent of await q()
-          .select({ id: s.agents.id, teamId: s.agents.teamId })
-          .from(s.agents)
-          .where(among(s.agents.id, ids)))
-          await q()
-            .insert(s.inboxBindings)
-            .values({
-              agentId: agent.id,
-              teamId: agent.teamId,
-              lastSeenAt: dbNow,
-            })
-            .onConflictDoUpdate({
-              target: s.inboxBindings.agentId,
-              set: { lastSeenAt: dbNow },
-            });
-      });
-    },
-    /** A clean stop withdraws liveness at once instead of waiting for it to go stale. */
-    async release(agentIds: string[]) {
-      const ids = z.array(AgentId).parse(agentIds);
-      if (ids.length === 0) return;
-      await q()
-        .delete(s.inboxBindings)
-        .where(among(s.inboxBindings.agentId, ids));
     },
     /** How many deliveries are in each state, across the hub. */
     async countsByState() {
