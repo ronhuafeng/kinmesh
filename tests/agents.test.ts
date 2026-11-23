@@ -481,7 +481,7 @@ await test('execution correlations preserve multiple runs, agent provenance and 
     assert.equal(Correlation.parse(first).acceptance, 'not-evaluated');
     assert.equal(
       (
-        await f.store.agents.runtimeEvents(
+        await f.store.agentEvents.runtimeEvents(
           f.principal,
           f.teamId,
           f.agent.id,
@@ -541,9 +541,14 @@ await test('revoke blocks every agent profile/execution route and stale principa
       () =>
         f.store.agents.correlate(stale, f.teamId, f.agent.id, correlationInput),
       () =>
-        f.store.agents.runtimeEvents(stale, f.teamId, f.agent.id, execution.id),
+        f.store.agentEvents.runtimeEvents(
+          stale,
+          f.teamId,
+          f.agent.id,
+          execution.id,
+        ),
       () =>
-        f.store.agents.runtimeEvent(
+        f.store.agentEvents.runtimeEvent(
           stale,
           f.teamId,
           f.agent.id,
@@ -802,7 +807,7 @@ await test('database constraints enforce immutable identity/history, final revoc
       "UPDATE agent_grants SET token_hash = repeat('b', 64)",
     ])
       await assert.rejects(() => raw.exec(sql));
-    await f.store.agents.runtimeEvent(
+    await f.store.agentEvents.runtimeEvent(
       f.principal,
       f.teamId,
       f.agent.id,
@@ -910,7 +915,7 @@ await test('service restart preserves stable agent, grant, correlations, provena
         },
       },
     );
-    await f.store.agents.runtimeEvent(
+    await f.store.agentEvents.runtimeEvent(
       f.principal,
       f.teamId,
       f.agent.id,
@@ -939,7 +944,7 @@ await test('service restart preserves stable agent, grant, correlations, provena
     );
     assert.equal(
       (
-        await reopened.agents.runtimeEvents(
+        await reopened.agentEvents.runtimeEvents(
           f.principal,
           f.teamId,
           f.agent.id,

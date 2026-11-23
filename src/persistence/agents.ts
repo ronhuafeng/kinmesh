@@ -1,10 +1,30 @@
-import type { Database } from './database.js';
-import { createHash, randomBytes, randomUUID } from 'node:crypto';
-import { and, eq, isNull, asc, desc } from 'drizzle-orm';
-import { z } from 'zod';
+import type {
+  Database,
+} from './database.js';
+import {
+  createHash,
+  randomBytes,
+  randomUUID,
+} from 'node:crypto';
+import {
+  and,
+  eq,
+  isNull,
+  asc,
+  desc,
+} from 'drizzle-orm';
+import {
+  z,
+} from 'zod';
 import * as s from './schema.js';
-import { referenceKey, transactional } from './transactional.js';
-import { AgentId, TeamId } from '../domain/contracts.js';
+import {
+  referenceKey,
+  transactional,
+} from './transactional.js';
+import {
+  AgentId,
+  TeamId,
+} from '../domain/contracts.js';
 import {
   Agent,
   Grant,
@@ -16,11 +36,13 @@ import {
   GrantInput,
   Scope,
   CorrelationInput,
-  RuntimeEventInput,
-  type RuntimeState,
 } from '../domain/agents.js';
-import { DomainError } from '../domain/errors.js';
-import { principalAuthor as author } from '../domain/tasks.js';
+import {
+  DomainError,
+} from '../domain/errors.js';
+import {
+  principalAuthor as author,
+} from '../domain/tasks.js';
 
 function parseJson(value: string): unknown {
   return JSON.parse(value);
@@ -323,6 +345,8 @@ export function agentRepository(d: Database) {
       return principal;
     },
     authorize: access,
+    /** A correlation of the agent's, by its ID, for those who checked access. */
+    correlation,
     teamAccess,
     person,
     create(p: Principal, teamId: TeamId, input: ProfileInput) {
@@ -645,46 +669,6 @@ export function agentRepository(d: Database) {
         )
         .orderBy(asc(s.agentCorrelations.position));
       return Promise.all(rows.map((r) => correlation(teamId, agentId, r.id)));
-    },
-    runtimeEvent(
-      p: Principal,
-      teamId: TeamId,
-      agentId: AgentId,
-      id: string,
-      state: z.infer<typeof RuntimeState>,
-    ) {
-      return atomic(async () => {
-        const agent = await access(p, teamId, agentId, 'executions:write');
-        if (agent.lifecycle !== 'active') throw new DomainError('conflict');
-        await correlation(teamId, agentId, id);
-        RuntimeEventInput.parse({ state });
-        const event = {
-          id: randomUUID(),
-          correlationId: id,
-          state,
-          author: author(p),
-          createdAt: now(),
-        };
-        await q()
-          .insert(s.agentRuntimeEvents)
-          .values({ ...event, author: JSON.stringify(event.author) });
-        return RuntimeEvent.parse(event);
-      });
-    },
-    async runtimeEvents(
-      p: Principal,
-      teamId: TeamId,
-      agentId: AgentId,
-      id: string,
-    ) {
-      await access(p, teamId, agentId, 'executions:read');
-      await correlation(teamId, agentId, id);
-      return (
-        await q()
-          .select(s.runtimeEventFields)
-          .from(s.agentRuntimeEvents)
-          .where(eq(s.agentRuntimeEvents.correlationId, id))
-      ).map((r) => RuntimeEvent.parse({ ...r, author: parseJson(r.author) }));
     },
     async audit(p: Principal, teamId: TeamId, agentId: AgentId) {
       await person(p, teamId);

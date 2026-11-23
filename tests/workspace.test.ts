@@ -31,7 +31,7 @@ await test('protected workspace and AG-UI 1.0 snapshots reconstruct persisted re
     assert.deepEqual(snapshot.joinedAgentIds, []);
     assert.equal(snapshot.agents[0]?.id, f.agent.id);
     const execution = await f.execution();
-    await f.store.agents.runtimeEvent(
+    await f.store.agentEvents.runtimeEvent(
       f.principal,
       f.teamId,
       f.agent.id,
@@ -137,7 +137,7 @@ await test('execution projection bounds SQL history and preserves last appended 
       latestId = correlation.id;
     }
     for (let i = 0; i < 102; i++)
-      await f.store.agents.runtimeEvent(
+      await f.store.agentEvents.runtimeEvent(
         f.principal,
         f.teamId,
         f.agent.id,

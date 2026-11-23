@@ -361,7 +361,7 @@ for (const status of ['completed', 'failed'] as const)
         );
         assert.equal(
           (
-            await reopened.agents.runtimeEvents(
+            await reopened.agentEvents.runtimeEvents(
               f.principal,
               f.teamId,
               f.agent.id,
