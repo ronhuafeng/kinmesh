@@ -3448,6 +3448,36 @@ test('a reply names the message it answers, quotes it, and the quote opens it', 
 });
 
 /**
+ * Proves a reaction is added from a message's actions, shows under it as
+ * yours, and pressing it takes it back.
+ */
+test('a reaction is added from a message’s actions and taken back from its pill', async ({
+  page,
+  hub,
+}) => {
+  await signIn(page, hub);
+  const composer = page.getByRole('form', { name: '给团队发消息' });
+  await composer.getByLabel('消息', { exact: true }).fill('Shall we ship?');
+  await composer.getByRole('button', { name: '发送消息' }).click();
+  const message = page
+    .getByRole('list', { name: '频道消息' })
+    .getByRole('listitem')
+    .filter({ hasText: 'Shall we ship?' });
+  await message.hover();
+  await message
+    .locator('.message-actions')
+    .getByRole('button', { name: '回应' })
+    .click();
+  await page.getByRole('menuitemcheckbox', { name: '👍' }).click();
+  const pill = message
+    .getByRole('list', { name: '回应' })
+    .getByRole('button', { name: /^👍 1/ });
+  await expect(pill).toHaveAttribute('aria-pressed', 'true');
+  await pill.click();
+  await expect(message.getByRole('list', { name: '回应' })).toHaveCount(0);
+});
+
+/**
  * Proves a code block and a message each copy as written: the code without
  * the button's word, the message as its Markdown.
  */

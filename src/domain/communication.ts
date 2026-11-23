@@ -102,6 +102,20 @@ export const Topic = z.strictObject({
   author: Author,
   createdAt: z.iso.datetime(),
 });
+/** The reactions a person may add to a message: a small fixed set. */
+export const REACTIONS = ['👍', '👀', '✅', '🎉', '❤️', '😄'] as const;
+export const Reaction = z.enum(REACTIONS);
+export const ReactInput = z.strictObject({
+  emoji: Reaction,
+  /** True adds it; false takes it back. */
+  on: z.boolean(),
+});
+/** Who reacted to a message, with which reaction. */
+export const MessageReactions = z.strictObject({
+  messageId: MessageId,
+  emoji: Reaction,
+  humanIds: z.array(HumanId).min(1).max(1000),
+});
 export const Message = z.strictObject({
   id: MessageId,
   channelId: ChannelId,

@@ -31,6 +31,7 @@ import {
 import { DeliveryLine } from './deliveries.js';
 import { Markdown, plainText } from './markdown.js';
 import { Composer, type Mentionable } from './composer.js';
+import { ReactButton, Reactions } from './reactions.js';
 import { useOutbox, type Outgoing } from './outbox.js';
 import { ReplyOrigin, answerOnly, type ReplyView } from './replies.js';
 import type { DeliveryView } from './deliveries.js';
@@ -570,11 +571,15 @@ interface RowProps {
   /** Mentions not already written in the text, by name. */
   mentions: { kind: 'human' | 'agent'; id: string; name: string }[];
   lines: DeliveryView[];
+  /** Its reactions, by reaction. */
+  reactions: WorkspaceSnapshot['reactions'];
   /** For the delivery lines, which read the workspace. */
   data: WorkspaceSnapshot;
   permitted: boolean;
   act: RowActions;
 }
+/** No reactions: one list, so a row without any compares as unchanged. */
+const NONE: WorkspaceSnapshot['reactions'] = [];
 /** The text of a message, drawn again only when the text changes. */
 const MessageText = memo(function MessageText({ text }: { text: string }) {
   return <Markdown text={text} />;
@@ -603,6 +608,11 @@ const sameRow = (a: RowProps, b: RowProps) =>
   a.quote?.id === b.quote?.id &&
   a.quote?.text === b.quote?.text &&
   sameList(a.lines, b.lines, (x, y) => x === y) &&
+  sameList(
+    a.reactions,
+    b.reactions,
+    (x, y) => x.emoji === y.emoji && x.humanIds.join() === y.humanIds.join(),
+  ) &&
   sameList(
     a.mentions,
     b.mentions,
@@ -638,6 +648,7 @@ const MessageRow = memo(function MessageRow({
   topicTag,
   mentions,
   lines,
+  reactions,
   data,
   permitted,
   act,
@@ -747,6 +758,15 @@ const MessageRow = memo(function MessageRow({
               <time dateTime={r.removedAt}>{shortTime(r.removedAt)}</time>
             </p>
           ))}
+          {o === undefined && (
+            <Reactions
+              list={reactions}
+              path={`/api/teams/${data.team.id}/channels/${m.channelId}/messages/${m.id}`}
+              data={data}
+              permitted={permitted}
+              onDone={act.done}
+            />
+          )}
           {reply && <ReplyOrigin reply={reply} />}
           {mentions.length > 0 && (
             <ul className="mentions" aria-label="已提及">
@@ -797,6 +817,14 @@ const MessageRow = memo(function MessageRow({
                 }
                 label="复制链接"
                 className="quiet"
+              />
+              <ReactButton
+                path={`/api/teams/${data.team.id}/channels/${m.channelId}/messages/${m.id}`}
+                mine={reactions
+                  .filter((r) => r.humanIds.includes(data.human.id))
+                  .map((r) => r.emoji)}
+                permitted={permitted}
+                onDone={act.done}
               />
               <button
                 type="button"
@@ -1079,6 +1107,10 @@ export function Chat({
       replyTo.set(d.resultMessageId, d.messageId);
   }
   const origin = new Map(data.replies.map((r) => [r.messageId, r]));
+  // Each message's reactions, once.
+  const reactedTo = new Map<string, WorkspaceSnapshot['reactions']>();
+  for (const r of data.reactions)
+    reactedTo.set(r.messageId, [...(reactedTo.get(r.messageId) ?? []), r]);
   // A mention already written as @Name in the text needs no second chip;
   // nor does a person's written as @handle before they had a name.
   const people = new Map<string, (typeof data.people)[number]>(
@@ -1232,6 +1264,7 @@ export function Chat({
                 ...member,
                 name: memberName(member, data),
               }))}
+              reactions={reactedTo.get(m.id) ?? NONE}
               lines={(asked.get(m.id) ?? []).filter(
                 (d) =>
                   !(d.state === 'acked' && d.resultMessageId === following),

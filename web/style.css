@@ -1269,6 +1269,48 @@ button.author-link:hover:not(:disabled) {
   flex-wrap: wrap;
   gap: 0.3rem;
 }
+/* Reactions under a message: each with how many, yours in the primary
+ * tint; pressing one adds or takes back yours. */
+.reactions {
+  list-style: none;
+  margin: 0.35rem 0 0;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.3rem;
+}
+.reactions button {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  padding: 0.1rem 0.5rem;
+  border: var(--hairline-width) solid var(--hairline);
+  border-radius: 999px;
+  background: var(--paper);
+  color: var(--ink-muted);
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+}
+.reactions button[aria-pressed='true'] {
+  border-color: transparent;
+  background: var(--primary-soft);
+  color: var(--primary-soft-text);
+}
+/* Choosing a reaction: the six side by side. */
+.menu.reaction-menu {
+  display: flex;
+  min-width: 0;
+  gap: 0.125rem;
+}
+.reaction-menu .menu-item {
+  justify-content: center;
+  width: 2.25rem;
+  padding: 0.3rem 0;
+  font-size: 1.05rem;
+}
+.reaction-menu .menu-item[data-state='checked'] {
+  background: var(--primary-soft);
+}
 .mention-chip {
   display: inline-block;
   font-size: 13px;
