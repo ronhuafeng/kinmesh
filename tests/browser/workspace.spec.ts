@@ -2159,6 +2159,30 @@ test('the organization names the team at the top of the sidebar; nobody renames 
   ).toBeVisible();
 });
 
+/**
+ * Proves a settings read that fails says so instead of an empty list, and
+ * reads again when asked.
+ */
+test('a settings section that can’t be read says so and reads again on request', async ({
+  page,
+  hub,
+}) => {
+  await signIn(page, hub);
+  let refuse = true;
+  await page.route('**/api/me/sessions', (route) =>
+    refuse ? route.fulfill({ status: 500, json: {} }) : route.continue(),
+  );
+  await page.getByRole('button', { name: '你的账户' }).click();
+  await page.getByRole('menuitem', { name: /^设置/ }).click();
+  const map = page.getByRole('navigation', { name: '设置' });
+  await map.getByRole('button', { name: '账户与设备' }).click();
+  await expect(page.getByText('读不到登录的设备。')).toBeVisible();
+  refuse = false;
+  await page.getByRole('button', { name: '再试一次' }).click();
+  await expect(page.getByText('读不到登录的设备。')).toHaveCount(0);
+  await expect(page.getByText('此浏览器')).toBeVisible();
+});
+
 test('someone outside the organization is turned back, and a reload starts clean', async ({
   page,
   hub,
