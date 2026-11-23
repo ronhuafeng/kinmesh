@@ -1,18 +1,18 @@
 /*
- * Maple Mono 8 (Normal preset, no ligatures, half-width: 0.5 em), SIL Open
- * Font License 1.1 (OFL.txt beside it). Built from
+ * Maple Mono 8 (Normal preset, no ligatures, 0.6 em), SIL Open Font
+ * License 1.1 (OFL.txt beside it). Built from
  * github.com/subframe7536/maple-font v8.0-beta.4 with
- * `build.py --normal --no-liga --width slim --no-nf`, then each weight cut
- * into two WOFF2 files by Unicode range. It has no Chinese: Chinese comes
- * from the system's Chinese face, whose characters are one em, exactly two
- * columns.
+ * `build.py --normal --no-liga --no-nf`, then each weight cut into two WOFF2
+ * files by Unicode range. It has no Chinese: Chinese comes from the
+ * system's Chinese face.
  *
  * The core holds Latin, punctuation, arrows and box drawing, what code is
  * made of, in one file so they arrive together. A core not there in time
- * is not swapped in later: that visit keeps the system's monospace, and code
- * never changes width under the reader. The rest (other scripts, symbols)
- * is rare and swaps in when it arrives. Where a character is in both
- * ranges, the face declared last answers first, so the core comes last.
+ * is not swapped in later: that visit keeps the system's monospace, also
+ * 0.6 em, and code never changes width under the reader. The rest (other
+ * scripts, symbols) is rare and swaps in when it arrives. Where a character
+ * is in both ranges, the face declared last answers first, so the core
+ * comes last.
  */
 @font-face {
   font-family: 'Maple Mono';
@@ -97,4 +97,35 @@
     U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC,
     U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2190-21FF, U+2212,
     U+2215, U+2500-25FF, U+2700-27BF, U+FEFF, U+FFFD;
+}
+
+/*
+ * A code block's Chinese: the system's Chinese face at 1.2 em, exactly two
+ * 0.6 em columns, so a block that mixes Chinese and Latin keeps its columns.
+ * Nothing is downloaded; a system without these faces sets its Chinese at
+ * the usual size.
+ */
+@font-face {
+  font-family: 'Code Han';
+  font-weight: 400;
+  src:
+    local('PingFang SC'), local('PingFangSC-Regular'), local('Microsoft YaHei'),
+    local('MicrosoftYaHei'), local('Noto Sans CJK SC'),
+    local('NotoSansCJKsc-Regular');
+  size-adjust: 120%;
+  unicode-range:
+    U+2E80-2FFF, U+3000-303F, U+3040-9FFF, U+F900-FAFF, U+FE30-FE4F,
+    U+FF00-FFEF, U+20000-2FFFF;
+}
+@font-face {
+  font-family: 'Code Han';
+  font-weight: 500 900;
+  src:
+    local('PingFang SC Semibold'), local('PingFangSC-Semibold'),
+    local('Microsoft YaHei Bold'), local('MicrosoftYaHei-Bold'),
+    local('Noto Sans CJK SC Bold'), local('NotoSansCJKsc-Bold');
+  size-adjust: 120%;
+  unicode-range:
+    U+2E80-2FFF, U+3000-303F, U+3040-9FFF, U+F900-FAFF, U+FE30-FE4F,
+    U+FF00-FFEF, U+20000-2FFFF;
 }

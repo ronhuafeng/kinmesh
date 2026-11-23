@@ -140,12 +140,13 @@ button text.
   Headings 600–700 with slight negative tracking; no serif, no uppercase labels.
 - Monospace only for code and identifiers (T3 references, IDs); times and labels
   are set in the UI face. Times, dates and numbers use tabular figures.
-- The monospace is Maple Mono (Normal, no ligatures) at half an em, self-hosted;
-  its Chinese is the system's Chinese face, one em wide, so a Chinese character is
-  exactly two columns and code mixing Chinese and Latin keeps its columns. Chinese
-  punctuation in code keeps its full width. A visit whose font is not there in time
-  keeps the system's `ui-monospace` throughout; code never changes width while it is
-  read.
+- The monospace is Maple Mono (Normal, no ligatures) at 0.6 em, self-hosted, with
+  Chinese from the system's Chinese face. In a code block, which keeps columns,
+  that Chinese is set at 1.2 em, exactly two columns, so a block mixing Chinese and
+  Latin stays aligned; in a line of prose (inline code, IDs) it keeps the prose's
+  size. Chinese punctuation in code keeps its full width. A visit whose font is not
+  there in time keeps the system's `ui-monospace` throughout; code never changes
+  width while it is read.
 - The scale, on a 16 px root (`--text-body`, `--text-ui`, `--text-small`): what is
   read — messages, a task's text — 16 px on a wide screen and 17 px on a phone;
   controls, sidebar rows, names and fields 15 px (fields 16 px on a phone); secondary
