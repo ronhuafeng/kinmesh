@@ -28,7 +28,6 @@ const TEAM_MCP_SCOPES: Scope[] = [
   'tasks:review',
 ];
 const LIFETIME_DAYS = 30;
-const TEAM_MCP_URL = 'http://127.0.0.1:3001/mcp';
 const ListedGrant = Grant.omit({ agentId: true, teamId: true });
 type ListedGrant = z.infer<typeof ListedGrant>;
 const Grants = z.object({ grants: z.array(ListedGrant), revision: z.string() });
@@ -628,6 +627,8 @@ function TeamMcp({ agent, data }: { agent: Agent; data: WorkspaceSnapshot }) {
   const { send, busy, error, permitted } = useSetupRequest();
   const [token, setToken] = useState<string | null>(null);
   const seen = data.teamMcp.find((p) => p.agentId === agent.id)?.lastSeenAt;
+  // Without Team MCP served there is nowhere for a token to go.
+  if (data.teamMcpUrl === null) return null;
   return (
     <div className="about-mcp">
       <dl>
@@ -641,7 +642,7 @@ function TeamMcp({ agent, data }: { agent: Agent; data: WorkspaceSnapshot }) {
           where={
             <>
               把它粘贴到 T3 中 {agent.name} 的提供方，作为{' '}
-              <code>{TEAM_MCP_URL}</code> 上 Team MCP 的 bearer token。
+              <code>{data.teamMcpUrl}</code> 上 Team MCP 的 bearer token。
             </>
           }
           onDismiss={() => {

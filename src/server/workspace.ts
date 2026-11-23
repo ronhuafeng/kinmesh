@@ -56,6 +56,8 @@ export function registerWorkspace(
   changes: Changes,
   /** Called for each snapshot read, shared or not. */
   counted: () => void,
+  /** Where an agent's Team MCP token is used, or null without Team MCP. */
+  teamMcpUrl: string | null = null,
 ) {
   /** One read of a run through the team's T3 connection, the one runs use. */
   async function readRun(
@@ -416,6 +418,7 @@ export function registerWorkspace(
       withRevision({
         observedAt: new Date(now).toISOString(),
         nativeT3Origin: t3Origin,
+        teamMcpUrl,
         human,
         levels: quiet.levels,
         notices,
