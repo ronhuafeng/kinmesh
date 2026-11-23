@@ -1629,6 +1629,33 @@ test('a workspace read the network never answers ends, says so, and recovers', a
   await expectHealthy(page);
 });
 
+/**
+ * Proves a message the hub refuses for good says why and offers only to let
+ * it go, while a lost answer still offers to send it again.
+ */
+test('a message the hub refuses says why and offers only 删除, never Retry', async ({
+  page,
+  hub,
+}) => {
+  await signIn(page, hub);
+  await page.route('**/api/teams/*/channels/*/messages', (route) =>
+    route.request().method() === 'POST'
+      ? route.fulfill({ status: 403, json: {} })
+      : route.continue(),
+  );
+  const composer = page.getByRole('form', { name: '给团队发消息' });
+  await composer.getByLabel('消息', { exact: true }).fill('Not allowed here');
+  await composer.getByRole('button', { name: '发送消息' }).click();
+  const sent = page
+    .getByRole('list', { name: '频道消息' })
+    .getByRole('listitem')
+    .filter({ hasText: 'Not allowed here' });
+  await expect(sent).toContainText('没发出去：你已不能在这个频道发消息。');
+  await expect(sent.getByRole('button', { name: '重试' })).toHaveCount(0);
+  await sent.getByRole('button', { name: '删除' }).click();
+  await expect(sent).toHaveCount(0);
+});
+
 test('lost message response retries the same committed operation; real conflict stays visible', async ({
   page,
   context,
