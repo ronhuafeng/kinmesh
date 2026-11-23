@@ -15,7 +15,6 @@
     "lint": "eslint . --max-warnings 0",
     "test": "node --import tsx tests/run.ts tests/*.test.ts",
     "architecture": "node --import tsx scripts/architecture.ts",
-    "structure": "node --import tsx scripts/structure.ts",
     "check": "npm run typecheck && npm run lint && npm test && npm run architecture",
     "link-human": "node --env-file=.env --import tsx scripts/link-human.ts",
     "format": "prettier --write .",
