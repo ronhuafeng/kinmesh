@@ -284,8 +284,10 @@ fallback.
   agent's reply shows the message it answers, unless it is the very next message,
   and carries a line only for an exception (failed, stopped, shortened); what ran it
   lives with the run on the agent's page. A message's actions, **复制** (its text as
-  written), **复制链接** (its address) and **转为任务**, show on hover, and on touch
+  written), **复制链接** (its address), **回复** and **转为任务**, show on hover, and on touch
   once the message is tapped; a code block offers **复制** on its corner the same way.
+  回复 puts the message above the field as the same quiet quote (× lets it go); the sent
+  message quotes it, unless it is the very next message, and the quote opens it.
   A mention chip is a soft green tag.
 - **Conversation**: opens at the newest message and stays at the bottom as messages
   arrive while you are there (and after you send); scrolled up, nothing moves under

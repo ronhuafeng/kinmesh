@@ -3135,6 +3135,61 @@ test('a message far back opens from its address, stays across a reload, and the 
 });
 
 /**
+ * Proves a person can reply to a message: 回复 puts it above the field, the
+ * reply carries it and quotes it, and the quote opens it.
+ */
+test('a reply names the message it answers, quotes it, and the quote opens it', async ({
+  page,
+  context,
+  hub,
+}) => {
+  await signIn(page, hub);
+  const composer = page.getByRole('form', { name: '给团队发消息' });
+  const field = composer.getByLabel('消息', { exact: true });
+  const say = async (text: string) => {
+    await field.fill(text);
+    await composer.getByRole('button', { name: '发送消息' }).click();
+  };
+  const item = (text: string) =>
+    page
+      .getByRole('list', { name: '频道消息' })
+      .getByRole('listitem')
+      .filter({ hasText: text })
+      .first();
+  await say('The original question');
+  await expect(item('The original question')).toBeVisible();
+  await say('Something else in between');
+  await expect(item('Something else in between')).toBeVisible();
+  await item('The original question').hover();
+  await item('The original question')
+    .locator('.message-actions')
+    .getByRole('button', { name: '回复' })
+    .click();
+  await expect(composer.locator('.composer-reply')).toContainText(
+    'The original question',
+  );
+  await expect(field).toBeFocused();
+  await say('The answer');
+  await expect(composer.locator('.composer-reply')).toHaveCount(0);
+  const answer = item('The answer');
+  const quote = answer.locator('button.reply-to');
+  await expect(quote).toContainText('The original question');
+  const source = (
+    await snapshot(context.request, hub.origin)
+  ).messages.items.find((m) => m.body === 'The original question');
+  await expect
+    .poll(
+      async () =>
+        (await snapshot(context.request, hub.origin)).messages.items.find(
+          (m) => m.body === 'The answer',
+        )?.sourceMessageId,
+    )
+    .toBe(source?.id);
+  await quote.click();
+  await expect(item('The original question')).toBeInViewport();
+});
+
+/**
  * Proves a code block and a message each copy as written: the code without
  * the button's word, the message as its Markdown.
  */
