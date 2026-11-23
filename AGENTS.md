@@ -28,8 +28,9 @@ Code is placed by structure, never by size; `npm run architecture` checks it in 
   in `web`, shared, then parts, then the shell), and no imports form a cycle.
 - One responsibility per file: a file's exports belong together, and unrelated parts
   are separate files.
-- State lives in the module that owns it; composition roots (`web/app.tsx`, the store,
-  `createApp`) only wire modules together.
+- State lives in the module that owns it. A composition root (`main`, `app` or `store`
+  in `src` and `web`) only wires modules together: no state, data, request handling
+  or behaviour of its own.
 - There is no line limit: a cohesive file may be long, and a short one may still need
   splitting.
 

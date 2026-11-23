@@ -79,4 +79,8 @@ export function registerMe(app: FastifyInstance, store: Store) {
     await store.quiet.forwardAfter(humanId, team.team.id, minutes);
     return reply.code(204).send();
   });
+  // Who you are: your own record.
+  app.get('/api/me', async (request) => ({
+    human: await store.human(humanOf(request)),
+  }));
 }

@@ -14,49 +14,33 @@ import { registerLogout } from './logout.js';
 import { registerPush } from './push.js';
 import { registerFeishuTest } from './feishu-test.js';
 import { registerEvents } from './events.js';
+import { createHttp } from './http.js';
+import { registerSecurityHeaders } from './security-headers.js';
+import { registerErrors } from './errors.js';
+import { registerRequestGuards } from './request-guards.js';
+import { startT3Provisioning } from './t3-provisioning.js';
+import { startGrantRenewal } from './worker-grants.js';
+import { startInboxExpiry } from './inbox-expiry.js';
+import { startAttachmentUpkeep } from './attachment-upkeep.js';
+import { registerTeam } from './team.js';
+import { registerShutdown } from './shutdown.js';
 import { watchChanges } from './changes.js';
 import { registerWeb } from './web.js';
 import { registerTasks } from './tasks.js';
 import { registerCommunication } from './communication.js';
-import {
-  registerAttachments,
-  sweepAttachments,
-  unplaceAttachments,
-} from './attachments.js';
-import { spacePairer, spaceRemover } from '../adapters/space/client.js';
+import { registerAttachments } from './attachments.js';
+import { spacePairer } from '../adapters/space/client.js';
 import { attachmentStore } from '../persistence/attachment-store.js';
 import { registerNotifications } from './notify.js';
 import { registerMe } from './me.js';
 import { registerAgents } from './agents.js';
-import {
-  WORKER_GRANT,
-  defaultHub,
-  registerConnect,
-  type Hub,
-} from './connect.js';
-import {
-  endProvisionedT3,
-  provisionedT3,
-  separateDeploymentSession,
-} from './provision.js';
+import { defaultHub, registerConnect, type Hub } from './connect.js';
 import { managedDirectory } from '../runtime/managed.js';
-import { principal } from './principals.js';
-import { resolvePrincipal } from '../persistence/principals.js';
-import { DomainError, type Refusal } from '../domain/errors.js';
-import { z } from 'zod';
-import Fastify, { LogController, type FastifyRequest } from 'fastify';
-import secureSession from '@fastify/secure-session';
-import rateLimit from '@fastify/rate-limit';
-import compress from '@fastify/compress';
-import { constants } from 'node:zlib';
-import { randomUUID } from 'node:crypto';
-import { SESSION_LIFETIME_MS } from '../domain/contracts.js';
+import { registerPrincipals } from './principals.js';
 import type { Store } from '../persistence/store.js';
 import type { Config } from './config.js';
-import { describeFailure } from '../diagnostics.js';
 import { feishuClient, type Feishu } from './feishu.js';
 import { registerLogin } from './login.js';
-import { limitKey, unlimited } from './limits.js';
 import { createMetrics } from './metrics.js';
 
 declare module '@fastify/secure-session' {
@@ -65,15 +49,6 @@ declare module '@fastify/secure-session' {
     session: string;
   }
 }
-/** The HTTP status of each refusal; every route answers with these. */
-const STATUS: Record<Refusal, 400 | 401 | 403 | 404 | 409 | 413> = {
-  invalid: 400,
-  unauthenticated: 401,
-  forbidden: 403,
-  'not-found': 404,
-  conflict: 409,
-  'too-large': 413,
-};
 export async function createApp(
   config: Config,
   store: Store,
@@ -95,148 +70,16 @@ export async function createApp(
     ),
     ...overrides,
   };
-  const app = Fastify({
-    // Only failures are logged, each with its request's ID; a request itself
-    // is never logged, so its URL, headers and body never reach the log.
-    logger: {
-      level: 'info',
-      ...(options.logStream ? { stream: options.logStream } : {}),
-    },
-    logController: new LogController({ disableRequestLogging: true }),
-    genReqId: () => randomUUID(),
-    bodyLimit: 16_384,
-    // Only the configured proxies may say who the client is; limits then
-    // apply per client rather than to everyone behind the proxy at once.
-    trustProxy:
-      config.trustedProxies.length > 0 ? config.trustedProxies : false,
-  });
   const metrics = createMetrics();
-  // The session is unsealed first: the limit counts a signed-in person by
-  // their session, everyone else by address.
-  await app.register(secureSession, {
-    key: config.sessionKey,
-    cookieName: 'kinmesh-session',
-    // The server ends a session (idle, lifetime, revoked); the cookie only
-    // has to outlive it.
-    expiry: SESSION_LIFETIME_MS / 1000,
-    cookie: {
-      path: '/',
-      httpOnly: true,
-      sameSite: 'strict',
-      secure: config.secureCookie,
-      maxAge: SESSION_LIFETIME_MS / 1000,
-    },
-  });
-  await app.register(rateLimit, {
-    max: config.rateLimit,
-    timeWindow: '1 minute',
-    keyGenerator: limitKey,
-    allowList: unlimited,
-    onExceeded: metrics.limited,
-  });
-  // Answers travel compressed, at a level quick enough for every read; the
-  // web's own files are compressed once, when built (`registerWeb`). The
-  // event stream writes its own response, and goes as it is, at once.
-  await app.register(compress, {
-    encodings: ['br', 'gzip'],
-    brotliOptions: { params: { [constants.BROTLI_PARAM_QUALITY]: 4 } },
-    zlibOptions: { level: 6 },
-  });
-  app.decorateRequest('principal', null);
-  // Browsers upload files straight to the store.
-  const storeOrigin = new URL(config.files.publicEndpoint).origin;
-  const connect =
-    storeOrigin === new URL(config.origin).origin
-      ? "'self'"
-      : `'self' ${storeOrigin}`;
-  app.addHook('onSend', async (_request, reply) => {
-    reply.header('X-Content-Type-Options', 'nosniff');
-    reply.header('Referrer-Policy', 'no-referrer');
-    // A response with a stricter policy of its own (a file) keeps it.
-    if (!reply.hasHeader('Content-Security-Policy'))
-      reply.header(
-        'Content-Security-Policy',
-        `default-src 'self'; script-src 'self'; style-src 'self'; connect-src ${connect}; img-src 'self' data:; object-src 'none'; base-uri 'none'; frame-ancestors 'none'; form-action 'self'`,
-      );
-  });
-  app.setErrorHandler((error, request, reply) => {
-    if (error instanceof z.ZodError)
-      return void reply.code(400).send({ error: 'Invalid input' });
-    // Fastify's own refusals (a body too large, a rate limit) carry theirs.
-    const known = z
-      .object({ statusCode: z.number().int().min(400).max(499) })
-      .safeParse(error);
-    const status =
-      error instanceof DomainError
-        ? STATUS[error.kind]
-        : known.success
-          ? known.data.statusCode
-          : 500;
-    // A failure is recorded; a refusal only when a constraint caused it.
-    const where = {
-      route: request.routeOptions.url,
-      method: request.method,
-      status,
-    };
-    if (status >= 500)
-      request.log.error({ ...where, ...describeFailure(error) }, 'failed');
-    else if (error instanceof Error && error.cause !== undefined)
-      request.log.warn(
-        { ...where, ...describeFailure(error.cause) },
-        'refused',
-      );
-    void reply.code(status).send({
-      error:
-        status === 429
-          ? 'Too many requests'
-          : status < 500
-            ? 'Request rejected'
-            : 'Internal service error',
-    });
-  });
-  app.addHook('onRequest', async (request, reply) => {
-    if (
-      ['x-actor-id', 'x-member-id', 'x-user-id', 'x-kinmesh-actor'].some(
-        (header) => request.headers[header] !== undefined,
-      )
-    ) {
-      return reply
-        .code(400)
-        .send({ error: 'Actor headers are not credentials' });
-    }
-    if (
-      [...new URL(request.url, config.origin).searchParams.keys()].some((key) =>
-        ['actor', 'actorid', 'agentid', 'humanid', 'role'].includes(
-          key.toLowerCase(),
-        ),
-      )
-    )
-      return reply.code(400).send({ error: 'Actor query is not a credential' });
-    if (
-      !['GET', 'HEAD'].includes(request.method) &&
-      request.headers.origin !== undefined &&
-      request.headers.origin !== config.origin
-    ) {
-      return reply.code(403).send({ error: 'Origin denied' });
-    }
-  });
+  const app = await createHttp(config, metrics, options.logStream);
+  registerSecurityHeaders(app, config);
+  registerErrors(app);
+  registerRequestGuards(app, config);
   registerHealth(app, store, config.version, workerReady);
   const feishu = options.feishu ?? feishuClient(config.feishu);
   registerLogin(app, store, config, feishu);
   registerLogout(app, store);
-  app.addHook('preHandler', async (request, reply) => {
-    if (!request.url.startsWith('/api/')) return;
-    request.principal = await resolvePrincipal(
-      store,
-      request.headers.authorization,
-      request.session.get('session'),
-    );
-    if (
-      !request.url.startsWith('/api/teams/') &&
-      request.principal.kind !== 'human'
-    )
-      return reply.code(403).send({ error: 'Human authentication required' });
-  });
+  registerPrincipals(app, store);
   const changes = watchChanges(store);
   const { grants } = registerAgents(app, store, hub.directory);
   registerPeople(app, store);
@@ -248,64 +91,9 @@ export async function createApp(
     changes,
     config.space === null ? null : spacePairer(config.space),
   );
-  try {
-    separateDeploymentSession(hub.directory);
-  } catch (error) {
-    app.log.error(describeFailure(error), 't3_session_separation_failed');
-  }
-  // The deployment's T3: applied now, then whenever its session is renewed.
-  let provisioning: NodeJS.Timeout | undefined;
-  if (config.t3) {
-    const sync = provisionedT3(
-      store,
-      hub.directory,
-      config.t3,
-      fetch,
-      hub.ceiling,
-    );
-    const run = () => {
-      sync().then(
-        (changed) => {
-          if (changed) changes.emit();
-        },
-        (error: unknown) => {
-          app.log.error(
-            { error: error instanceof Error ? error.name : 'Error' },
-            't3_provision_failed',
-          );
-        },
-      );
-    };
-    run();
-    provisioning = setInterval(run, 60_000);
-    provisioning.unref();
-  } else
-    try {
-      // Only a person's sign-in runs now; the deployment's is not renewed.
-      endProvisionedT3(hub.directory);
-    } catch (error) {
-      app.log.error(describeFailure(error), 't3_provision_end_failed');
-    }
-  // The hub's own worker credentials never run out while it serves their
-  // agents: renewed now, before anything is served, then every hour.
-  const renew = () =>
-    store.managed
-      .renewWorkerGrants(WORKER_GRANT.lifetimeSeconds)
-      .catch((error: unknown) => {
-        app.log.error(describeFailure(error), 'worker_grant_renewal_failed');
-      });
-  await renew();
-  const renewing = setInterval(() => void renew(), 3_600_000);
-  renewing.unref();
-  // Work that never reached T3 expires on time, also for an agent no worker
-  // serves: no claim ever looks at its work.
-  const expire = () =>
-    store.inbox.expire().catch((error: unknown) => {
-      app.log.error(describeFailure(error), 'inbox_expiry_failed');
-    });
-  await expire();
-  const expiring = setInterval(() => void expire(), 60_000);
-  expiring.unref();
+  startT3Provisioning(app, store, hub, config, changes);
+  await startGrantRenewal(app, store);
+  await startInboxExpiry(app, store);
   registerCommunication(app, store);
   registerDirect(app, store);
   const files = attachmentStore(config.files);
@@ -313,20 +101,7 @@ export async function createApp(
   registerAttachments(app, store, files, config.attachmentsRoom);
   registerTeamFiles(app, store);
   registerSearch(app, store);
-  const stopSweeping = sweepAttachments(store, files, (error) => {
-    app.log.error(describeFailure(error), 'attachment_sweep_failed');
-  });
-  const stopUnplacing =
-    config.space === null
-      ? () => undefined
-      : unplaceAttachments(store, spaceRemover(config.space), (error) => {
-          app.log.error(describeFailure(error), 'attachment_unplace_failed');
-        });
-  app.addHook('onClose', () => {
-    stopSweeping();
-    stopUnplacing();
-    return Promise.resolve();
-  });
+  startAttachmentUpkeep(app, store, files, config.space);
   registerTasks(app, store);
   const notifier = registerNotifications(
     app,
@@ -362,30 +137,8 @@ export async function createApp(
     openStreams,
   });
   await registerWeb(app);
-  // The person behind the request; the pre-handler resolved their session.
-  const human = (request: FastifyRequest) => {
-    const p = principal(request);
-    if (p.kind !== 'human') throw new DomainError('forbidden');
-    return p.humanId;
-  };
-  await app.register((protectedApi, _options, done) => {
-    protectedApi.get('/api/me', async (request) => ({
-      human: await store.human(human(request)),
-    }));
-    protectedApi.get('/api/team', async (request, reply) => {
-      const team = await store.teamFor(human(request));
-      return team ?? reply.code(403).send({ error: 'Membership required' });
-    });
-    done();
-  });
-  if (beforeClose) app.addHook('preClose', beforeClose);
-  app.addHook('onClose', async () => {
-    clearInterval(provisioning);
-    clearInterval(renewing);
-    clearInterval(expiring);
-    changes.close();
-    await store.close();
-  });
+  registerTeam(app, store);
+  registerShutdown(app, store, changes, beforeClose);
   await app.ready();
   return app;
 }
