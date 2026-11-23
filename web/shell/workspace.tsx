@@ -4,7 +4,12 @@ import { AvatarImages } from '../shared/faces.js';
 import { LiveContext } from '../shared/live.js';
 import { MainArea } from './main-area.js';
 import { PhoneTabs } from './phone-tabs.js';
-import { ShellContext, shellOf } from './shell.js';
+import {
+  ActionsContext,
+  NavigationContext,
+  ScreenContext,
+  contextsOf,
+} from './contexts.js';
 import { Sidebar } from './sidebar.js';
 import { Toasts } from './toasts.js';
 import type { Notices } from './use-notices.js';
@@ -37,7 +42,7 @@ export function Workspace({
   phone: boolean;
   avatarImages: ReadonlyMap<string, string>;
 }) {
-  const shell = shellOf(
+  const { navigation, screen, actions } = contextsOf(
     data,
     place,
     workspace,
@@ -47,25 +52,29 @@ export function Workspace({
     phone,
   );
   return (
-    <ShellContext.Provider value={shell}>
-      <MutationPermission value={shell.canAct}>
-        <LiveContext.Provider value={workspace.liveReads}>
-          <AvatarImages.Provider value={avatarImages}>
-            <Offline value={!shell.canAct && !shell.switching}>
-              <div
-                className="workspace-shell"
-                data-screen={shell.screen}
-                data-sidebar={sidebar.state}
-              >
-                <Sidebar />
-                <MainArea />
-                <PhoneTabs />
-                <Toasts />
-              </div>
-            </Offline>
-          </AvatarImages.Provider>
-        </LiveContext.Provider>
-      </MutationPermission>
-    </ShellContext.Provider>
+    <NavigationContext.Provider value={navigation}>
+      <ScreenContext.Provider value={screen}>
+        <ActionsContext.Provider value={actions}>
+          <MutationPermission value={screen.canAct}>
+            <LiveContext.Provider value={workspace.liveReads}>
+              <AvatarImages.Provider value={avatarImages}>
+                <Offline value={!screen.canAct && !screen.switching}>
+                  <div
+                    className="workspace-shell"
+                    data-screen={screen.screen}
+                    data-sidebar={sidebar.state}
+                  >
+                    <Sidebar />
+                    <MainArea />
+                    <PhoneTabs />
+                    <Toasts />
+                  </div>
+                </Offline>
+              </AvatarImages.Provider>
+            </LiveContext.Provider>
+          </MutationPermission>
+        </ActionsContext.Provider>
+      </ScreenContext.Provider>
+    </NavigationContext.Provider>
   );
 }

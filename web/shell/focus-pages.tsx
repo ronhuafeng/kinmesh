@@ -8,7 +8,7 @@ import { SearchPage } from '../search/palette.js';
 import { SettingsPage } from '../settings/settings-page.js';
 import { TaskPage } from '../tasks/task-page.js';
 import { showMessage } from '../chat/chat-message.js';
-import { useShell } from './shell.js';
+import { useNavigation, useScreen, useActions } from './contexts.js';
 
 /**
  * What opens in place of the view: a task or a new one, a hand-run worker,
@@ -16,8 +16,6 @@ import { useShell } from './shell.js';
  */
 export function FocusPages() {
   const {
-    data,
-    phone,
     setView,
     focus,
     setFocus,
@@ -28,11 +26,17 @@ export function FocusPages() {
     closeFocus,
     openSettings,
     openAgent,
+  } = useNavigation();
+  const {
+    data,
+    phone,
     channel,
     channelPath,
     focusedTask,
     workerAgent,
     settingsSection,
+  } = useScreen();
+  const {
     signOut,
     signOutEverywhere,
     openTaskIn,
@@ -44,7 +48,7 @@ export function FocusPages() {
     refresh,
     commands,
     remote,
-  } = useShell();
+  } = useActions();
   return (
     <>
       {/* A task, a new task, the Inbox, Settings or a hand-run

@@ -9,7 +9,7 @@ import { ChannelTopics } from '../chat/topics.js';
 import { Fragment, useState } from 'react';
 import { SettingsIcons } from '../shared/icons.js';
 import { levelOf } from '../shared/levels.js';
-import { useShell } from './shell.js';
+import { useNavigation, useScreen, useActions } from './contexts.js';
 
 /**
  * A phone lists channels as conversations: the newest message first (by
@@ -122,8 +122,6 @@ export function JoinableChannels({
  */
 export function ChannelList() {
   const {
-    data,
-    phone,
     selection,
     setSelection,
     setView,
@@ -131,6 +129,10 @@ export function ChannelList() {
     next,
     selectChannel,
     leavePage,
+  } = useNavigation();
+  const {
+    data,
+    phone,
     channel,
     channelPath,
     directWith,
@@ -138,10 +140,8 @@ export function ChannelList() {
     screen,
     looking,
     waitingIn,
-    leaveChannelById,
-    notify,
-    refresh,
-  } = useShell();
+  } = useScreen();
+  const { leaveChannelById, notify, refresh } = useActions();
   const [addingChannel, setAddingChannel] = useState(false);
   // The channel being named again, in place in its row.
   const [renaming, setRenaming] = useState<string | null>(null);

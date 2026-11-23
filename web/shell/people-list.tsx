@@ -4,24 +4,13 @@ import { Presence } from '../shared/faces.js';
 import { type ReactElement } from 'react';
 import { otherPeople } from '../shared/names.js';
 import { workerConnected } from '../shared/format.js';
-import { useShell } from './shell.js';
+import { useNavigation, useScreen, useActions } from './contexts.js';
 
 /** The others in the channel, people then agents; a row opens them. */
 export function PeopleList() {
-  const {
-    data,
-    agentId,
-    view,
-    setView,
-    openAgent,
-    channel,
-    channelPath,
-    directWith,
-    channelAgents,
-    openDirect,
-    notify,
-    refresh,
-  } = useShell();
+  const { agentId, view, setView, openAgent } = useNavigation();
+  const { data, channel, channelPath, directWith, channelAgents } = useScreen();
+  const { openDirect, notify, refresh } = useActions();
   /** A member's row in the open channel: its menu takes them out of it. */
   const memberRow = (
     member: { kind: 'human' | 'agent'; id: string },

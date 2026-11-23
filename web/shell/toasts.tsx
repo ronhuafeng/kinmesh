@@ -1,11 +1,11 @@
-import { useShell } from './shell.js';
+import { useActions } from './contexts.js';
 
 /**
  * One live region, always there, says each toast once; a notice inside it
  * stays a button that opens what it is about.
  */
 export function Toasts() {
-  const { toast, setToast } = useShell();
+  const { toast, setToast } = useActions();
   return (
     <div className="toast-region" role="status">
       {toast &&

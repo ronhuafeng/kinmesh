@@ -1,25 +1,15 @@
 import { HashIcon, InboxIcon, SearchIcon } from '../shared/icons.js';
 import { Mark } from './menus.js';
-import { useShell } from './shell.js';
+import { useNavigation, useScreen } from './contexts.js';
 
 /**
  * A phone's three places at the bottom of Home and of the pages they open;
  * a channel or a pushed page has the screen.
  */
 export function PhoneTabs() {
-  const {
-    data,
-    phone,
-    focus,
-    setFocus,
-    setDraft,
-    goHome,
-    leavePage,
-    openSettings,
-    screen,
-    inSettings,
-    waiting,
-  } = useShell();
+  const { focus, setFocus, setDraft, goHome, leavePage, openSettings } =
+    useNavigation();
+  const { data, phone, screen, inSettings, waiting } = useScreen();
   if (!phone) return null;
   return (
     <nav className="phone-tabs" aria-label="位置">

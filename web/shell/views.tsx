@@ -10,12 +10,11 @@ import * as Tabs from '@radix-ui/react-tabs';
 import { Team } from '../agents/team.js';
 import { draftFromMessage } from '../shared/task-draft.js';
 import { showMessage } from '../chat/chat-message.js';
-import { useShell } from './shell.js';
+import { useNavigation, useScreen, useActions } from './contexts.js';
 
 /** The views of the place on screen, and an agent's page. */
 export function Views() {
   const {
-    data,
     selection,
     setSelection,
     target,
@@ -32,18 +31,18 @@ export function Views() {
     openAgent,
     openTask,
     startNewTask,
+  } = useNavigation();
+  const {
+    data,
     channel,
     channelPath,
     switching,
     canAct,
     looking,
     pageAgent,
-    openMessageIn,
-    openDirect,
-    incoming,
-    refresh,
     loadedPlace,
-  } = useShell();
+  } = useScreen();
+  const { openMessageIn, openDirect, incoming, refresh } = useActions();
   return (
     <>
       {switching && (
