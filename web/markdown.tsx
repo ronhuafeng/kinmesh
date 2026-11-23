@@ -8,6 +8,7 @@ import remarkCjkFriendly from 'remark-cjk-friendly';
 import remarkCjkFriendlyGfmStrikethrough from 'remark-cjk-friendly-gfm-strikethrough';
 import type { Link, Parent, Root, RootContent, Text } from 'mdast';
 import { MermaidBlock } from './mermaid.js';
+import { CodeBlock } from './code.js';
 
 /**
  * Messages as Markdown, with GitHub's extensions (tables, task lists,
@@ -86,7 +87,8 @@ const components: Components = {
         : '';
     if (lang === 'mermaid' && source.trim() !== '')
       return <MermaidBlock source={source} />;
-    return <pre data-lang={lang}>{children}</pre>;
+    if (lang) return <CodeBlock lang={lang} source={source} />;
+    return <pre>{children}</pre>;
   },
   // Wide tables scroll inside the message, by keyboard too.
   table({ children }) {

@@ -3338,6 +3338,45 @@ test('a reply with a nested list, a task list and a wide table lays out inside i
   ).toBe(true);
 });
 
+/**
+ * Proves code is highlighted in its declared language, and the highlighter
+ * loads only once a message has such a block.
+ */
+test('code in a declared language is highlighted, and the highlighter loads only for it', async ({
+  page,
+  hub,
+}) => {
+  const loaded: string[] = [];
+  page.on('request', (request) => {
+    if (request.url().includes('/assets/lowlight-')) loaded.push(request.url());
+  });
+  await signIn(page, hub);
+  const composer = page.getByRole('form', { name: '给团队发消息' });
+  const say = async (body: string) => {
+    await composer.getByLabel('消息', { exact: true }).fill(body);
+    await composer.getByRole('button', { name: '发送消息' }).click();
+  };
+  const item = (text: string) =>
+    page
+      .getByRole('list', { name: '频道消息' })
+      .getByRole('listitem')
+      .filter({ hasText: text });
+  await say('Plain words, and `inline` code only');
+  await expect(item('Plain words')).toBeVisible();
+  expect(loaded).toHaveLength(0);
+  await say('Typed:\n```ts\nconst answer: number = 42; // the answer\n```');
+  const code = item('Typed:').locator('pre code.language-ts');
+  await expect(code.locator('.hljs-keyword').first()).toHaveText('const');
+  await expect(code.locator('.hljs-number')).toHaveText('42');
+  await expect(code.locator('.hljs-comment')).toHaveText('// the answer');
+  expect(loaded.length).toBeGreaterThan(0);
+  // A language it doesn't know stays plain code.
+  await say('Odd:\n```nosuchlang\nkeep me\n```');
+  const odd = item('Odd:').locator('pre code.language-nosuchlang');
+  await expect(odd).toHaveText('keep me');
+  await expect(odd.locator('span')).toHaveCount(0);
+});
+
 test('a mermaid block is drawn as its diagram, and one that can’t be drawn stays its code', async ({
   page,
   hub,
