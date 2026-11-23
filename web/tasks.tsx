@@ -8,6 +8,8 @@ import {
   TaskCreate,
   TaskEvent,
   TaskExecution,
+  TaskDue,
+  TaskPriority,
   TaskResult,
 } from '../src/domain/tasks.js';
 import { Task } from '../src/domain/tasks.js';
@@ -22,7 +24,7 @@ import { joinedAgents, memberName, otherPeople, someoneOf } from './names.js';
 import type { Someone } from './names.js';
 import { LEGACY_FOOTER } from './replies.js';
 import { Avatar, Page, cjk, composing, shortTime } from './ui.js';
-import { PlusIcon } from './icons.js';
+import { DueIcon, PlusIcon, PriorityIcon } from './icons.js';
 import type { Status } from './ui.js';
 
 /** A member chosen in a picker, written there as "kind:id". */
@@ -30,6 +32,94 @@ function memberFrom(value: string): Member | null {
   if (!value) return null;
   const [kind, id] = value.split(':');
   return Member.parse({ kind, id });
+}
+/** Today, as a due date says a day (YYYY-MM-DD), where you are. */
+function today(now = new Date()) {
+  const pad = (n: number) => String(n).padStart(2, '0');
+  return `${String(now.getFullYear())}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
+}
+/** Past its day and still open. */
+function late(task: Task) {
+  return (
+    task.due !== null &&
+    task.due < today() &&
+    task.state.status !== 'accepted' &&
+    task.state.status !== 'cancelled'
+  );
+}
+/** A due day as people say it: "11月30日", with the year when not this one. */
+function dueLabel(due: string) {
+  const [y = 0, m = 1, d = 1] = due.split('-').map(Number);
+  const date = new Date(y, m - 1, d);
+  return date.toLocaleDateString('zh-CN', {
+    ...(y === new Date().getFullYear() ? {} : { year: 'numeric' }),
+    month: 'long',
+    day: 'numeric',
+  });
+}
+const priorityLabels = { high: '高', normal: '普通', low: '低' } as const;
+const priorityRank = { high: 0, normal: 1, low: 2 } as const;
+/**
+ * A column's order: what matters most first, then what is due soonest,
+ * then the newest.
+ */
+function byUrgency(a: Task, b: Task) {
+  return (
+    priorityRank[a.priority] - priorityRank[b.priority] ||
+    (a.due ?? '9999').localeCompare(b.due ?? '9999')
+  );
+}
+/**
+ * A value beside the people that isn't someone: its glyph where their face
+ * would be, so every value starts on one edge.
+ */
+function SideValue({
+  icon,
+  children,
+}: {
+  icon: ReactNode;
+  children: ReactNode;
+}) {
+  return (
+    <span className="side-value">
+      <span className="side-icon" aria-hidden="true">
+        {icon}
+      </span>
+      {children}
+    </span>
+  );
+}
+/** When it is due and how much it matters, chosen. */
+function DueAndPriority({ due, priority }: Pick<Task, 'due' | 'priority'>) {
+  return {
+    due: (
+      <SideValue icon={<DueIcon />}>
+        <input
+          type="date"
+          name="due"
+          aria-label="截止日期"
+          className="side-input"
+          defaultValue={due ?? ''}
+        />
+      </SideValue>
+    ),
+    priority: (
+      <SideValue icon={<PriorityIcon />}>
+        <select
+          name="priority"
+          aria-label="优先级"
+          className="side-input"
+          defaultValue={priority}
+        >
+          {TaskPriority.options.map((p) => (
+            <option key={p} value={p}>
+              {priorityLabels[p]}
+            </option>
+          ))}
+        </select>
+      </SideValue>
+    ),
+  };
 }
 /** What the signed-in human must decide or do next, if anything. */
 export function humanAsk(task: Task, data: WorkspaceSnapshot): string | null {
@@ -286,6 +376,8 @@ function said(e: z.infer<typeof TaskEvent>, data: WorkspaceSnapshot): string {
               ? ''
               : memberKey(before.state.reviewer)) !==
               (c.reviewer === null ? '' : memberKey(c.reviewer)) && '审核人',
+            before.due !== c.due && '截止日期',
+            before.priority !== c.priority && '优先级',
           ].filter((v): v is string => v !== false)
         : [];
       return `${who} 修改了${changed.length > 0 ? changed.join('、') : '任务'}`;
@@ -831,6 +923,8 @@ export function NewTaskPage({
               sourceMessageId: draft.sourceMessageId,
               sourceEventId: null,
               acceptor: chosen === data.human.id ? null : chosen,
+              due: value(f, 'due') || null,
+              priority: value(f, 'priority') || 'normal',
             });
             return Object.fromEntries(
               Object.entries(input).filter(([key]) => key !== 'operationKey'),
@@ -874,6 +968,10 @@ export function NewTaskPage({
                 initial={(typed.criteria ?? '').split('\n').filter(Boolean)}
               />
             }
+            {...DueAndPriority({
+              due: TaskDue.catch(null).parse(typed.due),
+              priority: TaskPriority.catch('normal').parse(typed.priority),
+            })}
             owner={
               <PersonPicker
                 name="owner"
@@ -924,6 +1022,8 @@ function TaskLayout({
   owner,
   reviewer,
   acceptor,
+  due = null,
+  priority = null,
   topic,
   decision,
   children,
@@ -936,6 +1036,9 @@ function TaskLayout({
   owner: ReactNode;
   reviewer: ReactNode;
   acceptor: ReactNode;
+  /** When it is due and how much it matters; a row only when said. */
+  due?: ReactNode;
+  priority?: ReactNode;
   topic: string | null;
   /** What waits on you: first, above everything else in the task. */
   decision?: ReactNode;
@@ -969,6 +1072,18 @@ function TaskLayout({
             <dd>{reviewer}</dd>
             <dt>验收人</dt>
             <dd>{acceptor}</dd>
+            {due !== null && (
+              <>
+                <dt>截止</dt>
+                <dd>{due}</dd>
+              </>
+            )}
+            {priority !== null && (
+              <>
+                <dt>优先级</dt>
+                <dd>{priority}</dd>
+              </>
+            )}
           </dl>
           {topic && <span className="topic-pill static">{topic}</span>}
         </aside>
@@ -1126,6 +1241,28 @@ export function TaskPage({
           owner={<MemberChip member={task.state.owner} data={data} />}
           reviewer={<MemberChip member={task.state.reviewer} data={data} />}
           acceptor={<MemberChip member={acceptor} data={data} />}
+          due={
+            task.due && (
+              <SideValue icon={<DueIcon />}>
+                <time
+                  className="task-due"
+                  dateTime={task.due}
+                  data-late={late(task) ? 'true' : undefined}
+                >
+                  {dueLabel(task.due)}
+                </time>
+              </SideValue>
+            )
+          }
+          priority={
+            task.priority === 'normal' ? null : (
+              <SideValue icon={<PriorityIcon />}>
+                <span data-priority={task.priority}>
+                  {priorityLabels[task.priority]}
+                </span>
+              </SideValue>
+            )
+          }
           topic={topic?.title ?? null}
           decision={
             <>
@@ -1210,6 +1347,8 @@ function editOf(f: FormData, task: Task) {
       reviewer === null
         ? task.state.reviewer
         : memberFrom(typeof reviewer === 'string' ? reviewer : ''),
+    due: value(f, 'due') || null,
+    priority: TaskPriority.parse(value(f, 'priority') || 'normal'),
   };
 }
 function unchanged(edit: ReturnType<typeof editOf>, task: Task) {
@@ -1218,7 +1357,9 @@ function unchanged(edit: ReturnType<typeof editOf>, task: Task) {
     edit.title === task.title &&
     edit.description === task.description &&
     edit.criteria.join('\n') === task.criteria.join('\n') &&
-    key(edit.reviewer) === key(task.state.reviewer)
+    key(edit.reviewer) === key(task.state.reviewer) &&
+    edit.due === task.due &&
+    edit.priority === task.priority
   );
 }
 /**
@@ -1307,6 +1448,7 @@ function TaskEdit({
             </Field>
           }
           criteria={<CriteriaInput initial={task.criteria} />}
+          {...DueAndPriority(task)}
           owner={<MemberChip member={owner} data={data} />}
           reviewer={
             settled ? (
@@ -1374,12 +1516,27 @@ function TaskCard({
       )}
       <h3>
         <button type="button" className="card-link" onClick={onOpen}>
+          {task.priority === 'high' && (
+            <span className="card-priority" title="高优先级">
+              <PriorityIcon />
+              <span className="visually-hidden">高优先级：</span>
+            </span>
+          )}
           {task.title}
         </button>
       </h3>
-      {(ask ?? task.state.owner ?? task.state.reviewer) && (
+      {(ask ?? task.due ?? task.state.owner ?? task.state.reviewer) && (
         <footer>
           {ask && <p className="ask-label">{ask}</p>}
+          {task.due && (
+            <time
+              className="card-due"
+              dateTime={task.due}
+              data-late={late(task) ? 'true' : undefined}
+            >
+              {dueLabel(task.due)}
+            </time>
+          )}
           <span className="card-people">
             <MemberAvatar member={task.state.owner} data={data} />
             <MemberAvatar member={task.state.reviewer} data={data} />
@@ -1580,6 +1737,9 @@ export function Board({
   for (const task of items)
     if (showCancelled || task.state.status !== 'cancelled')
       byStage.get(stageOf(task.state.status))?.push(task);
+  // Open work by urgency (ties stay newest first); what is done, newest first.
+  for (const [stage, list] of byStage)
+    if (stage !== 'done') list.sort(byUrgency);
   const firstAsk = stages.find((s) =>
     byStage.get(s.id)?.some((t) => humanAsk(t, data)),
   );

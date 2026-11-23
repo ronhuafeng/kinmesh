@@ -585,6 +585,9 @@ export const tasks = pgTable(
     version: integer('version').notNull(),
     createdAt: text('created_at').notNull(),
     updatedAt: text('updated_at').notNull(),
+    /** The day it should be done by (YYYY-MM-DD); null if none. */
+    due: text('due'),
+    priority: text('priority').notNull().default('normal'),
   },
   (t) => [
     foreignKey({
@@ -602,6 +605,8 @@ export const tasks = pgTable(
     unique('task_channel_identity').on(t.id, t.channelId),
     index('task_channel_order').on(t.channelId, t.position),
     check('task_version_positive', sql`${t.version}>0`),
+    check('task_priority', sql`${t.priority} IN ('high', 'normal', 'low')`),
+    check('task_due', sql`${t.due} ~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}$'`),
     check(
       'task_valid_state',
       sql`${json(t.state)} AND (${t.state}::jsonb ->> 'status') = ${t.status}`,

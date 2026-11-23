@@ -101,6 +101,8 @@ export function taskRepository(
       version: value.version,
       createdAt: value.createdAt,
       updatedAt: value.updatedAt,
+      due: value.due,
+      priority: value.priority,
       criteria: decode(value.criteria),
       creator: decode(value.creator),
       state: decode(value.state),
@@ -411,6 +413,8 @@ export function taskRepository(
                   version: 1,
                   createdAt: time,
                   updatedAt: time,
+                  due: data.due,
+                  priority: data.priority,
                 })
                 .returning()
             )[0];
@@ -591,6 +595,8 @@ export function taskRepository(
                       title: data.title,
                       description: data.description,
                       criteria: JSON.stringify(data.criteria),
+                      due: data.due,
+                      priority: data.priority,
                     }
                   : {}),
               })

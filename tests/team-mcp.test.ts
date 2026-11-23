@@ -137,7 +137,8 @@ await test('real Team MCP subprocess + independent SDK initializes, notifies, li
       Message,
     );
     assert.ok(!conflict.ok && conflict.error.code === 'conflict');
-    let task = (await f.create()).task;
+    // When it is due and how much it matters travel with the task.
+    let task = (await f.create({ due: '2026-12-01', priority: 'high' })).task;
     const claimed = await call(
       client,
       'team_task_claim',
@@ -212,6 +213,8 @@ await test('real Team MCP subprocess + independent SDK initializes, notifies, li
       Task,
     );
     assert.ok(read.ok && read.data.state.status === 'awaiting-human');
+    assert.equal(read.data.due, '2026-12-01');
+    assert.equal(read.data.priority, 'high');
     const history = await call(
       client,
       'team_tasks_history',

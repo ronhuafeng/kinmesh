@@ -3554,6 +3554,42 @@ test('a message is pinned, listed in the 置顶 view, opened from it, and unpinn
 });
 
 /**
+ * Proves a high-priority task leads its column even when older, and a task
+ * past its day shows the day in the danger colour, on its card and page.
+ */
+test('a high-priority task leads its column; a late one shows its day as late', async ({
+  page,
+  hub,
+}) => {
+  await signIn(page, hub);
+  const urgent = await newTask(page, {
+    title: 'Urgent fix',
+    criteria: ['Fixed'],
+    priority: 'high',
+    due: '2020-01-02',
+  });
+  await expect(urgent.locator('.task-due')).toHaveAttribute(
+    'data-late',
+    'true',
+  );
+  await backToBoard(page);
+  await newTask(page, { title: 'Routine', criteria: ['Done'] });
+  await backToBoard(page);
+  // Newer, yet after: what matters most comes first.
+  await expect(
+    page
+      .getByRole('region', { name: '待开始', exact: true })
+      .locator('.task-card'),
+  ).toHaveText([/Urgent fix/, /Routine/]);
+  const card = inStage(page, '待开始', 'Urgent fix');
+  await expect(card.getByTitle('高优先级')).toBeVisible();
+  await expect(card.locator('.card-due')).toHaveAttribute('data-late', 'true');
+  await expect(
+    inStage(page, '待开始', 'Routine').locator('.card-due'),
+  ).toHaveCount(0);
+});
+
+/**
  * Proves a task's acceptor edits it on its own page (Esc leaves it as it
  * was), the page shows it as edited, and history says what changed.
  */

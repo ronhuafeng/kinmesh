@@ -4,12 +4,14 @@ import {
   ArrowUp,
   Bell,
   Bot,
+  Calendar,
   ChartColumn,
   Check,
   ChevronLeft,
   CircleUserRound,
   Download,
   File,
+  Flag,
   FolderOpen,
   Hash,
   Inbox,
@@ -68,6 +70,10 @@ export const PlusIcon = icon(Plus);
 export const ArrowIcon = icon(ArrowRight);
 /** Send a message: up, into the conversation. */
 export const SendIcon = icon(ArrowUp);
+/** When a task is due. */
+export const DueIcon = icon(Calendar);
+/** How much a task matters; flagged in orange when it matters more. */
+export const PriorityIcon = icon(Flag);
 /** Attach a file to a message. */
 export const AttachIcon = icon(Paperclip);
 /** A file that downloads. */

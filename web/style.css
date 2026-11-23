@@ -1834,6 +1834,24 @@ button.card-link:focus-visible::after {
 .task-card footer .card-people {
   margin-left: auto;
 }
+/* When a task is due, quiet; past its day and open, in the danger colour,
+ * with no word for it. */
+.card-due {
+  font-size: 13px;
+  color: var(--ink-muted);
+  font-variant-numeric: tabular-nums;
+}
+.card-due[data-late],
+.task-due[data-late] {
+  color: var(--danger);
+}
+/* A task that matters more leads its title with an orange flag. */
+.card-priority {
+  display: inline-flex;
+  vertical-align: -0.125em;
+  margin-right: 0.25rem;
+  color: var(--decision-text);
+}
 .card-people {
   display: inline-flex;
 }
@@ -4598,6 +4616,37 @@ button.inbox-main:focus-visible::after {
 }
 .person-picker select:has(option[value='']:checked) {
   color: var(--ink-muted);
+}
+/* When it is due and how much it matters read as values, like the people:
+ * a glyph where a face would be, the value on the names' edge, as tall. */
+.side-value {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  min-width: 0;
+}
+.side-icon {
+  display: grid;
+  place-items: center;
+  width: 1.4rem;
+  height: 1.4rem;
+  flex: none;
+  color: var(--ink-muted);
+}
+.task-side .side-input {
+  width: 100%;
+  min-width: 0;
+  height: 1.5625rem;
+  padding: 0.2rem 0;
+  border: 0;
+  background: transparent;
+  color: var(--ink);
+  font: inherit;
+  font-size: 0.9rem;
+}
+.task-side .side-input:focus {
+  outline: none;
+  box-shadow: none;
 }
 .avatar-empty {
   display: grid;

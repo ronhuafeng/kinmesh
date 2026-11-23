@@ -96,6 +96,9 @@ export interface TaskFields {
   /** Option values: 'agent:<id>' or 'human:<id>'. */
   owner?: string;
   reviewer?: string;
+  /** YYYY-MM-DD. */
+  due?: string;
+  priority?: 'high' | 'normal' | 'low';
 }
 /** A task's page, in place of the board. */
 export function taskPage(page: Page, title: string) {
@@ -125,6 +128,12 @@ export async function newTask(page: Page, fields: TaskFields) {
     await form
       .getByLabel('审核人', { exact: true })
       .selectOption(fields.reviewer);
+  if (fields.due !== undefined)
+    await form.getByLabel('截止日期', { exact: true }).fill(fields.due);
+  if (fields.priority !== undefined)
+    await form
+      .getByLabel('优先级', { exact: true })
+      .selectOption(fields.priority);
   await form.getByRole('button', { name: '创建任务', exact: true }).click();
   const task = taskPage(page, fields.title);
   await expect(task).toBeVisible();
