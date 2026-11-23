@@ -31,6 +31,7 @@ import {
   Presence,
   clockTime,
   composing,
+  CopyButton,
   dayLabel,
   dayOf,
   shortTime,
@@ -1253,6 +1254,14 @@ const MessageRow = memo(function MessageRow({
           )}
           {o === undefined ? (
             <div className="message-actions">
+              {/* As written: its Markdown, never a reply's provenance. */}
+              {m.body.trim() !== '' && (
+                <CopyButton
+                  text={answerOnly(m.body, reply)}
+                  label="复制"
+                  className="quiet"
+                />
+              )}
               <button
                 type="button"
                 className="quiet"

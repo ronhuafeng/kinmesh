@@ -3,6 +3,8 @@ import { Fragment, jsx, jsxs } from 'react/jsx-runtime';
 import { toJsxRuntime } from 'hast-util-to-jsx-runtime';
 import type { Root } from 'hast';
 import type { createLowlight } from 'lowlight';
+import type { ReactNode } from 'react';
+import { CopyButton } from './ui.js';
 
 type Lowlight = ReturnType<typeof createLowlight>;
 let lowlight: Promise<Lowlight> | null = null;
@@ -48,10 +50,27 @@ export function CodeBlock({ lang, source }: { lang: string; source: string }) {
     };
   }, [key, lang, source]);
   return (
-    <pre data-lang={lang}>
-      <code className={'language-' + lang}>
-        {tree ? toJsxRuntime(tree, { Fragment, jsx, jsxs }) : source}
-      </code>
-    </pre>
+    <Copyable source={source}>
+      <pre data-lang={lang}>
+        <code className={'language-' + lang}>
+          {tree ? toJsxRuntime(tree, { Fragment, jsx, jsxs }) : source}
+        </code>
+      </pre>
+    </Copyable>
+  );
+}
+/** A block of code that copies as written, from a button on its corner. */
+export function Copyable({
+  source,
+  children,
+}: {
+  source: string;
+  children: ReactNode;
+}) {
+  return (
+    <div className="code-block">
+      {children}
+      <CopyButton text={source} label="复制" className="code-copy" />
+    </div>
   );
 }
