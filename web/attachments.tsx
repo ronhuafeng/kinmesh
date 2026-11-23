@@ -6,7 +6,6 @@ import {
   fileSize,
 } from '../src/domain/attachments.js';
 
-export { fileSize };
 import { z } from 'zod';
 import { HttpError, api, request } from './api.js';
 import { FileIcon } from './icons.js';

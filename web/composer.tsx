@@ -4,13 +4,8 @@ import type { Shared } from './share.js';
 import { value } from './api.js';
 import { ActionForm, Field } from './forms.js';
 import { AttachIcon, SendIcon } from './icons.js';
-import {
-  fileSize,
-  inline,
-  pendingOf,
-  upload,
-  type Pending,
-} from './attachments.js';
+import { inline, pendingOf, upload, type Pending } from './attachments.js';
+import { fileSize } from '../src/domain/attachments.js';
 import { Avatar, Presence, composing } from './ui.js';
 import { keep, kept } from './session.js';
 
