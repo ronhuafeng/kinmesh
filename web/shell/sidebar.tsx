@@ -5,31 +5,18 @@ import { SidebarSearch } from '../search/palette.js';
 import { TeamMenu } from './menus.js';
 import { ChannelList } from './channel-list.js';
 import { PeopleList } from './people-list.js';
-import { useShell } from './shell.js';
+import { useNavigation, useScreen, useActions } from './contexts.js';
 
 /**
  * The sidebar: the team and search, what waits on you, the channels and
  * the people in the open one, and you at its foot; in settings, their map.
  */
 export function Sidebar() {
-  const {
-    data,
-    phone,
-    sidebar,
-    focus,
-    setFocus,
-    setDraft,
-    closeFocus,
-    openSettings,
-    inSettings,
-    settingsSection,
-    waiting,
-    signOut,
-    signOutEverywhere,
-    notify,
-    commands,
-    remote,
-  } = useShell();
+  const { focus, setFocus, setDraft, closeFocus, openSettings } =
+    useNavigation();
+  const { data, phone, sidebar, inSettings, settingsSection, waiting } =
+    useScreen();
+  const { signOut, signOutEverywhere, notify, commands, remote } = useActions();
   const teamName = (
     <TeamMenu data={data} onSettings={openSettings}>
       <span

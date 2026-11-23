@@ -5,21 +5,18 @@ import { useState } from 'react';
 import { useThumb } from './use-thumb.js';
 import { FocusPages } from './focus-pages.js';
 import { Views } from './views.js';
-import { useShell } from './shell.js';
+import { useNavigation, useScreen } from './contexts.js';
 
 /**
  * The main area: the header with the way back, the views and the
  * connection, then the place on screen or the page open over it.
  */
 export function MainArea() {
+  const { view, setView, goHome, leavePage } = useNavigation();
   const {
     data,
     phone,
     sidebar,
-    view,
-    setView,
-    goHome,
-    leavePage,
     switching,
     refreshing,
     stale,
@@ -30,7 +27,7 @@ export function MainArea() {
     tabValue,
     pageAgent,
     inSettings,
-  } = useShell();
+  } = useScreen();
   // Where a page beside the sidebar puts its way back.
   const [headerStart, setHeaderStart] = useState<HTMLElement | null>(null);
   const viewTabs = useThumb();
