@@ -342,7 +342,8 @@ fallback.
   semibold (the others medium); it reads as read once its newest message has been
   on screen in a visible tab, on any device (in a topic, as far as what is new is in
   that topic). There are no unread counts. Where the browser shows an app badge, it
-  says whether anything is unread. Each channel is as loud as you set it from its
+  counts the decisions waiting on you; with none, it is a dot while anything is
+  unread; else it is clear. Each channel is as loud as you set it from its
   row's **Menu** (right-click, or a long press on a phone): 与我有关 (the default),
   每条消息 or 静音, ticked, then **设为公开…** (pressed again, it reads
   确认：团队里所有人都能查看) or **设为私密**, then 退出 #_name_ in the danger colour. A channel you muted
