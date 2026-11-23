@@ -32,7 +32,7 @@ const WORKER_INTERNALS = [
 ];
 const elsewhere = async (f: Fixture) =>
   (
-    await f.comm.createChannel(f.principal, f.teamId, {
+    await f.store.channels.createChannel(f.principal, f.teamId, {
       operationKey: key(),
       name: 'elsewhere',
     })
@@ -66,7 +66,7 @@ await test('a decision waiting in another channel is listed, and only while I am
       [[task.id, 'awaiting-human', 'general']],
     );
     // Leaving the channel takes its asks with it.
-    await f.comm.membership(
+    await f.store.channels.membership(
       f.principal,
       f.teamId,
       f.channelId,
@@ -83,7 +83,7 @@ await test('blocked deliveries and unwakeable agents are listed without worker i
   const f = await inboxFixture();
   try {
     const other = await elsewhere(f);
-    await f.comm.post(
+    await f.store.messages.post(
       f.principal,
       f.teamId,
       f.channelId,
@@ -111,7 +111,7 @@ await test('blocked deliveries and unwakeable agents are listed without worker i
     const [sent] = (await raw(f, other)).attention.unstuck;
     for (const internal of WORKER_INTERNALS)
       assert.equal(Object.hasOwn(sent ?? {}, internal), false, internal);
-    await f.comm.membership(
+    await f.store.channels.membership(
       f.principal,
       f.teamId,
       f.channelId,
@@ -129,7 +129,7 @@ await test('work for an agent no worker serves expires on time, and stops asking
   const raw = rawDatabase(f.dbPath);
   try {
     const other = await elsewhere(f);
-    await f.comm.post(
+    await f.store.messages.post(
       f.principal,
       f.teamId,
       f.channelId,

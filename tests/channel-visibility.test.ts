@@ -35,40 +35,43 @@ await test('a public channel is open to read for every person of the team; writi
       payload: { operationKey: key(), name: 'open', visibility: 'public' },
     });
     assert.equal(made.statusCode, 201);
-    const open = await f.comm.channel(
+    const open = await f.store.channels.channel(
       f.principal,
       f.teamId,
       ChannelId.parse(made.json<{ id: string }>().id),
     );
     assert.equal(open.visibility, 'public');
     // Without saying, a channel is private.
-    const closed = await f.comm.createChannel(f.principal, f.teamId, {
+    const closed = await f.store.channels.createChannel(f.principal, f.teamId, {
       operationKey: key(),
       name: 'closed',
     });
     assert.equal(closed.visibility, 'private');
-    await f.comm.post(f.principal, f.teamId, open.id, postInput());
+    await f.store.messages.post(f.principal, f.teamId, open.id, postInput());
 
     // Grace is offered the public one only, and reads it without joining.
     const offered = async () =>
-      (await f.comm.publicChannels(grace, f.teamId)).map((c) => c.id);
+      (await f.store.channels.publicChannels(grace, f.teamId)).map((c) => c.id);
     assert.ok((await offered()).includes(open.id));
     assert.ok(!(await offered()).includes(closed.id));
-    await f.comm.channel(grace, f.teamId, open.id);
+    await f.store.channels.channel(grace, f.teamId, open.id);
     assert.equal(
-      (await f.comm.history(grace, f.teamId, open.id)).items.length,
+      (await f.store.messages.history(grace, f.teamId, open.id)).items.length,
       1,
     );
-    await f.comm.files(grace, f.teamId, null, 50, open.id);
-    await assert.rejects(f.comm.channel(grace, f.teamId, closed.id), notFound);
+    await f.store.files.files(grace, f.teamId, null, 50, open.id);
+    await assert.rejects(
+      f.store.channels.channel(grace, f.teamId, closed.id),
+      notFound,
+    );
 
     // Nothing is written by looking: no message, topic, task or read mark.
     await assert.rejects(
-      f.comm.post(grace, f.teamId, open.id, postInput()),
+      f.store.messages.post(grace, f.teamId, open.id, postInput()),
       notFound,
     );
     await assert.rejects(
-      f.comm.createTopic(grace, f.teamId, open.id, {
+      f.store.topics.createTopic(grace, f.teamId, open.id, {
         operationKey: key(),
         title: 'Peek',
       }),
@@ -79,7 +82,7 @@ await test('a public channel is open to read for every person of the team; writi
       notFound,
     );
     await assert.rejects(
-      f.comm.setVisibility(grace, f.teamId, open.id, {
+      f.store.channels.setVisibility(grace, f.teamId, open.id, {
         operationKey: key(),
         visibility: 'private',
       }),
@@ -87,10 +90,16 @@ await test('a public channel is open to read for every person of the team; writi
     );
 
     // An agent never looks in or joins by itself.
-    assert.deepEqual(await f.comm.publicChannels(agent, f.teamId), []);
-    await assert.rejects(f.comm.channel(agent, f.teamId, open.id), notFound);
+    assert.deepEqual(
+      await f.store.channels.publicChannels(agent, f.teamId),
+      [],
+    );
     await assert.rejects(
-      f.comm.membership(
+      f.store.channels.channel(agent, f.teamId, open.id),
+      notFound,
+    );
+    await assert.rejects(
+      f.store.channels.membership(
         agent,
         f.teamId,
         open.id,
@@ -108,20 +117,23 @@ await test('a public channel is open to read for every person of the team; writi
       payload: { operationKey: key() },
     });
     assert.equal(joined.statusCode, 200);
-    await f.comm.post(grace, f.teamId, open.id, postInput());
+    await f.store.messages.post(grace, f.teamId, open.id, postInput());
     assert.ok(!(await offered()).includes(open.id));
 
     // Removed is final: no looking in, no joining back.
-    await f.comm.enroll(
+    await f.store.channels.enroll(
       f.principal,
       f.teamId,
       open.id,
       { operationKey: key(), member: { kind: 'human', id: grace.humanId } },
       'remove',
     );
-    await assert.rejects(f.comm.channel(grace, f.teamId, open.id), notFound);
     await assert.rejects(
-      f.comm.membership(
+      f.store.channels.channel(grace, f.teamId, open.id),
+      notFound,
+    );
+    await assert.rejects(
+      f.store.channels.membership(
         grace,
         f.teamId,
         open.id,
@@ -141,11 +153,12 @@ await test('a public channel is open to read for every person of the team; writi
     });
     assert.equal(switched.statusCode, 200);
     assert.equal(
-      (await f.comm.channel(f.principal, f.teamId, open.id)).visibility,
+      (await f.store.channels.channel(f.principal, f.teamId, open.id))
+        .visibility,
       'private',
     );
     const facts = (
-      await f.comm.events(f.principal, f.teamId, open.id)
+      await f.store.messages.events(f.principal, f.teamId, open.id)
     ).items.map((e) => e.fact);
     const change = facts.find((fact) => fact.kind === 'channel.changed');
     assert.equal(

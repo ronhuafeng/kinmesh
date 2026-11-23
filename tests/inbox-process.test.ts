@@ -34,7 +34,7 @@ await test(
     const children: ChildProcess[] = [];
     const raw = rawDatabase(f.dbPath);
     try {
-      await f.comm.post(
+      await f.store.messages.post(
         f.principal,
         f.teamId,
         f.channelId,
@@ -231,7 +231,7 @@ await test(
       assert.ok(result.resultMessageId);
       assert.equal(
         (
-          await f.comm.message(
+          await f.store.messages.message(
             f.principal,
             f.teamId,
             f.channelId,
@@ -363,7 +363,7 @@ await test(
       writeFileSync(path, JSON.stringify({ ...f.workerConfig, bindings: [] }), {
         mode: 0o600,
       });
-      await f.comm.post(
+      await f.store.messages.post(
         f.principal,
         f.teamId,
         f.channelId,

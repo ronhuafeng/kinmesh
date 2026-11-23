@@ -292,7 +292,7 @@ await test(
       assert.equal(reads, 1);
       // A change reaches all three, read once for them all.
       reads = 0;
-      await f.comm.post(
+      await f.store.messages.post(
         f.principal,
         f.teamId,
         f.channelId,

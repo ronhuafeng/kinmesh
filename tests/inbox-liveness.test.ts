@@ -83,7 +83,7 @@ await test('workspace projects allow-listed delivery status for visible messages
           })
         ).json<unknown>(),
       );
-    const source = await f.comm.post(
+    const source = await f.store.messages.post(
       f.principal,
       f.teamId,
       f.channelId,

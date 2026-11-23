@@ -16,7 +16,9 @@ import { z } from 'zod';
 import type { AnyPgColumn } from 'drizzle-orm/pg-core';
 import * as s from './schema.js';
 import type { agentRepository } from './agents.js';
-import type { communicationRepository } from './communication.js';
+import type { channelRepository } from './channels.js';
+import type { topicRepository } from './topics.js';
+import type { messageRepository } from './messages.js';
 import type { taskRepository } from './tasks.js';
 import { referenceKey, transactional } from './transactional.js';
 import { dbNow, type Database } from './database.js';
@@ -68,7 +70,9 @@ const CLAIM_LOCK = 0x6b696e6d657368n;
 export function inboxRepository(
   d: Database,
   agents: ReturnType<typeof agentRepository>,
-  communication: ReturnType<typeof communicationRepository>,
+  channels: ReturnType<typeof channelRepository>,
+  topics: ReturnType<typeof topicRepository>,
+  messages: ReturnType<typeof messageRepository>,
   tasks: ReturnType<typeof taskRepository>,
 ) {
   const { q, atomic, receipt } = transactional(d);
@@ -252,7 +256,7 @@ export function inboxRepository(
       'executions:write',
     );
     await agents.teamAccess(p, c.teamId, ...deliveryScopes(c.taskId !== null));
-    const channel = await communication.channel(p, c.teamId, c.channelId);
+    const channel = await channels.channel(p, c.teamId, c.channelId);
     let task = null;
     if (c.taskId !== null) {
       task = await tasks.get(p, c.teamId, c.channelId, c.taskId);
@@ -387,16 +391,11 @@ export function inboxRepository(
         const message =
           c.messageId === null
             ? null
-            : await communication.message(
-                p,
-                c.teamId,
-                c.channelId,
-                c.messageId,
-              );
+            : await messages.message(p, c.teamId, c.channelId, c.messageId);
         const topic =
           c.topicId === null
             ? null
-            : await communication.topic(p, c.teamId, c.channelId, c.topicId);
+            : await topics.topic(p, c.teamId, c.channelId, c.topicId);
         return {
           profile,
           context: SourceContext.parse({
@@ -784,7 +783,7 @@ export function inboxRepository(
             reason: publicationReason,
           });
           await history(await get(c.id), publicationReason);
-          return await communication.message(
+          return await messages.message(
             p,
             c.teamId,
             c.channelId,
@@ -858,7 +857,7 @@ export function inboxRepository(
               ? '还没回复就失败了。'
               : '还没回复就停止了。'
             : result.text;
-        const message = await communication.post(p, c.teamId, c.channelId, {
+        const message = await messages.post(p, c.teamId, c.channelId, {
           operationKey: 'inbox-result:' + c.id,
           body,
           topicId: c.topicId,
@@ -966,7 +965,7 @@ export function inboxRepository(
             .limit(1)
         )[0];
         if (row?.teamId !== teamId) throw new DomainError('not-found');
-        await communication.joinedChannel(
+        await channels.joinedChannel(
           p,
           TeamId.parse(teamId),
           ChannelId.parse(row.channelId),
@@ -1019,7 +1018,7 @@ export function inboxRepository(
             .limit(1)
         )[0];
         if (found?.teamId !== teamId) throw new DomainError('not-found');
-        await communication.joinedChannel(
+        await channels.joinedChannel(
           p,
           TeamId.parse(teamId),
           ChannelId.parse(found.channelId),
@@ -1117,7 +1116,7 @@ export function inboxRepository(
             .limit(1)
         )[0];
         if (row?.teamId !== teamId) throw new DomainError('not-found');
-        await communication.channel(
+        await channels.channel(
           p,
           TeamId.parse(teamId),
           ChannelId.parse(row.channelId),

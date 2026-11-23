@@ -2,7 +2,7 @@ import { and, asc, eq, inArray, or, sql } from 'drizzle-orm';
 import { z } from 'zod';
 import * as s from './schema.js';
 import type { agentRepository } from './agents.js';
-import type { communicationRepository } from './communication.js';
+import type { channelRepository } from './channels.js';
 import type { Database } from './database.js';
 import type { Principal } from '../domain/agents.js';
 import { DomainError } from '../domain/errors.js';
@@ -25,7 +25,7 @@ const decode = (value: string): unknown => JSON.parse(value);
 export function inboxViews(
   d: Database,
   agents: ReturnType<typeof agentRepository>,
-  communication: ReturnType<typeof communicationRepository>,
+  channels: ReturnType<typeof channelRepository>,
 ) {
   const { q, atomic } = d;
   const t = s.agentInbox;
@@ -37,7 +37,7 @@ export function inboxViews(
   }
   async function inChannel(p: Principal, teamId: TeamId, channelId: ChannelId) {
     await person(p, teamId);
-    await communication.channel(p, teamId, channelId);
+    await channels.channel(p, teamId, channelId);
   }
   /** First and last recorded transition, for "queued 2 h ago" copy. */
   async function withTimes<

@@ -18,7 +18,7 @@ const { humanId, teamId, channelId, input } = z
   .parse(JSON.parse(request));
 const store = await openStore(url);
 try {
-  await store.communication.post(
+  await store.messages.post(
     { kind: 'human', humanId },
     teamId,
     channelId,

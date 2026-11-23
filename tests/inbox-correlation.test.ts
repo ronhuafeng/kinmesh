@@ -146,7 +146,7 @@ for (const denied of [
             f.inboxGrant.grant.id,
           );
         if (denied === 'removed')
-          await f.comm.enroll(
+          await f.store.channels.enroll(
             f.principal,
             f.teamId,
             f.channelId,
@@ -277,7 +277,7 @@ for (const status of ['completed', 'failed'] as const)
       });
       assert.equal(response.statusCode, 201);
       const existing = Correlation.parse(response.json<unknown>());
-      await f.comm.post(
+      await f.store.messages.post(
         f.principal,
         f.teamId,
         f.channelId,
@@ -328,7 +328,7 @@ for (const status of ['completed', 'failed'] as const)
         assert.equal(row.launch, frozen.launch);
         assert.equal(row.reference, frozen.reference);
         assert.ok(row.resultMessageId);
-        const message = await reopened.communication.message(
+        const message = await reopened.messages.message(
           f.principal,
           f.teamId,
           f.channelId,

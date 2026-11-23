@@ -330,7 +330,7 @@ export async function deliver(
         );
         const root = await space(directory, context.channelName, signal);
         for (const file of attached) {
-          const { attachment, sha256 } = await store.communication.attachment(
+          const { attachment, sha256 } = await store.files.attachment(
             principal,
             claim.teamId,
             claim.channelId,

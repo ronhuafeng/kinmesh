@@ -42,7 +42,7 @@ const mention = async (
   f: Awaited<ReturnType<typeof inboxFixture>>,
   body = 'Human asks for a response',
 ) =>
-  f.comm.post(
+  f.store.messages.post(
     f.principal,
     f.teamId,
     f.channelId,
@@ -83,20 +83,21 @@ await test('inbox enqueue and outbox/receipt are atomic; exact replay is once an
     const input = postInput({
       mentions: [{ kind: 'agent', id: f.agent.id }],
     });
-    const message = await f.comm.post(
+    const message = await f.store.messages.post(
       f.principal,
       f.teamId,
       f.channelId,
       input,
     );
     assert.equal(
-      (await f.comm.post(f.principal, f.teamId, f.channelId, input)).id,
+      (await f.store.messages.post(f.principal, f.teamId, f.channelId, input))
+        .id,
       message.id,
     );
     assert.equal((await f.rows()).length, 1);
     await assert.rejects(
       () =>
-        f.comm.post(f.principal, f.teamId, f.channelId, {
+        f.store.messages.post(f.principal, f.teamId, f.channelId, {
           ...input,
           body: 'Different',
         }),
@@ -141,7 +142,7 @@ await test('MOCK external adapter: exact-run actual assistant is attributed and 
     const row = await f.inbox.get(c.id);
     assert.equal(row.state, 'acked');
     assert.ok(row.resultMessageId);
-    const message = await f.comm.message(
+    const message = await f.store.messages.message(
       f.principal,
       f.teamId,
       f.channelId,
@@ -247,7 +248,7 @@ for (const status of ['completed', 'failed'] as const)
           'Existing task evidence must not strand Inbox publication',
         );
         assert.ok(row.resultMessageId);
-        const message = await reopened.communication.message(
+        const message = await reopened.messages.message(
           f.principal,
           f.teamId,
           f.channelId,
@@ -394,7 +395,7 @@ await test('MOCK native terminal failure without assistant posts truthful notice
     assert.equal(row.state, 'acked');
     assert.equal(row.reason, 'native-terminal-notice-published');
     assert.ok(row.resultMessageId);
-    const notice = await f.comm.message(
+    const notice = await f.store.messages.message(
       f.principal,
       f.teamId,
       f.channelId,
@@ -637,7 +638,7 @@ for (const denied of [
           f.inboxGrant.grant.id,
         );
       if (denied === 'removed')
-        await f.comm.enroll(
+        await f.store.channels.enroll(
           f.principal,
           f.teamId,
           f.channelId,
@@ -733,10 +734,15 @@ await test('revocation after launch prevents publication and retains native refe
 await test('context is bounded, source-attributed, preserves topic/task/memory reference and is frozen once', async () => {
   const f = await inboxFixture();
   try {
-    const topic = await f.comm.createTopic(f.principal, f.teamId, f.channelId, {
-      operationKey: key(),
-      title: 'A topic',
-    });
+    const topic = await f.store.topics.createTopic(
+      f.principal,
+      f.teamId,
+      f.channelId,
+      {
+        operationKey: key(),
+        title: 'A topic',
+      },
+    );
     const task = (
       await f.create({
         topicId: topic.id,
@@ -959,7 +965,7 @@ for (const recovery of ['release', 'expired-lease'] as const)
       assert.equal((await f.inbox.get(newer.id)).claimToken, newer.claimToken);
 
       // The exclusion is per agent and channel: another agent can use the remaining slot.
-      await f.comm.post(
+      await f.store.messages.post(
         f.principal,
         f.teamId,
         f.channelId,
@@ -1025,7 +1031,7 @@ await test('agent handoffs follow trusted audit chain, one target per chain, fin
         name: 'Chain ' + String(i),
       });
       members.push(a);
-      await f.comm.enroll(
+      await f.store.channels.enroll(
         f.principal,
         f.teamId,
         f.channelId,
@@ -1073,7 +1079,7 @@ await test('agent handoffs follow trusted audit chain, one target per chain, fin
     });
     assert.equal((await f.rows()).length, 6);
     assert.equal((await f.rows()).at(-1)?.depth, 0);
-    await f.comm.post(
+    await f.store.messages.post(
       f.agentPrincipal,
       f.teamId,
       f.channelId,
@@ -1221,14 +1227,14 @@ await test('a worker bound to any number of agents claims for the last of them, 
       );
     const last = ids.at(-1);
     assert.ok(last);
-    await f.comm.enroll(
+    await f.store.channels.enroll(
       f.principal,
       f.teamId,
       f.channelId,
       { operationKey: key(), member: { kind: 'agent', id: last } },
       'invite',
     );
-    await f.comm.post(
+    await f.store.messages.post(
       f.principal,
       f.teamId,
       f.channelId,
@@ -1268,7 +1274,7 @@ await test('claimers racing on separate connections take two deliveries, for two
       ...profileInput,
       name: 'Racing third',
     });
-    await f.comm.enroll(
+    await f.store.channels.enroll(
       f.principal,
       f.teamId,
       f.channelId,
@@ -1277,7 +1283,7 @@ await test('claimers racing on separate connections take two deliveries, for two
     );
     const ids = [f.agent.id, f.reviewer.id, third.id];
     for (let i = 0; i < 2; i++)
-      await f.comm.post(
+      await f.store.messages.post(
         f.principal,
         f.teamId,
         f.channelId,
@@ -1308,7 +1314,7 @@ await test('global capacity two is enforced across independent connections and d
       ...profileInput,
       name: 'Capacity third',
     });
-    await f.comm.enroll(
+    await f.store.channels.enroll(
       f.principal,
       f.teamId,
       f.channelId,
@@ -1316,7 +1322,7 @@ await test('global capacity two is enforced across independent connections and d
       'invite',
     );
     const ids = [f.agent.id, f.reviewer.id, third.id];
-    await f.comm.post(
+    await f.store.messages.post(
       f.principal,
       f.teamId,
       f.channelId,
@@ -1373,7 +1379,8 @@ await test('never-dispatched expiry, bounded retry history, retained facts and r
     assert.equal(await count(), 128);
     assert.equal((await f.inbox.get(c.id)).attempts, 141);
     assert.equal(
-      (await f.comm.history(f.principal, f.teamId, f.channelId)).items.length,
+      (await f.store.messages.history(f.principal, f.teamId, f.channelId)).items
+        .length,
       3,
     );
     assert.equal(
@@ -1619,7 +1626,7 @@ await test('a long reply whose cut falls inside an emoji is published, shortened
     await deliver(f.store, c, f.binding, f.factory, signal());
     const row = await f.inbox.get(c.id);
     assert.equal(row.state, 'acked', row.reason);
-    const reply = await f.comm.message(
+    const reply = await f.store.messages.message(
       f.principal,
       f.teamId,
       f.channelId,
@@ -1715,7 +1722,7 @@ await test('MOCK external adapter: explicit task handoff wakes authorized recipi
     const row = await f.inbox.get(c.id);
     assert.equal(row.state, 'acked');
     assert.ok(row.resultMessageId);
-    const message = await f.comm.message(
+    const message = await f.store.messages.message(
       f.principal,
       f.teamId,
       f.channelId,

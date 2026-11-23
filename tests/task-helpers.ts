@@ -46,7 +46,7 @@ export async function taskFixture() {
     name: 'Reviewer',
     role: 'reviewer',
   });
-  await f.comm.enroll(
+  await f.store.channels.enroll(
     f.principal,
     f.teamId,
     f.channelId,

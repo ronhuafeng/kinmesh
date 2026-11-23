@@ -159,14 +159,13 @@ export function teamServer(
       },
     );
   }
-  const c = store.communication;
   register(
     'team_channels_list',
     'List joined channels. Discovery does not grant access.',
     PageInput,
     pageOf(ChannelView),
     true,
-    (p, args) => c.channels(p, p.teamId, args),
+    (p, args) => store.channels.channels(p, p.teamId, args),
   );
   register(
     'team_channel_get',
@@ -174,7 +173,7 @@ export function teamServer(
     channel,
     ChannelView,
     true,
-    (p, a) => c.channel(p, p.teamId, a.channelId),
+    (p, a) => store.channels.channel(p, p.teamId, a.channelId),
   );
   register(
     'team_topics_list',
@@ -182,7 +181,8 @@ export function teamServer(
     pagedChannel,
     pageOf(Topic),
     true,
-    (p, { channelId, ...page }) => c.topics(p, p.teamId, channelId, page),
+    (p, { channelId, ...page }) =>
+      store.topics.topics(p, p.teamId, channelId, page),
   );
   register(
     'team_topic_create',
@@ -190,7 +190,8 @@ export function teamServer(
     channel.extend(TopicInput.shape),
     Topic,
     false,
-    (p, { channelId, ...data }) => c.createTopic(p, p.teamId, channelId, data),
+    (p, { channelId, ...data }) =>
+      store.topics.createTopic(p, p.teamId, channelId, data),
   );
   register(
     'team_messages_read',
@@ -199,7 +200,7 @@ export function teamServer(
     pageOf(Message),
     true,
     (p, { channelId, topicId, ...page }) =>
-      c.history(p, p.teamId, channelId, page, topicId),
+      store.messages.history(p, p.teamId, channelId, page, topicId),
   );
   register(
     'team_message_get',
@@ -207,7 +208,7 @@ export function teamServer(
     channel.extend({ messageId: MessageId }),
     Message,
     true,
-    (p, a) => c.message(p, p.teamId, a.channelId, a.messageId),
+    (p, a) => store.messages.message(p, p.teamId, a.channelId, a.messageId),
   );
   register(
     'team_attachment_read',
@@ -216,7 +217,7 @@ export function teamServer(
     AttachmentContent,
     true,
     async (p, a) => {
-      const { attachment, sha256 } = await c.attachment(
+      const { attachment, sha256 } = await store.files.attachment(
         p,
         p.teamId,
         a.channelId,
@@ -239,7 +240,8 @@ export function teamServer(
     channel.extend(PostInput.shape),
     Message,
     false,
-    (p, { channelId, ...data }) => c.post(p, p.teamId, channelId, data),
+    (p, { channelId, ...data }) =>
+      store.messages.post(p, p.teamId, channelId, data),
   );
   register(
     'team_tasks_list',

@@ -21,7 +21,7 @@ async function grace(f: Fixture) {
   };
 }
 const mention = async (f: Fixture, author: Fixture['principal']) =>
-  f.comm.post(
+  f.store.messages.post(
     author,
     f.teamId,
     f.channelId,
@@ -114,7 +114,7 @@ await test('an agent’s task is decided by the person whose mention it answers'
     await mention(f, g.principal);
     const claim = await f.inbox.claim([f.agent.id]);
     assert.ok(claim);
-    await f.comm.post(
+    await f.store.messages.post(
       f.principal,
       f.teamId,
       f.channelId,

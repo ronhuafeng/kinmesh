@@ -126,7 +126,8 @@ await test('real Team MCP subprocess + independent SDK initializes, notifies, li
     assert.equal(sent.data.author.kind, 'agent');
     assert.equal(sent.data.author.agentId, f.agent.id);
     assert.equal(
-      (await f.comm.history(f.principal, f.teamId, f.channelId)).items[0]?.id,
+      (await f.store.messages.history(f.principal, f.teamId, f.channelId))
+        .items[0]?.id,
       sent.data.id,
     );
     assert.deepEqual(
@@ -360,7 +361,8 @@ await test('Team SDK strict input/output schemas reject impersonation and unknow
     );
     assert.ok(!denied.ok && denied.error.code === 'forbidden');
     assert.equal(
-      (await f.comm.history(f.principal, f.teamId, f.channelId)).items.length,
+      (await f.store.messages.history(f.principal, f.teamId, f.channelId)).items
+        .length,
       0,
     );
     assert.equal(
@@ -387,10 +389,14 @@ await test('Team SDK hides cross-team/channel context, enforces current membersh
       .prepare('INSERT INTO memberships (human_id,team_id) VALUES (?,?)')
       .run(f.owner.id, otherTeam);
     await foreign.close();
-    const foreignChannel = await f.comm.createChannel(f.principal, otherTeam, {
-      operationKey: key(),
-      name: 'Foreign channel',
-    });
+    const foreignChannel = await f.store.channels.createChannel(
+      f.principal,
+      otherTeam,
+      {
+        operationKey: key(),
+        name: 'Foreign channel',
+      },
+    );
     const foreignRead = await call(
       client,
       'team_messages_read',
@@ -398,10 +404,14 @@ await test('Team SDK hides cross-team/channel context, enforces current membersh
       pageOf(Message),
     );
     assert.ok(!foreignRead.ok && foreignRead.error.code === 'not_found');
-    const privateChannel = await f.comm.createChannel(f.principal, f.teamId, {
-      operationKey: key(),
-      name: 'private',
-    });
+    const privateChannel = await f.store.channels.createChannel(
+      f.principal,
+      f.teamId,
+      {
+        operationKey: key(),
+        name: 'private',
+      },
+    );
     const hidden = await call(
       client,
       'team_messages_read',
@@ -442,7 +452,7 @@ await test('Team SDK hides cross-team/channel context, enforces current membersh
       arguments: { teamId: randomUUID() },
     });
     assert.equal(cross.isError, true);
-    await f.comm.enroll(
+    await f.store.channels.enroll(
       f.principal,
       f.teamId,
       f.channelId,
@@ -544,7 +554,9 @@ await test('two independent official SDK client processes race to claim through 
       1,
     );
     assert.equal(
-      (await f.comm.events(f.principal, f.teamId, f.channelId)).items.filter(
+      (
+        await f.store.messages.events(f.principal, f.teamId, f.channelId)
+      ).items.filter(
         (e) => e.fact.kind === 'task.changed' && e.fact.taskAction === 'claim',
       ).length,
       1,
@@ -565,7 +577,8 @@ await test('Team MCP transactions roll back on outbox failure and retries recove
     const failure = await call(client, 'team_messages_send', input, Message);
     assert.ok(!failure.ok && failure.error.code === 'conflict');
     assert.equal(
-      (await f.comm.history(f.principal, f.teamId, f.channelId)).items.length,
+      (await f.store.messages.history(f.principal, f.teamId, f.channelId)).items
+        .length,
       0,
     );
     await db.dropTrigger('test_mcp_failure', 'communication_outbox');
@@ -577,7 +590,8 @@ await test('Team MCP transactions roll back on outbox failure and retries recove
       sent,
     );
     assert.equal(
-      (await f.comm.history(f.principal, f.teamId, f.channelId)).items.length,
+      (await f.store.messages.history(f.principal, f.teamId, f.channelId)).items
+        .length,
       1,
     );
   } finally {
@@ -882,7 +896,7 @@ for (const cursorCase of ['bad', 'wrong-context'] as const) {
       let name = 'team_messages_read';
       if (cursorCase === 'wrong-context') {
         for (let i = 0; i < 2; i++)
-          await f.comm.post(
+          await f.store.messages.post(
             f.principal,
             f.teamId,
             f.channelId,

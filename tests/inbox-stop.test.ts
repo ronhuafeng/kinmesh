@@ -21,7 +21,7 @@ const signal = () => new AbortController().signal;
 const Args = z.record(z.string(), z.unknown());
 
 async function mention(f: Fixture) {
-  await f.comm.post(
+  await f.store.messages.post(
     f.principal,
     f.teamId,
     f.channelId,
@@ -95,7 +95,7 @@ await test('a person stops a run waiting in T3: it is interrupted once and its s
     assert.equal(ended.state, 'acked', ended.reason);
     assert.equal(ended.reason, 'native-terminal-notice-published');
     assert.equal(calls(f, 't3_thread_interrupt').length, 1);
-    const notice = await f.comm.message(
+    const notice = await f.store.messages.message(
       f.principal,
       f.teamId,
       f.channelId,
@@ -245,7 +245,7 @@ await test('stopping follows the resume rule: people who can read the channel, n
     assert.equal((await stop(f, working.id)).statusCode, 409);
     assert.equal((await f.inbox.get(working.id)).stopRequestedAt, null);
     // Someone who left the channel can't reach its deliveries.
-    await f.comm.membership(
+    await f.store.channels.membership(
       f.principal,
       f.teamId,
       f.channelId,

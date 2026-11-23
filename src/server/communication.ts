@@ -33,7 +33,7 @@ export function registerCommunication(app: FastifyInstance, store: Store) {
     reply
       .code(201)
       .send(
-        await store.communication.createChannel(
+        await store.channels.createChannel(
           principal(request),
           TeamPath.parse(request.params).teamId,
           ChannelInput.parse(request.body),
@@ -42,7 +42,7 @@ export function registerCommunication(app: FastifyInstance, store: Store) {
   );
   /** A person opens their own conversation with another; the answer is its channel. */
   app.post('/api/teams/:teamId/direct', async (request) =>
-    store.communication.direct(
+    store.channels.direct(
       principal(request),
       TeamPath.parse(request.params).teamId,
       DirectInput.parse(request.body),
@@ -58,11 +58,11 @@ export function registerCommunication(app: FastifyInstance, store: Store) {
     return membership === 'left' || membership === 'public'
       ? {
           items: await (membership === 'left'
-            ? store.communication.leftChannels(principal(request), teamId)
-            : store.communication.publicChannels(principal(request), teamId)),
+            ? store.channels.leftChannels(principal(request), teamId)
+            : store.channels.publicChannels(principal(request), teamId)),
           nextCursor: null,
         }
-      : await store.communication.channels(principal(request), teamId, page);
+      : await store.channels.channels(principal(request), teamId, page);
   });
   // Recovery of a blocked delivery by any person; agents never reach it (resumeByPerson).
   app.post(
@@ -96,20 +96,16 @@ export function registerCommunication(app: FastifyInstance, store: Store) {
   );
   app.get(channel, async (request) => {
     const { teamId, channelId } = ChannelPath.parse(request.params);
-    return store.communication.channel(principal(request), teamId, channelId);
+    return store.channels.channel(principal(request), teamId, channelId);
   });
   app.get(channel + '/membership', async (request) => {
     const { teamId, channelId } = ChannelPath.parse(request.params);
-    return store.communication.participant(
-      principal(request),
-      teamId,
-      channelId,
-    );
+    return store.channels.participant(principal(request), teamId, channelId);
   });
   for (const action of ['subscribe', 'leave'] as const)
     app.post(channel + '/' + action, async (request) => {
       const { teamId, channelId } = ChannelPath.parse(request.params);
-      return store.communication.membership(
+      return store.channels.membership(
         principal(request),
         teamId,
         channelId,
@@ -119,7 +115,7 @@ export function registerCommunication(app: FastifyInstance, store: Store) {
     });
   app.post(channel + '/visibility', async (request) => {
     const { teamId, channelId } = ChannelPath.parse(request.params);
-    return store.communication.setVisibility(
+    return store.channels.setVisibility(
       principal(request),
       teamId,
       channelId,
@@ -129,7 +125,7 @@ export function registerCommunication(app: FastifyInstance, store: Store) {
   for (const action of ['invite', 'remove'] as const)
     app.post(channel + '/participants/' + action, async (request) => {
       const { teamId, channelId } = ChannelPath.parse(request.params);
-      return store.communication.enroll(
+      return store.channels.enroll(
         principal(request),
         teamId,
         channelId,
@@ -142,7 +138,7 @@ export function registerCommunication(app: FastifyInstance, store: Store) {
     return reply
       .code(201)
       .send(
-        await store.communication.createTopic(
+        await store.topics.createTopic(
           principal(request),
           teamId,
           channelId,
@@ -152,7 +148,7 @@ export function registerCommunication(app: FastifyInstance, store: Store) {
   });
   app.get(channel + '/topics', async (request) => {
     const { teamId, channelId } = ChannelPath.parse(request.params);
-    return store.communication.topics(
+    return store.topics.topics(
       principal(request),
       teamId,
       channelId,
@@ -161,16 +157,11 @@ export function registerCommunication(app: FastifyInstance, store: Store) {
   });
   app.get(channel + '/topics/:topicId', async (request) => {
     const { teamId, channelId, topicId } = TopicPath.parse(request.params);
-    return store.communication.topic(
-      principal(request),
-      teamId,
-      channelId,
-      topicId,
-    );
+    return store.topics.topic(principal(request), teamId, channelId, topicId);
   });
   app.get(channel + '/topics/:topicId/messages', async (request) => {
     const { teamId, channelId, topicId } = TopicPath.parse(request.params);
-    return store.communication.history(
+    return store.messages.history(
       principal(request),
       teamId,
       channelId,
@@ -183,7 +174,7 @@ export function registerCommunication(app: FastifyInstance, store: Store) {
     return reply
       .code(201)
       .send(
-        await store.communication.post(
+        await store.messages.post(
           principal(request),
           teamId,
           channelId,
@@ -193,7 +184,7 @@ export function registerCommunication(app: FastifyInstance, store: Store) {
   });
   app.post(channel + '/level', async (request, reply) => {
     const { teamId, channelId } = ChannelPath.parse(request.params);
-    await store.communication.level(
+    await store.channels.level(
       principal(request),
       teamId,
       channelId,
@@ -203,7 +194,7 @@ export function registerCommunication(app: FastifyInstance, store: Store) {
   });
   app.post(channel + '/read', async (request, reply) => {
     const { teamId, channelId } = ChannelPath.parse(request.params);
-    await store.communication.read(
+    await store.channels.read(
       principal(request),
       teamId,
       channelId,
@@ -213,7 +204,7 @@ export function registerCommunication(app: FastifyInstance, store: Store) {
   });
   app.get(channel + '/messages', async (request) => {
     const { teamId, channelId } = ChannelPath.parse(request.params);
-    return store.communication.history(
+    return store.messages.history(
       principal(request),
       teamId,
       channelId,
@@ -222,7 +213,7 @@ export function registerCommunication(app: FastifyInstance, store: Store) {
   });
   app.get(channel + '/messages/:messageId', async (request) => {
     const { teamId, channelId, messageId } = MessagePath.parse(request.params);
-    return store.communication.message(
+    return store.messages.message(
       principal(request),
       teamId,
       channelId,
@@ -232,7 +223,7 @@ export function registerCommunication(app: FastifyInstance, store: Store) {
   /** A person in the channel names it again. */
   app.post(channel + '/rename', async (request) => {
     const { teamId, channelId } = ChannelPath.parse(request.params);
-    return store.communication.rename(
+    return store.channels.rename(
       principal(request),
       teamId,
       channelId,
@@ -242,7 +233,7 @@ export function registerCommunication(app: FastifyInstance, store: Store) {
   /** A person in the channel archives it, or brings it back. */
   app.post(channel + '/archive', async (request) => {
     const { teamId, channelId } = ChannelPath.parse(request.params);
-    return store.communication.archive(
+    return store.channels.archive(
       principal(request),
       teamId,
       channelId,
@@ -252,7 +243,7 @@ export function registerCommunication(app: FastifyInstance, store: Store) {
   /** A person pins a message in the channel or unpins it; the answer is its pins. */
   app.post(channel + '/messages/:messageId/pin', async (request) => {
     const { teamId, channelId, messageId } = MessagePath.parse(request.params);
-    return store.communication.pin(
+    return store.pins.pin(
       principal(request),
       teamId,
       channelId,
@@ -263,7 +254,7 @@ export function registerCommunication(app: FastifyInstance, store: Store) {
   /** Its author says a message again; the answer is the message. */
   app.post(channel + '/messages/:messageId/edit', async (request) => {
     const { teamId, channelId, messageId } = MessagePath.parse(request.params);
-    return store.communication.edit(
+    return store.messages.edit(
       principal(request),
       teamId,
       channelId,
@@ -274,7 +265,7 @@ export function registerCommunication(app: FastifyInstance, store: Store) {
   /** Its author withdraws a message; the answer is the message, now empty. */
   app.post(channel + '/messages/:messageId/withdraw', async (request) => {
     const { teamId, channelId, messageId } = MessagePath.parse(request.params);
-    return store.communication.withdraw(
+    return store.messages.withdraw(
       principal(request),
       teamId,
       channelId,
@@ -285,7 +276,7 @@ export function registerCommunication(app: FastifyInstance, store: Store) {
   /** A person adds or takes back a reaction; the answer is the message's reactions. */
   app.post(channel + '/messages/:messageId/reactions', async (request) => {
     const { teamId, channelId, messageId } = MessagePath.parse(request.params);
-    return store.communication.react(
+    return store.reactions.react(
       principal(request),
       teamId,
       channelId,
@@ -296,7 +287,7 @@ export function registerCommunication(app: FastifyInstance, store: Store) {
   app.get(channel + '/messages/:messageId/mentions', async (request) => {
     const { teamId, channelId, messageId } = MessagePath.parse(request.params);
     return (
-      await store.communication.message(
+      await store.messages.message(
         principal(request),
         teamId,
         channelId,
@@ -306,7 +297,7 @@ export function registerCommunication(app: FastifyInstance, store: Store) {
   });
   app.get(channel + '/events', async (request) => {
     const { teamId, channelId } = ChannelPath.parse(request.params);
-    return store.communication.events(
+    return store.messages.events(
       principal(request),
       teamId,
       channelId,

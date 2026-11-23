@@ -345,7 +345,7 @@ await test('MOCK native: a task wake sent into a conversation the agent already 
   const f = await inboxFixture();
   try {
     // The agent's first answer in the channel starts its thread.
-    await f.comm.post(
+    await f.store.messages.post(
       f.principal,
       f.teamId,
       f.channelId,
@@ -407,7 +407,7 @@ await test('MOCK native: a task wake sent into a conversation the agent already 
     assert.equal(settled.state, 'acked', settled.reason);
     assert.equal(
       (
-        await f.comm.message(
+        await f.store.messages.message(
           f.principal,
           f.teamId,
           f.channelId,

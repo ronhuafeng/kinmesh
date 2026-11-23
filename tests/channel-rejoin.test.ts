@@ -20,10 +20,10 @@ await test('only channels the caller left are offered for rejoining; removed and
     );
     const agent = await f.store.agents.resolveToken(grant.token);
     const ids = async (p: Principal) =>
-      (await f.comm.leftChannels(p, f.teamId)).map((c) => c.id);
+      (await f.store.channels.leftChannels(p, f.teamId)).map((c) => c.id);
     assert.deepEqual(await ids(f.principal), []);
     // The owner leaves; the channel is offered back, and the API agrees.
-    await f.comm.membership(
+    await f.store.channels.membership(
       f.principal,
       f.teamId,
       f.channelId,
@@ -45,7 +45,7 @@ await test('only channels the caller left are offered for rejoining; removed and
     );
     // An agent that never left sees nothing; leaving is per member.
     assert.deepEqual(await ids(agent), []);
-    await f.comm.membership(
+    await f.store.channels.membership(
       f.principal,
       f.teamId,
       f.channelId,
@@ -54,12 +54,12 @@ await test('only channels the caller left are offered for rejoining; removed and
     );
     assert.deepEqual(await ids(f.principal), []);
     // Removal by the owner is final: it is never offered back.
-    const other = await f.comm.createChannel(f.principal, f.teamId, {
+    const other = await f.store.channels.createChannel(f.principal, f.teamId, {
       operationKey: key(),
       name: 'removal',
     });
     for (const action of ['invite', 'remove'] as const)
-      await f.comm.enroll(
+      await f.store.channels.enroll(
         f.principal,
         f.teamId,
         other.id,
@@ -69,7 +69,7 @@ await test('only channels the caller left are offered for rejoining; removed and
         },
         action,
       );
-    await f.comm.membership(
+    await f.store.channels.membership(
       agent,
       f.teamId,
       f.channelId,

@@ -25,7 +25,7 @@ await test('a snapshot is one transaction whose queries do not grow with its mes
       return { snapshot: WorkspaceSnapshot.parse(body), transactions, queries };
     };
     const post = (body: string) =>
-      f.comm.post(
+      f.store.messages.post(
         f.principal,
         f.teamId,
         f.channelId,
@@ -56,7 +56,7 @@ await test('messages read together are each the message read alone, mentions in 
   try {
     await f.invite();
     for (let i = 0; i < 5; i++)
-      await f.comm.post(
+      await f.store.messages.post(
         f.principal,
         f.teamId,
         f.channelId,
@@ -71,12 +71,16 @@ await test('messages read together are each the message read alone, mentions in 
               : [],
         }),
       );
-    const page = await f.comm.history(f.principal, f.teamId, f.channelId);
+    const page = await f.store.messages.history(
+      f.principal,
+      f.teamId,
+      f.channelId,
+    );
     assert.equal(page.items.length, 5);
     for (const item of page.items)
       assert.deepEqual(
         item,
-        await f.comm.message(
+        await f.store.messages.message(
           f.principal,
           f.teamId,
           f.channelId,
@@ -84,7 +88,7 @@ await test('messages read together are each the message read alone, mentions in 
         ),
       );
     // The newest message of the channel is the history's newest.
-    const latest = (await f.comm.latest(f.principal, f.teamId)).find(
+    const latest = (await f.store.channels.latest(f.principal, f.teamId)).find(
       (l) => l.channelId === f.channelId,
     );
     assert.equal(latest?.messageId, page.items.at(-1)?.id);
