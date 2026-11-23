@@ -58,7 +58,7 @@ export async function createTeamApp(config: TeamConfig, store: Store) {
     }
     try {
       // Evidence for the workspace that this agent's provider reaches Team MCP.
-      await store.managed.seenByTeamMcp(agent);
+      await store.teamMcpPresence.seenByTeamMcp(agent);
     } catch {
       // Evidence only: a failed write never refuses an authenticated request.
     }

@@ -1,16 +1,15 @@
-import { and, eq, inArray, isNull, lt, sql } from 'drizzle-orm';
+import { and, eq, inArray, isNull, lt } from 'drizzle-orm';
 import { z } from 'zod';
 import * as s from './schema.js';
 import type { agentRepository } from './agents.js';
+import type { t3ConnectionRepository } from './t3-connections.js';
 import type { Database } from './database.js';
 import type { Principal } from '../domain/agents.js';
 import { DomainError } from '../domain/errors.js';
 import type { GrantInput } from '../domain/agents.js';
-import { AgentId, TeamId } from '../domain/contracts.js';
-import { Endpoint } from '../adapters/t3/oauth.js';
+import type { TeamId } from '../domain/contracts.js';
+import { AgentId } from '../domain/contracts.js';
 
-/** A presence write per agent at most this often; Team MCP calls are frequent. */
-const PRESENCE_MS = 30_000;
 const Provider = z.string().trim().min(1).max(256);
 
 /**
@@ -20,6 +19,7 @@ const Provider = z.string().trim().min(1).max(256);
 export function managedRepository(
   d: Database,
   agents: ReturnType<typeof agentRepository>,
+  t3Connections: ReturnType<typeof t3ConnectionRepository>,
 ) {
   const { q, atomic } = d;
   /** A person of the team: T3 and the hub-held secrets are everyone's. */
@@ -27,14 +27,6 @@ export function managedRepository(
     // Agents are refused before their grant is looked at.
     if (p.kind !== 'human') throw new DomainError('forbidden');
     await agents.person(p, teamId);
-  }
-  async function connection(teamId: TeamId) {
-    const [row] = await q()
-      .select()
-      .from(s.t3Connections)
-      .where(eq(s.t3Connections.teamId, TeamId.parse(teamId)))
-      .limit(1);
-    return row ?? null;
   }
   async function binding(teamId: TeamId, agentId: AgentId) {
     const [row] = await q()
@@ -90,74 +82,6 @@ export function managedRepository(
     renewWorkerGrants(lifetimeSeconds: number) {
       return atomic(() => renew(lifetimeSeconds));
     },
-    async connection(p: Principal, teamId: TeamId) {
-      await person(p, teamId);
-      return connection(teamId);
-    },
-    /**
-     * The one T3 a team uses, for anyone of the team, a person or one of its
-     * agents (checking a run): no secrets in the row.
-     */
-    teamConnection(p: Principal, teamId: TeamId) {
-      return atomic(async () => {
-        await agents.teamAccess(p, teamId);
-        return connection(teamId);
-      });
-    },
-    async saveConnection(
-      p: Principal,
-      teamId: TeamId,
-      endpoint: string,
-      environmentId: string,
-    ) {
-      await atomic(async () => {
-        await person(p, teamId);
-        const row = {
-          endpoint: Endpoint.parse(endpoint),
-          environmentId: z.string().min(1).max(256).parse(environmentId),
-          connectedAt: Date.now(),
-        };
-        await q()
-          .insert(s.t3Connections)
-          .values({ teamId, ...row })
-          .onConflictDoUpdate({ target: s.t3Connections.teamId, set: row });
-      });
-    },
-    /**
-     * The T3 the deployment connects, for the instance's team: no person
-     * signs it in. Returns how many teams it was set for (none before the
-     * first person has signed in and so made the team).
-     */
-    async provision(endpoint: string, environmentId: string) {
-      return atomic(async () => {
-        const row = {
-          endpoint: Endpoint.parse(endpoint),
-          environmentId: z.string().min(1).max(256).parse(environmentId),
-        };
-        const teams = await q().select({ id: s.teams.id }).from(s.teams);
-        for (const team of teams) {
-          const [current] = await q()
-            .select()
-            .from(s.t3Connections)
-            .where(eq(s.t3Connections.teamId, team.id))
-            .limit(1);
-          // Unchanged: keep when it was connected.
-          if (
-            current?.endpoint === row.endpoint &&
-            current.environmentId === row.environmentId
-          )
-            continue;
-          await q()
-            .insert(s.t3Connections)
-            .values({ teamId: team.id, ...row, connectedAt: Date.now() })
-            .onConflictDoUpdate({
-              target: s.t3Connections.teamId,
-              set: { ...row, connectedAt: Date.now() },
-            });
-        }
-        return teams.length;
-      });
-    },
     async binding(p: Principal, teamId: TeamId, agentId: AgentId) {
       await person(p, teamId);
       return binding(teamId, agentId);
@@ -205,7 +129,7 @@ export function managedRepository(
     ) {
       return atomic(async () => {
         await person(p, teamId);
-        const t3 = await connection(teamId);
+        const t3 = await t3Connections.connection(p, teamId);
         if (t3 === null) throw new DomainError('conflict');
         const providerId = Provider.parse(choice.providerId);
         const profile = await agents.get(p, teamId, agentId);
@@ -273,32 +197,6 @@ export function managedRepository(
           ),
         );
       return done.count === 1;
-    },
-    /** Record that an agent's credential reached Team MCP. Evidence only. */
-    async seenByTeamMcp(p: Principal) {
-      if (p.kind !== 'agent') return;
-      const now = Date.now();
-      await q()
-        .insert(s.teamMcpPresence)
-        .values({ agentId: p.agentId, teamId: p.teamId, lastSeenAt: now })
-        .onConflictDoUpdate({
-          target: s.teamMcpPresence.agentId,
-          set: { lastSeenAt: now },
-          setWhere: sql`${s.teamMcpPresence.lastSeenAt} < ${now - PRESENCE_MS}`,
-        });
-    },
-    /** When each of the team's agents last reached Team MCP, for a person of it. */
-    teamMcpPresence(p: Principal, teamId: TeamId) {
-      return atomic(async () => {
-        await person(p, teamId);
-        return await q()
-          .select({
-            agentId: s.teamMcpPresence.agentId,
-            lastSeenAt: s.teamMcpPresence.lastSeenAt,
-          })
-          .from(s.teamMcpPresence)
-          .where(eq(s.teamMcpPresence.teamId, teamId));
-      });
     },
   };
 }

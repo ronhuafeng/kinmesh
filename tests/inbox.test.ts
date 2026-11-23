@@ -1241,7 +1241,7 @@ await test('a worker bound to any number of agents claims for the last of them, 
       postInput({ mentions: [{ kind: 'agent', id: last }] }),
     );
     // Its liveness, then its delivery: the worker's loop does both each turn.
-    await f.inbox.heartbeat(ids);
+    await f.store.inboxBindings.heartbeat(ids);
     assert.deepEqual(
       (await f.store.inboxViews.liveness(f.principal, f.teamId))
         .map((r) => r.agentId)
@@ -1255,9 +1255,9 @@ await test('a worker bound to any number of agents claims for the last of them, 
       ...ids,
       ...Array.from({ length: 70_000 }, () => randomUUID()),
     ].map((id) => AgentId.parse(id));
-    await f.inbox.heartbeat(many);
+    await f.store.inboxBindings.heartbeat(many);
     assert.equal(await f.inbox.claim(many), undefined);
-    await f.inbox.release(many);
+    await f.store.inboxBindings.release(many);
     assert.deepEqual(
       await f.store.inboxViews.liveness(f.principal, f.teamId),
       [],

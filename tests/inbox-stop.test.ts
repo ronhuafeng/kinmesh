@@ -318,7 +318,7 @@ await test('a run waiting for an approval links to its thread in T3', async () =
     f.wire.values.t3_thread_read = run('waiting');
     const waiting = await attempt(f);
     assert.equal(waiting.reason, 'human-or-approval-wait');
-    await f.store.managed.saveConnection(
+    await f.store.t3Connections.saveConnection(
       f.principal,
       f.teamId,
       mock.endpoint,

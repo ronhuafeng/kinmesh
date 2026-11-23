@@ -65,7 +65,10 @@ export function registerWorkspace(
     teamId: TeamId,
     reference: z.infer<typeof Reference>,
   ) {
-    const connection = await store.managed.teamConnection(principal, teamId);
+    const connection = await store.t3Connections.teamConnection(
+      principal,
+      teamId,
+    );
     if (!connection) throw new Error('Unavailable');
     const credential = runCredential(connection.endpoint);
     if (credential?.environmentId !== reference.environmentId)
@@ -297,14 +300,14 @@ export function registerWorkspace(
       store.inboxViews.blockedIn(principal, teamId),
       store.inboxViews.queuedPerAgent(principal, teamId),
       renewal(principal, teamId),
-      store.managed.teamConnection(principal, teamId),
+      store.t3Connections.teamConnection(principal, teamId),
       store.people(principal, teamId, now),
       channel ? store.channels.joinedHumans(principal, teamId, channel.id) : [],
       store.channels.latest(principal, teamId),
       store.channels.leftChannels(principal, teamId),
       store.channels.publicChannels(principal, teamId),
       store.managed.teamBindings(principal, teamId),
-      store.managed.teamMcpPresence(principal, teamId),
+      store.teamMcpPresence.teamMcpPresence(principal, teamId),
       store.agents.avatars(principal, teamId),
       store.notifications.quiet(principal.humanId, teamId),
       channel

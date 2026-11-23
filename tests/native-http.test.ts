@@ -20,7 +20,7 @@ async function connectTeam(
   f: Awaited<ReturnType<typeof agentFixture>>,
   endpoint: string,
 ) {
-  await f.store.managed.saveConnection(
+  await f.store.t3Connections.saveConnection(
     f.principal,
     f.teamId,
     endpoint,

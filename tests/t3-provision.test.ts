@@ -72,7 +72,10 @@ await test('the deployment’s T3 session connects the team; a renewed one is th
     // When the session ends, as T3 issued it: an ended one makes work wait.
     assert.equal(first.expiresAt, '2026-12-16T00:00:00.000Z');
     assert.equal(statSync(t3DeploymentFile(directory)).mode & 0o777, 0o600);
-    const connection = await f.store.managed.connection(f.principal, f.teamId);
+    const connection = await f.store.t3Connections.connection(
+      f.principal,
+      f.teamId,
+    );
     assert.equal(connection?.endpoint, endpoint);
     assert.equal(connection.environmentId, environment.environmentId);
     // Nothing changed: nothing is written again.
@@ -86,7 +89,8 @@ await test('the deployment’s T3 session connects the team; a renewed one is th
     assert.equal(second.tokens.access_token, 'second-token');
     assert.equal(authority(second), authority(first));
     assert.equal(
-      (await f.store.managed.connection(f.principal, f.teamId))?.connectedAt,
+      (await f.store.t3Connections.connection(f.principal, f.teamId))
+        ?.connectedAt,
       connection.connectedAt,
     );
 

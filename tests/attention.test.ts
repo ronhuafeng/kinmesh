@@ -96,7 +96,7 @@ await test('blocked deliveries and unwakeable agents are listed without worker i
     let attention = (await snapshot(f, other)).attention;
     assert.deepEqual(attention.connect, [{ agentId: f.agent.id, queued: 1 }]);
     assert.deepEqual(attention.unstuck, []);
-    await f.inbox.heartbeat([f.agent.id]);
+    await f.store.inboxBindings.heartbeat([f.agent.id]);
     assert.deepEqual((await snapshot(f, other)).attention.connect, []);
     // A blocking failure becomes something to unstick.
     const claim = await f.inbox.claim([f.agent.id]);

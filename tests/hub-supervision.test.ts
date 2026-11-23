@@ -388,7 +388,7 @@ await test(
   { timeout: 40000 },
   async () => {
     const seed = await inboxFixture();
-    await seed.store.managed.saveConnection(
+    await seed.store.t3Connections.saveConnection(
       seed.principal,
       seed.teamId,
       'https://t3.test/mcp',

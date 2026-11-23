@@ -1,39 +1,19 @@
-import type {
-  Database,
-} from './database.js';
-import {
-  randomUUID,
-} from 'node:crypto';
-import {
-  eq,
-} from 'drizzle-orm';
-import type {
-  z,
-} from 'zod';
+import type { Database } from './database.js';
+import { randomUUID } from 'node:crypto';
+import { eq } from 'drizzle-orm';
+import type { z } from 'zod';
 import * as s from './schema.js';
-import {
-  transactional,
-} from './transactional.js';
-import type {
-  AgentId,
-  TeamId,
-} from '../domain/contracts.js';
-import type {
-  Principal} from '../domain/agents.js';
+import { transactional } from './transactional.js';
+import type { AgentId, TeamId } from '../domain/contracts.js';
+import type { Principal } from '../domain/agents.js';
 import {
   RuntimeEvent,
   RuntimeEventInput,
   type RuntimeState,
 } from '../domain/agents.js';
-import {
-  DomainError,
-} from '../domain/errors.js';
-import {
-  principalAuthor as author,
-} from '../domain/tasks.js';
-import type {
-  agentRepository,
-} from './agents.js';
+import { DomainError } from '../domain/errors.js';
+import { principalAuthor as author } from '../domain/tasks.js';
+import type { agentRepository } from './agents.js';
 
 function parseJson(value: string): unknown {
   return JSON.parse(value);
