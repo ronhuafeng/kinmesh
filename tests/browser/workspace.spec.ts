@@ -2752,6 +2752,50 @@ test('a pasted image and a chosen file go with a message: the image as it is, th
   expect(await edge(row)).toBe(await edge(image));
 });
 
+/**
+ * Proves the keyboard sends no sooner than Send: while a file is still
+ * uploading, ⌘/Ctrl+Enter leaves the message and the file in the composer.
+ */
+test('⌘/Ctrl+Enter waits for a file still uploading, as Send does', async ({
+  page,
+  hub,
+}) => {
+  await signIn(page, hub);
+  let release: () => void = () => undefined;
+  const held = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  await page.route('**/attachments/uploads', async (route) => {
+    await held;
+    await route.continue();
+  });
+  const composer = page.getByRole('form', { name: '给团队发消息' });
+  const field = composer.getByLabel('消息', { exact: true });
+  await field.fill('The log is attached');
+  await composer.locator('input[type="file"]').setInputFiles({
+    name: 'run.log',
+    mimeType: 'text/plain',
+    buffer: Buffer.from('ok\n'),
+  });
+  const attached = composer.getByRole('list', { name: '附件' });
+  await expect(attached.getByRole('listitem')).toHaveCount(1);
+  await field.press('ControlOrMeta+Enter');
+  const messages = page.getByRole('list', { name: '频道消息' });
+  await expect(field).toHaveValue('The log is attached');
+  await expect(attached.getByRole('listitem')).toHaveCount(1);
+  await expect(messages.getByText('The log is attached')).toHaveCount(0);
+  // Once it is up, the same key sends both.
+  release();
+  await expect(
+    composer.getByRole('button', { name: '发送消息' }),
+  ).toBeEnabled();
+  await field.press('ControlOrMeta+Enter');
+  const sent = messages
+    .getByRole('listitem')
+    .filter({ hasText: 'The log is attached' });
+  await expect(sent.getByRole('link', { name: /run\.log/ })).toBeVisible();
+});
+
 test('one author’s run of messages is one group: the face and name once, each time on hover, a new day says so', async ({
   page,
   context,
