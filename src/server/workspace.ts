@@ -261,6 +261,7 @@ export function registerWorkspace(
       topics,
       activeTopics,
       firstUnread,
+      pinned,
     ] = await together([
       store.agents.workspaceProfiles(principal, teamId),
       channel
@@ -324,6 +325,7 @@ export function registerWorkspace(
             query.topicId ?? null,
           )
         : null,
+      channel ? store.communication.pins(principal, teamId, channel.id) : [],
     ]);
     const agents = profiles.agents;
     // In the order the profiles are listed: one read for all.
@@ -437,6 +439,7 @@ export function registerWorkspace(
         teamMcpUrl,
         firstUnread,
         reactions,
+        pinned,
         human,
         levels: quiet.levels,
         notices,

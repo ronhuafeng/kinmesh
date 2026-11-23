@@ -116,6 +116,10 @@ export const MessageReactions = z.strictObject({
   emoji: Reaction,
   humanIds: z.array(HumanId).min(1).max(1000),
 });
+export const PinInput = z.strictObject({
+  /** True pins it; false unpins it. */
+  on: z.boolean(),
+});
 export const Message = z.strictObject({
   id: MessageId,
   channelId: ChannelId,
@@ -134,6 +138,14 @@ export const Message = z.strictObject({
     .array(z.strictObject({ removedBy: HumanId, removedAt: z.iso.datetime() }))
     .max(ATTACHMENTS_PER_MESSAGE),
 });
+/** A message pinned in its channel, with who pinned it and when. */
+export const Pinned = z.strictObject({
+  message: Message,
+  pinnedBy: HumanId,
+  pinnedAt: z.iso.datetime(),
+});
+/** The most pins a channel keeps. */
+export const PINS_MOST = 50;
 /** A file someone removed from a message, as the audit keeps it. */
 export const AttachmentRemoval = z.strictObject({
   attachmentId: AttachmentId,

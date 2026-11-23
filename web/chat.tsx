@@ -546,6 +546,7 @@ interface RowActions {
   choose: (id: string) => void;
   open: (id: string) => void;
   reply: (id: string) => void;
+  pin: (id: string, on: boolean) => void;
   makeTask: (m: ChatMessage) => void;
   openAgent: (id: string) => void;
   done: () => void;
@@ -573,6 +574,8 @@ interface RowProps {
   lines: DeliveryView[];
   /** Its reactions, by reaction. */
   reactions: WorkspaceSnapshot['reactions'];
+  /** Whether it is pinned in its channel. */
+  pinned: boolean;
   /** For the delivery lines, which read the workspace. */
   data: WorkspaceSnapshot;
   permitted: boolean;
@@ -601,6 +604,7 @@ const sameRow = (a: RowProps, b: RowProps) =>
   a.agentId === b.agentId &&
   a.topicTag === b.topicTag &&
   a.permitted === b.permitted &&
+  a.pinned === b.pinned &&
   a.act === b.act &&
   // The workspace keeps an unchanged reply or delivery the same object
   // (keepUnchanged), so these compare by identity, never by serializing.
@@ -649,6 +653,7 @@ const MessageRow = memo(function MessageRow({
   mentions,
   lines,
   reactions,
+  pinned,
   data,
   permitted,
   act,
@@ -826,6 +831,16 @@ const MessageRow = memo(function MessageRow({
                 permitted={permitted}
                 onDone={act.done}
               />
+              <button
+                type="button"
+                className="quiet"
+                disabled={!permitted}
+                onClick={() => {
+                  act.pin(m.id, !pinned);
+                }}
+              >
+                {pinned ? '取消置顶' : '置顶'}
+              </button>
               <button
                 type="button"
                 className="quiet"
@@ -1012,6 +1027,7 @@ export function Chat({
     outbox,
     onOpenMessage,
     shown,
+    channelPath,
   });
   useLayoutEffect(() => {
     latest.current = {
@@ -1021,6 +1037,7 @@ export function Chat({
       outbox,
       onOpenMessage,
       shown,
+      channelPath,
     };
   });
   const [act] = useState<RowActions>(() => ({
@@ -1029,6 +1046,16 @@ export function Chat({
     },
     open: (id) => {
       latest.current.onOpenMessage(id);
+    },
+    pin: (id, on) => {
+      void request(`${latest.current.channelPath}/messages/${id}/pin`, {
+        on,
+      }).then(
+        () => {
+          latest.current.onDone();
+        },
+        () => undefined,
+      );
     },
     reply: (id) => {
       setReplying({ place: latest.current.shown, id });
@@ -1107,6 +1134,7 @@ export function Chat({
       replyTo.set(d.resultMessageId, d.messageId);
   }
   const origin = new Map(data.replies.map((r) => [r.messageId, r]));
+  const pinnedIds = new Set(data.pinned.map((p) => p.message.id));
   // Each message's reactions, once.
   const reactedTo = new Map<string, WorkspaceSnapshot['reactions']>();
   for (const r of data.reactions)
@@ -1265,6 +1293,7 @@ export function Chat({
                 name: memberName(member, data),
               }))}
               reactions={reactedTo.get(m.id) ?? NONE}
+              pinned={pinnedIds.has(m.id)}
               lines={(asked.get(m.id) ?? []).filter(
                 (d) =>
                   !(d.state === 'acked' && d.resultMessageId === following),

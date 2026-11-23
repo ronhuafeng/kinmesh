@@ -61,6 +61,7 @@ import { useSidebar } from './sidebar.js';
 import { InboxPage, attentionCount, badgeOf } from './inbox.js';
 import { FIRST, SettingsNav, SettingsPage } from './settings-map.js';
 import { Files } from './files.js';
+import { Pins } from './pins.js';
 import { ListRow } from './settings.js';
 import { sharedId, takeShared, type Shared } from './share.js';
 import {
@@ -1550,7 +1551,10 @@ export function App() {
                     onValueChange={(v) => {
                       if (v === 'inbox') return;
                       setView(
-                        v === 'board' || v === 'team' || v === 'files'
+                        v === 'board' ||
+                          v === 'team' ||
+                          v === 'files' ||
+                          v === 'pins'
                           ? v
                           : 'chat',
                       );
@@ -1572,7 +1576,7 @@ export function App() {
                           ? 'agent'
                           : onBoardPage || view === 'board' || view === 'team'
                             ? undefined
-                            : onPage || view === 'files'
+                            : onPage || view === 'files' || view === 'pins'
                               ? 'reading'
                               : 'conversation'
                       }
@@ -1647,6 +1651,12 @@ export function App() {
                           <Tabs.Trigger value="files" onClick={leavePage}>
                             文件
                           </Tabs.Trigger>
+                          {/* Only a channel with pins has their view. */}
+                          {(data.pinned.length > 0 || view === 'pins') && (
+                            <Tabs.Trigger value="pins" onClick={leavePage}>
+                              置顶
+                            </Tabs.Trigger>
+                          )}
                         </Tabs.List>
                       )}
                       <div className="header-end">
@@ -1909,6 +1919,21 @@ export function App() {
                                 data={data}
                                 channelId={channel.id}
                                 openMessage={openMessageIn}
+                              />
+                            </section>
+                          )}
+                        </Tabs.Content>
+                        <Tabs.Content value="pins">
+                          {channel && channelPath && (
+                            <section
+                              className="channel-files"
+                              aria-label="置顶"
+                            >
+                              <Pins
+                                data={data}
+                                channelPath={channelPath}
+                                openMessage={openMessageIn}
+                                onDone={refresh}
                               />
                             </section>
                           )}

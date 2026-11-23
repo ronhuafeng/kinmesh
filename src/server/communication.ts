@@ -7,6 +7,7 @@ import {
   Mutation,
   PageInput,
   ParticipantInput,
+  PinInput,
   PostInput,
   ReactInput,
   ReadInput,
@@ -214,6 +215,17 @@ export function registerCommunication(app: FastifyInstance, store: Store) {
       teamId,
       channelId,
       messageId,
+    );
+  });
+  /** A person pins a message in the channel or unpins it; the answer is its pins. */
+  app.post(channel + '/messages/:messageId/pin', async (request) => {
+    const { teamId, channelId, messageId } = MessagePath.parse(request.params);
+    return store.communication.pin(
+      principal(request),
+      teamId,
+      channelId,
+      messageId,
+      PinInput.parse(request.body),
     );
   });
   /** A person adds or takes back a reaction; the answer is the message's reactions. */
