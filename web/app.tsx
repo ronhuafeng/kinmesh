@@ -6,6 +6,7 @@ import {
   useMemo,
   useRef,
   useState,
+  type ReactElement,
 } from 'react';
 import { flushSync } from 'react-dom';
 import { z } from 'zod';
@@ -55,7 +56,13 @@ import { FIRST, SettingsNav, SettingsPage } from './settings-map.js';
 import { Files } from './files.js';
 import { ListRow } from './settings.js';
 import { sharedId, takeShared, type Shared } from './share.js';
-import { AccountMenu, ChannelMenu, Mark, TeamMenu } from './menus.js';
+import {
+  AccountMenu,
+  ChannelMenu,
+  Mark,
+  MemberMenu,
+  TeamMenu,
+} from './menus.js';
 import { levelOf, setLevel } from './levels.js';
 import type { ChannelLevel } from '../src/domain/notify.js';
 import { closeSettled, pushSupported, renew, unsubscribe } from './push.js';
@@ -971,6 +978,26 @@ export function App() {
         : !selection.channel
           ? 'home'
           : 'channel';
+  /** A member's row in the open channel: its menu takes them out of it. */
+  const memberRow = (
+    member: { kind: 'human' | 'agent'; id: string },
+    name: string,
+    row: ReactElement,
+  ) =>
+    channel && channelPath ? (
+      <MemberMenu
+        channelPath={channelPath}
+        channelName={channel.name}
+        member={member}
+        name={name}
+        onFailed={notify}
+        onDone={refresh}
+      >
+        {row}
+      </MemberMenu>
+    ) : (
+      row
+    );
   /** What an action that can't go now says, instead of nothing. */
   const cannot = () => {
     notify(
@@ -1521,41 +1548,53 @@ export function App() {
                         face, name and presence. */}
                         {otherPeople(data).map((person) => (
                           <li key={person.id}>
-                            <span className="person">
-                              <Avatar
-                                kind="human"
-                                name={person.name}
-                                id={person.id}
-                                size="sm"
-                              />
-                              <span className="person-name">{person.name}</span>
-                              <Presence online={person.online} dot />
-                            </span>
+                            {memberRow(
+                              { kind: 'human', id: person.id },
+                              person.name,
+                              <span className="person" tabIndex={0}>
+                                <Avatar
+                                  kind="human"
+                                  name={person.name}
+                                  id={person.id}
+                                  size="sm"
+                                />
+                                <span className="person-name">
+                                  {person.name}
+                                </span>
+                                <Presence online={person.online} dot />
+                              </span>,
+                            )}
                           </li>
                         ))}
                         {channelAgents.map((agent) => (
                           <li key={agent.id}>
-                            <button
-                              className="person"
-                              aria-pressed={
-                                view === 'agent' && agentId === agent.id
-                              }
-                              onClick={() => {
-                                openAgent(agent.id);
-                              }}
-                            >
-                              <Avatar
-                                kind="agent"
-                                name={agent.name}
-                                id={agent.id}
-                                size="sm"
-                              />
-                              <span className="person-name">{agent.name}</span>
-                              <Presence
-                                online={workerConnected(data.wake, agent.id)}
-                                dot
-                              />
-                            </button>
+                            {memberRow(
+                              { kind: 'agent', id: agent.id },
+                              agent.name,
+                              <button
+                                className="person"
+                                aria-pressed={
+                                  view === 'agent' && agentId === agent.id
+                                }
+                                onClick={() => {
+                                  openAgent(agent.id);
+                                }}
+                              >
+                                <Avatar
+                                  kind="agent"
+                                  name={agent.name}
+                                  id={agent.id}
+                                  size="sm"
+                                />
+                                <span className="person-name">
+                                  {agent.name}
+                                </span>
+                                <Presence
+                                  online={workerConnected(data.wake, agent.id)}
+                                  dot
+                                />
+                              </button>,
+                            )}
                           </li>
                         ))}
                       </ul>
