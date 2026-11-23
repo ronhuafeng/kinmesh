@@ -10,5 +10,5 @@ if (errors.length > 0) {
   process.exitCode = 1;
 } else
   console.info(
-    'PASS: source imports, resource calls, manifests, language, domain and adapter boundaries; layers, cycles, one responsibility per file, state ownership and test structure. Static guard only; review still required.',
+    'PASS: source imports, resource calls, manifests and language; the root of web, composition roots, repositories, routes and tests (layers and cycles: dependency-cruiser). Static guard only; review still required.',
   );

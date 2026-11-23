@@ -22,7 +22,8 @@ interfaces. Never import, patch or read T3 internals.
 
 ## Structure
 
-Code is placed by structure, never by size; `npm run architecture` checks it in CI.
+Code is placed by structure, never by size; `npm run architecture` checks it in CI (layers
+and cycles in `.dependency-cruiser.json`).
 
 - Layers depend downward only, in the table's order (the three processes side by side;
   in `web`, shared, then parts, then the shell), and no imports form a cycle.

@@ -1,0 +1,93 @@
+{
+  "$schema": "https://raw.githubusercontent.com/sverweij/dependency-cruiser/main/src/schema/configuration.schema.json",
+  "forbidden": [
+    {
+      "name": "no-cycles",
+      "comment": "No imports form a cycle.",
+      "severity": "error",
+      "from": {},
+      "to": { "circular": true }
+    },
+    {
+      "name": "domain-stays-down",
+      "comment": "The domain (and what sits at the root of src) depends on nothing above it.",
+      "severity": "error",
+      "from": { "path": "^src/(domain/|[^/]+$)" },
+      "to": {
+        "path": "^src/(adapters|workspace|persistence|runtime|server|inbox|team-mcp)/"
+      }
+    },
+    {
+      "name": "adapters-stay-down",
+      "severity": "error",
+      "from": { "path": "^src/adapters/" },
+      "to": {
+        "path": "^src/(workspace|persistence|runtime|server|inbox|team-mcp)/"
+      }
+    },
+    {
+      "name": "workspace-stays-down",
+      "severity": "error",
+      "from": { "path": "^src/workspace/" },
+      "to": { "path": "^src/(persistence|runtime|server|inbox|team-mcp)/" }
+    },
+    {
+      "name": "persistence-stays-down",
+      "severity": "error",
+      "from": { "path": "^src/persistence/" },
+      "to": { "path": "^src/(runtime|server|inbox|team-mcp)/" }
+    },
+    {
+      "name": "runtime-stays-down",
+      "severity": "error",
+      "from": { "path": "^src/runtime/" },
+      "to": { "path": "^src/(server|inbox|team-mcp)/" }
+    },
+    {
+      "name": "processes-stand-apart",
+      "comment": "The hub, the Inbox worker and Team MCP never import one another.",
+      "severity": "error",
+      "from": { "path": "^src/(server|inbox|team-mcp)/" },
+      "to": { "path": "^src/(server|inbox|team-mcp)/", "pathNot": "^src/$1/" }
+    },
+    {
+      "name": "src-uses-no-consumer",
+      "comment": "Tests, scripts and deployment code use src; src never uses them, nor web.",
+      "severity": "error",
+      "from": { "path": "^src/" },
+      "to": { "path": "^(web|tests|scripts|deploy)/" }
+    },
+    {
+      "name": "web-reaches-contracts-only",
+      "comment": "web reaches src only through its contracts.",
+      "severity": "error",
+      "from": { "path": "^web/" },
+      "to": { "path": "^src/", "pathNot": "^src/(domain|workspace)/" }
+    },
+    {
+      "name": "web-shared-stays-down",
+      "severity": "error",
+      "from": { "path": "^web/shared/" },
+      "to": { "path": "^web/", "pathNot": "^web/shared/" }
+    },
+    {
+      "name": "web-parts-stand-apart",
+      "comment": "A part of the workspace imports shared modules and itself, never another part or the shell.",
+      "severity": "error",
+      "from": { "path": "^web/([^/]+)/", "pathNot": "^web/(shared|shell)/" },
+      "to": { "path": "^web/", "pathNot": "^web/($1|shared)/" }
+    },
+    {
+      "name": "web-uses-no-consumer",
+      "severity": "error",
+      "from": { "path": "^web/" },
+      "to": { "path": "^(tests|scripts|deploy)/" }
+    }
+  ],
+  "options": {
+    "doNotFollow": { "path": "node_modules" },
+    "tsPreCompilationDeps": true,
+    "tsConfig": { "fileName": "tsconfig.json" },
+    "exclude": { "path": "^(web-dist|node_modules)/" }
+  }
+}

@@ -4,63 +4,24 @@ import { checkSources } from '../scripts/structure/index.js';
 import { resourceOf } from '../scripts/structure/responsibility.js';
 import { sourcesFrom } from '../scripts/structure/sources.js';
 
-// `npm run architecture` (CI) checks the repository; these prove each rule
-// both refuses what it should and lets the rest through.
+// `npm run architecture` (CI) checks the repository: layers and cycles with
+// dependency-cruiser, the rest with these rules, which these prove refuse
+// what they should and let the rest through.
 const check = (files: Record<string, string>) =>
   checkSources(sourcesFrom(files));
 
-await test('layers depend downward only, and nothing imports in a circle', () => {
+await test('the root of web holds the entries and the app; the rest has a folder', () => {
   assert.deepEqual(
     check({
-      'src/domain/a.ts': 'export const a = 1;',
-      'src/persistence/b.ts':
-        "import { a } from '../domain/a.js'; export const b = a;",
-      'web/chat/c.ts':
-        "import { a } from '../../src/domain/a.js'; export const c = a;",
-      'tests/d.test.ts': "import { b } from '../src/persistence/b.js'; void b;",
+      'web/main.tsx': 'export {};',
+      'web/app.tsx': 'export function App() { return null; }',
+      'web/shared/a.ts': 'export const a = 1;',
     }),
     [],
   );
-  const refused = (files: Record<string, string>) => {
-    assert.equal(check(files).length, 1, JSON.stringify(files));
-  };
-  // Up, sideways between processes, from web into storage, between web
-  // features, and from shared up into a feature.
-  refused({
-    'src/domain/a.ts':
-      "import { b } from '../persistence/b.js'; export const a = b;",
-    'src/persistence/b.ts': 'export const b = 1;',
-  });
-  refused({
-    'src/server/a.ts': "import { b } from '../inbox/b.js'; export const a = b;",
-    'src/inbox/b.ts': 'export const b = 1;',
-  });
-  refused({
-    'web/shared/a.ts':
-      "import { b } from '../../src/persistence/b.js'; export const a = b;",
-    'src/persistence/b.ts': 'export const b = 1;',
-  });
-  refused({
-    'web/chat/a.ts': "import { b } from '../tasks/b.js'; export const a = b;",
-    'web/tasks/b.ts': 'export const b = 1;',
-  });
-  refused({
-    'web/shared/a.ts': "import { b } from '../chat/b.js'; export const a = b;",
-    'web/chat/b.ts': 'export const b = 1;',
-  });
-  // The root of web holds only the entries and the app.
-  refused({ 'web/helpers.ts': 'export const h = 1;' });
-  refused({
-    'src/domain/a.ts':
-      "import { t } from '../../tests/t.js'; export const a = t;",
-    'tests/t.ts': 'export const t = 1;',
-  });
   assert.match(
-    check({
-      'src/domain/a.ts': "import { b } from './b.js'; export const a = b;",
-      'src/domain/b.ts': "import { a } from './a.js'; export const b = a;",
-    }).join(),
-    /import cycle/,
+    check({ 'web/helpers.ts': 'export const h = 1;' }).join(),
+    /belongs in web\/shared/,
   );
 });
 

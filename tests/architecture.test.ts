@@ -30,7 +30,7 @@ await test('negative architecture fixtures detect static/dynamic private imports
     ).length > 0,
   );
 });
-await test('negative fixtures detect private SQLite, WebSocket, suppressed typing, and domain or adapter coupling', () => {
+await test('negative fixtures detect private SQLite, WebSocket and suppressed typing', () => {
   assert.ok(
     inspectSource(
       'src/bad.ts',
@@ -46,24 +46,6 @@ await test('negative fixtures detect private SQLite, WebSocket, suppressed typin
   assert.ok(
     inspectSource('src/bad.ts', 'new WebSocket("wss://example.test")').length >
       0,
-  );
-  assert.ok(
-    inspectSource(
-      'src/domain/bad.ts',
-      'import { x } from "../persistence/store.js"',
-    ).length > 0,
-  );
-  assert.ok(
-    inspectSource(
-      'src/adapters/t3/bad.ts',
-      'import type { x } from "../../persistence/operations.js"',
-    ).length > 0,
-  );
-  assert.ok(
-    inspectSource(
-      'src/adapters/t3/bad.ts',
-      'import { x } from "../../server/app.js"',
-    ).length > 0,
   );
   assert.ok(
     inspectSource('src/bad.ts', '// @ts-' + 'ignore\nlet x: any;').length > 0,
