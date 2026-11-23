@@ -2304,6 +2304,8 @@ button.quiet.subtle-danger {
   margin: 0.35rem 0 0;
   padding: 0;
   display: grid;
+  /* The message's width, never a step's: a long one is cut, not widening it. */
+  grid-template-columns: minmax(0, 1fr);
   gap: 0.2rem;
 }
 .delivery {

@@ -486,14 +486,20 @@ export class T3Backend implements ExecutionBackend {
       const own = result.items.filter(
         (i) => i.runId === runId && i.text?.trim(),
       );
-      // The first line, without a shell prompt, in one line's room.
-      const line = (text: string | null) =>
-        (text ?? '')
+      // The first line, without a shell prompt, in one line's room. A first
+      // line of only punctuation (a tool's JSON input opening with `{`) says
+      // nothing alone: then the whole text goes on one line.
+      const line = (text: string | null) => {
+        const lines = (text ?? '')
           .split('\n')
-          .find((l) => l.trim() !== '')
-          ?.replace(/^\$\s*/, '')
-          .trim()
-          .slice(0, 200) ?? '';
+          .map((l) => l.trim())
+          .filter((l) => l !== '');
+        const [first = ''] = lines;
+        return (/[\p{L}\p{N}]/u.test(first) ? first : lines.join(' '))
+          .replace(/^\$\s*/, '')
+          .replace(/\s+/g, ' ')
+          .slice(0, 200);
+      };
       const asked = own.find(
         (i) => i.status === 'waiting' && i.type === 'approval_request',
       );
