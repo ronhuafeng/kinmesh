@@ -346,6 +346,7 @@ export async function createApp(
     renewal,
     changes,
     metrics.workspaceRead,
+    config.teamMcpUrl,
   );
   const { openStreams } = registerEvents(app, store, changes, {
     snapshot,

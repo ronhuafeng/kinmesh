@@ -94,6 +94,28 @@ await test('configuration rejects absent secrets, invalid ports and non-loopback
   );
   assert.throws(() => loadConfig({ ...env, KINMESH_RATE_LIMIT: '0' }));
 });
+
+await test('the workspace says where Team MCP is: its origin, the local default, or nowhere', () => {
+  const env = {
+    KINMESH_SESSION_KEY: 'b'.repeat(64),
+    KINMESH_DATABASE_URL: 'postgres://kinmesh@127.0.0.1:5432/kinmesh',
+    ...feishuEnv,
+    ...storeEnv(),
+  };
+  assert.equal(loadConfig(env).teamMcpUrl, 'http://127.0.0.1:3001/mcp');
+  const deployed = {
+    ...env,
+    KINMESH_ORIGIN: 'https://kinmesh.example.com',
+    KINMESH_TRUSTED_PROXIES: '127.0.0.1',
+  };
+  // A deployment without Team MCP offers no token for it.
+  assert.equal(loadConfig(deployed).teamMcpUrl, null);
+  assert.equal(
+    loadConfig({ ...deployed, KINMESH_TEAM_MCP_ORIGIN: 'https://team.example' })
+      .teamMcpUrl,
+    'https://team.example/mcp',
+  );
+});
 await test('new session key rejects existing encrypted session', async () => {
   const { createApp } = await import('../src/server/app.js');
   const f = await fixture();

@@ -58,6 +58,11 @@ const Environment = z.object({
    * broader sign-in to the same T3 is used while it lasts.
    */
   KINMESH_T3_ENDPOINT: Endpoint.optional(),
+  /**
+   * Where Team MCP is served (the same setting Team MCP reads), so the
+   * workspace can say where an agent's token goes.
+   */
+  KINMESH_TEAM_MCP_ORIGIN: z.url().optional(),
   KINMESH_T3_CREDENTIAL_FILE: z.string().min(1).optional(),
   /**
    * The provisioner beside T3 that makes a channel's folder in the space a
@@ -146,6 +151,15 @@ export function loadConfig(env: NodeJS.ProcessEnv) {
     metricsToken: value.KINMESH_METRICS_TOKEN ?? null,
     /** The commit the hub was built from, if known. */
     version: value.KINMESH_VERSION ?? null,
+    /**
+     * Team MCP's endpoint: its configured origin; on a hub on loopback, the
+     * local default; else none, and the workspace offers no Team MCP token.
+     */
+    teamMcpUrl: value.KINMESH_TEAM_MCP_ORIGIN
+      ? new URL('/mcp', value.KINMESH_TEAM_MCP_ORIGIN).href
+      : origin.protocol === 'https:'
+        ? null
+        : 'http://127.0.0.1:3001/mcp',
     /** The T3 the deployment connects, if it does. */
     t3:
       value.KINMESH_T3_ENDPOINT && value.KINMESH_T3_CREDENTIAL_FILE

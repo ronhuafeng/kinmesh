@@ -70,6 +70,8 @@ export const WorkspaceSnapshot = z.strictObject({
     .url()
     .refine((origin) => new URL(origin).origin === origin)
     .nullable(),
+  /** Where an agent's Team MCP token is used; null where Team MCP isn't served. */
+  teamMcpUrl: z.url().nullable(),
   human: Person,
   /** The channels you muted or follow; every other is at the default. */
   levels: z
