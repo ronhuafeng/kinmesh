@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { z } from 'zod';
 import type { WorkspaceSnapshot } from '../src/workspace/contracts.js';
 import { api, useRequest } from './api.js';
-import { Notice } from './forms.js';
+import { ActionForm, Notice } from './forms.js';
 import { Files } from './files.js';
 import { BackIcon, SettingsIcons } from './icons.js';
 import {
@@ -572,6 +572,17 @@ function Channels({
               quiet
               lead={<ChannelIcon id={c.id} name={c.name} />}
               title={c.name}
+              end={
+                <ActionForm
+                  title={'重新加入 ' + c.name}
+                  path={`/api/teams/${data.team.id}/channels/${c.id}/subscribe`}
+                  build={() => ({})}
+                  submit="重新加入"
+                  onDone={() => {
+                    openChannel(c.id);
+                  }}
+                />
+              }
             />
           ))}
         </ul>

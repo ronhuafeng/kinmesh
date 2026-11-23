@@ -1420,6 +1420,49 @@ test('an agent is renamed, given another role, disabled and enabled from its pag
   ).toBeVisible();
 });
 
+/**
+ * Proves a member can be taken out of a channel from their row's menu, and
+ * a channel you left can be joined again from Settings.
+ */
+test('an agent is taken out of a channel from its row, and a left channel is rejoined from Settings', async ({
+  page,
+  hub,
+}) => {
+  await signIn(page, hub);
+  await createChannel(page, 'design');
+  await register(page, 'Ada', 'developer');
+  const people = page.getByRole('region', { name: '本频道成员' });
+  const ada = people.getByRole('button', { name: /Ada/ });
+  await expect(ada).toBeVisible();
+  await ada.click({ button: 'right' });
+  await page.getByRole('menuitem', { name: '把 Ada 移出 #design' }).click();
+  await expect(ada).toHaveCount(0);
+  // Left, then joined again from Settings → 频道.
+  const channels = page.getByRole('navigation', { name: '频道' });
+  await channels.getByRole('button', { name: 'design', exact: true }).click({
+    button: 'right',
+  });
+  await page.getByRole('menuitem', { name: '退出 #design' }).click();
+  // Left: the sidebar offers it among the channels you may join.
+  await expect(page.getByRole('form', { name: '加入 design' })).toBeVisible();
+  await page.getByRole('button', { name: '你的账户' }).click();
+  await page.getByRole('menuitem', { name: /^设置/ }).click();
+  await page
+    .getByRole('navigation', { name: '设置' })
+    .getByRole('button', { name: '频道', exact: true })
+    .click();
+  await page
+    .getByRole('list', { name: '已退出的频道' })
+    .getByRole('button', { name: '重新加入' })
+    .click();
+  // It opens, back among your channels.
+  await expect(
+    page
+      .getByRole('navigation', { name: '频道' })
+      .getByRole('button', { name: 'design', exact: true }),
+  ).toBeVisible();
+});
+
 test('a T3 on another computer: the person pastes the address its approval opened', async ({
   page,
   hub,

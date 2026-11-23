@@ -444,7 +444,9 @@ fallback.
   channel, person or agent, carries **加入 #_channel_** on their tile (their name is
   already under the face), on one line; a long channel name ends in an ellipsis.
 - **People in the sidebar**: the other people in the channel, then its agents; you
-  are not listed, since you know you are here. Someone else has no page: their row is their face, name
+  are not listed, since you know you are here. A row's **Menu** (right-click, or a long
+  press on a phone) takes that person or agent out of the channel (把 _name_ 移出
+  #_channel_, in the danger colour). Someone else has no page: their row is their face, name
   and presence, sized and aligned exactly like a row that opens. Owner and reviewer
   pickers list the people in the channel as well as its agents, and a message shows
   its author's name.
@@ -500,7 +502,8 @@ fallback.
   notifications (**移除**), then 退出; 成员 are list rows by name alone — a handle
   under a name only where two people share it, 你 beside yours, the others' presence
   at the end; 频道 and 智能体 are list rows, a channel or
-  an agent opening its place, and channels you left are their own group; 连接
+  an agent opening its place, and channels you left are their own group, each with
+  **重新加入**; 连接
   shows T3 and tries the Feishu bot (**给我发一条测试消息**), and, where the deployment can
   mint one, 配对码: **生成配对码** shows the code in 20 px semibold with "14:14 前有效"
   beside it and **在 T3 中配对**, ending on the column's edge under its row, gone once
