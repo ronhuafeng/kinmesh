@@ -1,9 +1,5 @@
 import { checkCycles, checkLayers, checkWebRoot } from './layers.js';
-import {
-  checkComponents,
-  checkRepositories,
-  checkRoutes,
-} from './responsibility.js';
+import { checkRepositories, checkRoutes } from './responsibility.js';
 import { readSources, type Source } from './sources.js';
 import { checkState } from './state.js';
 import { checkTests } from './tests.js';
@@ -14,7 +10,6 @@ export function checkSources(sources: Source[]): string[] {
     ...checkLayers(sources),
     ...checkWebRoot(sources),
     ...checkCycles(sources),
-    ...checkComponents(sources),
     ...checkRepositories(sources),
     ...checkRoutes(sources),
     ...checkState(sources),

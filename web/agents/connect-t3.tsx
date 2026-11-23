@@ -1,12 +1,12 @@
 import { useEffect, useState } from 'react';
 import { z } from 'zod';
 import { api, value } from '../shared/api.js';
-import { Field } from '../shared/field.js';
-import { Notice } from '../shared/notice.js';
+import { Field } from '../shared/forms.js';
+import { Notice } from '../shared/forms.js';
 import type { T3Status } from '../shared/t3.js';
-import { useSetupRequest } from '../shared/use-setup-request.js';
-import { NextStep } from './next-step.js';
-import { Approve } from '../shared/approve.js';
+import { useSetupRequest } from '../shared/t3.js';
+import { NextStep } from './setup-parts.js';
+import { Approve } from '../shared/reconnect-t3.js';
 
 /**
  * Connect the team to T3 once. The T3 desktop app on this machine is found

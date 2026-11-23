@@ -1,8 +1,8 @@
-import { AccountMenu } from './account-menu.js';
+import { AccountMenu } from './menus.js';
 import { InboxIcon, SidebarIcon } from '../shared/icons.js';
 import { SettingsNav } from '../settings/settings-nav.js';
-import { SidebarSearch } from '../search/sidebar-search.js';
-import { TeamMenu } from './team-menu.js';
+import { SidebarSearch } from '../search/palette.js';
+import { TeamMenu } from './menus.js';
 import { ChannelList } from './channel-list.js';
 import { PeopleList } from './people-list.js';
 import { useShell } from './shell.js';

@@ -1,24 +1,101 @@
 import { memo, useState } from 'react';
+import { Markdown } from '../shared/markdown.js';
+import { type ReplyView, answerOnly } from '../shared/replies.js';
+import { type Attachment, fileSize } from '../../src/domain/attachments.js';
+import { FileIcon } from '../shared/icons.js';
+import { inline } from '../shared/attachments.js';
 import { Message } from '../../src/domain/communication.js';
 import type { WorkspaceSnapshot } from '../../src/workspace/contracts.js';
-import { MessageFiles } from './message-files.js';
 import { memberName } from '../shared/names.js';
-import { Avatar } from '../shared/avatar.js';
+import { Avatar } from '../shared/faces.js';
 import { clockTime, dayLabel, shortTime } from '../shared/format.js';
 import { CopyButton } from '../shared/copy-button.js';
-import { DeliveryLine } from '../shared/delivery-line.js';
-import { ReactButton } from './react-button.js';
-import { Reactions } from './reactions.js';
-import { EditMessage } from './edit-message.js';
-import { WithdrawButton } from './withdraw-button.js';
+import { DeliveryLine, type DeliveryView } from '../shared/deliveries.js';
+import { ReactButton, Reactions } from './reactions.js';
+import { EditMessage, WithdrawButton } from './message-edit.js';
 import type { Outgoing } from './outbox.js';
-import { ReplyOrigin } from './reply-origin.js';
-import { answerOnly, type ReplyView } from '../shared/replies.js';
-import type { DeliveryView } from '../shared/deliveries.js';
-import type { ChatMessage } from './chat-message.js';
-import { MessageText } from './message-text.js';
-import { showMessage } from './show-message.js';
+import { type ChatMessage, showMessage } from './chat-message.js';
 
+/** The text of a message, drawn again only when the text changes. */
+export const MessageText = memo(function MessageText({
+  text,
+}: {
+  text: string;
+}) {
+  return <Markdown text={text} />;
+});
+/**
+ * Under an agent reply, only an exception is said: a run that failed or
+ * stopped, or an answer that was shortened. What ran it is on the agent's
+ * page, with the run.
+ */
+export function ReplyOrigin({ reply }: { reply: ReplyView | undefined }) {
+  if (!reply) return null;
+  const ending =
+    reply.answered && reply.state !== 'succeeded'
+      ? reply.state === 'failed'
+        ? '运行失败'
+        : '运行已停止'
+      : null;
+  const said = [ending, reply.excerpt ? '内容有删减' : null].filter(Boolean);
+  if (said.length === 0) return null;
+  return <p className="reply-origin">{said.join(' · ')}</p>;
+}
+/**
+ * A message's files: images as they are, at most 240 px tall, each taking
+ * its place before it loads; other files as a row with name and size that
+ * downloads it.
+ */
+export function MessageFiles({
+  files,
+  base,
+}: {
+  files: Attachment[];
+  /** The channel's attachments path. */
+  base: string;
+}) {
+  const images = files.filter((f) => inline(f.type));
+  const others = files.filter((f) => !inline(f.type));
+  return (
+    <>
+      {images.length > 0 && (
+        <ul className="message-images" aria-label="图片">
+          {images.map((f) => (
+            <li key={f.id}>
+              <a href={`${base}/${f.id}`} target="_blank" rel="noopener">
+                <img
+                  src={`${base}/${f.id}`}
+                  alt={f.name}
+                  width={f.width ?? undefined}
+                  height={f.height ?? undefined}
+                  loading="lazy"
+                  decoding="async"
+                />
+              </a>
+            </li>
+          ))}
+        </ul>
+      )}
+      {others.length > 0 && (
+        <ul className="message-files" aria-label="文件">
+          {others.map((f) => (
+            <li key={f.id}>
+              <a
+                className="file-row"
+                href={`${base}/${f.id}`}
+                download={f.name}
+              >
+                <FileIcon size={20} />
+                <span className="file-name">{f.name}</span>
+                <span className="file-size">{fileSize(f.size)}</span>
+              </a>
+            </li>
+          ))}
+        </ul>
+      )}
+    </>
+  );
+}
 /** What a message row can do; one object for all rows (`Chat`). */
 export interface RowActions {
   choose: (id: string) => void;

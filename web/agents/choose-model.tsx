@@ -4,11 +4,11 @@ import type { Agent } from '../../src/domain/agents.js';
 import type { WorkspaceSnapshot } from '../../src/workspace/contracts.js';
 import { useLive } from '../shared/live.js';
 import { api, value } from '../shared/api.js';
-import { Field } from '../shared/field.js';
-import { Notice } from '../shared/notice.js';
-import { useSetupRequest } from '../shared/use-setup-request.js';
+import { Field } from '../shared/forms.js';
+import { Notice } from '../shared/forms.js';
+import { useSetupRequest } from '../shared/t3.js';
 import { Providers } from '../shared/t3.js';
-import { NextStep } from './next-step.js';
+import { NextStep } from './setup-parts.js';
 
 /** Pick what the agent runs on, as one choice: provider and model together. */
 export function ChooseModel({

@@ -1,5 +1,5 @@
 import { HashIcon, InboxIcon, SearchIcon } from '../shared/icons.js';
-import { Mark } from './mark.js';
+import { Mark } from './menus.js';
 import { useShell } from './shell.js';
 
 /**

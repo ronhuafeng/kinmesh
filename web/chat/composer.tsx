@@ -2,8 +2,8 @@ import { useEffect, useId, useRef, useState } from 'react';
 import { z } from 'zod';
 import type { Shared } from '../shared/share.js';
 import { value } from '../shared/api.js';
-import { ActionForm } from '../shared/action-form.js';
-import { Field } from '../shared/field.js';
+import { ActionForm } from '../shared/forms.js';
+import { Field } from '../shared/forms.js';
 import { AttachIcon, SendIcon } from '../shared/icons.js';
 import {
   inline,
@@ -12,8 +12,8 @@ import {
   type Pending,
 } from '../shared/attachments.js';
 import { fileSize } from '../../src/domain/attachments.js';
-import { Avatar } from '../shared/avatar.js';
-import { Presence } from '../shared/presence.js';
+import { Avatar } from '../shared/faces.js';
+import { Presence } from '../shared/faces.js';
 import { composing } from '../shared/keys.js';
 import { keep, kept } from '../shared/session.js';
 

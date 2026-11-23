@@ -1,15 +1,15 @@
 import { AgentPage } from '../agents/agent-page.js';
-import { ArchivedBar } from './archived-bar.js';
+import { ArchivedBar } from './channel-bars.js';
 import { Board } from '../tasks/board.js';
 import { Chat } from '../chat/chat.js';
 import { Files } from '../shared/files.js';
-import { JoinBar } from './join-bar.js';
+import { JoinBar } from './channel-bars.js';
 import { MutationPermission } from '../shared/api.js';
 import { Pins } from '../chat/pins.js';
 import * as Tabs from '@radix-ui/react-tabs';
 import { Team } from '../agents/team.js';
 import { draftFromMessage } from '../shared/task-draft.js';
-import { showMessage } from '../chat/show-message.js';
+import { showMessage } from '../chat/chat-message.js';
 import { useShell } from './shell.js';
 
 /** The views of the place on screen, and an agent's page. */

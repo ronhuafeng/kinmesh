@@ -6,15 +6,15 @@ import {
 } from '../../src/domain/tasks.js';
 import type { WorkspaceSnapshot } from '../../src/workspace/contracts.js';
 import { value } from '../shared/api.js';
-import { ActionForm } from '../shared/action-form.js';
-import { Field } from '../shared/field.js';
+import { ActionForm } from '../shared/forms.js';
+import { Field } from '../shared/forms.js';
 import { Page } from '../shared/page.js';
 import { type TaskDraft, keptDraft, keepDraft } from '../shared/task-draft.js';
 import { memberFrom } from './model.js';
 import { TaskLayout } from './task-layout.js';
 import { CriteriaInput } from './criteria-input.js';
 import { DueAndPriority } from './due-and-priority.js';
-import { PersonPicker } from './person-picker.js';
+import { PersonPicker } from './members.js';
 
 /**
  * A new task is the task page before it exists: the same places, empty and

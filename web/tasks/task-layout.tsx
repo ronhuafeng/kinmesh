@@ -1,7 +1,7 @@
 import type { ReactNode } from 'react';
 import type { Status } from '../shared/task-status.js';
-import { StatusChip } from './status-chip.js';
-import { Lifecycle } from './lifecycle.js';
+import { StatusChip } from './status.js';
+import { Lifecycle } from './status.js';
 
 /**
  * One layout for a task, new or existing: progress across the top, the

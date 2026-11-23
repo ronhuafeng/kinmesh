@@ -1,17 +1,121 @@
-import { AddButton } from '../shared/add-button.js';
-import { Avatar } from '../shared/avatar.js';
-import { ChannelIcon } from '../shared/channel-icon.js';
-import { ChannelMenu } from './channel-menu.js';
-import { ChannelRow } from './channel-row.js';
+import type { WorkspaceSnapshot } from '../../src/workspace/contracts.js';
+import { memberName } from '../shared/names.js';
+import { plainText } from '../shared/markdown.js';
+import { ChannelIcon, Avatar } from '../shared/faces.js';
+import { listTime } from '../shared/format.js';
+import { ActionForm, AddButton, InlineField } from '../shared/forms.js';
+import { ChannelMenu } from './menus.js';
 import { ChannelTopics } from '../chat/topics.js';
 import { Fragment, useState } from 'react';
-import { InlineField } from '../shared/inline-field.js';
-import { JoinableChannels } from './joinable-channels.js';
 import { SettingsIcons } from '../shared/icons.js';
-import { byActivity } from './by-activity.js';
 import { levelOf } from '../shared/levels.js';
 import { useShell } from './shell.js';
 
+/**
+ * A phone lists channels as conversations: the newest message first (by
+ * name among those without one).
+ */
+export function byActivity(
+  channels: WorkspaceSnapshot['channels']['items'],
+  latest: WorkspaceSnapshot['latest'],
+) {
+  const at = new Map(latest.map((l) => [l.channelId, l.createdAt]));
+  return [...channels].sort((a, b) => {
+    const x = at.get(a.id) ?? '';
+    const y = at.get(b.id) ?? '';
+    return x === y ? a.name.localeCompare(b.name, 'zh-CN') : x < y ? 1 : -1;
+  });
+}
+/** A channel on a phone's Home: its name and time, then "作者：正文". */
+export function ChannelRow({
+  data,
+  channelId,
+  name,
+  person,
+  latest,
+  id,
+}: {
+  data: WorkspaceSnapshot;
+  channelId: string;
+  name: string;
+  /** Who your own conversation is with, shown by their face. */
+  person: string | undefined;
+  latest: WorkspaceSnapshot['latest'][number] | undefined;
+  id: string;
+}) {
+  return (
+    <span className="channel-row">
+      {person === undefined ? (
+        <ChannelIcon id={channelId} name={name} />
+      ) : (
+        <Avatar kind="human" name={name} id={person} />
+      )}
+      <span className="channel-row-name">{name}</span>
+      {latest && (
+        <>
+          <time className="channel-row-time" dateTime={latest.createdAt}>
+            {listTime(latest.createdAt)}
+          </time>
+          <span className="channel-row-last" id={id}>
+            {memberName(latest.author, data)}：{plainText(latest.excerpt)}
+          </span>
+        </>
+      )}
+    </span>
+  );
+}
+/**
+ * Channels you are not in but may join, muted under the rest: public ones
+ * open to look in, and every one is one click from joining.
+ */
+export function JoinableChannels({
+  teamId,
+  channels,
+  current,
+  onOpen,
+  onDone,
+}: {
+  teamId: string;
+  channels: WorkspaceSnapshot['publicChannels'];
+  /** The one open to look in. */
+  current: string | null;
+  onOpen: (id: string) => void;
+  onDone: (id: string) => void;
+}) {
+  if (channels.length === 0) return null;
+  return (
+    <ul className="left-channels" aria-label="可加入的频道">
+      {channels.map((c) => (
+        <li key={c.id}>
+          {c.visibility === 'public' ? (
+            <button
+              type="button"
+              aria-current={current === c.id ? 'page' : undefined}
+              onClick={() => {
+                onOpen(c.id);
+              }}
+            >
+              <span aria-hidden="true">#</span> {c.name}
+            </button>
+          ) : (
+            <span>
+              <span aria-hidden="true">#</span> {c.name}
+            </span>
+          )}
+          <ActionForm
+            title={'加入 ' + c.name}
+            path={`/api/teams/${teamId}/channels/${c.id}/subscribe`}
+            build={() => ({})}
+            submit="加入"
+            onDone={() => {
+              onDone(c.id);
+            }}
+          />
+        </li>
+      ))}
+    </ul>
+  );
+}
 /**
  * The channels you are in, a new one written in place, the ones you may
  * join, and more when there are more.

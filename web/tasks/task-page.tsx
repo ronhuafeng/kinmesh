@@ -2,7 +2,7 @@ import { useState } from 'react';
 import type { Task } from '../../src/domain/tasks.js';
 import type { Member } from '../../src/domain/communication.js';
 import type { WorkspaceSnapshot } from '../../src/workspace/contracts.js';
-import { DeliveryLine } from '../shared/delivery-line.js';
+import { DeliveryLine } from '../shared/deliveries.js';
 import { taskDeliveries } from '../shared/deliveries.js';
 import { Page } from '../shared/page.js';
 import { DueIcon, PriorityIcon } from '../shared/icons.js';
@@ -18,11 +18,11 @@ import {
 } from './model.js';
 import { TaskEdit } from './task-edit.js';
 import { TaskLayout } from './task-layout.js';
-import { MemberChip } from './member-chip.js';
-import { SideValue } from './side-value.js';
-import { TaskDecision } from './task-decision.js';
+import { MemberChip } from './members.js';
+import { SideValue } from './due-and-priority.js';
+import { TaskDecision } from './decision.js';
 import { TaskHistory } from './task-history.js';
-import { DecisionForm } from './decision-form.js';
+import { DecisionForm } from './decision.js';
 
 export function TaskPage({
   task,

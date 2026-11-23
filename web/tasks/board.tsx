@@ -1,20 +1,124 @@
-import { useEffect, useState } from 'react';
-import type { Task } from '../../src/domain/tasks.js';
-import { memberKey } from '../../src/domain/communication.js';
+import { useState, useEffect } from 'react';
+import { Task } from '../../src/domain/tasks.js';
+import { pageOf, memberKey } from '../../src/domain/communication.js';
+import { api } from '../shared/api.js';
 import type { WorkspaceSnapshot } from '../../src/workspace/contracts.js';
-import { memberName } from '../shared/names.js';
-import { PlusIcon } from '../shared/icons.js';
-import { ALL_TASKS, type BoardFilter } from '../shared/board-filter.js';
-import { useOlderTasks } from './use-older-tasks.js';
-import { yours, byUrgency } from './model.js';
+import { PriorityIcon, PlusIcon } from '../shared/icons.js';
 import {
+  humanAsk,
+  cardMarker,
   type StageId,
   stages,
   stageOf,
-  humanAsk,
 } from '../shared/task-status.js';
-import { TaskCard } from './task-card.js';
+import { late, dueLabel, yours, byUrgency } from './model.js';
+import { MemberAvatar } from './members.js';
+import { memberName } from '../shared/names.js';
+import { ALL_TASKS, type BoardFilter } from '../shared/board-filter.js';
 
+/**
+ * The channel's tasks older than the board's newest (`data.tasks`), read a
+ * page at a time from the cursor each page gives.
+ */
+export function useOlderTasks(path: string, first: string | null) {
+  const [state, setState] = useState<{
+    path: string;
+    items: Task[];
+    cursor: string | null | undefined;
+  }>({ path, items: [], cursor: undefined });
+  const current =
+    state.path === path
+      ? state
+      : { path, items: [] as Task[], cursor: undefined };
+  const cursor = current.cursor === undefined ? first : current.cursor;
+  const [busy, setBusy] = useState(false);
+  const load = () => {
+    if (cursor === null || busy) return;
+    setBusy(true);
+    void api(path + '?limit=100&cursor=' + encodeURIComponent(cursor))
+      .then((raw) => {
+        const page = pageOf(Task).parse(raw);
+        setState((old) => {
+          const kept = old.path === path ? old.items : [];
+          const ids = new Set(kept.map((t) => t.id));
+          return {
+            path,
+            items: [...kept, ...page.items.filter((t) => !ids.has(t.id))],
+            cursor: page.nextCursor,
+          };
+        });
+      })
+      .catch(() => undefined)
+      .finally(() => {
+        setBusy(false);
+      });
+  };
+  return { items: current.items, more: cursor !== null, load, busy };
+}
+export function TaskCard({
+  task,
+  data,
+  open,
+  onOpen,
+}: {
+  task: Task;
+  data: WorkspaceSnapshot;
+  /** Its page is open beside the board. */
+  open: boolean;
+  onOpen: () => void;
+}) {
+  const ask = humanAsk(task, data);
+  return (
+    <article
+      data-open={open ? 'true' : undefined}
+      className="task-card"
+      ref={(el) => {
+        // Lets a status change travel between columns as one element.
+        el?.style.setProperty('view-transition-name', 'task-' + task.id);
+      }}
+      data-status={task.state.status}
+      data-ask={ask ? 'true' : undefined}
+      aria-label={task.title}
+    >
+      {/* A card says what the task is, what it asks of you, and who has
+          it. A marker appears only when the column alone can't say it. */}
+      {cardMarker(task.state.status) && (
+        <span className="card-marker" data-status={task.state.status}>
+          {cardMarker(task.state.status)}
+        </span>
+      )}
+      <h3>
+        <button type="button" className="card-link" onClick={onOpen}>
+          {task.priority === 'high' && (
+            <span className="card-priority" title="高优先级">
+              <PriorityIcon />
+              <span className="visually-hidden">高优先级：</span>
+            </span>
+          )}
+          {task.title}
+        </button>
+      </h3>
+      {(ask ?? task.due ?? task.state.owner ?? task.state.reviewer) && (
+        <footer>
+          {ask && <p className="ask-label">{ask}</p>}
+          {task.due && (
+            <time
+              className="card-due"
+              dateTime={task.due}
+              data-late={late(task) ? 'true' : undefined}
+            >
+              {dueLabel(task.due)}
+            </time>
+          )}
+          <span className="card-people">
+            <MemberAvatar member={task.state.owner} data={data} />
+            <MemberAvatar member={task.state.reviewer} data={data} />
+          </span>
+        </footer>
+      )}
+    </article>
+  );
+}
 export function Board({
   data,
   openTask,

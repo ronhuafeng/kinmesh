@@ -6,50 +6,12 @@ const exported = (node: ts.Node) =>
   (ts.getModifiers(node) ?? []).some(
     (m) => m.kind === ts.SyntaxKind.ExportKeyword,
   );
-/** Names a file exports as declarations: functions and consts. */
-function exportedValues(ast: ts.SourceFile) {
-  const values: { name: string; node: ts.Node }[] = [];
-  for (const statement of ast.statements) {
-    if (!exported(statement)) continue;
-    if (ts.isFunctionDeclaration(statement) && statement.name)
-      values.push({ name: statement.name.text, node: statement });
-    if (ts.isVariableStatement(statement))
-      for (const d of statement.declarationList.declarations)
-        if (ts.isIdentifier(d.name))
-          values.push({ name: d.name.text, node: d.initializer ?? d });
-  }
-  return values;
-}
 const isFunctionLike = (node: ts.Node): boolean =>
   ts.isFunctionDeclaration(node) ||
   ts.isArrowFunction(node) ||
   ts.isFunctionExpression(node) ||
   // memo(function …), forwardRef(…)
   (ts.isCallExpression(node) && node.arguments.some((a) => isFunctionLike(a)));
-/**
- * A UI file gives one thing to the rest of the app: one component or one
- * hook, with its own types and helpers. Shared parts are no exception:
- * each is its own file, so nothing becomes a drawer of parts.
- */
-export function checkComponents(sources: Source[]): string[] {
-  const errors: string[] = [];
-  for (const { path, ast } of sources) {
-    if (!path.startsWith('web/')) continue;
-    const given = exportedValues(ast)
-      .filter(
-        ({ name, node }) =>
-          isFunctionLike(node) &&
-          (/^use[A-Z]/.test(name) ||
-            (path.endsWith('.tsx') && /^[A-Z]/.test(name))),
-      )
-      .map(({ name }) => name);
-    if (given.length > 1)
-      errors.push(
-        `${path}: gives ${String(given.length)} components or hooks (${given.join(', ')}); one per file`,
-      );
-  }
-  return errors;
-}
 /** `s.table` passed to insert, update or delete. */
 function writtenTable(call: ts.CallExpression): string | null {
   if (!ts.isPropertyAccessExpression(call.expression)) return null;

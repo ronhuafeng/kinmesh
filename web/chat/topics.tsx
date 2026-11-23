@@ -1,7 +1,42 @@
 import { useState } from 'react';
+import { AddButton, InlineField } from '../shared/forms.js';
 import type { WorkspaceSnapshot } from '../../src/workspace/contracts.js';
-import { NewTopic } from './new-topic.js';
 
+/**
+ * A topic starts from a "+" after the topics: one field, Enter creates it
+ * and opens it.
+ */
+export function NewTopic({
+  channelPath,
+  onCreated,
+}: {
+  channelPath: string;
+  onCreated: (id: string) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  return open ? (
+    <InlineField
+      name="title"
+      label="话题名称"
+      placeholder="新话题"
+      maxLength={160}
+      path={channelPath + '/topics'}
+      className="pill"
+      onClose={() => {
+        setOpen(false);
+      }}
+      onCreated={onCreated}
+    />
+  ) : (
+    <AddButton
+      label="新建话题"
+      className="topic-add"
+      onClick={() => {
+        setOpen(true);
+      }}
+    />
+  );
+}
 /**
  * The current channel's topics, under it in the sidebar like a tree: "All",
  * the ten most recently active, then the rest only when asked for, a "+" to
