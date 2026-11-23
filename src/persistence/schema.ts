@@ -143,6 +143,11 @@ export const channels = pgTable(
      * only those invited. What a person may do in it is still by joining.
      */
     visibility: text('visibility').notNull().default('private'),
+    /**
+     * When it was archived: it leaves people's lists and takes nothing new,
+     * still read and searched; null while it is in use.
+     */
+    archivedAt: millis('archived_at'),
   },
   (t) => [
     uniqueIndex('channel_position').on(t.position),

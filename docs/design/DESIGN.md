@@ -370,7 +370,11 @@ fallback.
   unread; else it is clear. Each channel is as loud as you set it from its
   row's **Menu** (right-click, or a long press on a phone): 与我有关 (the default),
   每条消息 or 静音, ticked, then **设为公开…** (pressed again, it reads
-  确认：团队里所有人都能查看) or **设为私密**, then 退出 #_name_ in the danger colour. A channel you muted
+  确认：团队里所有人都能查看) or **设为私密**, then **重命名…** (the row becomes its name,
+  selected, in place; Enter keeps it, Esc puts it back) and **归档 #_name_…** (pressed
+  again, it reads 确认：从列表移走，仍可查看和搜索), then 退出 #_name_ in the danger colour. An
+  archived channel leaves the sidebar; opened from Settings or a link it reads as
+  before, and in place of the composer says "#_name_ 已归档。" with **恢复频道**. A channel you muted
   is never unread and its name is in the muted ink; one you follow ends in a small
   bell in the subtle ink. A channel where something waits on you ends in a
   decision-coloured dot, the
@@ -513,7 +517,7 @@ fallback.
   under a name only where two people share it, 你 beside yours, the others' presence
   at the end; 频道 and 智能体 are list rows, a channel or
   an agent opening its place, and channels you left are their own group, each with
-  **重新加入**; 连接
+  **重新加入**, as are archived ones, each opening it, with **恢复**; 连接
   shows T3 and tries the Feishu bot (**给我发一条测试消息**), and, where the deployment can
   mint one, 配对码: **生成配对码** shows the code in 20 px semibold with "14:14 前有效"
   beside it and **在 T3 中配对**, ending on the column's edge under its row, gone once

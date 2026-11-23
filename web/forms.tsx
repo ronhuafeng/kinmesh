@@ -250,12 +250,15 @@ export function InlineField({
   onClose,
   onCreated,
   extra = {},
+  initial = '',
 }: {
   name: string;
   label: string;
   placeholder: string;
   maxLength: number;
   path: string;
+  /** What the field starts as, when it names something again. */
+  initial?: string;
   className?: string;
   /** What to say when the name is already in use. */
   taken?: string;
@@ -297,8 +300,12 @@ export function InlineField({
         aria-label={label}
         placeholder={placeholder}
         maxLength={maxLength}
+        defaultValue={initial}
         required
         autoFocus
+        onFocus={(event) => {
+          event.currentTarget.select();
+        }}
         // Held, not disabled, while it sends: a refused name stays in the
         // field with the caret, ready to be corrected.
         readOnly={action.busy}

@@ -88,6 +88,10 @@ export const WorkspaceSnapshot = z.strictObject({
   reactions: z.array(MessageReactions).max(REACH * REACTIONS.length),
   /** The open channel's pinned messages, the latest pinned first. */
   pinned: z.array(Pinned).max(PINS_MOST),
+  /** Archived channels you are in: out of the lists, still opened and read. */
+  archivedChannels: z.array(ChannelView).max(100),
+  /** Whether the open channel is archived: read, never written to. */
+  channelArchived: z.boolean(),
   human: Person,
   /** The channels you muted or follow; every other is at the default. */
   levels: z

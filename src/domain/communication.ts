@@ -78,6 +78,16 @@ export const VisibilityInput = z.strictObject({
   operationKey: OperationKey,
   visibility: Visibility,
 });
+/** A person in a channel names it again; its folder keeps its first name. */
+export const RenameInput = z.strictObject({
+  operationKey: OperationKey,
+  name: z.string().trim().min(1).max(80),
+});
+/** A person in a channel archives it, or brings it back. */
+export const ArchiveInput = z.strictObject({
+  operationKey: OperationKey,
+  archived: z.boolean(),
+});
 export const ChannelView = Channel.extend({
   position: z.number().int().positive(),
 });
@@ -193,6 +203,8 @@ export const CommunicationFact = z
     operationKey: OperationKey,
     /** What a channel.changed made the channel. */
     visibility: Visibility.optional(),
+    name: z.string().min(1).max(80).optional(),
+    archived: z.boolean().optional(),
   })
   .superRefine((v, ctx) => {
     const isMessage = v.kind === 'message.posted';
@@ -203,7 +215,10 @@ export const CommunicationFact = z
       isParticipant !== (v.participant !== null) ||
       isParticipant !== (v.participantState !== null) ||
       (v.kind === 'topic.created' && v.topicId === null) ||
-      (v.kind === 'channel.changed') !== (v.visibility !== undefined) ||
+      (v.kind === 'channel.changed') !==
+        (v.visibility !== undefined ||
+          v.name !== undefined ||
+          v.archived !== undefined) ||
       ((v.kind === 'channel.created' ||
         v.kind === 'channel.changed' ||
         isParticipant) &&

@@ -1623,6 +1623,49 @@ test('dark is the same colours whether the system or the person chose it', async
   expect(await colours()).toEqual(light);
 });
 
+/**
+ * Proves a channel is renamed in place from its row's menu, archived (it
+ * leaves the sidebar, still opens from Settings, without a composer), and
+ * brought back.
+ */
+test('a channel is renamed in place, archived, opened from Settings, and brought back', async ({
+  page,
+  hub,
+}) => {
+  await signIn(page, hub);
+  await createChannel(page, 'design');
+  const channels = page.getByRole('navigation', { name: '频道' });
+  await channels
+    .getByRole('button', { name: 'design', exact: true })
+    .click({ button: 'right' });
+  await page.getByRole('menuitem', { name: '重命名…' }).click();
+  const field = channels.getByLabel('频道名称');
+  await field.fill('launch');
+  await field.press('Enter');
+  const launch = channels.getByRole('button', { name: 'launch', exact: true });
+  await expect(launch).toBeVisible();
+  await launch.click({ button: 'right' });
+  await page.getByRole('menuitem', { name: /^归档 #launch/ }).click();
+  await page.getByRole('menuitem', { name: /^确认：从列表移走/ }).click();
+  await expect(launch).toHaveCount(0);
+  await page.getByRole('button', { name: '你的账户' }).click();
+  await page.getByRole('menuitem', { name: /^设置/ }).click();
+  await page
+    .getByRole('navigation', { name: '设置' })
+    .getByRole('button', { name: '频道', exact: true })
+    .click();
+  await page
+    .getByRole('list', { name: '已归档的频道' })
+    .getByRole('button', { name: /launch/ })
+    .first()
+    .click();
+  await expect(page.getByText('#launch 已归档。')).toBeVisible();
+  await expect(page.getByRole('form', { name: '给团队发消息' })).toHaveCount(0);
+  await page.getByRole('button', { name: '恢复频道' }).click();
+  await expect(page.getByRole('form', { name: '给团队发消息' })).toBeVisible();
+  await expect(launch).toBeVisible();
+});
+
 test('a T3 on another computer: the person pastes the address its approval opened', async ({
   page,
   hub,

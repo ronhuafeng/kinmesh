@@ -1,4 +1,5 @@
 import {
+  Archive,
   ArrowRight,
   ArrowUp,
   Bell,
@@ -20,6 +21,7 @@ import {
   Moon,
   PanelLeft,
   Paperclip,
+  Pencil,
   Plug,
   Plus,
   Power,
@@ -98,4 +100,6 @@ export const SettingsIcons = {
   appearance: icon(SunMoon),
   users: icon(Users),
   hash: icon(Hash),
+  pencil: icon(Pencil),
+  archive: icon(Archive),
 };
