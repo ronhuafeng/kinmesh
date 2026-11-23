@@ -257,9 +257,15 @@ fallback.
   the "new since" line. Each day opens with its date, quiet and centred between
   hairlines ("今天", "昨天", "11月13日周四"). Delivery lines, Stop and **转为任务**
   work the same on every message of a group.
-- **Rich content**: bodies render a safe Markdown subset (paragraphs, lists, quotes,
-  headings, code, emphasis, tables, images, http(s) links opening in a new tab) as
-  React elements, never as HTML. A fenced code block is one rounded block in the
+- **Rich content**: bodies are Markdown with GitHub's extensions, rendered as React
+  elements, never as HTML (raw HTML stays visible text): paragraphs, a line break for
+  each newline as in chat, nested lists, task lists (their boxes stand in for bullets,
+  ticked as written and not clickable), quotes holding any block, emphasis and
+  strikethrough (also beside Chinese punctuation), a hairline rule, tables, images,
+  and http(s) links opening in a new tab. A bare address is a link wherever it starts
+  and stops before Chinese text or trailing punctuation. A message's headings sit
+  under the page's own: `#` and `##` one step above the text, the rest as bold text.
+  A fenced code block (``` or ~~~) is one rounded block in the
   system monospace, never boxed line by line, and keeps its language. A `mermaid`
   block is drawn as its diagram: Mermaid loads only when a message holds one, at its
   strict security level, laid out by dagre (ELK is never loaded unless a diagram

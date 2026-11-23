@@ -3280,6 +3280,64 @@ test('one author’s run of messages is one group: the face and name once, each 
     .toBe('1');
 });
 
+/**
+ * Proves the Markdown agents write lays out inside its message: a nested
+ * list, a task list and a wide table, with no sideways page scroll.
+ */
+test('a reply with a nested list, a task list and a wide table lays out inside its message', async ({
+  page,
+  hub,
+}) => {
+  await signIn(page, hub);
+  const composer = page.getByRole('form', { name: '给团队发消息' });
+  const wide = Array.from({ length: 12 }, (_, i) => `column ${String(i)}`);
+  await composer
+    .getByLabel('消息', { exact: true })
+    .fill(
+      [
+        'Plan:',
+        '',
+        '- ship',
+        '  - **build**',
+        '  - ~~old step~~',
+        '',
+        '- [x] tests pass',
+        '- [ ] docs updated',
+        '',
+        '| ' + wide.join(' | ') + ' |',
+        '| ' + wide.map(() => '-').join(' | ') + ' |',
+        '| ' + wide.map((_, i) => String(i)).join(' | ') + ' |',
+      ].join('\n'),
+    );
+  await composer.getByRole('button', { name: '发送消息' }).click();
+  const message = page
+    .getByRole('list', { name: '频道消息' })
+    .getByRole('listitem')
+    .filter({ hasText: 'Plan:' })
+    .first();
+  const body = message.locator('.message-text');
+  await expect(body.locator('ul ul li')).toHaveCount(2);
+  await expect(body.locator('del')).toHaveText('old step');
+  const boxes = body.getByRole('checkbox');
+  await expect(boxes).toHaveCount(2);
+  await expect(boxes.first()).toBeChecked();
+  await expect(boxes.first()).toBeDisabled();
+  const table = body.getByRole('region', { name: '表格' });
+  await expect(table.getByRole('cell', { name: '11' })).toHaveCount(1);
+  const [row, region] = await Promise.all([
+    message.boundingBox(),
+    table.boundingBox(),
+  ]);
+  expect(row && region && region.x + region.width <= row.x + row.width).toBe(
+    true,
+  );
+  expect(
+    await page.evaluate(
+      () => document.documentElement.scrollWidth <= window.innerWidth,
+    ),
+  ).toBe(true);
+});
+
 test('a mermaid block is drawn as its diagram, and one that can’t be drawn stays its code', async ({
   page,
   hub,
