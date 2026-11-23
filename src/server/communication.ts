@@ -8,6 +8,7 @@ import {
   PageInput,
   ParticipantInput,
   PostInput,
+  ReactInput,
   ReadInput,
   TopicId,
   TopicInput,
@@ -213,6 +214,17 @@ export function registerCommunication(app: FastifyInstance, store: Store) {
       teamId,
       channelId,
       messageId,
+    );
+  });
+  /** A person adds or takes back a reaction; the answer is the message's reactions. */
+  app.post(channel + '/messages/:messageId/reactions', async (request) => {
+    const { teamId, channelId, messageId } = MessagePath.parse(request.params);
+    return store.communication.react(
+      principal(request),
+      teamId,
+      channelId,
+      messageId,
+      ReactInput.parse(request.body),
     );
   });
   app.get(channel + '/messages/:messageId/mentions', async (request) => {

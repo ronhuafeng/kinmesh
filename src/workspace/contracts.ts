@@ -13,7 +13,12 @@ import {
   AgentId,
   ChannelId,
 } from '../domain/contracts.js';
-import { MessageId, TopicId } from '../domain/communication.js';
+import {
+  MessageId,
+  MessageReactions,
+  REACTIONS,
+  TopicId,
+} from '../domain/communication.js';
 import {
   ChannelLatest,
   ChannelView,
@@ -77,6 +82,8 @@ export const WorkspaceSnapshot = z.strictObject({
    * else wrote after your read position; null when nothing is unread there.
    */
   firstUnread: MessageId.nullable(),
+  /** The reactions to the messages shown, by message and reaction. */
+  reactions: z.array(MessageReactions).max(REACH * REACTIONS.length),
   human: Person,
   /** The channels you muted or follow; every other is at the default. */
   levels: z

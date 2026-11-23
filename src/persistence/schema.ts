@@ -961,3 +961,31 @@ export const notifications = pgTable(
     ),
   ],
 );
+/**
+ * A person's reaction to a message, one of a small fixed set: added and
+ * taken back, never woken on or notified about.
+ */
+export const messageReactions = pgTable(
+  'message_reactions',
+  {
+    messageId: text('message_id').notNull(),
+    channelId: text('channel_id').notNull(),
+    humanId: text('human_id')
+      .notNull()
+      .references(() => humans.id),
+    emoji: text('emoji').notNull(),
+    createdAt: millis('created_at').notNull(),
+  },
+  (t) => [
+    primaryKey({ columns: [t.messageId, t.humanId, t.emoji] }),
+    foreignKey({
+      columns: [t.messageId, t.channelId],
+      foreignColumns: [messages.id, messages.channelId],
+    }),
+    index('message_reaction_channel').on(t.channelId, t.messageId),
+    check(
+      'message_reaction_emoji',
+      sql`${t.emoji} IN ('👍','👀','✅','🎉','❤️','😄')`,
+    ),
+  ],
+);

@@ -373,7 +373,7 @@ export function registerWorkspace(
       step: d.step,
     });
     const messageIds = messages.items.map((m) => m.id);
-    const [deliveries, replies] = channel
+    const [deliveries, replies, reactions] = channel
       ? await together([
           store.inboxViews.deliveriesFor(
             principal,
@@ -388,8 +388,14 @@ export function registerWorkspace(
             channel.id,
             messageIds,
           ),
+          store.communication.reactions(
+            principal,
+            teamId,
+            channel.id,
+            messageIds,
+          ),
         ])
-      : [[], []];
+      : [[], [], []];
     // Every member reaches this route; what waits on them is theirs: tasks
     // they decide on, and the deliveries and setup the team shares.
     const live = new Set(wake.filter((w) => w.connected).map((w) => w.agentId));
@@ -430,6 +436,7 @@ export function registerWorkspace(
         nativeT3Origin: t3Origin,
         teamMcpUrl,
         firstUnread,
+        reactions,
         human,
         levels: quiet.levels,
         notices,

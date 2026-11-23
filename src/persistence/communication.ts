@@ -55,12 +55,14 @@ import {
   Member,
   Message,
   MessageId,
+  MessageReactions,
   Mutation,
   type PageInput,
   Participant,
   ParticipantInput,
   VisibilityInput,
   PostInput,
+  ReactInput,
   ReadInput,
   Topic,
   TopicId,
@@ -275,6 +277,40 @@ export function communicationRepository(
     return topicOf(row);
   }
   /** Messages as read, each with its mentions: one more query for them all. */
+  /** Each message's reactions, grouped by reaction, oldest reactor first. */
+  async function reactionsOf(channelId: ChannelId, messageIds: string[]) {
+    if (messageIds.length === 0) return [];
+    const rows = await q()
+      .select({
+        messageId: s.messageReactions.messageId,
+        emoji: s.messageReactions.emoji,
+        humanId: s.messageReactions.humanId,
+      })
+      .from(s.messageReactions)
+      .where(
+        and(
+          eq(s.messageReactions.channelId, channelId),
+          inArray(s.messageReactions.messageId, messageIds),
+        ),
+      )
+      .orderBy(asc(s.messageReactions.createdAt));
+    const grouped = new Map<string, z.infer<typeof MessageReactions>>();
+    for (const r of rows) {
+      const key = r.messageId + ' ' + r.emoji;
+      const kept = grouped.get(key);
+      if (kept) kept.humanIds.push(HumanId.parse(r.humanId));
+      else
+        grouped.set(
+          key,
+          MessageReactions.parse({
+            messageId: r.messageId,
+            emoji: r.emoji,
+            humanIds: [r.humanId],
+          }),
+        );
+    }
+    return [...grouped.values()];
+  }
   async function withMentions(rows: (typeof s.messages.$inferSelect)[]) {
     const mentions = new Map<string, Member[]>();
     if (rows.length > 0)
@@ -845,6 +881,60 @@ export function communicationRepository(
               eq(s.channelParticipants.memberKey, memberKey(member(p))),
             ),
           );
+      });
+    },
+    /**
+     * A person adds or takes back a reaction to a message of a channel they
+     * joined. Doing what is already done changes nothing; nobody is woken or
+     * notified. Answers the message's reactions as they are now.
+     */
+    react(
+      p: Principal,
+      teamId: TeamId,
+      channelId: ChannelId,
+      messageId: MessageId,
+      input: z.infer<typeof ReactInput>,
+    ) {
+      const { emoji, on } = ReactInput.parse(input);
+      return atomic(async () => {
+        if (p.kind !== 'human') throw new DomainError('forbidden');
+        const { participant } = await access(p, teamId, channelId);
+        if (participant?.state !== 'joined') throw new DomainError('not-found');
+        await message(channelId, messageId);
+        if (on)
+          await q()
+            .insert(s.messageReactions)
+            .values({
+              messageId,
+              channelId,
+              humanId: p.humanId,
+              emoji,
+              createdAt: Date.now(),
+            })
+            .onConflictDoNothing();
+        else
+          await q()
+            .delete(s.messageReactions)
+            .where(
+              and(
+                eq(s.messageReactions.messageId, messageId),
+                eq(s.messageReactions.humanId, p.humanId),
+                eq(s.messageReactions.emoji, emoji),
+              ),
+            );
+        return reactionsOf(channelId, [messageId]);
+      });
+    },
+    /** The reactions to these messages of a channel the person can read. */
+    reactions(
+      p: Principal,
+      teamId: TeamId,
+      channelId: ChannelId,
+      messageIds: string[],
+    ) {
+      return atomic(async () => {
+        await access(p, teamId, channelId);
+        return reactionsOf(channelId, messageIds);
       });
     },
     /**

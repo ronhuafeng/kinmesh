@@ -280,15 +280,17 @@ fallback.
   site is rounded, at most the message's width, and opens its original; one from
   elsewhere is its link, since the page loads images only from here. Links stay text
   links: there are no previews, which would need the server to fetch other sites.
-- **Mentions and replies**: a mention already written as `@Name` gets no second chip. An
-  agent's reply shows the message it answers, unless it is the very next message,
+- **Mentions and replies**: a mention already written as `@Name` gets no second chip.
+  An agent's reply shows the message it answers, unless it is the very next message,
   and carries a line only for an exception (failed, stopped, shortened); what ran it
-  lives with the run on the agent's page. A message's actions, **复制** (its text as
-  written), **复制链接** (its address), **回复** and **转为任务**, show on hover, and on touch
-  once the message is tapped; a code block offers **复制** on its corner the same way.
-  回复 puts the message above the field as the same quiet quote (× lets it go); the sent
-  message quotes it, unless it is the very next message, and the quote opens it.
-  A mention chip is a soft green tag.
+  lives with the run on the agent's page. A message's actions, **回应** (six reactions
+  side by side, yours ticked), **复制** (its text as written), **复制链接** (its address),
+  **回复** and **转为任务**, show on hover, and on touch once the message is tapped; a code
+  block offers **复制** on its corner the same way. 回复 puts the message above the field
+  as the same quiet quote (× lets it go); the sent message quotes it, unless it is the
+  very next message, and the quote opens it. Under a message its reactions show as
+  pills, each with how many, yours in the primary tint; pressing one adds or takes
+  back yours, and who reacted is said on hover. A mention chip is a soft green tag.
 - **Conversation**: opens where you stopped reading — the first message someone else
   wrote since, under the "new since" line — or, with nothing unread, at the newest
   message, and stays at the bottom as messages arrive while you are there (and after
