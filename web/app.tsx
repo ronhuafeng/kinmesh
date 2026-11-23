@@ -50,7 +50,7 @@ import {
 } from './ui.js';
 import { SearchPage, SidebarSearch, type Remote } from './palette.js';
 import { useSidebar } from './sidebar.js';
-import { InboxPage, attentionCount } from './inbox.js';
+import { InboxPage, attentionCount, badgeOf } from './inbox.js';
 import { FIRST, SettingsNav, SettingsPage } from './settings-map.js';
 import { Files } from './files.js';
 import { ListRow } from './settings.js';
@@ -648,13 +648,24 @@ export function App() {
     return page.success ? pageParam(page.data) : null;
   }, [focus, view, agentId]);
   const signedOut = status === 'signedout';
-  // Installed, the app's icon counts what waits on you; nothing once
-  // signed out.
-  const badge = data && !signedOut ? attentionCount(data.attention) : 0;
+  // The app's badge, where the browser shows one: how many decisions wait on
+  // you; else a dot while anything is unread; else nothing, as when signed
+  // out.
+  const badge =
+    data && !signedOut
+      ? badgeOf(
+          attentionCount(data.attention),
+          data.latest.some((l) => l.unread),
+        )
+      : null;
   useEffect(() => {
     if (!('setAppBadge' in navigator)) return;
     void (
-      badge > 0 ? navigator.setAppBadge(badge) : navigator.clearAppBadge()
+      badge === null
+        ? navigator.clearAppBadge()
+        : badge === true
+          ? navigator.setAppBadge()
+          : navigator.setAppBadge(badge)
     ).catch(() => undefined);
   }, [badge]);
   // Signed in again: a later link from Feishu signs in by itself.
@@ -810,15 +821,6 @@ export function App() {
       window.removeEventListener('keydown', onKey);
     };
   }, []);
-  // The app's badge (where the browser shows one) says whether anything is
-  // unread.
-  const anyUnread = data?.latest.some((l) => l.unread) ?? false;
-  useEffect(() => {
-    if (!('setAppBadge' in navigator)) return;
-    void (
-      anyUnread ? navigator.setAppBadge() : navigator.clearAppBadge()
-    ).catch(() => undefined);
-  }, [anyUnread]);
   if (unreadable) return <Broken />;
   if (status === 'signedout') return <Auth denied={denied} />;
   if (!data) {

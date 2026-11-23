@@ -16,6 +16,13 @@ export function attentionCount(attention: WorkspaceSnapshot['attention']) {
     (attention.t3 ? 1 : 0)
   );
 }
+/**
+ * The app's badge: how many decisions wait on you; else a dot (`true`)
+ * while anything is unread; else nothing (`null`).
+ */
+export function badgeOf(decisions: number, unread: boolean) {
+  return decisions > 0 ? decisions : unread ? true : null;
+}
 /** One row: who it is about, what it is, where and when; the row opens it. */
 interface Item {
   key: string;
