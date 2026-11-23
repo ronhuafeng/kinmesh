@@ -69,7 +69,7 @@
     "remark-cjk-friendly": "2.3.4",
     "remark-cjk-friendly-gfm-strikethrough": "2.3.3",
     "remark-gfm": "4.0.1",
-    "web-push": "3.6.7",
+    "web-push": "4.0.0",
     "zod": "^4.6.7"
   },
   "devDependencies": {
