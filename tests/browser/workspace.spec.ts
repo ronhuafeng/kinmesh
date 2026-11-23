@@ -1236,6 +1236,38 @@ test('a week before T3’s sign-in ends anyone reconnects it from the Inbox; onc
   await page.unrouteAll({ behavior: 'ignoreErrors' });
 });
 
+/**
+ * Proves adding an agent never strands it: when joining the channel fails,
+ * the agent's page still opens and offers to add it to the channel.
+ */
+test('an agent whose channel invite fails still opens, with the way into the channel', async ({
+  page,
+  hub,
+}) => {
+  await signIn(page, hub);
+  let refuse = true;
+  await page.route('**/participants/invite', (route) =>
+    refuse ? route.fulfill({ status: 500, json: {} }) : route.continue(),
+  );
+  await page.getByRole('tab', { name: '成员', exact: true }).click();
+  await page
+    .getByRole('list', { name: '团队', exact: true })
+    .getByRole('button', { name: '添加智能体', exact: true })
+    .click();
+  const form = page.getByRole('form', { name: '智能体资料' });
+  await form.getByLabel('智能体名称').fill('Ada');
+  await form.getByLabel('角色', { exact: true }).selectOption('developer');
+  await form.getByRole('button', { name: '添加智能体', exact: true }).click();
+  const agent = page.getByRole('region', { name: 'Ada', exact: true });
+  await expect(agent).toBeVisible();
+  await expect(agent).toContainText('Ada 不在这个频道');
+  refuse = false;
+  await agent.getByRole('button', { name: '把 Ada 加入频道' }).click();
+  await expect(
+    agent.getByRole('button', { name: '把 Ada 加入频道' }),
+  ).toHaveCount(0);
+});
+
 test('a T3 on another computer: the person pastes the address its approval opened', async ({
   page,
   hub,

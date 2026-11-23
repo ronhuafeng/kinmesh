@@ -545,11 +545,14 @@ function RegisterAgent({
                 }),
               ),
             );
+            // The agent exists now. If it can't join the channel, its page
+            // still opens, saying it isn't in the channel beside the button
+            // that adds it.
             if (channelPath)
               await request(channelPath + '/participants/invite', {
                 operationKey: crypto.randomUUID(),
                 member: { kind: 'agent', id: agent.id },
-              });
+              }).catch(() => undefined);
             return agent.id;
           })
           .then((id) => {
