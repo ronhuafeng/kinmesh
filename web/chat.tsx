@@ -2,6 +2,7 @@ import {
   type ReactNode,
   memo,
   useCallback,
+  useMemo,
   useContext,
   useEffect,
   useId,
@@ -10,7 +11,7 @@ import {
   useState,
 } from 'react';
 import { z } from 'zod';
-import { Message, REACH } from '../src/domain/communication.js';
+import { Message, REACH, pageOf } from '../src/domain/communication.js';
 import { Attachment } from '../src/domain/attachments.js';
 import type { Shared } from './share.js';
 import type { WorkspaceSnapshot } from '../src/workspace/contracts.js';
@@ -976,6 +977,20 @@ function useReadingPosition(place: string, messages: ChatMessage[]) {
       toBottom();
       if (held.current) held.current.bottom = true;
     },
+    /**
+     * Shows a message, marked, and reads from it: what grows above or below
+     * afterwards holds it still instead of going back to the bottom.
+     */
+    show: (id: string) => {
+      const row = document.getElementById('message-' + id);
+      if (!row) return;
+      row.scrollIntoView({ block: 'center' });
+      row.dataset.flash = 'true';
+      setTimeout(() => {
+        delete row.dataset.flash;
+      }, 1600);
+      note();
+    },
   };
 }
 /**
@@ -1019,6 +1034,78 @@ function useMarkRead(
  * Asks for older messages once the top of the conversation comes near:
  * scrolling up reads further back, until there is nothing older.
  */
+/**
+ * The messages older than the workspace's window, read a page at a time
+ * from `path` with the cursor each page gives: `cursor` is undefined until
+ * the first page is read, null at the channel's beginning. Messages that
+ * fall out of the window as new ones arrive are kept here, so what was
+ * read back has no gap.
+ */
+function useArchive(path: string, place: string, windowed: ChatMessage[]) {
+  const [state, setState] = useState<{
+    place: string;
+    items: ChatMessage[];
+    cursor: string | null | undefined;
+  }>({ place, items: [], cursor: undefined });
+  const current =
+    state.place === place
+      ? state
+      : { place, items: [] as ChatMessage[], cursor: undefined };
+  const at = useRef(place);
+  const asking = useRef<string | null>(null);
+  useLayoutEffect(() => {
+    at.current = place;
+  }, [place]);
+  const load = useCallback(
+    (cursor: string) => {
+      if (asking.current === cursor) return;
+      asking.current = cursor;
+      const from = place;
+      void api(path + '?limit=100&cursor=' + encodeURIComponent(cursor))
+        .then((raw) => {
+          if (at.current !== from) return;
+          const page = pageOf(Message).parse(raw);
+          setState((old) => {
+            const kept = old.place === from ? old.items : [];
+            const ids = new Set(kept.map((m) => m.id));
+            return {
+              place: from,
+              items: [...page.items.filter((m) => !ids.has(m.id)), ...kept],
+              cursor: page.nextCursor,
+            };
+          });
+        })
+        .catch(() => undefined)
+        .finally(() => {
+          if (asking.current === cursor) asking.current = null;
+        });
+    },
+    [path, place],
+  );
+  // What leaves the window's old end stays read.
+  const before = useRef<ChatMessage[]>(windowed);
+  useEffect(() => {
+    const previous = before.current;
+    before.current = windowed;
+    const oldest = windowed[0]?.position;
+    if (oldest === undefined) return;
+    setState((old) => {
+      if (old.place !== place || old.cursor === undefined) return old;
+      const ids = new Set(old.items.map((m) => m.id));
+      const dropped = previous.filter(
+        (m) => m.position < oldest && !ids.has(m.id),
+      );
+      if (dropped.length === 0) return old;
+      return {
+        ...old,
+        items: [...old.items, ...dropped].sort(
+          (a, b) => a.position - b.position,
+        ),
+      };
+    });
+  }, [windowed, place]);
+  return { items: current.items, cursor: current.cursor, load };
+}
 function useEarlier(older: string | null, onEarlier: (cursor: string) => void) {
   const top = useRef<HTMLDivElement>(null);
   const ask = useRef(onEarlier);
@@ -1044,6 +1131,7 @@ function useEarlier(older: string | null, onEarlier: (cursor: string) => void) {
 /** What a message row can do; one object for all rows (`Chat`). */
 interface RowActions {
   choose: (id: string) => void;
+  open: (id: string) => void;
   makeTask: (m: ChatMessage) => void;
   openAgent: (id: string) => void;
   done: () => void;
@@ -1196,7 +1284,7 @@ const MessageRow = memo(function MessageRow({
               type="button"
               className="reply-to link-button"
               onClick={() => {
-                showMessage(quote.id);
+                act.open(quote.id);
               }}
             >
               <span aria-hidden="true">↩</span>{' '}
@@ -1262,6 +1350,18 @@ const MessageRow = memo(function MessageRow({
                   className="quiet"
                 />
               )}
+              {/* Its address: opening it shows this message in its channel. */}
+              <CopyButton
+                text={
+                  window.location.origin +
+                  '/?channel=' +
+                  m.channelId +
+                  '&message=' +
+                  m.id
+                }
+                label="复制链接"
+                className="quiet"
+              />
               <button
                 type="button"
                 className="quiet"
@@ -1322,10 +1422,16 @@ export function Chat({
   onTeam,
   incoming,
   join = null,
+  target = null,
+  onOpenMessage,
 }: {
   data: WorkspaceSnapshot;
   channelPath: string;
   topic: string;
+  /** The message the conversation is opened at, reached however far back. */
+  target?: string | null;
+  /** Opens a message of this channel, as search and quotes do. */
+  onOpenMessage: (id: string) => void;
   /** The topic the messages on screen were read for ('' for all). */
   shownTopic: string;
   onTopic: (topic: string) => void;
@@ -1344,13 +1450,54 @@ export function Chat({
   join?: ReactNode;
 }) {
   const channel = data.channel;
-  const messages = data.messages.items;
+  const window_ = data.messages.items;
   const shown = (channel?.id ?? '') + ':' + shownTopic;
+  // Past the workspace's window (its newest `REACH`), older messages are
+  // read page by page: the whole history can be reached.
+  const archive = useArchive(
+    channelPath +
+      (shownTopic ? '/topics/' + shownTopic + '/messages' : '/messages'),
+    shown,
+    window_,
+  );
+  const messages = useMemo(
+    () =>
+      archive.items.length === 0 ? window_ : [...archive.items, ...window_],
+    [archive.items, window_],
+  );
+  const full = window_.length >= REACH;
+  // Where older messages come from now: the window's own cursor until it is
+  // full, then the history's pages; null at the channel's beginning.
+  const older = full
+    ? archive.cursor === undefined
+      ? data.messages.nextCursor
+      : archive.cursor
+    : data.messages.nextCursor;
+  const reachOlder = useCallback(
+    (cursor: string) => {
+      if (full) archive.load(cursor);
+      else onEarlier(cursor);
+    },
+    [full, archive.load, onEarlier],
+  );
   const { divider, fresh, heard } = useArrivals(shown, messages, data.human.id);
   // The message tapped on a touch screen, which shows its actions.
   const [chosen, setChosen] = useState<string | null>(null);
   const reading = useReadingPosition(shown, messages);
-  const earlier = useEarlier(data.messages.nextCursor, onEarlier);
+  const earlier = useEarlier(older, reachOlder);
+  // A message opened here is reached however far back it is, shown and
+  // marked once.
+  const reachedFor = useRef<string | null>(null);
+  useEffect(() => {
+    if (!target || reachedFor.current === shown + target) return;
+    if (messages.some((m) => m.id === target)) {
+      reachedFor.current = shown + target;
+      requestAnimationFrame(() => {
+        reading.show(target);
+      });
+    } else if (older !== null) reachOlder(older);
+    else reachedFor.current = shown + target;
+  }, [target, shown, messages, older, reachOlder]);
   const permitted = useContext(MutationPermission);
   useMarkRead(
     channelPath,
@@ -1362,13 +1509,22 @@ export function Chat({
   const outbox = useOutbox(channelPath, onDone);
   // What a row can do, the same object for every render, each doing what
   // the latest render says: a row unchanged need not be drawn again.
-  const latest = useRef({ onMakeTask, openAgent, onDone, outbox });
+  const latest = useRef({
+    onMakeTask,
+    openAgent,
+    onDone,
+    outbox,
+    onOpenMessage,
+  });
   useLayoutEffect(() => {
-    latest.current = { onMakeTask, openAgent, onDone, outbox };
+    latest.current = { onMakeTask, openAgent, onDone, outbox, onOpenMessage };
   });
   const [act] = useState<RowActions>(() => ({
     choose: (id) => {
       setChosen((old) => (old === id ? null : id));
+    },
+    open: (id) => {
+      latest.current.onOpenMessage(id);
     },
     makeTask: (m) => {
       latest.current.onMakeTask(m);
@@ -1511,7 +1667,7 @@ export function Chat({
       <div ref={earlier} aria-hidden="true" />
       {/* On a phone, leaving waits where the conversation begins, away from
           the topics a thumb taps all day. */}
-      {(data.messages.nextCursor === null || messages.length >= REACH) && (
+      {older === null && (
         <div className="leave-channel channel-start">
           <ActionForm
             title="频道成员资格"

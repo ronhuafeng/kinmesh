@@ -177,7 +177,11 @@ await test('a notification says who and where, and is dropped once read', async 
     const owner = await f.store.human(f.owner.id);
     assert.equal(payload.title, `${String(owner?.name)} · #general`);
     assert.equal(payload.body, 'Please look at this');
-    assert.equal(payload.url, '/?channel=' + f.channelId);
+    // It opens at the message, in its channel's conversation.
+    assert.equal(
+      payload.url,
+      '/?channel=' + f.channelId + '&message=' + messageId,
+    );
     assert.equal(payload.tag, 'channel:' + f.channelId + ':');
 
     // Read since, it no longer concerns her.

@@ -3064,6 +3064,77 @@ test('a fenced code block is one block, not a box around every line', async ({
 });
 
 /**
+ * Proves any message can be reached: one far older than the workspace's
+ * window opens from its address, shown in its conversation, also after a
+ * reload; scrolling back reaches the channel's first message; and a
+ * message's link is that address.
+ */
+test('a message far back opens from its address, stays across a reload, and the start is reachable', async ({
+  page,
+  context,
+  hub,
+}) => {
+  test.setTimeout(90_000);
+  const lastCopied = await recordCopies(page);
+  await signIn(page, hub);
+  const state = await snapshot(context.request, hub.origin);
+  if (!state.channel) throw new Error('Local channel missing');
+  const channelId = state.channel.id;
+  // Older history than the window holds: 260 messages, oldest first.
+  const ids = Array.from({ length: 260 }, () => randomUUID());
+  const sql = rawDatabase(hub.database);
+  try {
+    for (const [n, id] of ids.entries())
+      await sql
+        .prepare(
+          'INSERT INTO messages (id, channel_id, topic_id, author, created_at, body) VALUES (?, ?, NULL, ?, ?, ?)',
+        )
+        .run(
+          id,
+          channelId,
+          JSON.stringify({ kind: 'human', humanId: state.human.id }),
+          new Date(Date.UTC(2026, 0, 1, 0, n)).toISOString(),
+          'History ' + String(n),
+        );
+  } finally {
+    await sql.close();
+  }
+  const row = (n: number) => page.locator('#message-' + String(ids[n]));
+  // Its address opens the channel at it, however far back.
+  await page.goto(
+    `${hub.origin}/?channel=${channelId}&message=${String(ids[3])}`,
+  );
+  await expect(row(3)).toBeInViewport({ timeout: 20_000 });
+  await expect(row(3)).toContainText('History 3');
+  await page.reload();
+  await expect(row(3)).toBeInViewport({ timeout: 20_000 });
+  // Scrolling back reaches the channel's very first message.
+  await expect
+    .poll(
+      async () => {
+        await page.mouse.wheel(0, -20_000);
+        return row(0).count();
+      },
+      { timeout: 30_000 },
+    )
+    .toBe(1);
+  await expect(row(0)).toContainText('History 0');
+  // It is the beginning: nothing above it.
+  await expect(
+    page.locator('.messages > li[id^="message-"]').first(),
+  ).toHaveAttribute('id', 'message-' + String(ids[0]));
+  // A message's link is that address.
+  await row(3).hover();
+  await row(3)
+    .locator('.message-actions')
+    .getByRole('button', { name: '复制链接' })
+    .click();
+  expect(await lastCopied()).toBe(
+    `${hub.origin}/?channel=${channelId}&message=${String(ids[3])}`,
+  );
+});
+
+/**
  * Proves a code block and a message each copy as written: the code without
  * the button's word, the message as its Markdown.
  */

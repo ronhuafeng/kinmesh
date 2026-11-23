@@ -283,11 +283,16 @@ fallback.
 - **Mentions and replies**: a mention already written as `@Name` gets no second chip. An
   agent's reply shows the message it answers, unless it is the very next message,
   and carries a line only for an exception (failed, stopped, shortened); what ran it
-  lives with the run on the agent's page. **转为任务** shows on hover, and on touch
-  once the message is tapped. A mention chip is a soft green tag.
+  lives with the run on the agent's page. A message's actions, **复制** (its text as
+  written), **复制链接** (its address) and **转为任务**, show on hover, and on touch
+  once the message is tapped; a code block offers **复制** on its corner the same way.
+  A mention chip is a soft green tag.
 - **Conversation**: opens at the newest message and stays at the bottom as messages
   arrive while you are there (and after you send); scrolled up, nothing moves under
-  you. Scrolling up reads older messages in place; there are no page buttons. A "_time_ 以来的新消息"
+  you. Scrolling up reads older messages in place, back to the channel's first;
+  there are no page buttons. A message opened from search, a file, a quote, a
+  notification or its link is reached however far back it is, scrolled to and
+  marked; the address keeps it, so a reload shows it again. A "_time_ 以来的新消息"
   line marks what others wrote while the channel or topic was open.
 - **Delivery line**: under a message that mentions an agent, and on a task handed to
   one, one line per agent in plain words, the agent's name first. A new state
