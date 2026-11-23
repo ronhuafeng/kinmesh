@@ -1,4 +1,18 @@
 import { registerWorkspace } from './workspace.js';
+import { workspaceReader } from './workspace-reader.js';
+import { runReader } from './run-reader.js';
+import { registerAgui } from './agui.js';
+import { registerNativeRuns } from './native-runs.js';
+import { registerDeliveries } from './deliveries.js';
+import { registerDirect } from './direct.js';
+import { registerPeople } from './people.js';
+import { registerAgentWorkers } from './agent-workers.js';
+import { registerTeamFiles } from './team-files.js';
+import { registerSearch } from './search.js';
+import { registerHealth } from './health.js';
+import { registerLogout } from './logout.js';
+import { registerPush } from './push.js';
+import { registerFeishuTest } from './feishu-test.js';
 import { registerEvents } from './events.js';
 import { watchChanges } from './changes.js';
 import { registerWeb } from './web.js';
@@ -206,39 +220,10 @@ export async function createApp(
       return reply.code(403).send({ error: 'Origin denied' });
     }
   });
-  // Liveness: the process answers. Readiness (below): it can do its work.
-  // Both name the commit the hub runs, so a deployment can be checked.
-  const version = config.version;
-  app.get('/health/live', (_request, reply) =>
-    reply.send({ status: 'ok', component: 'kinmesh-team-hub', version }),
-  );
-  // Ready: the database answers (it opens only fully migrated) and the
-  // supervised Inbox worker, when there is one, is connected.
-  app.get('/health', async (_request, reply) => {
-    const ready = (await store.ready()) && workerReady();
-    return reply.code(ready ? 200 : 503).send({
-      status: ready ? 'ok' : 'unavailable',
-      component: 'kinmesh-team-hub',
-      version,
-    });
-  });
+  registerHealth(app, store, config.version, workerReady);
   const feishu = options.feishu ?? feishuClient(config.feishu);
   registerLogin(app, store, config, feishu);
-  app.post('/api/logout', async (request, reply) => {
-    await store.browsers.signedOut(request.session.get('session'));
-    await store.sessions.revoke(request.session.get('session'), Date.now());
-    request.session.delete();
-    return reply.code(204).send();
-  });
-  // Sign out everywhere: every session of yours ends, this one included.
-  app.post('/api/me/sessions/end', async (request, reply) => {
-    const principal = request.principal;
-    if (principal?.kind !== 'human') throw new DomainError('forbidden');
-    await store.browsers.signedOutEverywhere(principal.humanId);
-    await store.sessions.revokeAll(principal.humanId, Date.now());
-    request.session.delete();
-    return reply.code(204).send();
-  });
+  registerLogout(app, store);
   app.addHook('preHandler', async (request, reply) => {
     if (!request.url.startsWith('/api/')) return;
     request.principal = await resolvePrincipal(
@@ -254,6 +239,8 @@ export async function createApp(
   });
   const changes = watchChanges(store);
   const { grants } = registerAgents(app, store, hub.directory);
+  registerPeople(app, store);
+  registerAgentWorkers(app, store, hub);
   const { t3Status, renewal, runCredential } = registerConnect(
     app,
     store,
@@ -320,9 +307,12 @@ export async function createApp(
   const expiring = setInterval(() => void expire(), 60_000);
   expiring.unref();
   registerCommunication(app, store);
+  registerDirect(app, store);
   const files = attachmentStore(config.files);
   await files.prepare();
   registerAttachments(app, store, files, config.attachmentsRoom);
+  registerTeamFiles(app, store);
+  registerSearch(app, store);
   const stopSweeping = sweepAttachments(store, files, (error) => {
     app.log.error(describeFailure(error), 'attachment_sweep_failed');
   });
@@ -338,17 +328,29 @@ export async function createApp(
     return Promise.resolve();
   });
   registerTasks(app, store);
-  registerNotifications(app, store, config.origin, hub.directory, feishu);
-  registerMe(app, store, config.origin, feishu);
-  const { snapshot, runs } = registerWorkspace(
+  const notifier = registerNotifications(
     app,
     store,
-    runCredential,
+    config.origin,
+    hub.directory,
+    feishu,
+  );
+  registerPush(app, store, notifier);
+  registerMe(app, store);
+  registerFeishuTest(app, store, config.origin, feishu);
+  const readRun = runReader(store, runCredential);
+  const reader = workspaceReader(
+    store,
     renewal,
     changes,
     metrics.workspaceRead,
     config.teamMcpUrl,
   );
+  registerWorkspace(app, reader);
+  registerAgui(app, reader);
+  registerNativeRuns(app, store, readRun);
+  registerDeliveries(app, store, readRun);
+  const { snapshot, runs } = reader;
   const { openStreams } = registerEvents(app, store, changes, {
     snapshot,
     t3Status,

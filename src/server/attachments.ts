@@ -92,39 +92,6 @@ export function registerAttachments(
     await store.files.release(sha256, () => files.remove(sha256));
     return removal;
   });
-  // The files of every channel the person is in, newest first.
-  app.get('/api/teams/:teamId/files', async (request) => {
-    const { teamId } = z.object({ teamId: TeamId }).parse(request.params);
-    const { before, channelId } = z
-      .strictObject({
-        before: z.coerce.number().int().positive().optional(),
-        channelId: ChannelId.optional(),
-      })
-      .parse(request.query);
-    return store.files.files(
-      principal(request),
-      teamId,
-      before ?? null,
-      50,
-      channelId ?? null,
-    );
-  });
-  /**
-   * What a person types in search, found in the channels they are in:
-   * messages whose text holds it and files whose name does, newest first.
-   */
-  app.get('/api/teams/:teamId/search', async (request) => {
-    const { teamId } = z.object({ teamId: TeamId }).parse(request.params);
-    const { q } = z
-      .strictObject({ q: z.string().trim().min(2).max(100) })
-      .parse(request.query);
-    const p = principal(request);
-    const [messages, files] = await Promise.all([
-      store.messages.searchMessages(p, teamId, q),
-      store.files.files(p, teamId, null, 10, null, q),
-    ]);
-    return { messages, files: files.items };
-  });
   app.get(base + '/:attachmentId', async (request, reply) => {
     const { teamId, channelId, attachmentId } = FilePath.parse(request.params);
     const { attachment, sha256 } = await store.files.attachment(

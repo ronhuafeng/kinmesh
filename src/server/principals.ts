@@ -12,3 +12,9 @@ export function principal(request: FastifyRequest) {
   if (request.principal === null) throw new DomainError('unauthenticated');
   return request.principal;
 }
+/** The person calling: an agent is refused. */
+export function humanOf(request: FastifyRequest) {
+  const p = principal(request);
+  if (p.kind !== 'human') throw new DomainError('forbidden');
+  return p.humanId;
+}

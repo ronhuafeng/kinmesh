@@ -1,9 +1,14 @@
-import type { FastifyInstance, FastifyRequest } from 'fastify';
+import {
+  ForwardInput,
+  HoursInput,
+  PAUSE_MOST_MS,
+  PauseInput,
+} from '../domain/notify.js';
+import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { DomainError } from '../domain/errors.js';
 import type { Store } from '../persistence/store.js';
-import { FeishuFailure, type Feishu } from './feishu.js';
-import { principal } from './principals.js';
+import { humanOf } from './principals.js';
 
 const Id = z.strictObject({ id: z.string().regex(/^[\w-]{16}$/) });
 /**
@@ -11,20 +16,10 @@ const Id = z.strictObject({ id: z.string().regex(/^[\w-]{16}$/) });
  * as Feishu gives it, their sessions, the browsers notifying them, and a
  * message from the team's Feishu bot to see that it reaches them.
  */
-export function registerMe(
-  app: FastifyInstance,
-  store: Store,
-  origin: string,
-  feishu: Feishu,
-) {
-  const human = (request: FastifyRequest) => {
-    const p = principal(request);
-    if (p.kind !== 'human') throw new DomainError('forbidden');
-    return p.humanId;
-  };
+export function registerMe(app: FastifyInstance, store: Store) {
   app.get('/api/me/profile', async (request, reply) => {
     reply.header('Cache-Control', 'no-store');
-    const humanId = human(request);
+    const humanId = humanOf(request);
     const [profile, team] = await Promise.all([
       store.sessions.profile(humanId),
       store.teamFor(humanId),
@@ -35,52 +30,53 @@ export function registerMe(
   app.get('/api/me/sessions', (request, reply) => {
     reply.header('Cache-Control', 'no-store');
     return store.sessions.list(
-      human(request),
+      humanOf(request),
       request.session.get('session'),
       Date.now(),
     );
   });
   app.post('/api/me/session/end', async (request, reply) => {
     const ended = await store.sessions.end(
-      human(request),
+      humanOf(request),
       Id.parse(request.body).id,
       Date.now(),
     );
     return reply.code(ended ? 204 : 404).send();
   });
-  app.get('/api/push/browsers', (request, reply) => {
-    reply.header('Cache-Control', 'no-store');
-    return store.browsers.browserList(human(request));
+  // Sign out everywhere: every session of yours ends, this one included.
+  app.post('/api/me/sessions/end', async (request, reply) => {
+    const principal = request.principal;
+    if (principal?.kind !== 'human') throw new DomainError('forbidden');
+    await store.browsers.signedOutEverywhere(principal.humanId);
+    await store.sessions.revokeAll(principal.humanId, Date.now());
+    request.session.delete();
+    return reply.code(204).send();
   });
-  app.post('/api/push/forget', async (request, reply) => {
-    const forgotten = await store.browsers.forgetBrowser(
-      human(request),
-      Id.parse(request.body).id,
-    );
-    return reply.code(forgotten ? 204 : 404).send();
+  app.put('/api/me/pause', async (request, reply) => {
+    const humanId = humanOf(request);
+    const { until } = PauseInput.parse(request.body);
+    const at = until === null ? null : Date.parse(until);
+    if (at !== null && (at <= Date.now() || at > Date.now() + PAUSE_MOST_MS))
+      throw new DomainError('invalid');
+    const team = await store.teamFor(humanId);
+    if (!team) throw new DomainError('forbidden');
+    await store.quiet.pause(humanId, team.team.id, at);
+    return reply.code(204).send();
   });
-  // The team's bot sends the person one message: 204 when Feishu took it,
-  // 502 when it refused (no bot, no permission) or couldn't be reached.
-  app.post('/api/feishu/test', async (request, reply) => {
-    const humanId = human(request);
-    const union = await store.notifications.unionOf(humanId);
-    if (union === null) return reply.code(409).send();
-    const sent = await feishu
-      .message(union, {
-        title: 'Kinmesh',
-        text: '飞书机器人能把通知送到你这里。',
-        url: new URL('/?settings=connections', origin).href,
-      })
-      .then(
-        () => true,
-        (error: unknown) => {
-          app.log.error(
-            { error: error instanceof FeishuFailure ? error.message : 'Error' },
-            'feishu_test_failed',
-          );
-          return false;
-        },
-      );
-    return reply.code(sent ? 204 : 502).send();
+  app.put('/api/me/hours', async (request, reply) => {
+    const humanId = humanOf(request);
+    const { hours } = HoursInput.parse(request.body);
+    const team = await store.teamFor(humanId);
+    if (!team) throw new DomainError('forbidden');
+    await store.quiet.hours(humanId, team.team.id, hours);
+    return reply.code(204).send();
+  });
+  app.put('/api/me/forward', async (request, reply) => {
+    const humanId = humanOf(request);
+    const { minutes } = ForwardInput.parse(request.body);
+    const team = await store.teamFor(humanId);
+    if (!team) throw new DomainError('forbidden');
+    await store.quiet.forwardAfter(humanId, team.team.id, minutes);
+    return reply.code(204).send();
   });
 }
