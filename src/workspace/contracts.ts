@@ -13,7 +13,7 @@ import {
   AgentId,
   ChannelId,
 } from '../domain/contracts.js';
-import { TopicId } from '../domain/communication.js';
+import { MessageId, TopicId } from '../domain/communication.js';
 import {
   ChannelLatest,
   ChannelView,
@@ -72,6 +72,11 @@ export const WorkspaceSnapshot = z.strictObject({
     .nullable(),
   /** Where an agent's Team MCP token is used; null where Team MCP isn't served. */
   teamMcpUrl: z.url().nullable(),
+  /**
+   * In what is open (the channel, or its topic), the first message someone
+   * else wrote after your read position; null when nothing is unread there.
+   */
+  firstUnread: MessageId.nullable(),
   human: Person,
   /** The channels you muted or follow; every other is at the default. */
   levels: z

@@ -176,6 +176,56 @@ test('a message from someone else is announced politely as it arrives', async ({
     await theirs.close();
   }
 });
+/**
+ * Proves a channel opens where you stopped reading: what someone else wrote
+ * while you were elsewhere starts under the "new since" line, in view, and
+ * the newest is one press away.
+ */
+test('a channel opens at the first message you haven’t read, and the newest is one press away', async ({
+  page,
+  browser,
+  hub,
+}) => {
+  await signIn(page, hub, 'ada@example.com');
+  const composer = page.getByRole('form', { name: '给团队发消息' });
+  const field = composer.getByLabel('消息', { exact: true });
+  // Read up to here, then elsewhere.
+  await field.fill('Read before leaving');
+  await composer.getByRole('button', { name: '发送消息' }).click();
+  await expect(page.getByText('Read before leaving')).toBeVisible();
+  await createChannel(page, 'design');
+  const theirs = await browser.newContext();
+  try {
+    const grace = await theirs.newPage();
+    await signIn(grace, hub, 'grace@example.com');
+    const hers = grace.getByRole('form', { name: '给团队发消息' });
+    for (const n of Array.from({ length: 40 }, (_, i) => i)) {
+      await hers.getByLabel('消息', { exact: true }).fill(`Grace ${String(n)}`);
+      await hers.getByRole('button', { name: '发送消息' }).click();
+      await expect(
+        grace.getByText(`Grace ${String(n)}`, { exact: true }),
+      ).toBeVisible();
+    }
+  } finally {
+    await theirs.close();
+  }
+  await page
+    .getByRole('navigation', { name: '频道' })
+    .getByRole('button', { name: 'general', exact: true })
+    .click();
+  const first = page
+    .getByRole('list', { name: '频道消息' })
+    .getByRole('listitem')
+    .filter({ hasText: 'Grace 0' });
+  await expect(first).toBeInViewport();
+  await expect(page.getByText(/以来的新消息/)).toBeVisible();
+  const newest = page.getByText('Grace 39', { exact: true });
+  await expect(newest).not.toBeInViewport();
+  await page.getByRole('button', { name: '回到最新 ↓' }).click();
+  await expect(newest).toBeInViewport();
+  await expect(page.getByRole('button', { name: '回到最新 ↓' })).toHaveCount(0);
+});
+
 test('a second person of the organization signs in to the same workspace and sees who is there', async ({
   page,
   browser,

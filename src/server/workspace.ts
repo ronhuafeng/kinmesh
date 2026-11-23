@@ -260,6 +260,7 @@ export function registerWorkspace(
       quiet,
       topics,
       activeTopics,
+      firstUnread,
     ] = await together([
       store.agents.workspaceProfiles(principal, teamId),
       channel
@@ -314,6 +315,15 @@ export function registerWorkspace(
       channel
         ? store.communication.activeTopics(principal, teamId, channel.id, 10)
         : { items: [], more: false },
+      // Where you stopped reading what is open, to open it there.
+      channel
+        ? store.communication.firstUnread(
+            principal,
+            teamId,
+            channel.id,
+            query.topicId ?? null,
+          )
+        : null,
     ]);
     const agents = profiles.agents;
     // In the order the profiles are listed: one read for all.
@@ -419,6 +429,7 @@ export function registerWorkspace(
         observedAt: new Date(now).toISOString(),
         nativeT3Origin: t3Origin,
         teamMcpUrl,
+        firstUnread,
         human,
         levels: quiet.levels,
         notices,
