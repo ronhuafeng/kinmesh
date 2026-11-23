@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { z } from 'zod';
-import { everyPage } from '../web/api.js';
+import { everyPage } from '../web/shared/api.js';
 
 /**
  * A list read page by page to its end: a task's whole history shows, not

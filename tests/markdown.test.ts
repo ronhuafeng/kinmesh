@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
-import { Markdown, plainText } from '../web/markdown.js';
+import { Markdown, plainText } from '../web/shared/markdown.js';
 
 const html = (text: string) =>
   renderToStaticMarkup(createElement(Markdown, { text })).replace(/\n/g, '');

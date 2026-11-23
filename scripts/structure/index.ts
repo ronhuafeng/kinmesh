@@ -1,4 +1,4 @@
-import { checkCycles, checkLayers } from './layers.js';
+import { checkCycles, checkLayers, checkWebRoot } from './layers.js';
 import {
   checkComponents,
   checkRepositories,
@@ -12,6 +12,7 @@ import { checkTests } from './tests.js';
 export function checkSources(sources: Source[]): string[] {
   return [
     ...checkLayers(sources),
+    ...checkWebRoot(sources),
     ...checkCycles(sources),
     ...checkComponents(sources),
     ...checkRepositories(sources),
