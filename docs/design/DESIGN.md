@@ -476,8 +476,12 @@ fallback.
 - **People in the sidebar**: the other people in the channel, then its agents; you
   are not listed, since you know you are here. A row's **Menu** (right-click, or a long
   press on a phone) takes that person or agent out of the channel (把 _name_ 移出
-  #_channel_, in the danger colour). Someone else has no page: their row is their face, name
-  and presence, sized and aligned exactly like a row that opens. Owner and reviewer
+  #_channel_, in the danger colour). Someone else has no page: their row — face, name
+  and presence — opens your own conversation with them, as their face on the Team page
+  does: a private channel of the two of you, made the first time. It sits among the
+  channels as their face and name, with no "#", wherever it is named by itself; its
+  Menu has the levels and 退出 _name_ only, and on the Team page nobody else carries
+  **加入**. Owner and reviewer
   pickers list the people in the channel as well as its agents, and a message shows
   its author's name.
 - **Inbox**: the tab after Team, with how many things wait on you. Everything across

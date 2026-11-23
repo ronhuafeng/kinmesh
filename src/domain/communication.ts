@@ -88,6 +88,16 @@ export const RenameInput = z.strictObject({
   operationKey: OperationKey,
   name: z.string().trim().min(1).max(80),
 });
+/** A person opens their own conversation with another person of the team. */
+export const DirectInput = z.strictObject({
+  operationKey: OperationKey,
+  humanId: HumanId,
+});
+/** One of a person's own conversations, and who it is with. */
+export const DirectChannel = z.strictObject({
+  channelId: ChannelId,
+  humanId: HumanId,
+});
 /** A person in a channel archives it, or brings it back. */
 export const ArchiveInput = z.strictObject({
   operationKey: OperationKey,

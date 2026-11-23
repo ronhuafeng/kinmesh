@@ -4,6 +4,7 @@ import { ChannelId, TeamId } from '../domain/contracts.js';
 import {
   ArchiveInput,
   ChannelInput,
+  DirectInput,
   MessageId,
   Mutation,
   PageInput,
@@ -38,6 +39,14 @@ export function registerCommunication(app: FastifyInstance, store: Store) {
           ChannelInput.parse(request.body),
         ),
       ),
+  );
+  /** A person opens their own conversation with another; the answer is its channel. */
+  app.post('/api/teams/:teamId/direct', async (request) =>
+    store.communication.direct(
+      principal(request),
+      TeamPath.parse(request.params).teamId,
+      DirectInput.parse(request.body),
+    ),
   );
   app.get(base, async (request) => {
     const { teamId } = TeamPath.parse(request.params);

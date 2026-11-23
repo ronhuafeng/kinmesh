@@ -634,6 +634,7 @@ export function Team({
   channelName = '',
   onDone,
   openAgent,
+  openPerson,
 }: {
   data: WorkspaceSnapshot;
   channelPath: string | null;
@@ -641,13 +642,17 @@ export function Team({
   channelName?: string;
   onDone: () => void;
   openAgent: (id: string) => void;
+  /** Opens your own conversation with someone. */
+  openPerson: (id: string) => void;
 }) {
   const [registering, setRegistering] = useState(false);
+  // Two people's own conversation takes agents, never a third person.
+  const direct = data.direct.some((d) => d.channelId === data.channel?.id);
   return (
     <section aria-label="团队">
       {/* Everyone as a tile, like a meeting's gallery: a face, a name, and
-          whether they are here. An agent's tile opens its page; the last
-          tile adds an agent. */}
+          whether they are here. A person's tile opens your own conversation
+          with them, an agent's its page; the last tile adds an agent. */}
       <ul className="roster" aria-label="团队">
         <li className="roster-tile" data-kind="human">
           {/* You are one of the team; what is about you is at the foot of
@@ -668,7 +673,14 @@ export function Team({
           .filter((person) => person.id !== data.human.id)
           .map((person) => (
             <li key={person.id} className="roster-tile" data-kind="human">
-              <span className="roster-person">
+              {/* Their face opens your own conversation with them. */}
+              <button
+                type="button"
+                className="roster-person"
+                onClick={() => {
+                  openPerson(person.id);
+                }}
+              >
                 <Avatar
                   kind="human"
                   name={person.name}
@@ -677,18 +689,20 @@ export function Team({
                 />
                 <span className="roster-name">{person.name}</span>
                 <Presence online={person.online} />
-              </span>
+              </button>
               {/* Like an agent: only a missing membership needs a fix. */}
-              {channelPath && !data.joinedHumanIds.includes(person.id) && (
-                <ActionForm
-                  title={'邀请 ' + person.name}
-                  path={channelPath + '/participants/invite'}
-                  build={() => ({ member: { kind: 'human', id: person.id } })}
-                  onDone={onDone}
-                  submit={'加入 #' + channelName}
-                  submitName={'把 ' + person.name + ' 加入 #' + channelName}
-                />
-              )}
+              {channelPath &&
+                !direct &&
+                !data.joinedHumanIds.includes(person.id) && (
+                  <ActionForm
+                    title={'邀请 ' + person.name}
+                    path={channelPath + '/participants/invite'}
+                    build={() => ({ member: { kind: 'human', id: person.id } })}
+                    onDone={onDone}
+                    submit={'加入 #' + channelName}
+                    submitName={'把 ' + person.name + ' 加入 #' + channelName}
+                  />
+                )}
             </li>
           ))}
         {data.agents.map((agent) => {
