@@ -4,7 +4,6 @@ import { ChannelId, TeamId } from '../domain/contracts.js';
 import {
   ArchiveInput,
   ChannelInput,
-  DirectInput,
   MessageId,
   Mutation,
   PageInput,
@@ -40,14 +39,6 @@ export function registerCommunication(app: FastifyInstance, store: Store) {
         ),
       ),
   );
-  /** A person opens their own conversation with another; the answer is its channel. */
-  app.post('/api/teams/:teamId/direct', async (request) =>
-    store.channels.direct(
-      principal(request),
-      TeamPath.parse(request.params).teamId,
-      DirectInput.parse(request.body),
-    ),
-  );
   app.get(base, async (request) => {
     const { teamId } = TeamPath.parse(request.params);
     const { membership, ...page } = PageInput.extend({
@@ -64,36 +55,6 @@ export function registerCommunication(app: FastifyInstance, store: Store) {
         }
       : await store.channels.channels(principal(request), teamId, page);
   });
-  // Recovery of a blocked delivery by any person; agents never reach it (resumeByPerson).
-  app.post(
-    '/api/teams/:teamId/deliveries/:deliveryId/resume',
-    async (request) => {
-      const { teamId, deliveryId } = TeamPath.extend({
-        deliveryId: z.uuid(),
-      }).parse(request.params);
-      return store.inbox.resumeByPerson(
-        principal(request),
-        teamId,
-        deliveryId,
-        Mutation.parse(request.body).operationKey,
-      );
-    },
-  );
-  // Ending a delivery, by the same people as resuming one (stopByPerson).
-  app.post(
-    '/api/teams/:teamId/deliveries/:deliveryId/stop',
-    async (request) => {
-      const { teamId, deliveryId } = TeamPath.extend({
-        deliveryId: z.uuid(),
-      }).parse(request.params);
-      return store.inbox.stopByPerson(
-        principal(request),
-        teamId,
-        deliveryId,
-        Mutation.parse(request.body).operationKey,
-      );
-    },
-  );
   app.get(channel, async (request) => {
     const { teamId, channelId } = ChannelPath.parse(request.params);
     return store.channels.channel(principal(request), teamId, channelId);

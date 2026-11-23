@@ -1,22 +1,11 @@
-import type { FastifyInstance, FastifyRequest } from 'fastify';
+import type { FastifyInstance } from 'fastify';
 import webpush from 'web-push';
 import { z } from 'zod';
-import { DomainError } from '../domain/errors.js';
-import {
-  ForwardInput,
-  HoursInput,
-  withinHours,
-  PAUSE_MOST_MS,
-  PauseInput,
-  PushPayload,
-  PushSubscriptionInput,
-  PushEndpoint,
-} from '../domain/notify.js';
+import { withinHours, PushPayload } from '../domain/notify.js';
 import type { Store } from '../persistence/store.js';
 import { pushKeys } from '../runtime/managed.js';
 import { describeFailure } from '../diagnostics.js';
 import { FeishuFailure, type Feishu } from './feishu.js';
-import { principal } from './principals.js';
 
 /** How often cards are looked at, and how long one is followed at most. */
 const SETTLE_EVERY_MS = 10_000;
@@ -104,71 +93,6 @@ export function registerNotifications(
     publicKey: keys.publicKey,
     privateKey: keys.privateKey,
   };
-  const human = (request: FastifyRequest) => {
-    const p = principal(request);
-    if (p.kind !== 'human') throw new DomainError('forbidden');
-    return p.humanId;
-  };
-  app.get('/api/push/key', (request) => {
-    human(request);
-    return { publicKey: keys.publicKey };
-  });
-  app.put('/api/push/subscription', async (request, reply) => {
-    const humanId = human(request);
-    const session = request.session.get('session');
-    if (typeof session !== 'string') throw new DomainError('unauthenticated');
-    await store.browsers.subscribe(
-      humanId,
-      session,
-      PushSubscriptionInput.parse(request.body),
-    );
-    return reply.code(204).send();
-  });
-  app.post('/api/push/renew', async (request, reply) => {
-    const humanId = human(request);
-    const session = request.session.get('session');
-    if (typeof session !== 'string') throw new DomainError('unauthenticated');
-    await store.browsers.renew(
-      humanId,
-      session,
-      PushEndpoint.parse(request.body).endpoint,
-    );
-    return reply.code(204).send();
-  });
-  app.post('/api/push/unsubscribe', async (request, reply) => {
-    await store.browsers.unsubscribe(
-      human(request),
-      PushEndpoint.parse(request.body).endpoint,
-    );
-    return reply.code(204).send();
-  });
-  app.put('/api/me/pause', async (request, reply) => {
-    const humanId = human(request);
-    const { until } = PauseInput.parse(request.body);
-    const at = until === null ? null : Date.parse(until);
-    if (at !== null && (at <= Date.now() || at > Date.now() + PAUSE_MOST_MS))
-      throw new DomainError('invalid');
-    const team = await store.teamFor(humanId);
-    if (!team) throw new DomainError('forbidden');
-    await store.quiet.pause(humanId, team.team.id, at);
-    return reply.code(204).send();
-  });
-  app.put('/api/me/hours', async (request, reply) => {
-    const humanId = human(request);
-    const { hours } = HoursInput.parse(request.body);
-    const team = await store.teamFor(humanId);
-    if (!team) throw new DomainError('forbidden');
-    await store.quiet.hours(humanId, team.team.id, hours);
-    return reply.code(204).send();
-  });
-  app.put('/api/me/forward', async (request, reply) => {
-    const humanId = human(request);
-    const { minutes } = ForwardInput.parse(request.body);
-    const team = await store.teamFor(humanId);
-    if (!team) throw new DomainError('forbidden');
-    await store.quiet.forwardAfter(humanId, team.team.id, minutes);
-    return reply.code(204).send();
-  });
 
   /**
    * Pushes to one browser: `sent`, `gone` (its push service no longer knows
@@ -284,33 +208,6 @@ export function registerNotifications(
     const payload = JSON.stringify(payloadOf(n, about));
     for (const browser of browsers) await push(browser, payload);
   }
-  // A person sends this browser a notification, to see that it gets them:
-  // 410 when this browser no longer does, 502 when its push service
-  // can't be reached.
-  app.post('/api/push/test', async (request, reply) => {
-    const humanId = human(request);
-    const { endpoint } = PushEndpoint.parse(request.body);
-    const browser = await store.browsers.browser(humanId, endpoint);
-    if (browser === null) return reply.code(410).send();
-    const outcome = await push(
-      browser,
-      JSON.stringify(
-        PushPayload.parse({
-          title: 'Kinmesh',
-          body: '这台设备能收到通知。',
-          url: '/?settings',
-          tag: 'test',
-          kind: 'test',
-          channelId: null,
-          taskId: null,
-          deliveryId: null,
-        }),
-      ),
-    );
-    return reply
-      .code(outcome === 'sent' ? 204 : outcome === 'gone' ? 410 : 502)
-      .send();
-  });
   /**
    * What stayed unread goes to the person in Feishu, from the app's bot, if
    * it still concerns them; once, and never retried as another message.
@@ -416,4 +313,6 @@ export function registerNotifications(
     clearInterval(timer);
     await sending;
   });
+  return { publicKey: keys.publicKey, push };
 }
+export type Notifier = ReturnType<typeof registerNotifications>;
