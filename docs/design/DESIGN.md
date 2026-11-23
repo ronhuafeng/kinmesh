@@ -395,11 +395,14 @@ fallback.
 - **Board**: five stage columns, the stages of the lifecycle: 待开始 (proposed) →
   进行中 (working) → 审核中 (review) → 待验收 (human sign-off) → 已完成 (done). Rework
   stays in 进行中 (marked "已退回"); cancelled work goes to 已完成 (marked "已取消",
-  hidden until asked for). Columns are rounded panels of the grey canvas sharing the width (the
+  hidden until asked for). In a column what matters most comes first (high, normal,
+  low), then what is due soonest, then the newest; 已完成 stays newest first. Columns are rounded panels of the grey canvas sharing the width (the
   board never scrolls sideways), one equal height down to the view's bottom gutter, each headed by a coloured dot and its name
   (the dot on the cards' text edge) with a bar of that colour under it in the bottom gutter (together, the lifecycle along the board's foot), no counts; 待验收 stands out with an orange edge
   and a warm tint while it holds a card. A card's column is its status. A card is white and rounded: its
-  title, then one line — what it asks of you — beside its owner/reviewer faces; a
+  title (a high-priority one led by an orange flag), then one line — what it asks
+  of you and its due day ("11月30日", in the danger colour once past and still open,
+  with no word for it) — beside its owner/reviewer faces; a
   decision or rework is marked by an orange or red rule on its left. A new task
   starts from the dashed `+` card at the end of 待开始. Below 1024 px the stages are a
   segmented control. Above the columns the board narrows: 全部 / 我的 (yours: you own,
@@ -412,8 +415,11 @@ fallback.
   importance, the decision waiting on you (orange rule) only when one does, then where
   the task is now (its delivery lines, a reply linking to it in the chat, or
   "任务已关闭。"), "完成标准" as a checklist, history as one timeline with faces, and
-  last one quiet row of what else you may do; on the right owner, reviewer, acceptor
-  and the topic. A new task's acceptor is a picker of the channel's people, starting at
+  last one quiet row of what else you may do; on the right owner, reviewer, acceptor,
+  then 截止 and 优先级 only when set (a due day past and open in the danger colour;
+  normal priority is not said), each led by its glyph (a calendar, a flag) where a face
+  would be so every value starts on the names' edge, and the topic. A new or edited task chooses its due
+  day (a date field) and priority (高 / 普通 / 低, 普通 to start) in the same places. A new task's acceptor is a picker of the channel's people, starting at
   you; whoever it names decides. Its acceptor edits an open task with **编辑任务** from
   that row: the page becomes the new-task page filled in — title, description,
   criteria and the reviewer picker (shown, not chosen, once review is asked for) —

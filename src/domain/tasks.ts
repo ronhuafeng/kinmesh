@@ -60,6 +60,10 @@ export const TaskState = z
       memberKey(s.owner) !== memberKey(s.reviewer),
   );
 export type TaskState = z.infer<typeof TaskState>;
+/** How much a task matters next to the others: high leads its column. */
+export const TaskPriority = z.enum(['high', 'normal', 'low']);
+/** The day a task should be done by. */
+export const TaskDue = z.iso.date().nullable();
 export const TaskCreate = Mutation.extend({
   title: z.string().trim().min(1).max(160),
   description: z.string().trim().max(4000),
@@ -78,6 +82,8 @@ export const TaskCreate = Mutation.extend({
    * Absent, it is whoever asked; an agent never names one.
    */
   acceptor: HumanId.nullable().default(null),
+  due: TaskDue.default(null),
+  priority: TaskPriority.default('normal'),
 });
 export type TaskCreate = z.input<typeof TaskCreate>;
 export const Task = z
@@ -96,6 +102,9 @@ export const Task = z
     version: z.number().int().positive(),
     createdAt: z.iso.datetime(),
     updatedAt: z.iso.datetime(),
+    // Absent from what history and receipts kept from before tasks had them.
+    due: TaskDue.default(null),
+    priority: TaskPriority.default('normal'),
   })
   .refine(
     (v) =>
@@ -155,8 +164,9 @@ export const TaskCommand = z.discriminatedUnion('type', [
     note: Note,
   }),
   /**
-   * Its acceptor says what is asked again: title, description, criteria and
-   * who reviews, all given as they should be.
+   * Its acceptor says what is asked again: title, description, criteria,
+   * who reviews, when it is due and how much it matters, all given as they
+   * should be.
    */
   CommandBase.extend({
     type: z.literal('edit'),
@@ -164,6 +174,8 @@ export const TaskCommand = z.discriminatedUnion('type', [
     description: TaskCreate.shape.description,
     criteria: TaskCreate.shape.criteria,
     reviewer: Member.nullable(),
+    due: TaskDue,
+    priority: TaskPriority,
   }),
 ]);
 export type TaskCommand = z.infer<typeof TaskCommand>;
@@ -341,7 +353,9 @@ export function transition(
         command.title === current.title &&
         command.description === current.description &&
         JSON.stringify(command.criteria) === JSON.stringify(current.criteria) &&
-        same(command.reviewer, state.reviewer)
+        same(command.reviewer, state.reviewer) &&
+        command.due === current.due &&
+        command.priority === current.priority
       )
         throw new DomainError('invalid');
       return TaskState.parse({ ...state, reviewer: command.reviewer });

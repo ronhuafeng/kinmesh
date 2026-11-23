@@ -176,6 +176,13 @@
       "when": 1795431546348,
       "tag": "0024_task_edits",
       "breakpoints": true
+    },
+    {
+      "idx": 25,
+      "version": "7",
+      "when": 1795431858870,
+      "tag": "0025_task_due_priority",
+      "breakpoints": true
     }
   ]
 }

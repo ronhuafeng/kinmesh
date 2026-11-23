@@ -5,7 +5,7 @@ import type { Member } from '../src/domain/communication.js';
 import { TaskResult, principalMember } from '../src/domain/tasks.js';
 import { key } from './communication-helpers.js';
 import { rawDatabase } from './raw.js';
-import { taskFixture } from './task-helpers.js';
+import { taskFixture, taskInput } from './task-helpers.js';
 
 const rejected = (kind: Refusal) => (e: unknown) =>
   e instanceof DomainError && e.kind === kind;
@@ -29,6 +29,8 @@ await test('the acceptor edits an open task on the record; the reviewer stays on
         description: string;
         criteria: string[];
         reviewer: Member | null;
+        due: string | null;
+        priority: 'high' | 'normal' | 'low';
       }>,
     ) => ({
       type: 'edit' as const,
@@ -36,6 +38,8 @@ await test('the acceptor edits an open task on the record; the reviewer stays on
       description: task.description,
       criteria: task.criteria,
       reviewer: task.state.reviewer,
+      due: task.due,
+      priority: task.priority,
       ...fields,
     });
     const woken = () =>
@@ -54,6 +58,8 @@ await test('the acceptor edits an open task on the record; the reviewer stays on
         description: task.description,
         criteria: ['Reviewed evidence', 'Human acceptance', 'Docs updated'],
         reviewer,
+        due: null,
+        priority: 'normal',
       },
     });
     assert.equal(response.statusCode, 200);
@@ -164,6 +170,53 @@ await test('the acceptor gives a task nobody started to someone, keeping its rev
         }),
       rejected('forbidden'),
     );
+  } finally {
+    await f.dispose();
+  }
+});
+
+/**
+ * Proves a task carries an optional due day and a priority from creation,
+ * refuses a day that isn't one, and changes both by an edit on the record.
+ */
+await test('a task has a due day and a priority, set on create and changed by an edit', async () => {
+  const f = await taskFixture();
+  try {
+    const plain = (await f.create()).task;
+    assert.equal(plain.due, null);
+    assert.equal(plain.priority, 'normal');
+    const create = (extra: Record<string, unknown>) =>
+      f.app.inject({
+        method: 'POST',
+        url: f.taskPath,
+        cookies: f.cookies,
+        payload: { ...taskInput(), ...extra },
+      });
+    assert.equal((await create({ due: '2026-13-40' })).statusCode, 400);
+    assert.equal((await create({ priority: 'urgent' })).statusCode, 400);
+    const made = await create({ due: '2026-12-01', priority: 'high' });
+    assert.equal(made.statusCode, 201);
+    let task = TaskResult.parse(made.json<unknown>()).task;
+    assert.equal(task.due, '2026-12-01');
+    assert.equal(task.priority, 'high');
+    task = (
+      await f.act(f.principal, task, {
+        type: 'edit',
+        title: task.title,
+        description: task.description,
+        criteria: task.criteria,
+        reviewer: task.state.reviewer,
+        due: null,
+        priority: 'low',
+      })
+    ).task;
+    assert.equal(task.due, null);
+    assert.equal(task.priority, 'low');
+    const last = (
+      await f.tasks.history(f.principal, f.teamId, f.channelId, task.id)
+    ).items.at(-1);
+    assert.equal(last?.before?.priority, 'high');
+    assert.equal(last.after.priority, 'low');
   } finally {
     await f.dispose();
   }
