@@ -91,8 +91,8 @@ function NativeStatus({
   }
   const subject = correlation.reference.runId ? '这次运行' : '这个对话';
   return (
-    <div className="native-status">
-      <span className="run-actions" role="cell">
+    <div className="native-status" role="cell">
+      <span className="run-actions">
         {/* Checking reads the team's T3 connection; before Connect T3 there
             is nothing to check with, so it isn't offered. */}
         {trustedOrigin && (
