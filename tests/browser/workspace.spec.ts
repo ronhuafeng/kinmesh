@@ -2991,6 +2991,77 @@ test('a fenced code block is one block, not a box around every line', async ({
   ).toBe('1px');
 });
 
+/**
+ * Proves the Files list keeps what was read: a change in the workspace
+ * rereads the newest page without dropping older pages, and no file is
+ * listed twice.
+ */
+test('the Files list keeps older pages through a change and lists each file once', async ({
+  page,
+  context,
+  hub,
+}) => {
+  await signIn(page, hub);
+  const state = await snapshot(context.request, hub.origin);
+  if (!state.channel) throw new Error('Local channel missing');
+  const channelId = state.channel.id;
+  const file = (name: string, createdAt: string) => ({
+    attachment: {
+      id: randomUUID(),
+      name,
+      type: 'text/plain',
+      size: 3,
+      width: null,
+      height: null,
+    },
+    channelId,
+    messageId: randomUUID(),
+    uploader: state.human.id,
+    createdAt,
+  });
+  const a = file('a.txt', '2026-11-02T00:00:00.000Z');
+  const b = file('b.txt', '2026-11-01T00:00:00.000Z');
+  const c = file('c.txt', '2026-11-03T00:00:00.000Z');
+  // MOCK the file list only: page one, the page before it, then a new file.
+  let firstReads = 0;
+  await page.route('**/api/teams/*/files*', (route) => {
+    if (route.request().url().includes('before='))
+      return route.fulfill({ json: { items: [b], next: null } });
+    firstReads++;
+    return route.fulfill({
+      json: { items: firstReads === 1 ? [a] : [c, a], next: 7 },
+    });
+  });
+  await page.getByRole('tab', { name: '文件', exact: true }).click();
+  const list = page.getByRole('list', { name: '文件' });
+  await expect(list.getByRole('listitem')).toHaveCount(1);
+  await page.getByRole('button', { name: '更早的文件' }).click();
+  await expect(list.getByRole('listitem')).toHaveCount(2);
+  // A change anywhere (a message here) rereads the newest page; the older
+  // one stays.
+  const posted = await context.request.post(
+    `${hub.origin}/api/teams/${state.team.id}/channels/${channelId}/messages`,
+    {
+      data: {
+        operationKey: randomUUID(),
+        body: 'A change',
+        topicId: null,
+        mentions: [],
+        sourceMessageId: null,
+        sourceEventId: null,
+        attachments: [],
+      },
+    },
+  );
+  expect(posted.status()).toBe(201);
+  await expect(list.getByRole('listitem')).toHaveCount(3);
+  await expect(list.getByRole('listitem')).toHaveText([
+    /c\.txt/,
+    /a\.txt/,
+    /b\.txt/,
+  ]);
+});
+
 test('a pasted image and a chosen file go with a message: the image as it is, the file as a row that downloads', async ({
   page,
   hub,
