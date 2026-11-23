@@ -47,6 +47,8 @@ export function payloadOf(n: Due, about: About) {
     (about.topicTitle === null ? '' : ' · ' + about.topicTitle);
   const query = new URLSearchParams({ channel: n.channelId });
   if (n.taskId !== null) query.set('task', n.taskId);
+  // A message opens at itself, in its channel's conversation.
+  else if (n.messageId !== null) query.set('message', n.messageId);
   else if (n.topicId !== null) query.set('topic', n.topicId);
   const kind = z
     .enum(['reply', 'blocked', 'decide', 'task', 'mention', 'message'])

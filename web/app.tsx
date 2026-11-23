@@ -14,7 +14,7 @@ import { ChannelId, TaskId } from '../src/domain/contracts.js';
 import { PageRef, Revisions, pageParam } from '../src/workspace/events.js';
 import { LiveContext, takeStream, useRevisions } from './live.js';
 import { Agent, Author } from '../src/domain/agents.js';
-import { TeamFile, TopicId } from '../src/domain/communication.js';
+import { MessageId, TeamFile, TopicId } from '../src/domain/communication.js';
 import { WorkspaceSnapshot } from '../src/workspace/contracts.js';
 import { Auth, SIGNED_OUT } from './auth.js';
 import { api, HttpError, MutationPermission, Offline } from './api.js';
@@ -223,7 +223,19 @@ function readRoute() {
     focus = { kind: 'settings', section: query.get('settings') ?? '' };
   else if (query.has('search')) focus = { kind: 'search' };
   if (agent && !worker) view = 'agent';
-  return { channel, topic, view, agent, focus, draft };
+  // A message the channel is opened at, while that channel is open.
+  const message = MessageId.safeParse(query.get('message'));
+  const target =
+    channel && message.success && view === 'chat' && focus === null
+      ? { channel, topic, id: message.data }
+      : null;
+  return { channel, topic, view, agent, focus, draft, target };
+}
+/** A message a conversation is opened at, and where. */
+interface Target {
+  channel: string;
+  topic: string;
+  id: string;
 }
 /** A notification clicked while the workspace is open (`sw.js`). */
 const Opened = z.strictObject({
@@ -246,6 +258,7 @@ function routeUrl(place: {
   agent: string;
   focus: Focus;
   newTask: boolean;
+  target: Target | null;
 }) {
   const query = new URLSearchParams();
   if (place.channel) query.set('channel', place.channel);
@@ -265,6 +278,12 @@ function routeUrl(place: {
     place.view === 'files'
   )
     query.set('view', place.view);
+  else if (
+    place.target?.channel === place.channel &&
+    place.target.topic === place.topic &&
+    place.view === 'chat'
+  )
+    query.set('message', place.target.id);
   const search = query.toString().replace(/=(?=&|$)/g, '');
   return '/' + (search ? '?' + search : '');
 }
@@ -283,6 +302,9 @@ export function App() {
     channel: initial.channel,
     topic: initial.topic,
   });
+  // The message a conversation is opened at; it counts only while that
+  // channel and topic are open, and the address keeps it for a reload.
+  const [target, setTarget] = useState<Target | null>(initial.target);
   // The agent whose page is open, and the tab Esc returns to from it.
   const [agentId, setAgentId] = useState(initial.agent);
   const [backTo, setBackTo] = useState<Tab>('team');
@@ -596,6 +618,7 @@ export function App() {
       agent: agentId,
       focus,
       newTask: newTask !== null,
+      target,
     }),
   );
   useEffect(() => {
@@ -606,6 +629,7 @@ export function App() {
       agent: agentId,
       focus,
       newTask: newTask !== null,
+      target,
     });
     const here = window.location.pathname + window.location.search;
     if (next !== here) {
@@ -614,7 +638,15 @@ export function App() {
       else window.history.replaceState(null, '', next);
     }
     routed.current = true;
-  }, [selection.channel, selection.topic, view, agentId, focus, newTask]);
+  }, [
+    selection.channel,
+    selection.topic,
+    view,
+    agentId,
+    focus,
+    newTask,
+    target,
+  ]);
   // Back and Forward go to the place their address names.
   useEffect(() => {
     const onPop = () => {
@@ -629,6 +661,7 @@ export function App() {
       setAgentId(place.agent);
       setFocus(place.focus);
       setDraft(place.draft);
+      setTarget(place.target);
     };
     window.addEventListener('popstate', onPop);
     return () => {
@@ -1083,18 +1116,16 @@ export function App() {
     ...data.attention.unstuck.map((d) => d.channelId),
   ]);
   /** A message, in its channel's conversation, scrolled to and flashed. */
+  /**
+   * Opens a message in its channel's conversation (every topic's messages
+   * are there too), reaching back as far as it is.
+   */
   const openMessageIn = (id: string, messageId: string) => {
     setFocus(null);
     if (id !== channel?.id) selectChannel(id);
+    else setSelection((old) => ({ ...old, topic: '' }));
     setView('chat');
-    // Once the channel's conversation is on screen.
-    let tries = 0;
-    const find = () => {
-      if (document.getElementById('message-' + messageId))
-        showMessage(messageId);
-      else if ((tries += 1) < 20) setTimeout(find, 100);
-    };
-    setTimeout(find, 0);
+    setTarget({ channel: id, topic: '', id: messageId });
   };
   /** Messages and files the hub finds for what is typed in search. */
   const remote: Remote = async (query, signal) => {
@@ -1850,6 +1881,15 @@ export function App() {
                               onTopic={(topic) => {
                                 setSelection((old) => ({ ...old, topic }));
                                 setCursors({});
+                              }}
+                              target={
+                                target?.channel === selection.channel &&
+                                target.topic === selection.topic
+                                  ? target.id
+                                  : null
+                              }
+                              onOpenMessage={(id) => {
+                                openMessageIn(channel.id, id);
                               }}
                               onDone={refresh}
                               next={next}
