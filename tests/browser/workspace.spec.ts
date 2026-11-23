@@ -1533,6 +1533,46 @@ test('the board reaches older tasks and narrows to yours, kept across a reload',
   await expect(page.getByText('Grace decides this')).toHaveCount(0);
 });
 
+/**
+ * Proves the dark colours, now written once, are the same whether dark is
+ * the system's choice or the person's, and light stays light.
+ */
+test('dark is the same colours whether the system or the person chose it', async ({
+  page,
+  hub,
+}) => {
+  await signIn(page, hub);
+  const colours = () =>
+    page.evaluate(() => {
+      const probe = document.createElement('span');
+      document.body.append(probe);
+      const out: Record<string, string> = {};
+      for (const token of ['--canvas', '--paper', '--ink', '--primary']) {
+        probe.style.color = `var(${token})`;
+        out[token] = getComputedStyle(probe).color;
+      }
+      probe.remove();
+      return out;
+    });
+  await page.emulateMedia({ colorScheme: 'light' });
+  const light = await colours();
+  expect(light['--canvas']).toBe('rgb(242, 242, 247)');
+  await page.emulateMedia({ colorScheme: 'dark' });
+  const system = await colours();
+  expect(system['--canvas']).toBe('rgb(0, 0, 0)');
+  // Chosen in settings (外观), over a light system.
+  await page.emulateMedia({ colorScheme: 'light' });
+  await page.evaluate(() => {
+    document.documentElement.dataset.theme = 'dark';
+  });
+  expect(await colours()).toEqual(system);
+  await page.evaluate(() => {
+    document.documentElement.dataset.theme = 'light';
+  });
+  await page.emulateMedia({ colorScheme: 'dark' });
+  expect(await colours()).toEqual(light);
+});
+
 test('a T3 on another computer: the person pastes the address its approval opened', async ({
   page,
   hub,

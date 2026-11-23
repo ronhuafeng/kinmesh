@@ -87,7 +87,17 @@ function draw(source: string, dark: boolean): Promise<Drawing> {
   const next = queue.then(async () => {
     const { default: mermaid } = await import('mermaid');
     const css = getComputedStyle(document.documentElement);
-    const token = (name: string) => css.getPropertyValue(name).trim();
+    // A colour token is written light and dark at once (light-dark()); its
+    // colour now is what an element showing it computes.
+    const probe = document.createElement('span');
+    probe.hidden = true;
+    document.body.append(probe);
+    const colour = (name: string) => {
+      probe.style.color = `var(${name})`;
+      return getComputedStyle(probe).color;
+    };
+    const token = (name: string) =>
+      name === '--font' ? css.getPropertyValue(name).trim() : colour(name);
     const ink = token('--ink');
     const muted = token('--ink-muted');
     const paper = token('--paper');
@@ -142,6 +152,7 @@ function draw(source: string, dark: boolean): Promise<Drawing> {
         },
       },
     });
+    probe.remove();
     const { svg } = await mermaid.render(
       'mermaid-' + String(++counter),
       source,

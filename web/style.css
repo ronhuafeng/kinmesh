@@ -5,61 +5,61 @@
  * ------------------------------------------------------------------ */
 :root {
   color-scheme: light dark;
-  --canvas: #f2f2f7;
-  --paper: #ffffff;
-  --surface: #ffffff;
-  --raised: #f7f7f9;
-  --sunken: #ececf1;
-  --hover: #e5e5ea;
-  --selected: #ffffff;
-  --ink: #1c1c1e;
-  --ink-muted: #6c6c70;
-  --ink-subtle: #8e8e93;
+  --canvas: light-dark(#f2f2f7, #000000);
+  --paper: light-dark(#ffffff, #1c1c1e);
+  --surface: light-dark(#ffffff, #2c2c2e);
+  --raised: light-dark(#f7f7f9, #242426);
+  --sunken: light-dark(#ececf1, #2c2c2e);
+  --hover: light-dark(#e5e5ea, #2c2c2e);
+  --selected: light-dark(#ffffff, #636366);
+  --ink: light-dark(#1c1c1e, #ffffff);
+  --ink-muted: light-dark(#6c6c70, #98989f);
+  --ink-subtle: light-dark(#8e8e93, #8e8e93);
   --hairline-width: 1px;
-  --hairline: #e5e5ea;
-  --hairline-strong: #d1d1d6;
-  --primary: #1d7a4f;
-  --primary-hover: #17653f;
-  --on-primary: #ffffff;
-  --primary-soft: #e3f1e9;
-  --primary-soft-text: #1d7a4f;
-  --focus: #1d7a4f;
-  --human: #c27c0e;
-  --human-soft: #fbefd9;
-  --human-text: #8a5a08;
-  --agent: #4f5fd6;
-  --agent-soft: #e8eafb;
-  --agent-text: #3a48b0;
-  --decision: #eb6a00;
-  --decision-soft: #fff1e5;
-  --decision-text: #b04a00;
-  --danger: #d70015;
-  --danger-soft: #ffe9eb;
-  --ok: #1d7a4f;
-  --warn: #b25f00;
-  --warn-soft: #fff3e0;
-  --s-proposed: #6c6c70;
-  --s-in-progress: #0064d2;
-  --s-review-requested: #8944ab;
-  --s-awaiting-human: #c25100;
-  --s-rework-requested: #d70015;
-  --s-accepted: #1d7a4f;
-  --s-cancelled: #8e8e93;
-  --fill: rgb(118 118 128 / 0.12);
-  --badge: #c25100;
-  --on-badge: #ffffff;
-  --tint-green: #e3f4ea;
-  --tint-green-text: #1d7a4f;
-  --tint-blue: #e5efff;
-  --tint-blue-text: #0058b8;
-  --tint-indigo: #ebeafd;
-  --tint-indigo-text: #4b45c6;
-  --tint-orange: #fff0de;
-  --tint-orange-text: #a84e00;
-  --tint-pink: #fde8f0;
-  --tint-pink-text: #b3245e;
-  --tint-teal: #e0f4f5;
-  --tint-teal-text: #08707a;
+  --hairline: light-dark(#e5e5ea, #38383a);
+  --hairline-strong: light-dark(#d1d1d6, #48484a);
+  --primary: light-dark(#1d7a4f, #3fc587);
+  --primary-hover: light-dark(#17653f, #5bd29a);
+  --on-primary: light-dark(#ffffff, #0e2a1c);
+  --primary-soft: light-dark(#e3f1e9, #173826);
+  --primary-soft-text: light-dark(#1d7a4f, #7fdcae);
+  --focus: light-dark(#1d7a4f, #3fc587);
+  --human: light-dark(#c27c0e, #ffb340);
+  --human-soft: light-dark(#fbefd9, #3a2c14);
+  --human-text: light-dark(#8a5a08, #ffc976);
+  --agent: light-dark(#4f5fd6, #8e98ff);
+  --agent-soft: light-dark(#e8eafb, #23264a);
+  --agent-text: light-dark(#3a48b0, #b3b9ff);
+  --decision: light-dark(#eb6a00, #ff9f0a);
+  --decision-soft: light-dark(#fff1e5, #3a2608);
+  --decision-text: light-dark(#b04a00, #ffb340);
+  --danger: light-dark(#d70015, #ff6961);
+  --danger-soft: light-dark(#ffe9eb, #3d1715);
+  --ok: light-dark(#1d7a4f, #3fc587);
+  --warn: light-dark(#b25f00, #ffb340);
+  --warn-soft: light-dark(#fff3e0, #3a2a10);
+  --s-proposed: light-dark(#6c6c70, #98989f);
+  --s-in-progress: light-dark(#0064d2, #64a8ff);
+  --s-review-requested: light-dark(#8944ab, #c78bea);
+  --s-awaiting-human: light-dark(#c25100, #ff9f0a);
+  --s-rework-requested: light-dark(#d70015, #ff6961);
+  --s-accepted: light-dark(#1d7a4f, #3fc587);
+  --s-cancelled: light-dark(#8e8e93, #8e8e93);
+  --fill: light-dark(rgb(118 118 128 / 0.12), rgb(118 118 128 / 0.24));
+  --badge: light-dark(#c25100, #ff9f0a);
+  --on-badge: light-dark(#ffffff, #1c1c1e);
+  --tint-green: light-dark(#e3f4ea, #173826);
+  --tint-green-text: light-dark(#1d7a4f, #7fdcae);
+  --tint-blue: light-dark(#e5efff, #142c4d);
+  --tint-blue-text: light-dark(#0058b8, #8cc0ff);
+  --tint-indigo: light-dark(#ebeafd, #25234d);
+  --tint-indigo-text: light-dark(#4b45c6, #b0acff);
+  --tint-orange: light-dark(#fff0de, #3a2608);
+  --tint-orange-text: light-dark(#a84e00, #ffc070);
+  --tint-pink: light-dark(#fde8f0, #3d1828);
+  --tint-pink-text: light-dark(#b3245e, #ff9cc3);
+  --tint-teal: light-dark(#e0f4f5, #0e3236);
+  --tint-teal-text: light-dark(#08707a, #7fd8df);
   --radius-sm: 6px;
   --radius: 10px;
   --radius-lg: 12px;
@@ -82,8 +82,8 @@
   --material: color-mix(in srgb, var(--paper) 78%, transparent);
   --material-strong: color-mix(in srgb, var(--surface) 86%, transparent);
   --blur: saturate(180%) blur(20px);
-  --bar: rgb(249 249 249 / 0.78);
-  --scroll-thumb: rgb(0 0 0 / 0.28);
+  --bar: light-dark(rgb(249 249 249 / 0.78), rgb(22 22 23 / 0.78));
+  --scroll-thumb: light-dark(rgb(0 0 0 / 0.28), rgb(255 255 255 / 0.3));
   /* Type: body 16, controls and rows 15, secondary 13 (17 for a phone's
    * reading, below). */
   --text-body: 1rem;
@@ -108,7 +108,7 @@
   /* A pressed control's fill: darker on light, lighter on dark. */
   --pressed: brightness(0.92);
   /* The light that passes over words while an agent works. */
-  --sheen: #c7c7cc;
+  --sheen: light-dark(#c7c7cc, #ffffff);
 
   font-family: var(--font);
   color: var(--ink);
@@ -129,158 +129,20 @@
   }
 }
 /* Dark: the system's choice unless a person chose light, and theirs when
- * they chose dark (外观 in settings). */
-@media (prefers-color-scheme: dark) {
-  :root:not([data-theme='light']) {
-    --canvas: #000000;
-    --paper: #1c1c1e;
-    --surface: #2c2c2e;
-    --raised: #242426;
-    --sunken: #2c2c2e;
-    --hover: #2c2c2e;
-    --selected: #636366;
-    --ink: #ffffff;
-    --ink-muted: #98989f;
-    --ink-subtle: #8e8e93;
-    --pressed: brightness(1.25);
-    --sheen: #ffffff;
-    --hairline: #38383a;
-    --hairline-strong: #48484a;
-    --primary: #3fc587;
-    --primary-hover: #5bd29a;
-    --on-primary: #0e2a1c;
-    --primary-soft: #173826;
-    --primary-soft-text: #7fdcae;
-    --focus: #3fc587;
-    --human: #ffb340;
-    --human-soft: #3a2c14;
-    --human-text: #ffc976;
-    --agent: #8e98ff;
-    --agent-soft: #23264a;
-    --agent-text: #b3b9ff;
-    --decision: #ff9f0a;
-    --decision-soft: #3a2608;
-    --decision-text: #ffb340;
-    --danger: #ff6961;
-    --danger-soft: #3d1715;
-    --ok: #3fc587;
-    --warn: #ffb340;
-    --warn-soft: #3a2a10;
-    --s-proposed: #98989f;
-    --s-in-progress: #64a8ff;
-    --s-review-requested: #c78bea;
-    --s-awaiting-human: #ff9f0a;
-    --s-rework-requested: #ff6961;
-    --s-accepted: #3fc587;
-    --s-cancelled: #8e8e93;
-    --fill: rgb(118 118 128 / 0.24);
-    --badge: #ff9f0a;
-    --on-badge: #1c1c1e;
-    --tint-green: #173826;
-    --tint-green-text: #7fdcae;
-    --tint-blue: #142c4d;
-    --tint-blue-text: #8cc0ff;
-    --tint-indigo: #25234d;
-    --tint-indigo-text: #b0acff;
-    --tint-orange: #3a2608;
-    --tint-orange-text: #ffc070;
-    --tint-pink: #3d1828;
-    --tint-pink-text: #ff9cc3;
-    --tint-teal: #0e3236;
-    --tint-teal-text: #7fd8df;
-    /* In the dark, depth is a lighter surface and a faint top rim of
-     * light; the shadows only deepen it. */
-    --elev-1:
-      inset 0 0.5px 0 rgb(255 255 255 / 0.06), 0 0 0 0.5px rgb(0 0 0 / 0.6);
-    --elev-1-hover:
-      inset 0 0.5px 0 rgb(255 255 255 / 0.08), 0 0 0 0.5px rgb(0 0 0 / 0.6),
-      0 6px 16px -4px rgb(0 0 0 / 0.6);
-    --elev-2:
-      inset 0 0.5px 0 rgb(255 255 255 / 0.08),
-      0 0 0 0.5px rgb(255 255 255 / 0.08), 0 12px 32px -6px rgb(0 0 0 / 0.7);
-    --elev-3:
-      inset 0 0.5px 0 rgb(255 255 255 / 0.1),
-      0 0 0 0.5px rgb(255 255 255 / 0.1), 0 24px 56px -8px rgb(0 0 0 / 0.8);
-    --bar: rgb(22 22 23 / 0.78);
-    --scroll-thumb: rgb(255 255 255 / 0.3);
-  }
-}
+ * they chose dark (外观 in settings). Each colour above is written once,
+ * light then dark (light-dark()), and follows the colour scheme chosen here;
+ * the one effect that isn't a colour follows the same choice. */
 :root[data-theme='light'] {
   color-scheme: light;
 }
 :root[data-theme='dark'] {
   color-scheme: dark;
-  --canvas: #000000;
-  --paper: #1c1c1e;
-  --surface: #2c2c2e;
-  --raised: #242426;
-  --sunken: #2c2c2e;
-  --hover: #2c2c2e;
-  --selected: #636366;
-  --ink: #ffffff;
-  --ink-muted: #98989f;
-  --ink-subtle: #8e8e93;
   --pressed: brightness(1.25);
-  --sheen: #ffffff;
-  --hairline: #38383a;
-  --hairline-strong: #48484a;
-  --primary: #3fc587;
-  --primary-hover: #5bd29a;
-  --on-primary: #0e2a1c;
-  --primary-soft: #173826;
-  --primary-soft-text: #7fdcae;
-  --focus: #3fc587;
-  --human: #ffb340;
-  --human-soft: #3a2c14;
-  --human-text: #ffc976;
-  --agent: #8e98ff;
-  --agent-soft: #23264a;
-  --agent-text: #b3b9ff;
-  --decision: #ff9f0a;
-  --decision-soft: #3a2608;
-  --decision-text: #ffb340;
-  --danger: #ff6961;
-  --danger-soft: #3d1715;
-  --ok: #3fc587;
-  --warn: #ffb340;
-  --warn-soft: #3a2a10;
-  --s-proposed: #98989f;
-  --s-in-progress: #64a8ff;
-  --s-review-requested: #c78bea;
-  --s-awaiting-human: #ff9f0a;
-  --s-rework-requested: #ff6961;
-  --s-accepted: #3fc587;
-  --s-cancelled: #8e8e93;
-  --fill: rgb(118 118 128 / 0.24);
-  --badge: #ff9f0a;
-  --on-badge: #1c1c1e;
-  --tint-green: #173826;
-  --tint-green-text: #7fdcae;
-  --tint-blue: #142c4d;
-  --tint-blue-text: #8cc0ff;
-  --tint-indigo: #25234d;
-  --tint-indigo-text: #b0acff;
-  --tint-orange: #3a2608;
-  --tint-orange-text: #ffc070;
-  --tint-pink: #3d1828;
-  --tint-pink-text: #ff9cc3;
-  --tint-teal: #0e3236;
-  --tint-teal-text: #7fd8df;
-  /* In the dark, depth is a lighter surface and a faint top rim of
-   * light; the shadows only deepen it. */
-  --elev-1:
-    inset 0 0.5px 0 rgb(255 255 255 / 0.06), 0 0 0 0.5px rgb(0 0 0 / 0.6);
-  --elev-1-hover:
-    inset 0 0.5px 0 rgb(255 255 255 / 0.08), 0 0 0 0.5px rgb(0 0 0 / 0.6),
-    0 6px 16px -4px rgb(0 0 0 / 0.6);
-  --elev-2:
-    inset 0 0.5px 0 rgb(255 255 255 / 0.08),
-    0 0 0 0.5px rgb(255 255 255 / 0.08), 0 12px 32px -6px rgb(0 0 0 / 0.7);
-  --elev-3:
-    inset 0 0.5px 0 rgb(255 255 255 / 0.1), 0 0 0 0.5px rgb(255 255 255 / 0.1),
-    0 24px 56px -8px rgb(0 0 0 / 0.8);
-  --bar: rgb(22 22 23 / 0.78);
-  --scroll-thumb: rgb(255 255 255 / 0.3);
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme='light']) {
+    --pressed: brightness(1.25);
+  }
 }
 
 /* ------------------------------------------------------------------
