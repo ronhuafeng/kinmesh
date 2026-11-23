@@ -1204,9 +1204,32 @@ const sameRow = (a: RowProps, b: RowProps) =>
   a.topicTag === b.topicTag &&
   a.permitted === b.permitted &&
   a.act === b.act &&
-  JSON.stringify([a.quote, a.reply, a.mentions, a.lines]) ===
-    JSON.stringify([b.quote, b.reply, b.mentions, b.lines]) &&
+  // The workspace keeps an unchanged reply or delivery the same object
+  // (keepUnchanged), so these compare by identity, never by serializing.
+  a.reply === b.reply &&
+  a.quote?.id === b.quote?.id &&
+  a.quote?.text === b.quote?.text &&
+  sameList(a.lines, b.lines, (x, y) => x === y) &&
+  sameList(
+    a.mentions,
+    b.mentions,
+    (x, y) => x.kind === y.kind && x.id === y.id && x.name === y.name,
+  ) &&
   ((a.lines.length === 0 && b.lines.length === 0) || a.data === b.data);
+/** Two lists with the same items, in order. */
+function sameList<T>(a: T[], b: T[], same: (x: T, y: T) => boolean) {
+  if (a.length !== b.length) return false;
+  for (const [i, x] of a.entries()) {
+    const y = b[i];
+    if (y === undefined || !same(x, y)) return false;
+  }
+  return true;
+}
+/** Whether two authors are the same one. */
+const sameAuthorOf = (a: ChatMessage['author'], b: ChatMessage['author']) =>
+  a.kind === 'human'
+    ? b.kind === 'human' && a.humanId === b.humanId
+    : b.kind === 'agent' && a.agentId === b.agentId;
 const MessageRow = memo(function MessageRow({
   m,
   o,
@@ -1647,7 +1670,13 @@ export function Chat({
   const origin = new Map(data.replies.map((r) => [r.messageId, r]));
   // A mention already written as @Name in the text needs no second chip;
   // nor does a person's written as @handle before they had a name.
-  const handle = (id: string) => data.people.find((p) => p.id === id)?.username;
+  const people = new Map<string, (typeof data.people)[number]>(
+    data.people.map((p) => [p.id, p]),
+  );
+  const agents = new Map<string, (typeof data.agents)[number]>(
+    data.agents.map((a) => [a.id, a]),
+  );
+  const handle = (id: string) => people.get(id)?.username;
   const unwritten = (m: ChatMessage) =>
     m.mentions.filter((member) => {
       const old = member.kind === 'human' ? handle(member.id) : undefined;
@@ -1656,8 +1685,10 @@ export function Chat({
         !(old !== undefined && m.body.includes('@' + old))
       );
     });
+  // Each message by its ID, once, for the quotes above replies.
+  const byId = new Map<string, ChatMessage>(messages.map((m) => [m.id, m]));
   const replySource = (id: string) => {
-    const source = messages.find((m) => m.id === id);
+    const source = byId.get(id);
     if (!source) return '之前的一条消息';
     const flat = (
       source.body || source.attachments.map((a) => a.name).join('、')
@@ -1753,16 +1784,14 @@ export function Chat({
           const sameAuthor =
             previous !== undefined &&
             !newDay &&
-            JSON.stringify(previous.author) === JSON.stringify(m.author) &&
+            sameAuthorOf(previous.author, m.author) &&
             previous.topicId === m.topicId &&
             Date.parse(m.createdAt) - Date.parse(previous.createdAt) <
               5 * 60_000 &&
             divider !== m.id;
           const agent =
             m.author.kind === 'agent'
-              ? data.agents.find(
-                  (a) => m.author.kind === 'agent' && a.id === m.author.agentId,
-                )
+              ? agents.get(m.author.agentId)
               : undefined;
           // A reply right under what it answers needs neither the quote
           // nor the "replied" line to say so.
