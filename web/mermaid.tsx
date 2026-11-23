@@ -126,11 +126,13 @@ function draw(source: string, dark: boolean): Promise<Drawing> {
       'mermaid-' + String(++counter),
       source,
     );
-    const root = new DOMParser().parseFromString(
-      svg,
-      'image/svg+xml',
-    ).documentElement;
-    if (root.nodeName !== 'svg') throw new Error('Mermaid drew nothing');
+    // Mermaid writes its labels as HTML (a `<br/>` in one comes out `<br>`),
+    // which an XML parser refuses; read it as a page would, and it is
+    // written back as XML below.
+    const root = new DOMParser()
+      .parseFromString(svg, 'text/html')
+      .querySelector('svg');
+    if (!root) throw new Error('Mermaid drew nothing');
     const box = (root.getAttribute('viewBox') ?? '')
       .split(/[\s,]+/)
       .map(Number);

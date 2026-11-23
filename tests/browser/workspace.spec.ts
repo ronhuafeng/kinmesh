@@ -2753,7 +2753,10 @@ test('a mermaid block is drawn as its diagram, and one that can’t be drawn sta
   const messages = page.getByRole('list', { name: '频道消息' });
   const item = (text: string) =>
     messages.getByRole('listitem').filter({ hasText: text });
-  await say('Drawn:\n```mermaid\nflowchart LR\n  A[Proposed] --> B[Done]\n```');
+  // A label's line break (`<br/>`, which Mermaid writes as HTML) is drawn too.
+  await say(
+    'Drawn:\n```mermaid\nflowchart LR\n  A["Proposed<br/>by Ada"] --> B[Done]\n```',
+  );
   // An image, drawn from an SVG that runs nothing, where the code was.
   const drawing = item('Drawn:').getByRole('img', { name: '图表' });
   await expect(drawing).toBeVisible();
