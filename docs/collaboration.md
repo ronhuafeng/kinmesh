@@ -283,6 +283,7 @@ It also carries:
 
 - `deliveries` — for the visible messages and tasks: delivery ID, agent, source, state, reason, times, the reply message and whether a person asked to stop it. Claims, frozen launches, operation IDs and native references stay in the worker.
 - `replies` — for visible agent replies: outcome, model and T3 identifiers.
+- `firstUnread` — in the open channel (or its topic), the first message someone else wrote after the person's read position, so the view opens there; null when nothing is unread, the channel is muted, or the person only looks in.
 - `attention` — what waits on the signed-in person across joined channels: `decide` (tasks awaiting their sign-off, review or rework; up to 50), `unstuck` (blocked deliveries they caused — the root of what woke the agent is theirs; anyone may resume any; up to 50), `connect` (agents with queued work and no live worker) and `t3` (from seven days before a person's T3 sign-in for the team ends until someone signs in again, or while a session the deployment no longer provides has ended: the endpoint, when it ends, whether it has, the mode runs fall back to under the deployment's session (`fallback`, null when they wait) and the sign-in under way; the deployment's own session never asks).
 - `wake` — per agent, when a worker last recorded it and whether that is within 90 seconds (see [worker liveness](operations.md#worker-liveness)).
 - `managed`, `teamMcp` — agents the hub runs, and when an agent's credential last reached Team MCP. Team MCP presence is evidence, not authority.

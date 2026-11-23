@@ -847,6 +847,41 @@ export function communicationRepository(
           );
       });
     },
+    /**
+     * Where a person stopped reading a channel they joined: the first message
+     * someone else wrote after their read position, in a topic or the whole
+     * channel; null when nothing is unread, the channel is muted, or they
+     * only look in.
+     */
+    firstUnread(
+      p: Principal,
+      teamId: TeamId,
+      channelId: ChannelId,
+      topicId: TopicId | null = null,
+    ) {
+      return atomic(async () => {
+        if (p.kind !== 'human') return null;
+        const { participant } = await access(p, teamId, channelId);
+        if (participant?.state !== 'joined' || participant.level === 'mute')
+          return null;
+        const row = (
+          await q()
+            .select({ id: s.messages.id })
+            .from(s.messages)
+            .where(
+              and(
+                eq(s.messages.channelId, channelId),
+                topicId === null ? undefined : eq(s.messages.topicId, topicId),
+                gt(s.messages.position, participant.readPosition ?? 0),
+                notMine(p.humanId),
+              ),
+            )
+            .orderBy(asc(s.messages.position))
+            .limit(1)
+        )[0];
+        return row ? MessageId.parse(row.id) : null;
+      });
+    },
     /** The newest message of each channel the person has joined. */
     latest(p: Principal, teamId: TeamId) {
       return atomic(async () => {

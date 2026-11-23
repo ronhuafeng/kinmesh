@@ -1321,6 +1321,27 @@ button.author-link:hover:not(:disabled) {
 .workspace-main:has(.composer) {
   padding-bottom: 0;
 }
+/* Read back, the way to the newest floats above the composer, taking no
+ * room in the conversation. */
+.to-newest {
+  position: sticky;
+  bottom: 0;
+  z-index: 4;
+  height: 0;
+}
+.to-newest button {
+  position: absolute;
+  right: 0;
+  bottom: 6.25rem;
+  padding: 0.3rem 0.8rem;
+  border: 0;
+  border-radius: 999px;
+  background: var(--surface);
+  box-shadow: var(--elev-2);
+  color: var(--ink);
+  font-size: 13px;
+  animation: fade-rise var(--dur) var(--ease-out);
+}
 /* A channel you only look in holds joining it where the composer would be. */
 .composer,
 .join-bar {

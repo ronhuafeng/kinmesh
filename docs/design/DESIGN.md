@@ -289,9 +289,11 @@ fallback.
   回复 puts the message above the field as the same quiet quote (× lets it go); the sent
   message quotes it, unless it is the very next message, and the quote opens it.
   A mention chip is a soft green tag.
-- **Conversation**: opens at the newest message and stays at the bottom as messages
-  arrive while you are there (and after you send); scrolled up, nothing moves under
-  you. Scrolling up reads older messages in place, back to the channel's first;
+- **Conversation**: opens where you stopped reading — the first message someone else
+  wrote since, under the "new since" line — or, with nothing unread, at the newest
+  message, and stays at the bottom as messages arrive while you are there (and after
+  you send); scrolled up, nothing moves under you, and **回到最新 ↓** floats above the
+  composer. Scrolling up reads older messages in place, back to the channel's first;
   there are no page buttons. A message opened from search, a file, a quote, a
   notification or its link is reached however far back it is, scrolled to and
   marked; the address keeps it, so a reload shows it again. A "_time_ 以来的新消息"

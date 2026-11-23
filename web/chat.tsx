@@ -310,6 +310,8 @@ function useReadingPosition(place: string, messages: ChatMessage[]) {
     end: number;
     bottom: boolean;
   } | null>(null);
+  // Whether the newest message is in view, for the way back to it.
+  const [atEnd, setAtEnd] = useState(true);
   /** Notes what is read from, as the reader left it. */
   const note = () => {
     const h = held.current;
@@ -327,6 +329,7 @@ function useReadingPosition(place: string, messages: ChatMessage[]) {
       }
     }
     h.bottom = atBottom();
+    setAtEnd(h.bottom);
   };
   /**
    * What the conversation shows changed or grew: at the bottom it stays
@@ -380,9 +383,11 @@ function useReadingPosition(place: string, messages: ChatMessage[]) {
   }, []);
   return {
     list,
+    atEnd,
     sent: () => {
       toBottom();
       if (held.current) held.current.bottom = true;
+      setAtEnd(true);
     },
     /**
      * Shows a message, marked, and reads from it: what grows above or below
@@ -930,19 +935,37 @@ export function Chat({
   } | null>(null);
   const reading = useReadingPosition(shown, messages);
   const earlier = useEarlier(older, reachOlder);
+  // Where you stopped reading, as this place opened: it opens there, under
+  // the "new since" line, until you go elsewhere.
+  const [unreadFrom, setUnreadFrom] = useState<{
+    place: string;
+    id: string;
+  } | null>(null);
+  const openedAt = useRef<string | null>(null);
+  useEffect(() => {
+    if (openedAt.current === shown) return;
+    openedAt.current = shown;
+    setUnreadFrom(
+      data.firstUnread ? { place: shown, id: data.firstUnread } : null,
+    );
+  }, [shown, data.firstUnread]);
+  const unreadHere = unreadFrom?.place === shown ? unreadFrom.id : null;
+  // The "new since" line: what arrived while here, else where you stopped.
+  const newLine = divider ?? unreadHere;
+  const goTo = target ?? unreadHere;
   // A message opened here is reached however far back it is, shown and
   // marked once.
   const reachedFor = useRef<string | null>(null);
   useEffect(() => {
-    if (!target || reachedFor.current === shown + target) return;
-    if (messages.some((m) => m.id === target)) {
-      reachedFor.current = shown + target;
+    if (!goTo || reachedFor.current === shown + goTo) return;
+    if (messages.some((m) => m.id === goTo)) {
+      reachedFor.current = shown + goTo;
       requestAnimationFrame(() => {
-        reading.show(target);
+        reading.show(goTo);
       });
     } else if (older !== null) reachOlder(older);
-    else reachedFor.current = shown + target;
-  }, [target, shown, messages, older, reachOlder]);
+    else reachedFor.current = shown + goTo;
+  }, [goTo, shown, messages, older, reachOlder]);
   const permitted = useContext(MutationPermission);
   useMarkRead(
     channelPath,
@@ -1176,7 +1199,7 @@ export function Chat({
             previous.topicId === m.topicId &&
             Date.parse(m.createdAt) - Date.parse(previous.createdAt) <
               5 * 60_000 &&
-            divider !== m.id;
+            newLine !== m.id;
           const agent =
             m.author.kind === 'agent'
               ? agents.get(m.author.agentId)
@@ -1193,7 +1216,7 @@ export function Chat({
               o={o}
               newDay={newDay}
               sameAuthor={sameAuthor}
-              divider={divider === m.id}
+              divider={newLine === m.id}
               fresh={o !== undefined || fresh.has(m.id) || keyOf.has(m.id)}
               chosen={chosen === m.id}
               name={memberName(m.author, data)}
@@ -1222,6 +1245,14 @@ export function Chat({
       </ol>
       {rows.length === 0 && (
         <p className="board-empty">还没有消息。输入 @ 请智能体加入。</p>
+      )}
+      {/* Read back, the newest is one press away. */}
+      {!reading.atEnd && rows.length > 0 && (
+        <div className="to-newest">
+          <button type="button" onClick={reading.sent}>
+            回到最新 ↓
+          </button>
+        </div>
       )}
       {join ?? (
         <Composer
