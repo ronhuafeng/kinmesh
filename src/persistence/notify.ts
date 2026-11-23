@@ -712,11 +712,14 @@ export function notificationRepository(d: Database) {
             position: s.messages.position,
             author: s.messages.author,
             body: s.messages.body,
+            withdrawnAt: s.messages.withdrawnAt,
           })
           .from(s.messages)
           .where(eq(s.messages.id, n.messageId))
           .limit(1);
         if (message === undefined) return null;
+        // A message withdrawn before it was told is not told.
+        if (message.withdrawnAt !== null) return null;
         if (message.position <= (place.readPosition ?? 0)) return null;
         const author = Author.parse(JSON.parse(message.author));
         return {

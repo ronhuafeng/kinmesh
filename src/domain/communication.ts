@@ -65,6 +65,11 @@ export const PostInput = Mutation.extend({
 });
 export type PostInput = z.infer<typeof PostInput>;
 /**
+ * Its author says a message again: new text, which may be empty only when
+ * the message has files.
+ */
+export const EditInput = Mutation.extend({ body: PostInput.shape.body });
+/**
  * A person has seen the channel up to this message, reading the whole
  * channel (`topicId` null) or one topic. It needs no operation key: reading
  * again changes nothing.
@@ -147,6 +152,11 @@ export const Message = z.strictObject({
   removedAttachments: z
     .array(z.strictObject({ removedBy: HumanId, removedAt: z.iso.datetime() }))
     .max(ATTACHMENTS_PER_MESSAGE),
+  // Absent from what receipts kept from before messages could change.
+  /** When its author last changed what it says. */
+  editedAt: z.iso.datetime().nullable().default(null),
+  /** When its author withdrew it; its text is gone. */
+  withdrawnAt: z.iso.datetime().nullable().default(null),
 });
 /** A message pinned in its channel, with who pinned it and when. */
 export const Pinned = z.strictObject({
