@@ -50,6 +50,8 @@ import {
   TeamFile,
   ChannelView,
   CommunicationFact,
+  DirectChannel,
+  DirectInput,
   EditInput,
   Event,
   OutboxFact,
@@ -152,12 +154,14 @@ export function communicationRepository(
       participant?.state !== 'removed';
     if (!belongs && !previewing) throw new DomainError('not-found');
     // An archived channel is read, never written to.
-    const { archivedAt, ...kept } = channel;
+    const { archivedAt, directKey, ...kept } = channel;
     if (write && archivedAt !== null) throw new DomainError('conflict');
     return {
       channel: ChannelView.parse(kept),
       participant: belongs ? participant : null,
       archived: archivedAt !== null,
+      /** Whose own conversation it is, for two people's; null otherwise. */
+      direct: directKey === null ? null : directKey.split(' '),
     };
   }
   /** A person of the team, joined to the channel when one is named. */
@@ -615,6 +619,182 @@ export function communicationRepository(
         await message(channelId, MessageId.parse(messageId));
       if (eventId !== null) await visibleEvent(p, teamId, channelId, eventId);
     },
+    /**
+     * Two people's own conversation, opened by one of them from the other's
+     * face: a private channel the two start in, made the first time and
+     * found ever after. Opening it brings back the opener if they left.
+     */
+    direct(p: Principal, teamId: TeamId, input: z.infer<typeof DirectInput>) {
+      return atomic(async () => {
+        await person(p, teamId);
+        if (p.kind !== 'human') throw new DomainError('forbidden');
+        const data = DirectInput.parse(input);
+        if (data.humanId === p.humanId) throw new DomainError('invalid');
+        return mutation(
+          p,
+          teamId,
+          'direct:' + data.humanId,
+          'direct',
+          data,
+          ChannelView,
+          async () => {
+            const pair = [p.humanId, data.humanId];
+            const people = await q()
+              .select({
+                id: s.humans.id,
+                name: s.humans.name,
+                username: s.humans.username,
+              })
+              .from(s.humans)
+              .innerJoin(s.memberships, eq(s.memberships.humanId, s.humans.id))
+              .where(
+                and(
+                  eq(s.memberships.teamId, teamId),
+                  inArray(s.humans.id, pair),
+                ),
+              );
+            if (people.length !== 2) throw new DomainError('not-found');
+            const key = [...pair].sort().join(' ');
+            const opener = { kind: 'human' as const, id: p.humanId };
+            const join = async (channelId: ChannelId, target: Member) => {
+              await q()
+                .insert(s.channelParticipants)
+                .values({
+                  channelId,
+                  teamId,
+                  memberKey: memberKey(target),
+                  humanId: target.id,
+                  agentId: null,
+                  state: 'joined',
+                })
+                .onConflictDoUpdate({
+                  target: [
+                    s.channelParticipants.channelId,
+                    s.channelParticipants.memberKey,
+                  ],
+                  set: { state: 'joined' },
+                });
+              await fact(
+                p,
+                teamId,
+                channelId,
+                data.operationKey,
+                'participant.changed',
+                { participant: target, participantState: 'joined' },
+              );
+            };
+            const [found] = await q()
+              .select({
+                id: s.channels.id,
+                teamId: s.channels.teamId,
+                name: s.channels.name,
+                visibility: s.channels.visibility,
+                position: s.channels.position,
+              })
+              .from(s.channels)
+              .where(
+                and(
+                  eq(s.channels.teamId, teamId),
+                  eq(s.channels.directKey, key),
+                ),
+              )
+              .limit(1);
+            if (found !== undefined) {
+              const channel = ChannelView.parse(found);
+              const mine = await participantView(teamId, channel.id, opener);
+              if (mine.state !== 'joined') await join(channel.id, opener);
+              return channel;
+            }
+            // Named for the two, as they are called now; the conversation
+            // shows the other by their name as it changes.
+            const called = people
+              .sort((a, b) =>
+                a.id === p.humanId ? -1 : b.id === p.humanId ? 1 : 0,
+              )
+              .map((h) => (h.name ?? h.username).slice(0, 38))
+              .join('、');
+            let name = called;
+            for (let n = 2; ; n++) {
+              const [taken] = await q()
+                .select({ id: s.channels.id })
+                .from(s.channels)
+                .where(
+                  and(eq(s.channels.teamId, teamId), eq(s.channels.name, name)),
+                )
+                .limit(1);
+              if (taken === undefined) break;
+              name = called + ' ' + String(n);
+            }
+            const position =
+              highest(
+                (
+                  await q()
+                    .select({ value: max(s.channels.position) })
+                    .from(s.channels)
+                    .limit(1)
+                )[0]?.value,
+              ) + 1;
+            const channel = ChannelView.parse({
+              id: randomUUID(),
+              teamId,
+              name,
+              position,
+              visibility: 'private',
+            });
+            await q()
+              .insert(s.channels)
+              .values({ ...channel, directKey: key });
+            await q()
+              .insert(s.channelParticipants)
+              .values({
+                channelId: channel.id,
+                teamId,
+                memberKey: memberKey(opener),
+                humanId: p.humanId,
+                agentId: null,
+                state: 'joined',
+              });
+            await fact(
+              p,
+              teamId,
+              channel.id,
+              data.operationKey,
+              'channel.created',
+            );
+            await join(channel.id, { kind: 'human', id: data.humanId });
+            return channel;
+          },
+        );
+      });
+    },
+    /** A person's own conversations with others, and who each is with. */
+    directChannels(p: Principal, teamId: TeamId) {
+      return atomic(async () => {
+        await team(p, teamId);
+        if (p.kind !== 'human') return [];
+        const rows = await q()
+          .select({ id: s.channels.id, key: s.channels.directKey })
+          .from(s.channels)
+          .innerJoin(
+            s.channelParticipants,
+            eq(s.channelParticipants.channelId, s.channels.id),
+          )
+          .where(
+            and(
+              eq(s.channels.teamId, teamId),
+              isNotNull(s.channels.directKey),
+              eq(s.channelParticipants.memberKey, memberKey(member(p))),
+            ),
+          )
+          .limit(500);
+        return rows.flatMap(({ id, key }) => {
+          const other = key?.split(' ').find((h) => h !== p.humanId);
+          return other === undefined
+            ? []
+            : [DirectChannel.parse({ channelId: id, humanId: other })];
+        });
+      });
+    },
     createChannel(
       p: Principal,
       teamId: TeamId,
@@ -798,7 +978,14 @@ export function communicationRepository(
           data,
           ChannelView,
           async () => {
-            const { channel } = await access(p, teamId, channelId, true);
+            const { channel, direct } = await access(
+              p,
+              teamId,
+              channelId,
+              true,
+            );
+            // Two people's own conversation is named by who it is with.
+            if (direct !== null) throw new DomainError('conflict');
             if (channel.name === data.name) return channel;
             const taken = (
               await q()
@@ -852,13 +1039,14 @@ export function communicationRepository(
           data,
           ChannelView,
           async () => {
-            const { channel, participant, archived } = await access(
+            const { channel, participant, archived, direct } = await access(
               p,
               teamId,
               channelId,
             );
             if (participant?.state !== 'joined')
               throw new DomainError('not-found');
+            if (direct !== null) throw new DomainError('conflict');
             if (archived !== data.archived) {
               await q()
                 .update(s.channels)
@@ -931,7 +1119,13 @@ export function communicationRepository(
           data,
           ChannelView,
           async () => {
-            const { channel } = await access(p, teamId, channelId, true);
+            const { channel, direct } = await access(
+              p,
+              teamId,
+              channelId,
+              true,
+            );
+            if (direct !== null) throw new DomainError('conflict');
             if (channel.visibility !== data.visibility) {
               await q()
                 .update(s.channels)
@@ -1466,6 +1660,15 @@ export function communicationRepository(
           data,
           Participant,
           async () => {
+            // Two people's own conversation takes agents, never a third
+            // person, and loses neither of the two.
+            const { direct } = await access(p, teamId, channelId, true);
+            if (
+              direct !== null &&
+              data.member.kind === 'human' &&
+              (action === 'remove' || !direct.includes(data.member.id))
+            )
+              throw new DomainError('conflict');
             if (action === 'invite')
               await validTarget(teamId, channelId, data.member, false);
             else await participantView(teamId, channelId, data.member);

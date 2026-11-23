@@ -334,6 +334,9 @@ export function ChannelMenu({
   children: ReactNode;
 }) {
   const level = levelOf(data, channelId);
+  // Two people's own conversation is theirs as it is: no name to change,
+  // nobody to open it to, nothing to archive.
+  const direct = data.direct.some((d) => d.channelId === channelId);
   // Archiving takes a second press, which says what it does.
   const [archiving, setArchiving] = useState(false);
   const visibility =
@@ -351,7 +354,9 @@ export function ChannelMenu({
       <ContextMenu.Trigger asChild>{children}</ContextMenu.Trigger>
       <ContextMenu.Portal>
         <ContextMenu.Content className="menu" collisionPadding={8}>
-          <p className="menu-state">#{channelName}</p>
+          <p className="menu-state">
+            {direct ? channelName : '#' + channelName}
+          </p>
           <ContextMenu.RadioGroup
             value={level}
             onValueChange={(value) => {
@@ -384,81 +389,86 @@ export function ChannelMenu({
             ))}
           </ContextMenu.RadioGroup>
           <ContextMenu.Separator className="menu-separator" />
-          <ContextMenu.Item
-            className="menu-item"
-            onSelect={(event) => {
-              if (visibility === 'private' && !opening) {
-                event.preventDefault();
-                setOpening(true);
-                return;
-              }
-              void request(
-                `/api/teams/${data.team.id}/channels/${channelId}/visibility`,
-                {
-                  operationKey: crypto.randomUUID(),
-                  visibility: visibility === 'private' ? 'public' : 'private',
-                },
-              ).catch(() => {
-                onFailed('没能改好，请再试一次。');
-              });
-            }}
-          >
-            <span className="menu-icon">
-              {visibility === 'private' ? (
-                <SettingsIcons.globe size={16} />
-              ) : (
-                <SettingsIcons.lock size={16} />
-              )}
-            </span>
-            <span className="menu-label">
-              {visibility === 'public'
-                ? '设为私密'
-                : opening
-                  ? '确认：团队里所有人都能查看'
-                  : '设为公开…'}
-            </span>
-          </ContextMenu.Item>
-          <ContextMenu.Item
-            className="menu-item"
-            onSelect={() => {
-              onRename(channelId);
-            }}
-          >
-            <span className="menu-icon">
-              <SettingsIcons.pencil size={16} />
-            </span>
-            <span className="menu-label">重命名…</span>
-          </ContextMenu.Item>
-          <ContextMenu.Item
-            className="menu-item"
-            onSelect={(event) => {
-              if (!archiving) {
-                event.preventDefault();
-                setArchiving(true);
-                return;
-              }
-              void request(
-                `/api/teams/${data.team.id}/channels/${channelId}/archive`,
-                { operationKey: crypto.randomUUID(), archived: true },
-              ).then(
-                () => {
-                  onArchived(channelId);
-                },
-                () => {
-                  onFailed('没能归档，请再试一次。');
-                },
-              );
-            }}
-          >
-            <span className="menu-icon">
-              <SettingsIcons.archive size={16} />
-            </span>
-            <span className="menu-label">
-              {archiving
-                ? '确认：从列表移走，仍可查看和搜索'
-                : `归档 #${channelName}…`}
-            </span>
-          </ContextMenu.Item>
+          {!direct && (
+            <>
+              <ContextMenu.Item
+                className="menu-item"
+                onSelect={(event) => {
+                  if (visibility === 'private' && !opening) {
+                    event.preventDefault();
+                    setOpening(true);
+                    return;
+                  }
+                  void request(
+                    `/api/teams/${data.team.id}/channels/${channelId}/visibility`,
+                    {
+                      operationKey: crypto.randomUUID(),
+                      visibility:
+                        visibility === 'private' ? 'public' : 'private',
+                    },
+                  ).catch(() => {
+                    onFailed('没能改好，请再试一次。');
+                  });
+                }}
+              >
+                <span className="menu-icon">
+                  {visibility === 'private' ? (
+                    <SettingsIcons.globe size={16} />
+                  ) : (
+                    <SettingsIcons.lock size={16} />
+                  )}
+                </span>
+                <span className="menu-label">
+                  {visibility === 'public'
+                    ? '设为私密'
+                    : opening
+                      ? '确认：团队里所有人都能查看'
+                      : '设为公开…'}
+                </span>
+              </ContextMenu.Item>
+              <ContextMenu.Item
+                className="menu-item"
+                onSelect={() => {
+                  onRename(channelId);
+                }}
+              >
+                <span className="menu-icon">
+                  <SettingsIcons.pencil size={16} />
+                </span>
+                <span className="menu-label">重命名…</span>
+              </ContextMenu.Item>
+              <ContextMenu.Item
+                className="menu-item"
+                onSelect={(event) => {
+                  if (!archiving) {
+                    event.preventDefault();
+                    setArchiving(true);
+                    return;
+                  }
+                  void request(
+                    `/api/teams/${data.team.id}/channels/${channelId}/archive`,
+                    { operationKey: crypto.randomUUID(), archived: true },
+                  ).then(
+                    () => {
+                      onArchived(channelId);
+                    },
+                    () => {
+                      onFailed('没能归档，请再试一次。');
+                    },
+                  );
+                }}
+              >
+                <span className="menu-icon">
+                  <SettingsIcons.archive size={16} />
+                </span>
+                <span className="menu-label">
+                  {archiving
+                    ? '确认：从列表移走，仍可查看和搜索'
+                    : `归档 #${channelName}…`}
+                </span>
+              </ContextMenu.Item>
+            </>
+          )}
           <ContextMenu.Item
             className="menu-item"
             data-danger="true"
@@ -469,7 +479,9 @@ export function ChannelMenu({
             <span className="menu-icon">
               <SettingsIcons.logOut size={16} />
             </span>
-            <span className="menu-label">退出 #{channelName}</span>
+            <span className="menu-label">
+              退出 {direct ? channelName : '#' + channelName}
+            </span>
           </ContextMenu.Item>
         </ContextMenu.Content>
       </ContextMenu.Portal>

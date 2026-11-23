@@ -148,9 +148,19 @@ export const channels = pgTable(
      * still read and searched; null while it is in use.
      */
     archivedAt: millis('archived_at'),
+    /**
+     * For two people's own conversation, their IDs in order, space apart:
+     * one such channel per pair. Null for every other channel.
+     */
+    directKey: text('direct_key'),
   },
   (t) => [
     uniqueIndex('channel_position').on(t.position),
+    uniqueIndex('channel_team_direct').on(t.teamId, t.directKey),
+    check(
+      'channel_direct_private',
+      sql`${t.directKey} IS NULL OR ${t.visibility} = 'private'`,
+    ),
     check('channel_visibility', sql`${t.visibility} IN ('public', 'private')`),
     unique('channel_id_team').on(t.id, t.teamId),
     uniqueIndex('channel_team_name').on(t.teamId, t.name),

@@ -16,6 +16,7 @@ import {
 import {
   MessageId,
   MessageReactions,
+  DirectChannel,
   PINS_MOST,
   Pinned,
   REACTIONS,
@@ -92,6 +93,8 @@ export const WorkspaceSnapshot = z.strictObject({
   archivedChannels: z.array(ChannelView).max(100),
   /** Whether the open channel is archived: read, never written to. */
   channelArchived: z.boolean(),
+  /** Your own conversations with others, each by who it is with. */
+  direct: z.array(DirectChannel).max(500),
   human: Person,
   /** The channels you muted or follow; every other is at the default. */
   levels: z

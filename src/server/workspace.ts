@@ -264,6 +264,7 @@ export function registerWorkspace(
       pinned,
       archivedChannels,
       channelArchived,
+      direct,
     ] = await together([
       store.agents.workspaceProfiles(principal, teamId),
       channel
@@ -332,6 +333,7 @@ export function registerWorkspace(
       channel
         ? store.communication.isArchived(principal, teamId, channel.id)
         : false,
+      store.communication.directChannels(principal, teamId),
     ]);
     const agents = profiles.agents;
     // In the order the profiles are listed: one read for all.
@@ -438,6 +440,19 @@ export function registerWorkspace(
         url: shown.url,
       });
     }
+    // Two people's own conversation is called by who it is with, as they
+    // are called now.
+    const withWhom = new Map<string, string>(
+      direct.map((d) => [d.channelId, d.humanId]),
+    );
+    const called = <C extends { id: string; name: string }>(c: C): C => {
+      const other = withWhom.get(c.id);
+      const name =
+        other === undefined
+          ? undefined
+          : people.find((person) => person.id === other)?.name;
+      return name === undefined ? c : { ...c, name };
+    };
     return WorkspaceSnapshot.parse(
       withRevision({
         observedAt: new Date(now).toISOString(),
@@ -446,8 +461,9 @@ export function registerWorkspace(
         firstUnread,
         reactions,
         pinned,
-        archivedChannels,
+        archivedChannels: archivedChannels.map(called),
         channelArchived,
+        direct,
         human,
         levels: quiet.levels,
         notices,
@@ -457,10 +473,10 @@ export function registerWorkspace(
         team: membership.team,
         people,
         joinedHumanIds,
-        channels,
+        channels: { ...channels, items: channels.items.map(called) },
         latest: latest.filter((l) => listed.has(l.channelId)),
-        channel,
-        leftChannels,
+        channel: channel && called(channel),
+        leftChannels: leftChannels.map(called),
         publicChannels,
         agents,
         agentsTruncated: profiles.truncated,

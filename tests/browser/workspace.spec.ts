@@ -177,6 +177,47 @@ test('a message from someone else is announced politely as it arrives', async ({
   }
 });
 /**
+ * Proves a person's face opens your own conversation with them, listed by
+ * their face and name, and the other person finds it under yours.
+ */
+test('a person’s face opens your own conversation with them', async ({
+  page,
+  browser,
+  hub,
+}) => {
+  await signIn(page, hub, 'ada@example.com');
+  const theirs = await browser.newContext();
+  try {
+    const grace = await theirs.newPage();
+    await signIn(grace, hub, 'grace@example.com');
+    await page
+      .getByRole('region', { name: '本频道成员' })
+      .locator('.person')
+      .filter({ hasText: 'Grace Hopper' })
+      .click();
+    const row = page
+      .locator('aside.sidebar')
+      .getByRole('button', { name: 'Grace Hopper', exact: true });
+    await expect(row).toHaveAttribute('aria-current', 'page');
+    await expect(row.locator('.avatar')).toBeVisible();
+    const composer = page.getByRole('form', { name: '给团队发消息' });
+    await composer.getByLabel('消息', { exact: true }).fill('Just between us');
+    await composer.getByRole('button', { name: '发送消息' }).click();
+    await expect(page.getByText('Just between us')).toBeVisible();
+    // Grace finds it under Ada's name; it is theirs alone.
+    await grace
+      .locator('aside.sidebar')
+      .getByRole('button', { name: 'ada', exact: true })
+      .click();
+    await expect(grace.getByText('Just between us')).toBeVisible();
+    await expect(
+      grace.getByRole('region', { name: '本频道成员' }).locator('.person'),
+    ).toHaveCount(1);
+  } finally {
+    await theirs.close();
+  }
+});
+/**
  * Proves a channel opens where you stopped reading: what someone else wrote
  * while you were elsewhere starts under the "new since" line, in view, and
  * the newest is one press away.

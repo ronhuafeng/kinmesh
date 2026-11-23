@@ -14,10 +14,10 @@ import * as Tabs from '@radix-ui/react-tabs';
 import { PageRef, Revisions, pageParam } from '../src/workspace/events.js';
 import { LiveContext, takeStream, useRevisions } from './live.js';
 import { Author } from '../src/domain/agents.js';
-import { TeamFile } from '../src/domain/communication.js';
+import { ChannelView, TeamFile } from '../src/domain/communication.js';
 import { WorkspaceSnapshot } from '../src/workspace/contracts.js';
 import { Auth, SIGNED_OUT } from './auth.js';
-import { api, HttpError, MutationPermission, Offline } from './api.js';
+import { api, HttpError, MutationPermission, Offline, request } from './api.js';
 import { ActionForm, AddButton, InlineField } from './forms.js';
 import { AgentPage, Team } from './agents.js';
 import { OwnWorkerPage } from './setup.js';
@@ -847,6 +847,33 @@ export function App() {
   const shownChannelName = switching
     ? data.channels.items.find((c) => c.id === selection.channel)?.name
     : channel?.name;
+  // Your own conversations, each by who it is with: called by them, with
+  // their face, and no "#".
+  const directWith = new Map<string, string>(
+    data.direct.map((d) => [d.channelId, d.humanId]),
+  );
+  const shownDirect = directWith.has(
+    switching ? selection.channel : (channel?.id ?? ''),
+  );
+  /** Opens your own conversation with someone, made the first time. */
+  const openDirect = (humanId: string) => {
+    void request(`/api/teams/${data.team.id}/direct`, {
+      operationKey: crypto.randomUUID(),
+      humanId,
+    }).then(
+      (raw) => {
+        const opened = ChannelView.safeParse(raw);
+        if (!opened.success) return;
+        leavePage();
+        setView('chat');
+        selectChannel(opened.data.id);
+        refresh();
+      },
+      () => {
+        notify('没能打开对话，请再试一次。');
+      },
+    );
+  };
   const channelAgents = joinedAgents(data);
   const notify = (message: string) => {
     setToast({ id: Date.now(), message });
@@ -1128,7 +1155,7 @@ export function App() {
     ...data.channels.items.map((c) => ({
       id: 'channel-' + c.id,
       group: '频道',
-      label: '# ' + c.name,
+      label: (directWith.has(c.id) ? '' : '# ') + c.name,
       // Its icon says it is a channel; the "#" stays for screen readers.
       channel: { id: c.id, name: c.name },
       run: () => {
@@ -1377,6 +1404,7 @@ export function App() {
                                     data={data}
                                     channelId={c.id}
                                     name={c.name}
+                                    person={directWith.get(c.id)}
                                     latest={data.latest.find(
                                       (l) => l.channelId === c.id,
                                     )}
@@ -1384,7 +1412,16 @@ export function App() {
                                   />
                                 ) : (
                                   <>
-                                    <ChannelIcon id={c.id} name={c.name} />
+                                    {directWith.has(c.id) ? (
+                                      <Avatar
+                                        kind="human"
+                                        name={c.name}
+                                        id={directWith.get(c.id) ?? ''}
+                                        size="sm"
+                                      />
+                                    ) : (
+                                      <ChannelIcon id={c.id} name={c.name} />
+                                    )}
                                     <span
                                       className="channel-name"
                                       title={c.name}
@@ -1490,14 +1527,24 @@ export function App() {
                       <hr className="nav-separator" />
                       <ul>
                         {/* You know you are here: the list is the others. A
-                        person has no page of their own: their row is their
-                        face, name and presence. */}
+                        person has no page of their own: their row opens your
+                        own conversation with them. */}
                         {otherPeople(data).map((person) => (
                           <li key={person.id}>
                             {memberRow(
                               { kind: 'human', id: person.id },
                               person.name,
-                              <span className="person" tabIndex={0}>
+                              // A person's face opens your own conversation.
+                              <button
+                                className="person"
+                                aria-pressed={
+                                  channel !== null &&
+                                  directWith.get(channel.id) === person.id
+                                }
+                                onClick={() => {
+                                  openDirect(person.id);
+                                }}
+                              >
                                 <Avatar
                                   kind="human"
                                   name={person.name}
@@ -1508,7 +1555,7 @@ export function App() {
                                   {person.name}
                                 </span>
                                 <Presence online={person.online} dot />
-                              </span>,
+                              </button>,
                             )}
                           </li>
                         ))}
@@ -1636,7 +1683,7 @@ export function App() {
                             : view === 'team' && !phone
                               ? '成员'
                               : shownChannelName
-                                ? '# ' + shownChannelName
+                                ? (shownDirect ? '' : '# ') + shownChannelName
                                 : switching
                                   ? '正在打开频道…'
                                   : '欢迎来到你的团队'}
@@ -1982,6 +2029,7 @@ export function App() {
                             channelName={channel?.name ?? ''}
                             onDone={refresh}
                             openAgent={openAgent}
+                            openPerson={openDirect}
                           />
                         </Tabs.Content>
                       </MutationPermission>
@@ -2226,18 +2274,25 @@ function ChannelRow({
   data,
   channelId,
   name,
+  person,
   latest,
   id,
 }: {
   data: WorkspaceSnapshot;
   channelId: string;
   name: string;
+  /** Who your own conversation is with, shown by their face. */
+  person: string | undefined;
   latest: WorkspaceSnapshot['latest'][number] | undefined;
   id: string;
 }) {
   return (
     <span className="channel-row">
-      <ChannelIcon id={channelId} name={name} />
+      {person === undefined ? (
+        <ChannelIcon id={channelId} name={name} />
+      ) : (
+        <Avatar kind="human" name={name} id={person} />
+      )}
       <span className="channel-row-name">{name}</span>
       {latest && (
         <>
