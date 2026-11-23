@@ -2920,8 +2920,43 @@ a.button-link {
   border-left: 3px solid var(--hairline-strong);
   color: var(--ink-muted);
 }
-.message-text .md-heading {
-  margin-top: 0.4em;
+/* A list inside a list or a quote sits close: no gap of its own below. */
+.message-text :is(li, blockquote) > :is(ul, ol, p, pre):last-child {
+  margin-bottom: 0;
+}
+.message-text li > :is(ul, ol) {
+  margin-top: 0.3em;
+}
+/* A task list: its boxes stand in for the bullets, ticked as written. */
+.message-text .contains-task-list {
+  padding-left: 0.2em;
+  list-style: none;
+}
+.message-text .task-list-item input {
+  margin: 0 0.45em 0 0;
+  vertical-align: -0.1em;
+  accent-color: var(--primary);
+}
+.message-text del {
+  color: var(--ink-muted);
+}
+.message-text hr {
+  max-width: var(--reading);
+  margin: 0.8em 0;
+  border: 0;
+  border-top: var(--hairline-width) solid var(--hairline-strong);
+}
+/* A message's headings: # and ## a step above the text, the rest bold. */
+.message-text :is(h3, h4) {
+  margin: 0.4em 0 0.35em;
+  line-height: 1.4;
+  font-weight: 600;
+}
+.message-text h3 {
+  font-size: 1.125em;
+}
+.message-text h4 {
+  font-size: 1em;
 }
 /* A table: hairline rows, a heavier head, scrolling sideways inside the
  * message when it is wider. */
