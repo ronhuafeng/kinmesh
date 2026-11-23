@@ -168,6 +168,8 @@ export const WorkspaceSnapshot = z.strictObject({
         /** Approval returns to the person's own computer; they paste its address. */
         pasteCallback: z.boolean(),
         signIn: z.enum(['waiting', 'failed']).nullable(),
+        /** The approval page of the sign-in under way, for whoever started it. */
+        authorizationUrl: z.url().nullable(),
       })
       .nullable(),
   }),

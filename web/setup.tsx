@@ -49,6 +49,8 @@ const T3Status = z.object({
     })
     .nullable(),
   signIn: z.enum(['waiting', 'failed']).nullable(),
+  /** The approval page of the sign-in you started, while it waits. */
+  authorizationUrl: z.string().nullable().default(null),
   /** Approval returns to the person's own computer, whose address they paste. */
   pasteCallback: z.boolean(),
   /** The deployment connects T3; a person may still sign in to it. */
@@ -198,6 +200,8 @@ function TokenOnce({
  */
 export function useT3(teamId: string) {
   const [status, setStatus] = useState<T3Status | null>(null);
+  // The last read failed: said, and read again after a growing pause.
+  const [failing, setFailing] = useState(0);
   const { begin, settle, drop, reads } = useLive();
   const load = useCallback(() => {
     begin('t3');
@@ -205,21 +209,30 @@ export function useT3(teamId: string) {
       .then((raw) => {
         const next = T3Status.parse(raw);
         setStatus(next);
+        setFailing(0);
         settle('t3', next.revision);
       })
       .catch(() => {
         setStatus(null);
+        setFailing((old) => old + 1);
         drop('t3');
       });
   }, [teamId, begin, settle, drop]);
   useEffect(load, [load, reads.t3]);
+  useEffect(() => {
+    if (failing === 0) return;
+    const again = setTimeout(load, Math.min(30_000, 2000 * 2 ** failing));
+    return () => {
+      clearTimeout(again);
+    };
+  }, [failing, load]);
   useEffect(
     () => () => {
       drop('t3');
     },
     [drop],
   );
-  return { status, load };
+  return { status, load, failed: failing > 0 };
 }
 /** One thing to do now: the only control on screen until it is done. */
 function NextStep({ title, children }: { title: string; children: ReactNode }) {
@@ -340,7 +353,10 @@ function ConnectT3({
   const connection = t3?.connection ?? null;
   const readOnly = connection?.access === 'read';
   const ended = connection?.expired === true;
-  const waiting = t3?.signIn === 'waiting' && approval !== null;
+  // The approval page this page started, else the one the hub keeps for you
+  // (after a reload, or from another tab).
+  const approvalUrl = approval ?? t3?.authorizationUrl ?? null;
+  const waiting = t3?.signIn === 'waiting' && approvalUrl !== null;
   const start = (endpoint: string) => {
     void send(`/api/teams/${teamId}/t3/connect`, {
       endpoint,
@@ -369,7 +385,7 @@ function ConnectT3({
       {waiting ? (
         <Approve
           teamId={teamId}
-          url={approval}
+          url={approvalUrl}
           pasteCallback={t3.pasteCallback}
           agentName={agentName}
           reload={reload}
@@ -436,11 +452,12 @@ export function ReconnectT3({
 }) {
   const { send, busy, error, permitted } = useSetupRequest();
   const [approval, setApproval] = useState<string | null>(null);
-  if (renewal.signIn === 'waiting' && approval !== null)
+  const approvalUrl = approval ?? renewal.authorizationUrl;
+  if (renewal.signIn === 'waiting' && approvalUrl !== null)
     return (
       <Approve
         teamId={teamId}
-        url={approval}
+        url={approvalUrl}
         pasteCallback={renewal.pasteCallback}
         agentName="智能体"
         reload={onDone}
@@ -931,7 +948,12 @@ export function AgentSetup({
   let next: ReactNode = null;
   if (agent.lifecycle !== 'active')
     next = <p className="muted">{agent.name} 已停用，无法唤醒。</p>;
-  else if (t3.status === null) next = <p className="muted">正在查看 T3…</p>;
+  else if (t3.status === null)
+    next = (
+      <p className="muted">
+        {t3.failed ? '暂时读不到 T3 的状态，稍后会自动再试。' : '正在查看 T3…'}
+      </p>
+    );
   else if (t3.status.provisioned && connection === null)
     next = <p className="muted">正在连接 T3…</p>;
   else if (!t3Ready || reconnecting)
