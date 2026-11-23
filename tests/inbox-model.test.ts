@@ -14,7 +14,7 @@ const OTHER_MODEL = 'fixture-id-4';
 const signal = () => new AbortController().signal;
 
 async function mention(f: Fixture) {
-  await f.comm.post(
+  await f.store.messages.post(
     f.principal,
     f.teamId,
     f.channelId,

@@ -100,7 +100,7 @@ try {
   });
   const nonce = 'INBOX_NATIVE_' + randomUUID();
   stage = 'mention-wake-and-result';
-  const source = await store.communication.post(
+  const source = await store.messages.post(
     { kind: 'human', humanId: context.humanId },
     context.teamId,
     context.channelId,
@@ -119,12 +119,9 @@ try {
   const deadline = Date.now() + 300000;
   // Source event ID is resolved through an authorized bounded page in this fresh disposable channel.
   const event = (
-    await store.communication.events(
-      principal,
-      context.teamId,
-      context.channelId,
-      { limit: 100 },
-    )
+    await store.messages.events(principal, context.teamId, context.channelId, {
+      limit: 100,
+    })
   ).items.find((e) => e.fact.messageId === source.id);
   if (!event) throw new Error('Missing source event');
   // The trusted worker claim is observed locally; identity is still independently checked via Team MCP below.

@@ -32,7 +32,7 @@ const projectList: unknown = JSON.parse(
 );
 
 async function mention(f: Fixture, topicId: TopicId | null = null) {
-  await f.comm.post(
+  await f.store.messages.post(
     f.principal,
     f.teamId,
     f.channelId,
@@ -89,10 +89,15 @@ await test('a channel is a T3 project in the space: its own conversation and eve
   const f = await inboxFixture();
   try {
     const { asked, provisioner } = space(f);
-    const topic = await f.comm.createTopic(f.principal, f.teamId, f.channelId, {
-      operationKey: key(),
-      title: 'Logo',
-    });
+    const topic = await f.store.topics.createTopic(
+      f.principal,
+      f.teamId,
+      f.channelId,
+      {
+        operationKey: key(),
+        title: 'Logo',
+      },
+    );
     f.wire.values.t3_thread_read = assistantRead('Answered');
     for (const where of [null, topic.id]) {
       await mention(f, where);
@@ -102,7 +107,11 @@ await test('a channel is a T3 project in the space: its own conversation and eve
     // One folder for the channel, named from it, asked for each new thread.
     assert.equal(asked.length, 2);
     assert.equal(new Set(asked).size, 1);
-    const channel = await f.comm.channel(f.principal, f.teamId, f.channelId);
+    const channel = await f.store.channels.channel(
+      f.principal,
+      f.teamId,
+      f.channelId,
+    );
     assert.equal(asked[0], spaceDirectory(channel.name, f.channelId));
     // Two threads, both in the channel's project, at its root.
     const launches = calls(f, 't3_thread_launch');
@@ -281,7 +290,7 @@ await test('a message’s files are in the channel’s folder before the agent i
     const { provisioner } = space(f);
     const content = Buffer.from('the error log');
     const sha256 = createHash('sha256').update(content).digest('hex');
-    const file = await f.comm.upload(
+    const file = await f.store.files.upload(
       f.principal,
       f.teamId,
       f.channelId,
@@ -298,7 +307,7 @@ await test('a message’s files are in the channel’s folder before the agent i
         keep: () => Promise.resolve(),
       },
     );
-    await f.comm.post(f.principal, f.teamId, f.channelId, {
+    await f.store.messages.post(f.principal, f.teamId, f.channelId, {
       ...postInput({ mentions: [{ kind: 'agent', id: f.agent.id }] }),
       attachments: [file.id],
     });

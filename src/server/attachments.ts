@@ -47,7 +47,7 @@ export function registerAttachments(
     const { teamId, channelId } = ChannelPath.parse(request.params);
     const file = Upload.parse(request.body);
     if (file.size > ATTACHMENT_MOST_BYTES) throw new DomainError('too-large');
-    await store.communication.mayUpload(
+    await store.files.mayUpload(
       principal(request),
       teamId,
       channelId,
@@ -59,7 +59,7 @@ export function registerAttachments(
   app.post(base, async (request, reply) => {
     const { teamId, channelId } = ChannelPath.parse(request.params);
     const { operationKey, name, sha256 } = Register.parse(request.body);
-    const attachment = await store.communication.upload(
+    const attachment = await store.files.upload(
       principal(request),
       teamId,
       channelId,
@@ -82,14 +82,14 @@ export function registerAttachments(
   // A person joined to the channel removes a file from its message.
   app.post(base + '/:attachmentId/remove', async (request) => {
     const { teamId, channelId, attachmentId } = FilePath.parse(request.params);
-    const { sha256, ...removal } = await store.communication.removeAttachment(
+    const { sha256, ...removal } = await store.files.removeAttachment(
       principal(request),
       teamId,
       channelId,
       attachmentId,
       z.strictObject({ operationKey: OperationKey }).parse(request.body),
     );
-    await store.communication.release(sha256, () => files.remove(sha256));
+    await store.files.release(sha256, () => files.remove(sha256));
     return removal;
   });
   // The files of every channel the person is in, newest first.
@@ -101,7 +101,7 @@ export function registerAttachments(
         channelId: ChannelId.optional(),
       })
       .parse(request.query);
-    return store.communication.files(
+    return store.files.files(
       principal(request),
       teamId,
       before ?? null,
@@ -120,14 +120,14 @@ export function registerAttachments(
       .parse(request.query);
     const p = principal(request);
     const [messages, files] = await Promise.all([
-      store.communication.searchMessages(p, teamId, q),
-      store.communication.files(p, teamId, null, 10, null, q),
+      store.messages.searchMessages(p, teamId, q),
+      store.files.files(p, teamId, null, 10, null, q),
     ]);
     return { messages, files: files.items };
   });
   app.get(base + '/:attachmentId', async (request, reply) => {
     const { teamId, channelId, attachmentId } = FilePath.parse(request.params);
-    const { attachment, sha256 } = await store.communication.attachment(
+    const { attachment, sha256 } = await store.files.attachment(
       principal(request),
       teamId,
       channelId,
@@ -208,8 +208,8 @@ export function sweepAttachments(
 ) {
   const sweep = async () => {
     try {
-      for (const sha256 of await store.communication.sweepUnbound(Date.now()))
-        await store.communication.release(sha256, () => files.remove(sha256));
+      for (const sha256 of await store.files.sweepUnbound(Date.now()))
+        await store.files.release(sha256, () => files.remove(sha256));
     } catch (error) {
       failed(error);
     }
@@ -252,8 +252,8 @@ export async function unplaceOnce(
   remove: FileRemover,
   signal: AbortSignal,
 ) {
-  for (const row of await store.communication.unplacings()) {
+  for (const row of await store.files.unplacings()) {
     await remove(row.directory, row.attachmentId, signal);
-    await store.communication.unplaced(row.attachmentId);
+    await store.files.unplaced(row.attachmentId);
   }
 }

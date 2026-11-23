@@ -3,7 +3,15 @@ import { notificationRepository } from './notify.js';
 import { inboxRepository } from './inbox.js';
 import { inboxViews } from './inbox-views.js';
 import { taskRepository } from './tasks.js';
-import { communicationRepository } from './communication.js';
+import { channelAccess } from './channel-access.js';
+import { factsOf } from './facts.js';
+import { messageViews } from './message-views.js';
+import { channelRepository } from './channels.js';
+import { topicRepository } from './topics.js';
+import { messageRepository } from './messages.js';
+import { fileRepository } from './files.js';
+import { reactionRepository } from './reactions.js';
+import { pinRepository } from './pins.js';
 import { asc } from 'drizzle-orm';
 import { AVATAR_LIMIT, agentRepository, avatarType } from './agents.js';
 import type { Principal } from '../domain/agents.js';
@@ -52,8 +60,15 @@ export async function openStore(url: string) {
   const d = await openDatabase(url);
   const { q, atomic } = d;
   const agentStore = agentRepository(d);
-  const communicationStore = communicationRepository(d, agentStore);
-  const tasks = taskRepository(d, agentStore, communicationStore);
+  // What every channel's repositories share, made once so a read asks each
+  // question once.
+  const gate = channelAccess(d, agentStore);
+  const facts = factsOf(d, agentStore);
+  const views = messageViews(d);
+  const channels = channelRepository(d, agentStore, gate, facts);
+  const topics = topicRepository(d, gate, facts, views);
+  const messages = messageRepository(d, agentStore, gate, facts, views);
+  const tasks = taskRepository(d, agentStore, channels, topics, messages);
   /** A mailbox's local part as a handle, numbered when already taken. */
   async function freeUsername(email: string) {
     const local = email
@@ -80,11 +95,16 @@ export async function openStore(url: string) {
       listen: d.listen,
       /** Which database this is, to tell it from a replacement. */
       identity: d.identity,
-      inbox: inboxRepository(d, agentStore, communicationStore, tasks),
+      inbox: inboxRepository(d, agentStore, channels, topics, messages, tasks),
       /** What the workspace shows a person about deliveries and workers. */
-      inboxViews: inboxViews(d, agentStore, communicationStore),
+      inboxViews: inboxViews(d, agentStore, channels),
       tasks,
-      communication: communicationStore,
+      channels,
+      topics,
+      messages,
+      files: fileRepository(d, gate, facts, views),
+      reactions: reactionRepository(d, gate, views),
+      pins: pinRepository(d, gate, views),
       operations: operationJournal(d),
       agents: agentStore,
       managed: managedRepository(d, agentStore),
@@ -152,7 +172,7 @@ export async function openStore(url: string) {
             await q()
               .insert(tables.memberships)
               .values({ humanId: human.id, teamId: team.id });
-            await communicationStore.welcome(human.id, team.id);
+            await channels.welcome(human.id, team.id);
             return human;
           }
           // A unique singleton fences two first sign-ins at once.
@@ -165,7 +185,7 @@ export async function openStore(url: string) {
             .insert(tables.memberships)
             .values({ humanId: human.id, teamId: team.id });
           // The first channel, made the way every channel is (nested savepoint).
-          await communicationStore.createChannel(
+          await channels.createChannel(
             { kind: 'human', humanId: human.id },
             team.id,
             {

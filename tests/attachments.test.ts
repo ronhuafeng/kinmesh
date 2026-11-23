@@ -190,8 +190,8 @@ await test('an upload no message took is gone after a day, and its bytes with it
     await raw
       .prepare('UPDATE attachments SET created_at = created_at - 86400001')
       .run();
-    for (const sha256 of await f.store.communication.sweepUnbound(Date.now()))
-      await f.store.communication.release(sha256, () => files.remove(sha256));
+    for (const sha256 of await f.store.files.sweepUnbound(Date.now()))
+      await f.store.files.release(sha256, () => files.remove(sha256));
     assert.equal(
       Number(
         await raw.prepare('SELECT count(*) FROM attachments').pluck().get(),
@@ -355,7 +355,7 @@ await test('anyone joined removes a file: it is gone everywhere, the message say
     assert.deepEqual(await files(f.cookies), []);
     assert.equal((await remove({ cookies: f.cookies })).statusCode, 404);
     // The message keeps its text and says who removed a file, and when.
-    const message = await f.comm.message(
+    const message = await f.store.messages.message(
       f.principal,
       f.teamId,
       f.channelId,

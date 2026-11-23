@@ -17,7 +17,7 @@ import { key, postInput } from './communication-helpers.js';
 type Fixture = Awaited<ReturnType<typeof inboxFixture>>;
 const signal = () => new AbortController().signal;
 async function mention(f: Fixture) {
-  await f.comm.post(
+  await f.store.messages.post(
     f.principal,
     f.teamId,
     f.channelId,
@@ -74,7 +74,7 @@ await test('a blocked delivery records the precondition it lost, not one catch-a
   );
   assert.equal(
     await causeAfter(async (f) => {
-      await f.comm.enroll(
+      await f.store.channels.enroll(
         f.principal,
         f.teamId,
         f.channelId,
@@ -206,7 +206,7 @@ await test('owner resume needs access to the delivery’s channel', async () => 
   try {
     const claim = await mention(f);
     await f.inbox.defer(claim, 'blocked', 'not-in-channel');
-    await f.comm.membership(
+    await f.store.channels.membership(
       f.principal,
       f.teamId,
       f.channelId,

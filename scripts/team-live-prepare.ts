@@ -80,7 +80,7 @@ try {
     profile('Live Reviewer', 'reviewer'),
   );
   for (const a of [developer, reviewer])
-    await store.communication.enroll(
+    await store.channels.enroll(
       p,
       team.team.id,
       channelId,
@@ -103,7 +103,7 @@ try {
     mode: 0o600,
     flag: 'wx',
   });
-  const message = await store.communication.post(p, team.team.id, channelId, {
+  const message = await store.messages.post(p, team.team.id, channelId, {
     operationKey: randomUUID(),
     body: 'kinmesh-read-proof-' + randomUUID(),
     topicId: null,

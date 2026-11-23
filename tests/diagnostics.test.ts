@@ -52,8 +52,8 @@ await test('a failure leaves one record to diagnose it, and nothing private', as
     const marker = 'private-body-' + randomUUID();
 
     // An unknown failure: the response says nothing, the log says what failed.
-    const create = store.communication.createChannel.bind(store.communication);
-    store.communication.createChannel = () => {
+    const create = store.channels.createChannel.bind(store.channels);
+    store.channels.createChannel = () => {
       throw Object.assign(new Error('could not write to file'), {
         code: '58030',
       });
@@ -86,7 +86,7 @@ await test('a failure leaves one record to diagnose it, and nothing private', as
       assert.equal(written.includes(secret), false);
 
     // A refusal caused by a constraint keeps the constraint's name.
-    store.communication.createChannel = create;
+    store.channels.createChannel = create;
     for (const expected of [201, 409]) {
       const made = await app.inject({
         method: 'POST',

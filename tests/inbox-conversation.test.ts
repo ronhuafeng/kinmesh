@@ -25,7 +25,7 @@ const Args = z.record(z.string(), z.unknown());
 const RUN = z.string().parse(launched.runId);
 
 async function mention(f: Fixture, topicId: TopicId | null = null) {
-  await f.comm.post(
+  await f.store.messages.post(
     f.principal,
     f.teamId,
     f.channelId,
@@ -126,7 +126,7 @@ await test('an agent keeps one T3 conversation per channel: later messages conti
     // Its run is read after the answer already published, not from the start.
     const reads = calls(f, 't3_thread_read');
     assert.equal(reads.at(-1)?.afterPosition, 2);
-    const reply = await f.comm.message(
+    const reply = await f.store.messages.message(
       f.principal,
       f.teamId,
       f.channelId,
@@ -175,7 +175,7 @@ await test('a run waiting for approval holds no message back: the next steers it
       1,
     );
     const replies = (
-      await f.comm.history(f.principal, f.teamId, f.channelId)
+      await f.store.messages.history(f.principal, f.teamId, f.channelId)
     ).items.filter((m) => m.author.kind === 'agent');
     assert.equal(replies.length, 1);
   } finally {
@@ -250,7 +250,7 @@ await test('a message steered into a run that is then interrupted is sent again 
     assert.equal(answered.id, second.id);
     assert.equal(answered.state, 'acked', answered.reason);
     assert.notEqual(answered.resultMessageId, a.resultMessageId);
-    const reply = await f.comm.message(
+    const reply = await f.store.messages.message(
       f.principal,
       f.teamId,
       f.channelId,
@@ -605,7 +605,7 @@ await test('each topic is its own conversation; the channel outside topics is an
   const f = await inboxFixture();
   try {
     const topic = (title: string) =>
-      f.comm.createTopic(f.principal, f.teamId, f.channelId, {
+      f.store.topics.createTopic(f.principal, f.teamId, f.channelId, {
         operationKey: key(),
         title,
       });
@@ -686,7 +686,7 @@ await test('a thread deleted in T3 ends its conversation: the next message start
       String(launches[1]?.message),
       /^You are .+, an agent in the Kinmesh channel #/,
     );
-    const reply = await f.comm.message(
+    const reply = await f.store.messages.message(
       f.principal,
       f.teamId,
       f.channelId,
@@ -735,7 +735,7 @@ await test('a reply whose T3 item id is long, as pi’s are, is published', asyn
     };
     const delivery = await attempt(f);
     assert.equal(delivery.state, 'acked', delivery.reason);
-    const reply = await f.comm.message(
+    const reply = await f.store.messages.message(
       f.principal,
       f.teamId,
       f.channelId,

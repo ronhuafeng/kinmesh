@@ -102,10 +102,15 @@ await test('task domain algebra rejects invalid commands/transitions and never l
 await test('real task HTTP responsibility journey: human creation, developer claim/progress/reviewer handoff, technical approval and verified human acceptance', async () => {
   const f = await taskFixture();
   try {
-    const topic = await f.comm.createTopic(f.principal, f.teamId, f.channelId, {
-      operationKey: key(),
-      title: 'Task context',
-    });
+    const topic = await f.store.topics.createTopic(
+      f.principal,
+      f.teamId,
+      f.channelId,
+      {
+        operationKey: key(),
+        title: 'Task context',
+      },
+    );
     const create = await f.app.inject({
       method: 'POST',
       url: f.taskPath,
@@ -202,7 +207,7 @@ await test('real task HTTP responsibility journey: human creation, developer cla
     assert.equal(events[3]?.before?.state.owner?.id, f.agent.id);
     assert.equal(events[3].after.state.owner?.id, f.agent.id);
     const facts = (
-      await f.comm.events(f.principal, f.teamId, f.channelId)
+      await f.store.messages.events(f.principal, f.teamId, f.channelId)
     ).items.filter((e) => e.fact.kind === 'task.changed');
     assert.equal(facts.length, 6);
     assert.equal(facts.at(-1)?.fact.sourceEventId, facts.at(-2)?.fact.id);
@@ -325,7 +330,9 @@ await test('two different authenticated agent processes race one proposed task; 
       1,
     );
     assert.equal(
-      (await f.comm.events(f.principal, f.teamId, f.channelId)).items.filter(
+      (
+        await f.store.messages.events(f.principal, f.teamId, f.channelId)
+      ).items.filter(
         (e) => e.fact.kind === 'task.changed' && e.fact.taskAction === 'claim',
       ).length,
       1,
@@ -586,7 +593,7 @@ await test("the assigned reviewer/owner and the task's acceptor control decision
       await raw
         .prepare('INSERT INTO memberships VALUES (?, ?)')
         .run(humanId, f.teamId);
-      await f.comm.enroll(
+      await f.store.channels.enroll(
         f.principal,
         f.teamId,
         f.channelId,
@@ -621,7 +628,7 @@ await test('all task reads/writes enforce team/channel access; missing task IDs 
   const f = await taskFixture();
   try {
     const task = (await f.create()).task;
-    const other = await f.comm.createChannel(f.principal, f.teamId, {
+    const other = await f.store.channels.createChannel(f.principal, f.teamId, {
       operationKey: key(),
       name: 'Private',
     });
@@ -657,7 +664,7 @@ await test('all task reads/writes enforce team/channel access; missing task IDs 
       ).statusCode,
       403,
     );
-    await f.comm.enroll(
+    await f.store.channels.enroll(
       f.principal,
       f.teamId,
       f.channelId,
@@ -679,10 +686,15 @@ await test('all task reads/writes enforce team/channel access; missing task IDs 
         ),
       rejected('not-found'),
     );
-    const topic = await f.comm.createTopic(f.principal, f.teamId, other.id, {
-      operationKey: key(),
-      title: 'Different channel',
-    });
+    const topic = await f.store.topics.createTopic(
+      f.principal,
+      f.teamId,
+      other.id,
+      {
+        operationKey: key(),
+        title: 'Different channel',
+      },
+    );
     await assert.rejects(
       () => f.create({ topicId: topic.id }),
       rejected('not-found'),
@@ -791,7 +803,7 @@ await test('task scope separation and filtered shared outbox prevent channel-onl
       (await f.app.inject({ url: f.taskPath, headers: f.headers })).statusCode,
       403,
     );
-    const limited = await f.comm.events(
+    const limited = await f.store.messages.events(
       f.agentPrincipal,
       f.teamId,
       f.channelId,
@@ -801,12 +813,12 @@ await test('task scope separation and filtered shared outbox prevent channel-onl
       false,
     );
     const hiddenFact = (
-      await f.comm.events(f.principal, f.teamId, f.channelId)
+      await f.store.messages.events(f.principal, f.teamId, f.channelId)
     ).items.find((e) => e.fact.kind === 'task.changed');
     assert.ok(hiddenFact);
     await assert.rejects(
       async () =>
-        f.comm.post(
+        f.store.messages.post(
           f.agentPrincipal,
           f.teamId,
           f.channelId,
@@ -816,9 +828,9 @@ await test('task scope separation and filtered shared outbox prevent channel-onl
     );
 
     assert.equal(
-      (await f.comm.events(f.developer, f.teamId, f.channelId)).items.some(
-        (e) => e.fact.kind === 'task.changed',
-      ),
+      (
+        await f.store.messages.events(f.developer, f.teamId, f.channelId)
+      ).items.some((e) => e.fact.kind === 'task.changed'),
       true,
     );
     const onlyWrite = await f.store.agents.issue(
@@ -963,8 +975,9 @@ await test('task CAS, audit, link and shared outbox roll back together on inject
   try {
     const created = await f.create();
     const task = created.task;
-    const before = (await f.comm.events(f.principal, f.teamId, f.channelId))
-      .items.length;
+    const before = (
+      await f.store.messages.events(f.principal, f.teamId, f.channelId)
+    ).items.length;
     const command = commandInput(task, { type: 'claim' });
     await raw.trigger('fail_task_audit', 'task_events');
     await assert.rejects(() =>
@@ -976,7 +989,8 @@ await test('task CAS, audit, link and shared outbox roll back together on inject
       'proposed',
     );
     assert.equal(
-      (await f.comm.events(f.principal, f.teamId, f.channelId)).items.length,
+      (await f.store.messages.events(f.principal, f.teamId, f.channelId)).items
+        .length,
       before,
     );
     await raw.dropTrigger('fail_task_audit', 'task_events');
@@ -1026,7 +1040,7 @@ await test('task CAS, audit, link and shared outbox roll back together on inject
     ])
       await assert.rejects(() => raw.exec(sql));
     const fact = (
-      await f.comm.events(f.principal, f.teamId, f.channelId)
+      await f.store.messages.events(f.principal, f.teamId, f.channelId)
     ).items.find((e) => e.fact.id === created.eventId);
     assert.ok(fact);
     assert.equal(TaskFact.safeParse(fact.fact).success, true);
@@ -1158,7 +1172,11 @@ await test('service reopen preserves task ownership/criteria/review decisions, e
       f.channelId,
       task.id,
     );
-    const facts = await f.comm.events(f.principal, f.teamId, f.channelId);
+    const facts = await f.store.messages.events(
+      f.principal,
+      f.teamId,
+      f.channelId,
+    );
     await f.app.close();
     const store = await f.open();
     app = await createApp(f.config, store);
@@ -1183,7 +1201,7 @@ await test('service reopen preserves task ownership/criteria/review decisions, e
       history,
     );
     assert.deepEqual(
-      await store.communication.events(f.principal, f.teamId, f.channelId),
+      await store.messages.events(f.principal, f.teamId, f.channelId),
       facts,
     );
     assert.equal(

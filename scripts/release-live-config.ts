@@ -265,7 +265,7 @@ export async function validateFixture(
       (await store.inbox.status()).some((r) => r.count > 0)
     )
       throw new Error('Fresh task and Inbox required');
-    await store.communication.message(
+    await store.messages.message(
       p,
       context.teamId,
       context.channelId,
@@ -275,7 +275,7 @@ export async function validateFixture(
       { kind: 'agent', id: context.reviewerId },
       { kind: 'human', id: context.humanId },
     ] as const)
-      await store.communication.validateParticipant(
+      await store.channels.validateParticipant(
         p,
         context.teamId,
         context.channelId,

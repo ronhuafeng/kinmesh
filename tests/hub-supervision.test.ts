@@ -639,7 +639,7 @@ await test(
   { timeout: 25000 },
   async () => {
     const seed = await inboxFixture();
-    await seed.comm.post(
+    await seed.store.messages.post(
       seed.principal,
       seed.teamId,
       seed.channelId,

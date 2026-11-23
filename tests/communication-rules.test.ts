@@ -15,11 +15,16 @@ await test('communication SQL constraints and immutable facts prevent cross-chan
   await raw.pragma('foreign_keys = ON');
   try {
     await f.invite();
-    const topic = await f.comm.createTopic(f.principal, f.teamId, f.channelId, {
-      operationKey: key(),
-      title: 'One',
-    });
-    await f.comm.post(
+    const topic = await f.store.topics.createTopic(
+      f.principal,
+      f.teamId,
+      f.channelId,
+      {
+        operationKey: key(),
+        title: 'One',
+      },
+    );
+    await f.store.messages.post(
       f.principal,
       f.teamId,
       f.channelId,
@@ -28,7 +33,7 @@ await test('communication SQL constraints and immutable facts prevent cross-chan
         mentions: [{ kind: 'agent', id: f.agent.id }],
       }),
     );
-    const other = await f.comm.createChannel(f.principal, f.teamId, {
+    const other = await f.store.channels.createChannel(f.principal, f.teamId, {
       operationKey: key(),
       name: 'Other',
     });

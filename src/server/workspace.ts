@@ -226,9 +226,9 @@ export function registerWorkspace(
     if (!human || !membership) throw new DomainError('forbidden');
     const teamId = membership.team.id;
     const open = (id: z.infer<typeof ChannelId>) =>
-      store.communication.channel(principal, teamId, id);
+      store.channels.channel(principal, teamId, id);
     const [channels, named] = await together([
-      store.communication.channels(principal, teamId, {
+      store.channels.channels(principal, teamId, {
         limit: 100,
         ...(query.channelsCursor ? { cursor: query.channelsCursor } : {}),
       }),
@@ -267,13 +267,11 @@ export function registerWorkspace(
       direct,
     ] = await together([
       store.agents.workspaceProfiles(principal, teamId),
-      channel
-        ? store.communication.joinedAgents(principal, teamId, channel.id)
-        : [],
+      channel ? store.channels.joinedAgents(principal, teamId, channel.id) : [],
       store.inboxViews.liveness(principal, teamId),
       // The newest messages, reaching back as far as the view has scrolled.
       channel
-        ? store.communication.history(
+        ? store.messages.history(
             principal,
             teamId,
             channel.id,
@@ -301,39 +299,37 @@ export function registerWorkspace(
       renewal(principal, teamId),
       store.managed.teamConnection(principal, teamId),
       store.people(principal, teamId, now),
-      channel
-        ? store.communication.joinedHumans(principal, teamId, channel.id)
-        : [],
-      store.communication.latest(principal, teamId),
-      store.communication.leftChannels(principal, teamId),
-      store.communication.publicChannels(principal, teamId),
+      channel ? store.channels.joinedHumans(principal, teamId, channel.id) : [],
+      store.channels.latest(principal, teamId),
+      store.channels.leftChannels(principal, teamId),
+      store.channels.publicChannels(principal, teamId),
       store.managed.teamBindings(principal, teamId),
       store.managed.teamMcpPresence(principal, teamId),
       store.agents.avatars(principal, teamId),
       store.notifications.quiet(principal.humanId, teamId),
       channel
-        ? store.communication.topics(principal, teamId, channel.id, {
+        ? store.topics.topics(principal, teamId, channel.id, {
             ...(query.topicsCursor ? { cursor: query.topicsCursor } : {}),
           })
         : { items: [], nextCursor: null },
       channel
-        ? store.communication.activeTopics(principal, teamId, channel.id, 10)
+        ? store.topics.activeTopics(principal, teamId, channel.id, 10)
         : { items: [], more: false },
       // Where you stopped reading what is open, to open it there.
       channel
-        ? store.communication.firstUnread(
+        ? store.channels.firstUnread(
             principal,
             teamId,
             channel.id,
             query.topicId ?? null,
           )
         : null,
-      channel ? store.communication.pins(principal, teamId, channel.id) : [],
-      store.communication.archivedChannels(principal, teamId),
+      channel ? store.pins.pins(principal, teamId, channel.id) : [],
+      store.channels.archivedChannels(principal, teamId),
       channel
-        ? store.communication.isArchived(principal, teamId, channel.id)
+        ? store.channels.isArchived(principal, teamId, channel.id)
         : false,
-      store.communication.directChannels(principal, teamId),
+      store.channels.directChannels(principal, teamId),
     ]);
     const agents = profiles.agents;
     // In the order the profiles are listed: one read for all.
@@ -398,12 +394,7 @@ export function registerWorkspace(
             channel.id,
             messageIds,
           ),
-          store.communication.reactions(
-            principal,
-            teamId,
-            channel.id,
-            messageIds,
-          ),
+          store.reactions.reactions(principal, teamId, channel.id, messageIds),
         ])
       : [[], [], []];
     // Every member reaches this route; what waits on them is theirs: tasks

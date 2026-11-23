@@ -36,9 +36,8 @@ export async function communicationFixture(
   const channelPath = `/api/teams/${f.teamId}/channels/${channelId}`;
   const channelsPath = `/api/teams/${f.teamId}/channels`;
   const headers = { authorization: 'Bearer ' + credential.token };
-  const comm = f.store.communication;
   function invite() {
-    return comm.enroll(
+    return f.store.channels.enroll(
       f.principal,
       f.teamId,
       channelId,
@@ -54,7 +53,6 @@ export async function communicationFixture(
     channelPath,
     channelsPath,
     headers,
-    comm,
     invite,
   };
 }

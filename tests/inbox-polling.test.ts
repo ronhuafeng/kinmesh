@@ -13,7 +13,7 @@ type Fixture = Awaited<ReturnType<typeof inboxFixture>>;
 const signal = () => new AbortController().signal;
 
 async function mention(f: Fixture) {
-  await f.comm.post(
+  await f.store.messages.post(
     f.principal,
     f.teamId,
     f.channelId,

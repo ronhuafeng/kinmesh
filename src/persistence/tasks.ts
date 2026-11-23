@@ -20,7 +20,9 @@ import {
 import { z } from 'zod';
 import * as s from './schema.js';
 import type { agentRepository } from './agents.js';
-import type { communicationRepository } from './communication.js';
+import type { channelRepository } from './channels.js';
+import type { topicRepository } from './topics.js';
+import type { messageRepository } from './messages.js';
 import {
   transactional,
   snapshotPage,
@@ -55,7 +57,9 @@ const decode = (value: string): unknown => JSON.parse(value);
 export function taskRepository(
   d: Database,
   agents: ReturnType<typeof agentRepository>,
-  communication: ReturnType<typeof communicationRepository>,
+  channels: ReturnType<typeof channelRepository>,
+  topics: ReturnType<typeof topicRepository>,
+  messages: ReturnType<typeof messageRepository>,
 ) {
   const { q, atomic, receipt } = transactional(d);
   async function access(
@@ -67,8 +71,8 @@ export function taskRepository(
     // Reading a public channel's tasks needs only reading it; anything
     // that changes a task needs joining it.
     await (scope === 'tasks:read'
-      ? communication.channel(p, teamId, channelId)
-      : communication.joinedChannel(p, teamId, channelId));
+      ? channels.channel(p, teamId, channelId)
+      : channels.joinedChannel(p, teamId, channelId));
     await agents.teamAccess(p, teamId, 'tasks:read', scope);
   }
   async function row(teamId: TeamId, channelId: ChannelId, id: TaskId) {
@@ -115,7 +119,7 @@ export function taskRepository(
     member: Member | null,
   ) {
     if (member !== null)
-      await communication.validateParticipant(p, teamId, channelId, member);
+      await channels.validateParticipant(p, teamId, channelId, member);
   }
   async function insertExecution(
     p: Principal,
@@ -377,8 +381,8 @@ export function taskRepository(
             await target(p, teamId, channelId, data.owner);
             await target(p, teamId, channelId, data.reviewer);
             if (data.topicId !== null)
-              await communication.topic(p, teamId, channelId, data.topicId);
-            await communication.validateCause(
+              await topics.topic(p, teamId, channelId, data.topicId);
+            await messages.validateCause(
               p,
               teamId,
               channelId,

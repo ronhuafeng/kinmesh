@@ -60,7 +60,7 @@ await test('/metrics reports the hub in Prometheus text, and nothing about anyon
     const channel = team.channels[0];
     assert.ok(channel);
     const marker = 'private-words-' + crypto.randomUUID();
-    await h.store.communication.post(
+    await h.store.messages.post(
       { kind: 'human', humanId: ada.id },
       team.team.id,
       channel.id,

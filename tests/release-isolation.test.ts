@@ -360,7 +360,7 @@ const invalid: [string, (f: Fixture) => void | Promise<void>][] = [
     async (f) => {
       const s = await openStore(f.team.database);
       try {
-        await s.communication.enroll(
+        await s.channels.enroll(
           { kind: 'human', humanId: f.team.humanId },
           f.team.teamId,
           f.team.channelId,
@@ -380,7 +380,7 @@ const invalid: [string, (f: Fixture) => void | Promise<void>][] = [
     async (f) => {
       const s = await openStore(f.inbox.database);
       try {
-        await s.communication.post(
+        await s.messages.post(
           { kind: 'human', humanId: f.inbox.humanId },
           f.inbox.teamId,
           f.inbox.channelId,
