@@ -1504,6 +1504,39 @@ test('the agent panel still walks an operator through a self-run worker binding'
 });
 
 /**
+ * Proves a workspace this page can't read (as after an update it predates)
+ * reloads the page once, and failing again shows the way back, not a blank
+ * page or a claim that Kinmesh is unreachable.
+ */
+test('a workspace the page cannot read reloads it once, then offers the way back', async ({
+  page,
+  hub,
+}) => {
+  await signIn(page, hub);
+  await page.route(
+    (url) => url.pathname === '/api/events',
+    (route) =>
+      route.fulfill({
+        status: 200,
+        contentType: 'text/event-stream',
+        body: 'event: workspace\ndata: {"not":"a workspace"}\n\n',
+      }),
+  );
+  let loads = 0;
+  page.on('load', () => {
+    loads++;
+  });
+  await page.reload();
+  await expect(
+    page.getByRole('heading', { name: '页面出了问题' }),
+  ).toBeVisible();
+  await expect(page.getByRole('button', { name: '重新加载' })).toBeVisible();
+  await expect(staleLine(page)).toHaveCount(0);
+  // One reload by itself, then it waits for the person.
+  expect(loads).toBe(2);
+});
+
+/**
  * Proves a read the network holds open still ends: after its timeout the
  * page says it can't reach Kinmesh, and once the hub answers again it
  * recovers by itself.
