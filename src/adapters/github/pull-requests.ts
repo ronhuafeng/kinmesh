@@ -6,6 +6,7 @@ import {
   commitChecks,
   type PullRequestRef,
 } from '../../domain/pull-requests.js';
+import { githubRequest } from './installations.js';
 
 /** Where Kinmesh reads GitHub, and with what, if anything. */
 export interface GitHubReader {
@@ -77,17 +78,11 @@ export function githubPullRequests(reader: GitHubReader): ReadPullRequest {
     const get = async (
       path: string,
     ): Promise<{ refused: Refusal } | { json: unknown }> => {
-      let response: Response;
+      let response: Awaited<ReturnType<typeof githubRequest>>;
       try {
-        response = await fetch(new URL(repo + path, reader.api), {
-          headers: {
-            accept: 'application/vnd.github+json',
-            'x-github-api-version': '2022-11-28',
-            'user-agent': 'kinmesh',
-            ...(token ? { authorization: `Bearer ${token}` } : {}),
-          },
-          redirect: 'error',
-          signal: AbortSignal.any([signal, AbortSignal.timeout(10_000)]),
+        response = await githubRequest(reader.api, repo + path, {
+          authorization: token ? `Bearer ${token}` : null,
+          signal,
         });
       } catch {
         return { refused: 'unreachable' };
@@ -101,8 +96,8 @@ export function githubPullRequests(reader: GitHubReader): ReadPullRequest {
         return { refused: 'rate-limited' };
       if (response.status === 401 || response.status === 403)
         return { refused: 'forbidden' };
-      if (!response.ok) return { refused: 'unreachable' };
-      return { json: (await response.json().catch(() => null)) as unknown };
+      if (response.status >= 300) return { refused: 'unreachable' };
+      return { json: response.json };
     };
     const refusal = (answer: { refused: Refusal } | { json: unknown }) =>
       'refused' in answer ? answer.refused : null;

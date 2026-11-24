@@ -1,10 +1,10 @@
 import { z } from 'zod';
 import { DomainError } from '../../domain/errors.js';
 import type {
-  OpeningRefusal,
+  GitHubRefusal,
   PullRequestRef,
 } from '../../domain/pull-requests.js';
-import { GitHubRefused } from './installations.js';
+import { GitHubRefused, githubRequest } from './installations.js';
 
 /** A change to open as a pull request, as Kinmesh words it on GitHub. */
 export interface Opening {
@@ -24,7 +24,7 @@ export interface Opening {
   marker: string;
 }
 
-const refused = (reason: OpeningRefusal, kind: 'forbidden' | 'conflict') =>
+const refused = (reason: GitHubRefusal, kind: 'forbidden' | 'conflict') =>
   new DomainError(kind, { reason });
 const Ref = z.object({ object: z.object({ sha: z.string() }) });
 const Commit = z.object({
@@ -52,32 +52,17 @@ export async function openPullRequest(
     path: string,
     body?: unknown,
   ): Promise<{ status: number; json: unknown }> {
-    let response: Response;
-    try {
-      response = await fetch(new URL(path, api), {
-        method,
-        headers: {
-          accept: 'application/vnd.github+json',
-          'x-github-api-version': '2022-11-28',
-          'user-agent': 'kinmesh',
-          authorization: `Bearer ${token}`,
-          ...(body === undefined ? {} : { 'content-type': 'application/json' }),
-        },
-        ...(body === undefined ? {} : { body: JSON.stringify(body) }),
-        redirect: 'error',
-        signal: AbortSignal.timeout(20_000),
-      });
-    } catch {
-      throw new GitHubRefused(0);
-    }
+    const answer = await githubRequest(api, path, {
+      method,
+      authorization: `Bearer ${token}`,
+      body,
+      timeoutMs: 20_000,
+    });
     // Without the app's access GitHub says 403, or 404 to hide the
     // repository: either way it is not one the team connected.
-    if (response.status === 403)
+    if (answer.status === 403)
       throw refused('repository-not-connected', 'forbidden');
-    return {
-      status: response.status,
-      json: await response.json().catch(() => null),
-    };
+    return answer;
   }
   /** A step that must succeed, its answer parsed by `schema`. */
   async function must<T>(
