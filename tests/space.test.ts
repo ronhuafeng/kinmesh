@@ -9,6 +9,7 @@ import {
   readlinkSync,
   rmSync,
   statSync,
+  symlinkSync,
   writeFileSync,
 } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -326,6 +327,17 @@ await test('the provisioner writes an agent’s Codex home: Team MCP as the agen
       ['auth.json', 'config.toml'],
       'no temporary file is left behind',
     );
+    // The machine's sign-in moved: the home follows it. A home's own
+    // sign-in file is its own, and stays.
+    const signIn = join(home, 'auth.json');
+    rmSync(signIn);
+    symlinkSync(join(dir, 'earlier-auth.json'), signIn);
+    await ask('PUT', { ...teamMcp, token: 'kma_second' });
+    assert.equal(readlinkSync(signIn), codexAuth);
+    rmSync(signIn);
+    writeFileSync(signIn, '{"own":true}');
+    await ask('PUT', { ...teamMcp, token: 'kma_second' });
+    assert.equal(readFileSync(signIn, 'utf8'), '{"own":true}');
     // Nothing else is an agent, a credential or a Team MCP address.
     for (const [body, id] of [
       [teamMcp, '../escape'],

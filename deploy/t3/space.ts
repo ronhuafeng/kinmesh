@@ -16,6 +16,7 @@ import {
   readSync,
   lstatSync,
   readdirSync,
+  readlinkSync,
   realpathSync,
   renameSync,
   rmSync,
@@ -84,14 +85,24 @@ function writeCodex(
   mkdirSync(home, { recursive: true, mode: 0o700 });
   const auth = join(home, 'auth.json');
   const signIn = options.codexAuth ?? join(homedir(), '.codex', 'auth.json');
-  let linked = true;
+  let there: ReturnType<typeof lstatSync> | null = null;
   try {
-    lstatSync(auth);
+    there = lstatSync(auth);
   } catch {
-    linked = false;
+    // No sign-in yet.
   }
-  if (!linked && options.codexAuth !== null && existsSync(signIn))
-    symlinkSync(signIn, auth);
+  // Linked to the machine's sign-in, kept pointing at it when it moves; a
+  // home's own sign-in file is left alone.
+  if (options.codexAuth !== null && existsSync(signIn)) {
+    if (there?.isSymbolicLink() && readlinkSync(auth) !== signIn) rmSync(auth);
+    if (there === null || there.isSymbolicLink()) {
+      try {
+        symlinkSync(signIn, auth);
+      } catch {
+        // Already the right link.
+      }
+    }
+  }
   const file = join(home, 'config.toml');
   const temporary = join(home, `.config.${randomBytes(6).toString('hex')}`);
   // A JSON string is a TOML basic string.
