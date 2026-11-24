@@ -47,6 +47,7 @@ export function registerTasks(app: FastifyInstance, store: Store) {
     'cancel',
     'link-execution',
     'edit',
+    'link-pull-request',
   ] as const) {
     app.post(base + '/:taskId/' + type, async (request) => {
       const { teamId, channelId, taskId } = TaskPath.parse(request.params);
@@ -69,6 +70,15 @@ export function registerTasks(app: FastifyInstance, store: Store) {
       channelId,
       taskId,
       PageInput.parse(request.query),
+    );
+  });
+  app.get(base + '/:taskId/pull-requests', async (request) => {
+    const { teamId, channelId, taskId } = TaskPath.parse(request.params);
+    return store.tasks.pullRequests(
+      principal(request),
+      teamId,
+      channelId,
+      taskId,
     );
   });
   app.get(base + '/:taskId/executions', async (request) => {

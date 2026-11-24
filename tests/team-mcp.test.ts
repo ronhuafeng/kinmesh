@@ -1,4 +1,5 @@
 import { test } from 'node:test';
+import { TaskPullRequestView } from '../src/domain/pull-requests.js';
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { spawn, type ChildProcess } from 'node:child_process';
@@ -689,6 +690,22 @@ await test('Team SDK topic/task creation, scoped request-review and external ref
       TaskResult,
     );
     assert.ok(requested.ok);
+    // A PR the agent says belongs to the task: its claim, attributed to it.
+    const linked = await call(
+      client,
+      'team_task_link_pull_request',
+      {
+        channelId: f.channelId,
+        taskId,
+        operationKey: key(),
+        expectedVersion: 4,
+        pullRequest: { repository: 'Acme/Widgets', number: 7 },
+      },
+      TaskResult,
+    );
+    assert.ok(linked.ok);
+    assert.equal(linked.data.task.state.status, 'review-requested');
+    assert.equal(linked.data.pullRequestLink?.author.kind, 'agent');
     const db = rawDatabase(f.dbPath);
     const counts = () =>
       Promise.all(
@@ -696,6 +713,7 @@ await test('Team SDK topic/task creation, scoped request-review and external ref
           'tasks',
           'task_events',
           'task_executions',
+          'task_pull_requests',
           'communication_outbox',
           'communication_operations',
         ].map(
@@ -755,6 +773,17 @@ await test('Team SDK topic/task creation, scoped request-review and external ref
       pageOf(TaskExecution),
     );
     assert.ok(refs.ok && refs.data.items.length === 1);
+    const pulls = await call(
+      client,
+      'team_task_pull_requests',
+      { channelId: f.channelId, taskId },
+      z.array(TaskPullRequestView),
+    );
+    assert.ok(pulls.ok);
+    assert.deepEqual(
+      pulls.data.map((l) => l.pullRequest),
+      [{ repository: 'Acme/Widgets', number: 7 }],
+    );
     assert.deepEqual(await counts(), before);
     await db.close();
   } finally {

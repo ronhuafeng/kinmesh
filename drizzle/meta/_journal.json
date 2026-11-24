@@ -190,6 +190,13 @@
       "when": 1795432343397,
       "tag": "0026_direct_channels",
       "breakpoints": true
+    },
+    {
+      "idx": 27,
+      "version": "7",
+      "when": 1795500197766,
+      "tag": "0027_task_pull_requests",
+      "breakpoints": true
     }
   ]
 }

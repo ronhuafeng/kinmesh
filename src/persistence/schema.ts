@@ -665,6 +665,43 @@ export const taskExecutions = pgTable(
     index('task_execution_order').on(t.taskId, t.position),
   ],
 );
+/** Pull requests said to belong to a task; immutable, like the task's audit. */
+export const taskPullRequests = pgTable(
+  'task_pull_requests',
+  {
+    position: integer('position').primaryKey().generatedByDefaultAsIdentity(),
+    id: text('id').notNull().unique(),
+    taskId: text('task_id')
+      .notNull()
+      .references(() => tasks.id),
+    /** `owner/name#number`, lower-cased: one pull request however it is cased. */
+    pullKey: text('pull_key').notNull(),
+    repository: text('repository').notNull(),
+    number: integer('number').notNull(),
+    author: text('author').notNull(),
+    createdAt: text('created_at').notNull(),
+  },
+  (t) => [
+    uniqueIndex('task_pull_request_once').on(t.taskId, t.pullKey),
+    index('task_pull_request_order').on(t.taskId, t.position),
+    index('task_pull_request_key').on(t.pullKey),
+    check('task_pull_request_author_json', json(t.author)),
+  ],
+);
+/**
+ * What GitHub last said about each linked pull request, and when Kinmesh
+ * last asked. The hub keeps it current; it is an observation, not a claim.
+ */
+export const githubPullRequests = pgTable(
+  'github_pull_requests',
+  {
+    pullKey: text('pull_key').primaryKey(),
+    observation: text('observation').notNull(),
+    /** When Kinmesh last asked GitHub, answered or not. */
+    checkedAt: millis('checked_at').notNull(),
+  },
+  (t) => [check('github_pull_request_json', json(t.observation))],
+);
 
 export const inboxCauses = pgTable(
   'inbox_causes',

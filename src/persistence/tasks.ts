@@ -23,6 +23,8 @@ import type { agentRepository } from './agents.js';
 import type { channelRepository } from './channels.js';
 import type { topicRepository } from './topics.js';
 import type { messageRepository } from './messages.js';
+import type { pullRequestRepository } from './pull-requests.js';
+import type { TaskPullRequest } from '../domain/pull-requests.js';
 import {
   transactional,
   snapshotPage,
@@ -60,6 +62,7 @@ export function taskRepository(
   channels: ReturnType<typeof channelRepository>,
   topics: ReturnType<typeof topicRepository>,
   messages: ReturnType<typeof messageRepository>,
+  pullRequests: ReturnType<typeof pullRequestRepository>,
 ) {
   const { q, atomic, receipt } = transactional(d);
   async function access(
@@ -158,6 +161,7 @@ export function taskRepository(
     executionLink: z.infer<typeof TaskExecution> | null,
     sourceEventId: string | null,
     sourceMessageId: string | null,
+    pullRequestLink: TaskPullRequest | null = null,
   ) {
     const id = randomUUID();
     const author = principalAuthor(p);
@@ -219,7 +223,12 @@ export function taskRepository(
     TaskEvent.parse({ ...event, position: inserted.position });
     await enqueueFact(q(), fact);
     await notifyFact(q(), fact);
-    return TaskResult.parse({ task, eventId: id, executionLink });
+    return TaskResult.parse({
+      task,
+      eventId: id,
+      executionLink,
+      pullRequestLink,
+    });
   }
   /** Whether a person is joined to the channel now. */
   async function joinedPerson(channelId: ChannelId, humanId: string) {
@@ -621,6 +630,10 @@ export function taskRepository(
                 ),
               );
             if (changed.count !== 1) throw new DomainError('conflict');
+            const pullRequestLink =
+              data.type === 'link-pull-request'
+                ? await pullRequests.link(p, id, data.pullRequest, time)
+                : null;
             let executionLink: z.infer<typeof TaskExecution> | null = null;
             if (data.type === 'link-execution')
               executionLink = await insertExecution(
@@ -651,6 +664,7 @@ export function taskRepository(
               executionLink,
               previous.id,
               null,
+              pullRequestLink,
             );
           },
         );
@@ -705,6 +719,19 @@ export function taskRepository(
               }),
             ),
         );
+      });
+    },
+    /** The pull requests linked to a task, with what GitHub last said. */
+    pullRequests(
+      p: Principal,
+      teamId: TeamId,
+      channelId: ChannelId,
+      id: TaskId,
+    ) {
+      return atomic(async () => {
+        await access(p, teamId, channelId);
+        await row(teamId, channelId, id);
+        return pullRequests.forTask(id);
       });
     },
     executions(

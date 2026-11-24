@@ -22,6 +22,7 @@ import { MemberChip } from './members.js';
 import { SideValue } from './due-and-priority.js';
 import { TaskDecision } from './decision.js';
 import { TaskHistory } from './task-history.js';
+import { TaskPullRequests } from './pull-requests.js';
 import { DecisionForm } from './decision.js';
 
 export function TaskPage({
@@ -173,6 +174,7 @@ export function TaskPage({
             </>
           }
         >
+          <TaskPullRequests task={task} data={data} path={path} />
           <TaskHistory task={task} path={path} data={data} />
           {chosen ? (
             <div className="task-actions">

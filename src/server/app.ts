@@ -22,6 +22,8 @@ import { startT3Provisioning } from './t3-provisioning.js';
 import { startGrantRenewal } from './worker-grants.js';
 import { startInboxExpiry } from './inbox-expiry.js';
 import { startAttachmentUpkeep } from './attachment-upkeep.js';
+import { startPullRequestUpkeep } from './pull-request-upkeep.js';
+import { githubPullRequests } from '../adapters/github/pull-requests.js';
 import { registerTeam } from './team.js';
 import { registerShutdown } from './shutdown.js';
 import { watchChanges } from './changes.js';
@@ -103,6 +105,7 @@ export async function createApp(
   registerSearch(app, store);
   startAttachmentUpkeep(app, store, files, config.space);
   registerTasks(app, store);
+  startPullRequestUpkeep(app, store, githubPullRequests(config.github));
   const notifier = registerNotifications(
     app,
     store,

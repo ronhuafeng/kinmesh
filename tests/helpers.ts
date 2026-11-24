@@ -23,6 +23,8 @@ export async function fixture() {
     KINMESH_DATABASE_URL: database.url,
     KINMESH_STATE: directory,
     KINMESH_SESSION_KEY: randomBytes(32).toString('hex'),
+    // Tests never ask the real GitHub: nothing listens on the discard port.
+    KINMESH_GITHUB_API: 'http://127.0.0.1:9',
     ...feishuEnv,
     ...filesEnv,
   });

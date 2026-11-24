@@ -725,7 +725,7 @@ Corners are tight and few, an instrument's rather than a toy's: the `rounded` to
   title; the description, unless it only repeats the title; on the left, in order of
   importance, the decision waiting on you (orange rule) only when one does, then where
   the task is now (its delivery lines, a reply linking to it in the chat, or
-  "任务已关闭。"), "完成标准" as a checklist, history as one timeline with faces, and
+  "任务已关闭。"), "完成标准" as a checklist, its PRs, history as one timeline with faces, and
   last one quiet row of what else you may do; on the right owner, reviewer, acceptor,
   then 截止 and 优先级 only when set (a due day past and open in the danger colour;
   normal priority is not said), each led by its glyph (a calendar, a flag) where a face
@@ -743,6 +743,17 @@ Corners are tight and few, an instrument's rather than a toy's: the `rounded` to
   then 取消任务, the only red — are quiet buttons with no
   ellipsis; choosing one opens its note (and, to hand on, who to) in place of the row,
   with **返回**. Disabled with a reason only when offline.
+- **PRs**: headed "PR" with a `+` beside it while the task is open (an ended task
+  without any shows nothing). Each row reads like history — when it was linked, the
+  face of who linked it, then `owner/name#12` and its title as the link to GitHub,
+  and what GitHub last said in the muted ink: 进行中, 草稿, 已合并 or 已关闭, with
+  "，可能已过时" once the answer is stale; "GitHub 上找不到，或没有权限查看",
+  "GitHub 拒绝了 Kinmesh 的读取权限" or "暂时读不到 GitHub" when it can't say. Before
+  GitHub has answered, the row is the name alone. The time of the answer is on the
+  state (hover), never a sentence. `+` opens one field typed in place ("粘贴 PR 的地址",
+  one underline that turns green): Enter links it, Esc or leaving it empty closes;
+  anything but a GitHub PR address is refused under the field ("这不是 GitHub 上 PR
+  的地址。"), and so is one already linked.
 - **History**: one sentence per event, each person by name, you included
   ("_Ada_ 验收通过：“…”"). A linked T3 run is said once, its sentence the link to the
   thread on the team's T3 (plain when there is none); its IDs never show. A read that

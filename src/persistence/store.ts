@@ -9,6 +9,8 @@ import { browserRepository } from './browsers.js';
 import { inboxRepository } from './inbox.js';
 import { inboxViews } from './inbox-views.js';
 import { taskRepository } from './tasks.js';
+import { pullRequestRepository } from './pull-requests.js';
+import { githubObservationRepository } from './github-observations.js';
 import { channelAccess } from './channel-access.js';
 import { factsOf } from './facts.js';
 import { messageViews } from './message-views.js';
@@ -42,7 +44,15 @@ export async function openStore(url: string) {
   const channels = channelRepository(d, agentStore, gate, facts);
   const topics = topicRepository(d, gate, facts, views);
   const messages = messageRepository(d, agentStore, gate, facts, views);
-  const tasks = taskRepository(d, agentStore, channels, topics, messages);
+  const pullRequests = pullRequestRepository(d);
+  const tasks = taskRepository(
+    d,
+    agentStore,
+    channels,
+    topics,
+    messages,
+    pullRequests,
+  );
   const inbox = inboxRepository(
     d,
     agentStore,
@@ -64,6 +74,8 @@ export async function openStore(url: string) {
     /** What the workspace shows a person about deliveries and workers. */
     inboxViews: inboxViews(d, agentStore, channels),
     tasks,
+    /** What GitHub said about pull requests linked to tasks, kept current by the hub. */
+    githubObservations: githubObservationRepository(d),
     channels,
     topics,
     messages,

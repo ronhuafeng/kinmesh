@@ -4575,6 +4575,54 @@ button.inbox-main:focus-visible::after {
 .task-side {
   display: grid;
 }
+/* PRs read like history: when it was linked, by whom, its name the link to
+   GitHub, then what GitHub last said. "+" sits beside the heading. */
+.task-pull-requests {
+  display: grid;
+  gap: 0.4rem;
+}
+.task-pull-requests h3 {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  margin: 0;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--ink-muted);
+}
+.task-pull-requests h3 .add-button {
+  padding: 0.15rem;
+}
+.task-pull-requests h3 .add-button .icon {
+  width: 16px;
+  height: 16px;
+}
+.pull-state {
+  margin-left: 0.5rem;
+  font-size: 13px;
+  color: var(--ink-muted);
+}
+.pull-request-field {
+  display: grid;
+  gap: 0.25rem;
+}
+.pull-request-field input {
+  width: 100%;
+  min-height: 0;
+  padding: 0.25rem 0;
+  border: 0;
+  border-bottom: 1px solid var(--hairline);
+  border-radius: 0;
+  background: transparent;
+  color: var(--ink);
+  font: inherit;
+}
+.pull-request-field input:focus,
+.pull-request-field input:focus-visible {
+  outline: none;
+  box-shadow: none;
+  border-bottom-color: var(--primary);
+}
 /* History: time, face, what happened; a linked run's sentence is its link. */
 .task-history {
   display: grid;
