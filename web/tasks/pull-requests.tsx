@@ -79,6 +79,7 @@ export function TaskPullRequests({
                 ? o.url
                 : `https://github.com/${repository}/pull/${String(number)}`;
             const state = stateOf(link, now);
+            const name = `${repository}#${String(number)}`;
             return (
               <li key={link.id}>
                 <time dateTime={link.createdAt}>
@@ -87,18 +88,19 @@ export function TaskPullRequests({
                 <MemberAvatar member={someoneOf(link.author)} data={data} />
                 <span>
                   <a href={href} target="_blank" rel="noopener noreferrer">
-                    {`${repository}#${String(number)}`}
-                    {o?.kind === 'observed' && ` ${o.title}`}
+                    {o?.kind === 'observed' ? o.title : name}
                   </a>
-                  {state !== null && o !== null && (
-                    <time
-                      className="pull-state"
-                      dateTime={o.observedAt}
-                      title={`GitHub ${shortTime(o.observedAt)}`}
-                    >
-                      {state}
-                    </time>
-                  )}
+                  <span className="pull-meta">
+                    {o?.kind === 'observed' && <code>{name}</code>}
+                    {state !== null && o !== null && (
+                      <time
+                        dateTime={o.observedAt}
+                        title={`GitHub ${shortTime(o.observedAt)}`}
+                      >
+                        {state}
+                      </time>
+                    )}
+                  </span>
                 </span>
               </li>
             );

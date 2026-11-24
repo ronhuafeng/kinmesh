@@ -126,10 +126,15 @@ export function TaskHistory({
   );
   const origin = data.nativeT3Origin;
   // Decisions and linked T3 runs, one timeline, oldest first. A linked run
-  // is said once, by its link, which opens its thread on the team's T3.
+  // is said once, by its link, which opens its thread on the team's T3; a
+  // linked PR is said once, under PR.
   const lines = [
     ...history
-      .filter((e) => e.command.type !== 'link-execution')
+      .filter(
+        (e) =>
+          e.command.type !== 'link-execution' &&
+          e.command.type !== 'link-pull-request',
+      )
       .map((e) => ({
         key: e.id,
         at: e.createdAt,

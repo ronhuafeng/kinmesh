@@ -745,18 +745,20 @@ Corners are tight and few, an instrument's rather than a toy's: the `rounded` to
   with **返回**. Disabled with a reason only when offline.
 - **PRs**: headed "PR" with a `+` beside it while the task is open (an ended task
   without any shows nothing). Each row reads like history — when it was linked, the
-  face of who linked it, then `owner/name#12` and its title as the link to GitHub,
-  and what GitHub last said in the muted ink: 进行中, 草稿, 已合并 or 已关闭, with
+  face of who linked it, then its title as the link to GitHub, and after it in the
+  muted ink `owner/name#12` (small, in mono) and what GitHub last said: 进行中, 草稿,
+  已合并 or 已关闭, with
   "，可能已过时" once the answer is stale; "GitHub 上找不到，或没有权限查看",
   "GitHub 拒绝了 Kinmesh 的读取权限" or "暂时读不到 GitHub" when it can't say. Before
-  GitHub has answered, the row is the name alone. The time of the answer is on the
+  GitHub has answered, the row is `owner/name#12` alone, as the link. The time of the answer is on the
   state (hover), never a sentence. `+` opens one field typed in place ("粘贴 PR 的地址",
   one underline that turns green): Enter links it, Esc or leaving it empty closes;
   anything but a GitHub PR address is refused under the field ("这不是 GitHub 上 PR
   的地址。"), and so is one already linked.
 - **History**: one sentence per event, each person by name, you included
   ("_Ada_ 验收通过：“…”"). A linked T3 run is said once, its sentence the link to the
-  thread on the team's T3 (plain when there is none); its IDs never show. A read that
+  thread on the team's T3 (plain when there is none); its IDs never show. A linked
+  PR is said once, under PR, not again here. A read that
   fails retries by itself, a little later each time, and says "暂时读不到记录。" only
   once it keeps failing; it reads again whenever the task changes.
 - **Agent page**: what the agent is doing comes first, how it is set up last. It opens
