@@ -18,6 +18,7 @@ export function MainArea() {
     phone,
     sidebar: { pad, state, headerToggle, open, toggle },
     switching,
+    switchingSlowly,
     refreshing,
     stale,
     shownChannelName,
@@ -162,7 +163,7 @@ export function MainArea() {
           )}
           <fieldset
             className="view-content"
-            data-switching={switching ? 'true' : undefined}
+            data-switching={switchingSlowly ? 'true' : undefined}
             data-page={onPage ? 'true' : undefined}
             // A wide tablet keeps the board beside a task's page.
             data-beside={onBoardPage ? 'board' : undefined}

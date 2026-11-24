@@ -603,6 +603,9 @@ fallback.
   **再试一次**. An address that can't be opened is not a failure: a channel you are
   not in opens the default channel, a topic that isn't there opens its channel, a task
   that isn't there opens the board, each without a word.
+- **Switching channels**: the channel on screen stays, untouchable, until the next
+  one is there, which then replaces it at once; only a slow switch puts a skeleton
+  in its place.
 - **Search** (the command palette): a magnifier in the team name's row, with no
   shortcut badge (on a phone, its own tab; see **Phone**). It or ⌘K / Ctrl+K turns
   the row into a field grown from the magnifier (the name hides), and the results

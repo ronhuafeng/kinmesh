@@ -2317,7 +2317,7 @@ button.toast-notice:hover:not(:disabled) {
   font-size: 0.85rem;
   color: var(--danger);
 }
-.view-content[data-switching] [role='tabpanel'] {
+.view-content[data-switching] > [role='tabpanel'][data-state] {
   display: none;
 }
 .view-skeleton {
