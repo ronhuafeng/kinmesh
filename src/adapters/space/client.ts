@@ -208,3 +208,41 @@ export function spacePairer(space: SpaceProvisioner): Pairer {
     return Paired.parse(await response.json());
   };
 }
+/**
+ * Each agent's own Codex home beside T3, kept by the provisioner: where it
+ * is, and its Kinmesh configuration written there.
+ */
+export interface CodexHomes {
+  home: (agentId: string, signal: AbortSignal) => Promise<string>;
+  write: (
+    agentId: string,
+    teamMcp: { url: string; token: string },
+    signal: AbortSignal,
+  ) => Promise<string>;
+}
+const Home = z.object({ home: z.string().min(1).max(4096) });
+/** The provisioner's `GET` and `PUT /agents/:agentId/codex`. */
+export function spaceCodexHomes(space: SpaceProvisioner): CodexHomes {
+  const ask = async (agentId: string, signal: AbortSignal, body?: object) => {
+    const token = readFileSync(space.tokenFile, 'utf8').trim();
+    const response = await fetch(
+      new URL(`/agents/${encodeURIComponent(agentId)}/codex`, space.endpoint),
+      {
+        method: body === undefined ? 'GET' : 'PUT',
+        headers: {
+          authorization: `Bearer ${token}`,
+          ...(body === undefined ? {} : { 'content-type': 'application/json' }),
+        },
+        ...(body === undefined ? {} : { body: JSON.stringify(body) }),
+        redirect: 'error',
+        signal: AbortSignal.any([signal, AbortSignal.timeout(30_000)]),
+      },
+    );
+    if (!response.ok) throw new Error(`provisioner ${String(response.status)}`);
+    return Home.parse(await response.json()).home;
+  };
+  return {
+    home: (agentId, signal) => ask(agentId, signal),
+    write: (agentId, teamMcp, signal) => ask(agentId, signal, teamMcp),
+  };
+}

@@ -909,6 +909,11 @@ export const managedBindings = pgTable(
       .notNull()
       .references(() => agentGrants.id),
     providerId: text('provider_id').notNull(),
+    /**
+     * The agent's Team MCP credential that Kinmesh wrote into its Codex
+     * home beside T3; null when it wrote none.
+     */
+    teamMcpGrantId: text('team_mcp_grant_id').references(() => agentGrants.id),
     createdAt: millis('created_at').notNull(),
   },
   (t) => [

@@ -2482,6 +2482,10 @@ button.quiet.subtle-danger:hover:not(:disabled) {
   background: var(--sunken);
   font-size: 12px;
 }
+/* A home's path is long: it wraps rather than widen the step. */
+.codex-home code {
+  overflow-wrap: anywhere;
+}
 .token-once {
   display: grid;
   gap: 0.5rem;

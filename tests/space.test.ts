@@ -6,7 +6,9 @@ import {
   chmodSync,
   mkdtempSync,
   readFileSync,
+  readlinkSync,
   rmSync,
+  statSync,
   writeFileSync,
 } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -238,6 +240,92 @@ await test('the provisioner mints a five-minute T3 pairing code, labelled, for t
       readFileSync(asked, 'utf8').trim(),
       'pair --ttl 5m --label Kinmesh forged line',
     );
+  } finally {
+    server.close();
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+/**
+ * Proves an agent's Codex home beside T3 is the provisioner's to write,
+ * for the hub alone: its configuration reaches Team MCP as the agent with
+ * Kinmesh's tools let through, shares this machine's Codex sign-in, is
+ * private, is written whole again on the next connection, and nothing
+ * else is taken for an agent or a credential.
+ */
+await test('the provisioner writes an agent’s Codex home: Team MCP as the agent, no approvals, the machine’s sign-in', async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'kinmesh-space-'));
+  const space = join(dir, 'space');
+  const agents = join(dir, 'agents');
+  const codexAuth = join(dir, 'codex-auth.json');
+  writeFileSync(codexAuth, '{}');
+  execFileSync('mkdir', ['-p', space]);
+  const server = spaceServer({
+    space,
+    token: 'right',
+    t3: 'unused',
+    agents,
+    codexAuth,
+  });
+  server.listen(0, '127.0.0.1');
+  await once(server, 'listening');
+  const address = server.address();
+  assert.ok(address !== null && typeof address === 'object');
+  const agent: string = randomUUID();
+  const ask = (
+    method: 'GET' | 'PUT',
+    body?: unknown,
+    { token = 'right', id = agent } = {},
+  ) =>
+    fetch(`http://127.0.0.1:${String(address.port)}/agents/${id}/codex`, {
+      method,
+      headers: { authorization: `Bearer ${token}` },
+      ...(body === undefined ? {} : { body: JSON.stringify(body) }),
+    });
+  const Home = z.object({ home: z.string() });
+  const home = join(agents, agent, 'codex');
+  const config = join(home, 'config.toml');
+  try {
+    assert.equal((await ask('GET', undefined, { token: 'wrong' })).status, 401);
+    // Where it is, before anything is written there.
+    assert.deepEqual(Home.parse(await (await ask('GET')).json()), { home });
+    assert.equal(existsSync(home), false);
+    const teamMcp = { url: 'http://127.0.0.1:3001/mcp', token: 'kma_first' };
+    const wrote = await ask('PUT', teamMcp);
+    assert.equal(wrote.status, 200);
+    assert.deepEqual(Home.parse(await wrote.json()), { home });
+    const written = readFileSync(config, 'utf8');
+    assert.match(written, /^\[mcp_servers\.kinmesh\]$/m);
+    assert.match(written, /^url = "http:\/\/127\.0\.0\.1:3001\/mcp"$/m);
+    assert.match(
+      written,
+      /^http_headers = \{ Authorization = "Bearer kma_first" \}$/m,
+    );
+    assert.match(written, /^default_tools_approval_mode = "approve"$/m);
+    // Only this OS user reads the credential.
+    assert.equal(statSync(config).mode & 0o777, 0o600);
+    assert.equal(statSync(home).mode & 0o777, 0o700);
+    assert.equal(readlinkSync(join(home, 'auth.json')), codexAuth);
+    // Connecting again writes it whole, with the new credential only.
+    await ask('PUT', { ...teamMcp, token: 'kma_second' });
+    const again = readFileSync(config, 'utf8');
+    assert.match(again, /Bearer kma_second/);
+    assert.doesNotMatch(again, /kma_first/);
+    assert.deepEqual(
+      readdirSync(home).sort(),
+      ['auth.json', 'config.toml'],
+      'no temporary file is left behind',
+    );
+    // Nothing else is an agent, a credential or a Team MCP address.
+    for (const [body, id] of [
+      [teamMcp, '../escape'],
+      [teamMcp, 'not-an-agent'],
+      [{ ...teamMcp, token: 'kma "injected"' }, agent],
+      [{ ...teamMcp, url: 'file:///etc/passwd' }, agent],
+      [{ url: teamMcp.url }, agent],
+    ] as const)
+      assert.notEqual((await ask('PUT', body, { id })).status, 200);
+    assert.match(readFileSync(config, 'utf8'), /Bearer kma_second/);
   } finally {
     server.close();
     rmSync(dir, { recursive: true, force: true });

@@ -9,6 +9,8 @@ import { Notice } from '../shared/forms.js';
 import { useSetupRequest } from '../shared/t3.js';
 import { Providers } from '../shared/t3.js';
 import { NextStep } from './setup-parts.js';
+import { CopyButton } from '../shared/copy-button.js';
+import { useCodexHome } from './codex-home.js';
 
 /** Pick what the agent runs on, as one choice: provider and model together. */
 export function ChooseModel({
@@ -40,6 +42,7 @@ export function ChooseModel({
         setOffered('unavailable');
       });
   }, [data.team.id, reads.t3]);
+  const codexHome = useCodexHome(data.team.id, agent.id);
   const prefs = agent.preferences;
   const current =
     prefs.providerId && prefs.modelId
@@ -114,6 +117,15 @@ export function ChooseModel({
               ))}
             </select>
           </Field>
+        )}
+        {codexHome && (
+          // T3 makes providers only in its settings: one for this agent,
+          // whose home Kinmesh writes on connecting.
+          <p className="muted codex-home">
+            用 Codex：在 T3 的 Settings → Providers 添加 Codex，CODEX_HOME 填{' '}
+            <code>{codexHome}</code>{' '}
+            <CopyButton text={codexHome} label="复制" className="link-button" />
+          </p>
         )}
         <div className="token-actions">
           <button

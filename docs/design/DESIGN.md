@@ -778,7 +778,8 @@ Corners are tight and few, an instrument's rather than a toy's: the `rounded` to
   state — the request it is on and whether that waits on an approval, 空闲, or
   未运行 — then its requests in this channel and its runs; under a hairline, 设置
   holds the status card with its actions and About (every fact visible, picture to
-  change, Team MCP credential, given as the lines its Codex adds when it runs on Codex). In About its name and role change in place: they read
+  change, Team MCP credential, given as the lines its Codex adds when it runs on Codex;
+  none to issue for an agent Kinmesh connected whose Codex home it writes). In About its name and role change in place: they read
   as values until touched, Enter or leaving the field keeps a new name, Esc puts it
   back. **停用智能体** (danger colour) takes a second press that says what it does
   (确认停用：_name_ 不再接新的请求); a disabled agent is left out of the @ list, and
@@ -795,7 +796,9 @@ Corners are tight and few, an instrument's rather than a toy's: the `rounded` to
   setup offers ("监督", "自动", "完全访问"). When the deployment connects T3 there is no
   first step (until it has connected, the step reads "正在连接 T3…"), and
   **重新连接** is how a person signs in to that T3 for a broader mode.
-  Then choose what the agent runs on from one list of every provider's models. After
+  Then choose what the agent runs on from one list of every provider's models; where
+  Kinmesh keeps agents' Codex homes, one muted line under it names this agent's, to
+  copy into a Codex provider's CODEX_HOME in T3. After
   that a single line says the agent is ready (or its worker is starting), with
   **更换模型**, **重新连接** and **断开连接**, and offers to add the agent to
   the channel on screen when it isn't in it. **自己运行工作进程** opens a page

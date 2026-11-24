@@ -1,5 +1,6 @@
 // The space provisioner: makes a channel's folder in the space a T3 project,
-// for the hub (contract in docs/operations.md#the-space). T3 creates projects
+// and keeps each agent's own Codex home, for the hub (contract in
+// docs/operations.md#the-space). T3 creates projects
 // over MCP only for a Full access client, and Kinmesh only finds projects, so
 // this runs beside T3 and uses its CLI. It ships in the kinmesh-t3 image and
 // runs with Node alone (`node space.ts`): no dependencies, erasable types only.
@@ -13,10 +14,12 @@ import {
   openSync,
   readFileSync,
   readSync,
+  lstatSync,
   readdirSync,
   realpathSync,
   renameSync,
   rmSync,
+  symlinkSync,
   writeFileSync,
 } from 'node:fs';
 import {
@@ -26,6 +29,7 @@ import {
   type Server,
 } from 'node:http';
 import { request } from 'node:https';
+import { homedir } from 'node:os';
 import { join, resolve, sep } from 'node:path';
 import { pipeline } from 'node:stream/promises';
 import { promisify } from 'node:util';
@@ -42,6 +46,90 @@ export interface SpaceOptions {
   token: string;
   /** T3's CLI. */
   t3: string;
+  /** Where each agent's own provider homes are kept. */
+  agents?: string;
+  /**
+   * This machine's Codex sign-in, which every agent's Codex home shares;
+   * null when Codex is not signed in here.
+   */
+  codexAuth?: string | null;
+}
+
+/** An agent's ID, as Kinmesh makes them. */
+const AGENT = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
+const CODEX = /^\/agents\/([^/]+)\/codex$/;
+/** A Team MCP credential, as Kinmesh issues them. */
+const CREDENTIAL = /^[A-Za-z0-9_-]{8,256}$/;
+/** The agent's own Codex home: T3's Codex provider for it points here. */
+const codexHome = (options: SpaceOptions, agent: string) =>
+  join(
+    resolve(options.agents ?? join(homedir(), '.kinmesh', 'agents')),
+    agent,
+    'codex',
+  );
+/**
+ * Writes the agent's Codex configuration: Kinmesh's Team MCP at `url` as
+ * the agent (`token`), its tools let through without asking a person, and
+ * this machine's Codex sign-in. The file is Kinmesh's, written whole.
+ */
+function writeCodex(
+  options: SpaceOptions,
+  agent: string,
+  url: string,
+  token: string,
+) {
+  const home = codexHome(options, agent);
+  mkdirSync(home, { recursive: true, mode: 0o700 });
+  const auth = join(home, 'auth.json');
+  const signIn = options.codexAuth ?? join(homedir(), '.codex', 'auth.json');
+  let linked = true;
+  try {
+    lstatSync(auth);
+  } catch {
+    linked = false;
+  }
+  if (!linked && options.codexAuth !== null && existsSync(signIn))
+    symlinkSync(signIn, auth);
+  const file = join(home, 'config.toml');
+  const temporary = join(home, `.config.${randomBytes(6).toString('hex')}`);
+  // A JSON string is a TOML basic string.
+  writeFileSync(
+    temporary,
+    [
+      '# Written by Kinmesh for this agent; it is replaced when Kinmesh',
+      '# connects the agent again.',
+      'cli_auth_credentials_store = "file"',
+      '',
+      '[mcp_servers.kinmesh]',
+      `url = ${JSON.stringify(url)}`,
+      `http_headers = { Authorization = ${JSON.stringify(`Bearer ${token}`)} }`,
+      'default_tools_approval_mode = "approve"',
+      '',
+    ].join('\n'),
+    { mode: 0o600 },
+  );
+  renameSync(temporary, file);
+  return home;
+}
+/** `{url, token}` from a request body, or null when it is not one. */
+function codexInputOf(body: string): { url: string; token: string } | null {
+  let input: unknown;
+  try {
+    input = JSON.parse(body);
+  } catch {
+    return null;
+  }
+  if (input === null || typeof input !== 'object') return null;
+  const url = 'url' in input ? input.url : undefined;
+  const token = 'token' in input ? input.token : undefined;
+  if (typeof url !== 'string' || typeof token !== 'string') return null;
+  if (url.length > 2048 || !CREDENTIAL.test(token)) return null;
+  try {
+    if (!['http:', 'https:'].includes(new URL(url).protocol)) return null;
+  } catch {
+    return null;
+  }
+  return { url, token };
 }
 
 const digest = (value: string) => createHash('sha256').update(value).digest();
@@ -257,10 +345,12 @@ export function spaceServer(options: SpaceOptions): Server {
     }
     const placing = PLACE.exec(req.url ?? '');
     const pairing = req.method === 'POST' && req.url === '/pair';
+    const codex = CODEX.exec(req.url ?? '');
     if (
       !(req.method === 'POST' && req.url === '/projects') &&
       !pairing &&
-      !(placing && (req.method === 'PUT' || req.method === 'DELETE'))
+      !(placing && (req.method === 'PUT' || req.method === 'DELETE')) &&
+      !(codex && (req.method === 'GET' || req.method === 'PUT'))
     ) {
       answer(404, { error: 'not found' });
       return;
@@ -327,7 +417,9 @@ export function spaceServer(options: SpaceOptions): Server {
       const body = Buffer.concat(chunks);
       const work = pairing
         ? pairRoute(options, body)
-        : route(options, req.method ?? '', placing, body);
+        : codex
+          ? codexRoute(options, req.method ?? '', codex[1] ?? '', body)
+          : route(options, req.method ?? '', placing, body);
       if ('status' in work) answer(work.status, work.body);
       else queued(work);
     });
@@ -366,6 +458,30 @@ function pairRoute(
         throw new Error('t3 pair answered nothing to read');
       return { status: 200, body: { token, expiresAt } };
     },
+  };
+}
+/**
+ * The agent's Codex home: where it is (`GET`), or its configuration written
+ * there (`PUT` with `{url, token}`). Asking again is safe.
+ */
+function codexRoute(
+  options: SpaceOptions,
+  method: string,
+  agent: string,
+  body: Buffer,
+): Answer | { run: () => Promise<Answer> } {
+  const invalid = { status: 400, body: { error: 'invalid' } };
+  if (!AGENT.test(agent)) return invalid;
+  if (method === 'GET')
+    return { status: 200, body: { home: codexHome(options, agent) } };
+  const input = codexInputOf(body.toString('utf8'));
+  if (input === null) return invalid;
+  return {
+    run: () =>
+      Promise.resolve({
+        status: 200,
+        body: { home: writeCodex(options, agent, input.url, input.token) },
+      }),
   };
 }
 interface Answer {
@@ -518,6 +634,15 @@ if (entry !== undefined && realpathSync(entry) === import.meta.filename) {
     space,
     token: await keptToken(env),
     t3: env.KINMESH_SPACE_T3 ?? 't3',
+    ...(env.KINMESH_AGENT_HOMES === undefined
+      ? {}
+      : { agents: env.KINMESH_AGENT_HOMES }),
+    ...(env.KINMESH_CODEX_AUTH === undefined
+      ? {}
+      : {
+          codexAuth:
+            env.KINMESH_CODEX_AUTH === '' ? null : env.KINMESH_CODEX_AUTH,
+        }),
   });
   server.listen(port, host, () => {
     console.log(`space provisioner on ${host}:${String(port)}`);

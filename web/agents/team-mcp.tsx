@@ -8,6 +8,7 @@ import { Providers, useSetupRequest } from '../shared/t3.js';
 import { TEAM_MCP_SCOPES, Issued } from './setup-parts.js';
 import { TokenOnce } from './setup-parts.js';
 import { providerConfig } from './provider-config.js';
+import { useCodexHome } from './codex-home.js';
 
 /**
  * Optional: let the agent read and act in Kinmesh while it works (Team MCP).
@@ -19,17 +20,21 @@ export function TeamMcp({
   agent,
   data,
   providerId,
+  managed,
 }: {
   agent: Agent;
   data: WorkspaceSnapshot;
   /** The T3 provider the agent runs on, when chosen. */
   providerId: string | null;
+  /** Kinmesh runs the agent's worker, so it also writes its Codex home. */
+  managed: boolean;
 }) {
   const { send, busy, error, permitted } = useSetupRequest();
   const [issued, setIssued] = useState<{
     token: string;
     driver: string | null;
   } | null>(null);
+  const codexHome = useCodexHome(data.team.id, agent.id);
   const seen = data.teamMcp.find((p) => p.agentId === agent.id)?.lastSeenAt;
   const url = data.teamMcpUrl;
   // Without Team MCP served there is nowhere for a token to go.
@@ -55,7 +60,7 @@ export function TeamMcp({
         <dt>Team MCP</dt>
         <dd>{seen ? `${ago(seen)}连接过` : '未设置'}</dd>
       </dl>
-      {issued ? (
+      {managed && codexHome !== null ? null : issued ? (
         <TokenOnce
           token={issued.token}
           config={config}
