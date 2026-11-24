@@ -77,7 +77,18 @@ export function GitHubConnection({ teamId }: { teamId: string }) {
       ) : (
         <Row label="仓库">
           {status?.state === 'created' ? (
-            <a href={status.installUrl}>选择仓库</a>
+            <span className="github-repositories">
+              <a href={status.installUrl}>选择仓库</a>
+              {/* Created under the wrong account, say: start over. */}
+              <button
+                type="button"
+                className="link-button"
+                disabled={action.disabled}
+                onClick={connect}
+              >
+                重新连接
+              </button>
+            </span>
           ) : status?.state === 'none' ? (
             <button
               type="button"

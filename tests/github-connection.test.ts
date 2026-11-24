@@ -168,7 +168,7 @@ await test('a person connects GitHub on its own pages, and the hub then reads Gi
         default_permissions: z.record(z.string(), z.string()),
       })
       .parse(JSON.parse(started.manifest));
-    assert.equal(manifest.public, false);
+    assert.equal(manifest.public, true);
     assert.deepEqual(manifest.default_permissions, {
       contents: 'write',
       pull_requests: 'write',

@@ -746,7 +746,7 @@ Corners are tight and few, an instrument's rather than a toy's: the `rounded` to
 - **连接 › GitHub**: one group, two rows at most, never naming how GitHub does it (no
   "App", "installation" or token). Not connected: 仓库 — **连接 GitHub**, which goes to
   GitHub's page to create the team's app and straight on to choosing repositories, then
-  back here. Created but no repositories chosen: 仓库 — **选择仓库**. Connected: 账号 —
+  back here. Created but no repositories chosen: 仓库 — **选择仓库**, then **重新连接** to start over (say, under another GitHub account). Connected: 账号 —
   the GitHub account; 仓库 — the repositories by name ("全部仓库" when all, "等" when
   more), then **更改** to GitHub's page for them. GitHub unreadable: "暂时读不到 GitHub".
   A step that didn't finish says "没有连上 GitHub，再试一次。" under the group.
