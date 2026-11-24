@@ -281,7 +281,9 @@ fallback.
   message holds one, at its strict security level, laid out by dagre (ELK is never
   loaded unless a diagram asks for it), themed from the tokens for light or dark, and
   the drawing is shown as an image, so it runs nothing; its space is kept and it fades
-  in; one that can't be drawn stays its code, silently. A table has hairline rows, a
+  in. Its space is the size it was last drawn at on this device, so a diagram seen
+  before is drawn into its place and moves nothing; drawing never moves the page
+  meanwhile. One that can't be drawn stays its code, silently. A table has hairline rows, a
   heavier head and scrolls sideways inside the message when wide. An image from this
   site is rounded, at most the message's width, and opens its original; one from
   elsewhere is its link, since the page loads images only from here. Links stay text
