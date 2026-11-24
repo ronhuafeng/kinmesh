@@ -2820,22 +2820,14 @@ a.button-link {
   .workspace-header > .view-switch {
     justify-self: center;
   }
-  /* Over a column narrower than the main area, the bar's three parts span
-   * that column alone (its material still runs edge to edge). */
-  .workspace-header[data-column] {
+  /* Wider than a conversation, the bar's three parts span the conversation's
+   * column alone (its material still runs edge to edge), whatever view is
+   * open: the views stay where they were pressed. */
+  .workspace-header {
     padding-inline-end: max(
       var(--gutter),
-      calc(100% + var(--gutter) - var(--column))
+      calc(100% + var(--gutter) - var(--conversation))
     );
-  }
-  .workspace-header[data-column='conversation'] {
-    --column: var(--conversation);
-  }
-  .workspace-header[data-column='reading'] {
-    --column: var(--reading);
-  }
-  .workspace-header[data-column='agent'] {
-    --column: 72rem;
   }
   .workspace-header > .header-end {
     justify-self: end;

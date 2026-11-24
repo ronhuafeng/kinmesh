@@ -56,17 +56,6 @@ export function MainArea() {
             data-bare={
               inSettings && !phone && !(pad && state) ? 'true' : undefined
             }
-            // The views centre over the column the place on
-            // screen uses: the bar and the content share an axis.
-            data-column={
-              view === 'agent'
-                ? 'agent'
-                : onBoardPage || view === 'board' || view === 'team'
-                  ? undefined
-                  : onPage || view === 'files' || view === 'pins'
-                    ? 'reading'
-                    : 'conversation'
-            }
           >
             {/* The start: the way back (a phone's, or a page's on a
                         tablet, put here by the page) and the sidebar's
