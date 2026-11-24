@@ -1,15 +1,17 @@
 import { z } from 'zod';
 import { DomainError } from '../../domain/errors.js';
-import { PULL_REQUEST_CHANGE_BYTES } from '../../domain/pull-requests.js';
-import type {
-  ReadingRefusal,
-  RepositoryContent,
+import {
+  PULL_REQUEST_CHANGE_BYTES,
+  type GitHubRefusal,
+} from '../../domain/pull-requests.js';
+import {
+  DIRECTORY_ENTRIES_MOST,
+  type RepositoryContent,
 } from '../../domain/repository.js';
-import { DIRECTORY_ENTRIES_MOST } from '../../domain/repository.js';
-import { GitHubRefused } from './installations.js';
+import { GitHubRefused, githubRequest } from './installations.js';
 
 const refused = (
-  reason: ReadingRefusal,
+  reason: GitHubRefusal,
   kind: 'forbidden' | 'not-found' | 'too-large' | 'invalid',
 ) => new DomainError(kind, { reason });
 const Repo = z.object({ full_name: z.string(), default_branch: z.string() });
@@ -34,27 +36,11 @@ export async function readRepository(
   token: string,
   read: { repository: string; ref: string | null; path: string },
 ): Promise<RepositoryContent> {
-  async function get(path: string) {
-    let response: Response;
-    try {
-      response = await fetch(new URL(path, api), {
-        headers: {
-          accept: 'application/vnd.github+json',
-          'x-github-api-version': '2022-11-28',
-          'user-agent': 'kinmesh',
-          authorization: `Bearer ${token}`,
-        },
-        redirect: 'error',
-        signal: AbortSignal.timeout(20_000),
-      });
-    } catch {
-      throw new GitHubRefused(0);
-    }
-    return {
-      status: response.status,
-      json: (await response.json().catch(() => null)) as unknown,
-    };
-  }
+  const get = (path: string) =>
+    githubRequest(api, path, {
+      authorization: `Bearer ${token}`,
+      timeoutMs: 20_000,
+    });
   const repo = `/repos/${read.repository}`;
   const found = await get(repo);
   // Without the app's access GitHub says 403, or 404 to hide it.

@@ -1,14 +1,10 @@
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import {
-  OpeningRefusal,
+  GitHubRefusal,
   PULL_REQUEST_CHANGE_BYTES,
   TaskPullRequestView,
 } from '../domain/pull-requests.js';
-import {
-  ReadingRefusal,
-  RepositoryContent,
-  RepositoryRead,
-} from '../domain/repository.js';
+import { RepositoryContent, RepositoryRead } from '../domain/repository.js';
 import { hubRequest } from './hub.js';
 import { z } from 'zod';
 import { ChannelId, TaskId } from '../domain/contracts.js';
@@ -73,7 +69,7 @@ export const Failure = z.strictObject({
     'Operation failed',
   ]),
   /** What to change, when the code alone would not say. */
-  reason: z.union([OpeningRefusal, ReadingRefusal]).optional(),
+  reason: GitHubRefusal.optional(),
 });
 export const outcome = <T extends z.ZodType>(data: T) =>
   z.strictObject({
@@ -84,9 +80,7 @@ export const outcome = <T extends z.ZodType>(data: T) =>
   });
 function failure(error: unknown): z.infer<typeof Failure> {
   if (error instanceof DomainError) {
-    const reason = z
-      .union([OpeningRefusal, ReadingRefusal])
-      .safeParse(error.reason);
+    const reason = GitHubRefusal.safeParse(error.reason);
     return {
       ...refusal(error),
       ...(reason.success ? { reason: reason.data } : {}),

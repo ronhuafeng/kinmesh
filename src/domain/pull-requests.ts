@@ -84,17 +84,23 @@ export const changeFits = (change: {
     0,
   ) <= PULL_REQUEST_CHANGE_BYTES;
 /**
- * Why GitHub would not take a change, in words an agent can pass on: the
- * team has no GitHub connected, the app is not installed on the repository,
- * the base branch is missing, or the branch is already someone else's.
+ * Why GitHub gave an agent nothing, in words it can pass on: the team has
+ * no GitHub connected, the app is not installed on the repository; for a
+ * change, the base branch is missing or the branch is already someone
+ * else's; for a read, the ref or path is not there, or the file is not
+ * text or more than a pull request carries.
  */
-export const OpeningRefusal = z.enum([
+export const GitHubRefusal = z.enum([
   'github-not-connected',
   'repository-not-connected',
   'base-missing',
   'branch-taken',
+  'ref-missing',
+  'path-missing',
+  'not-text',
+  'too-large',
 ]);
-export type OpeningRefusal = z.infer<typeof OpeningRefusal>;
+export type GitHubRefusal = z.infer<typeof GitHubRefusal>;
 /**
  * The pull request a GitHub address names, such as
  * `https://github.com/owner/name/pull/12/files`; null for anything else.

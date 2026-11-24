@@ -2,12 +2,12 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { createServer, type IncomingMessage } from 'node:http';
 import { once } from 'node:events';
-import { createHash, generateKeyPairSync } from 'node:crypto';
+import { createHash } from 'node:crypto';
 import { z } from 'zod';
 import { TaskResult, type Task } from '../src/domain/tasks.js';
-import { managedDirectory, writeGitHubApp } from '../src/runtime/managed.js';
 import { key } from './communication-helpers.js';
 import { taskFixture } from './task-helpers.js';
+import { connectGitHub } from './github-helpers.js';
 import { connectTeam, startTeam, stop, call } from './team-mcp-helpers.js';
 import { freePort } from './process-helpers.js';
 
@@ -217,26 +217,6 @@ async function working(f: Awaited<ReturnType<typeof taskFixture>>) {
   const { task } = await f.create();
   return (await f.act(f.developer, task, { type: 'claim' })).task;
 }
-/** Connects the team's GitHub as a person would have, on GitHub's pages. */
-async function connect(f: Awaited<ReturnType<typeof taskFixture>>) {
-  const { privateKey } = generateKeyPairSync('rsa', { modulusLength: 2048 });
-  writeGitHubApp(managedDirectory(f.config.state), {
-    appId: 4242,
-    slug: 'kinmesh-test',
-    pem: privateKey.export({ type: 'pkcs1', format: 'pem' }),
-  });
-  await f.store.githubConnections.created(
-    f.principal,
-    f.teamId,
-    'kinmesh-test',
-  );
-  await f.store.githubConnections.installed(
-    f.principal,
-    f.teamId,
-    INSTALLATION,
-    'acme',
-  );
-}
 const change = (over: Record<string, unknown> = {}) => ({
   repository: 'acme/widgets',
   branch: 'agent/widget',
@@ -284,7 +264,7 @@ await test('the agent working on a task opens its change as a pull request in Ki
       reason: 'github-not-connected',
     });
     assert.equal(github.writes.length, 0);
-    await connect(f);
+    await connectGitHub(f, INSTALLATION);
 
     // Only the agent working on it, while it is worked on, may: never a
     // person (they open their own), another agent, or a task not started.
@@ -399,7 +379,7 @@ await test('when GitHub opened the pull request but its answer was lost, asking 
     github: { api: github.origin, web: github.origin },
   });
   try {
-    await connect(f);
+    await connectGitHub(f, INSTALLATION);
     const task = await working(f);
     const body = {
       operationKey: key(),

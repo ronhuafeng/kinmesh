@@ -9,33 +9,62 @@ export class GitHubRefused extends Error {
     super(`GitHub answered ${String(status)}`);
   }
 }
-const headers = (authorization: string | null) => ({
-  accept: 'application/vnd.github+json',
-  'x-github-api-version': '2022-11-28',
-  'user-agent': 'kinmesh',
-  ...(authorization ? { authorization } : {}),
-});
-/** One request to GitHub's REST API, its JSON parsed by `schema`. */
+/**
+ * One request to GitHub's REST API with Kinmesh's headers: its status,
+ * headers and JSON (null when it sent none). GitHub out of reach is
+ * GitHubRefused(0); what a status means is the caller's to say.
+ */
+export async function githubRequest(
+  api: string,
+  path: string,
+  init: {
+    method?: 'GET' | 'POST';
+    /** The whole `authorization` header, such as `Bearer <token>`. */
+    authorization?: string | null;
+    body?: unknown;
+    signal?: AbortSignal;
+    timeoutMs?: number;
+  } = {},
+): Promise<{ status: number; headers: Headers; json: unknown }> {
+  let response: Response;
+  try {
+    response = await fetch(new URL(path, api), {
+      method: init.method ?? 'GET',
+      headers: {
+        accept: 'application/vnd.github+json',
+        'x-github-api-version': '2022-11-28',
+        'user-agent': 'kinmesh',
+        ...(init.authorization ? { authorization: init.authorization } : {}),
+        ...(init.body === undefined
+          ? {}
+          : { 'content-type': 'application/json' }),
+      },
+      ...(init.body === undefined ? {} : { body: JSON.stringify(init.body) }),
+      redirect: 'error',
+      signal: AbortSignal.any([
+        ...(init.signal ? [init.signal] : []),
+        AbortSignal.timeout(init.timeoutMs ?? 10_000),
+      ]),
+    });
+  } catch {
+    throw new GitHubRefused(0);
+  }
+  return {
+    status: response.status,
+    headers: response.headers,
+    json: (await response.json().catch(() => null)) as unknown,
+  };
+}
+/** One request that must succeed, its JSON parsed by `schema`. */
 async function call<T>(
   api: string,
   path: string,
   schema: z.ZodType<T>,
   init: { method?: 'GET' | 'POST'; authorization?: string | null } = {},
 ): Promise<T> {
-  let response: Response;
-  try {
-    response = await fetch(new URL(path, api), {
-      method: init.method ?? 'GET',
-      headers: headers(init.authorization ?? null),
-      redirect: 'error',
-      signal: AbortSignal.timeout(10_000),
-    });
-  } catch {
-    throw new GitHubRefused(0);
-  }
-  if (!response.ok) throw new GitHubRefused(response.status);
-  const parsed = schema.safeParse(await response.json().catch(() => null));
-  if (!parsed.success) throw new GitHubRefused(response.status);
+  const { status, json } = await githubRequest(api, path, init);
+  const parsed = schema.safeParse(json);
+  if (status >= 300 || !parsed.success) throw new GitHubRefused(status);
   return parsed.data;
 }
 

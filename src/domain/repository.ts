@@ -48,17 +48,3 @@ export const RepositoryContent = z.discriminatedUnion('kind', [
   }),
 ]);
 export type RepositoryContent = z.infer<typeof RepositoryContent>;
-/**
- * Why a read gave nothing, in words an agent can pass on: no GitHub is
- * connected, the app is not installed on the repository, the ref or path is
- * not there, or the file is not text or more than a pull request carries.
- */
-export const ReadingRefusal = z.enum([
-  'github-not-connected',
-  'repository-not-connected',
-  'ref-missing',
-  'path-missing',
-  'not-text',
-  'too-large',
-]);
-export type ReadingRefusal = z.infer<typeof ReadingRefusal>;

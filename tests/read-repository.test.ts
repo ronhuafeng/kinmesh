@@ -2,11 +2,10 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { createServer, type IncomingMessage } from 'node:http';
 import { once } from 'node:events';
-import { generateKeyPairSync } from 'node:crypto';
 import { z } from 'zod';
 import { RepositoryContent } from '../src/domain/repository.js';
-import { managedDirectory, writeGitHubApp } from '../src/runtime/managed.js';
 import { taskFixture } from './task-helpers.js';
+import { connectGitHub } from './github-helpers.js';
 import { connectTeam, startTeam, stop, call } from './team-mcp-helpers.js';
 import { freePort } from './process-helpers.js';
 
@@ -107,26 +106,6 @@ async function standIn() {
     close: () => server.close(),
   };
 }
-/** Connects the team's GitHub as a person would have, on GitHub's pages. */
-async function connect(f: Awaited<ReturnType<typeof taskFixture>>) {
-  const { privateKey } = generateKeyPairSync('rsa', { modulusLength: 2048 });
-  writeGitHubApp(managedDirectory(f.config.state), {
-    appId: 4243,
-    slug: 'kinmesh-test',
-    pem: privateKey.export({ type: 'pkcs1', format: 'pem' }),
-  });
-  await f.store.githubConnections.created(
-    f.principal,
-    f.teamId,
-    'kinmesh-test',
-  );
-  await f.store.githubConnections.installed(
-    f.principal,
-    f.teamId,
-    INSTALLATION,
-    'acme',
-  );
-}
 
 /**
  * Proves the agent working on a task reads the repository it changes as the
@@ -167,7 +146,7 @@ await test('the agent working on a task reads its repository as the team’s app
       reason: 'github-not-connected',
     });
     assert.equal(github.asked.length, 0);
-    await connect(f);
+    await connectGitHub(f, INSTALLATION);
 
     // A file's text, at the default branch, with the commit it was read at.
     const readme = await read({ path: 'README.md' });
