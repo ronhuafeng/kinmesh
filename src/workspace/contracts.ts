@@ -1,4 +1,8 @@
 import { z } from 'zod';
+import {
+  TaskPullRequestView,
+  TASK_PULL_REQUESTS_MOST,
+} from '../domain/pull-requests.js';
 import { ChannelLevel, NotifyHours } from '../domain/notify.js';
 import { EventType, PROTOCOL_VERSION } from '@ag-ui/core';
 import { StateSnapshotEventSchema } from '@ag-ui/core/schemas';
@@ -241,6 +245,8 @@ export const WorkspaceSnapshot = z.strictObject({
   tasks: pageOf(Task),
   /** The task open on the board, when it is older than those. */
   openTask: Task.nullable(),
+  /** The pull requests linked to the open task, with what GitHub last said. */
+  taskPullRequests: z.array(TaskPullRequestView).max(TASK_PULL_REQUESTS_MOST),
 });
 export type WorkspaceSnapshot = z.infer<typeof WorkspaceSnapshot>;
 export const ExecutionSnapshot = z.strictObject({

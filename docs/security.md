@@ -85,6 +85,12 @@ The hub's worker grant ends 90 days after the hub last renewed it, and the hub r
 - The worker reads it for each request and sends it only to `KINMESH_SPACE_ENDPOINT`, refusing redirects. Plain HTTP is for a private network the deployment controls, such as a cluster network whose policy admits only the hub to the provisioner.
 - The provisioner takes a folder name, never a path: lowercase letters, digits and `-`, inside the space.
 
+## GitHub
+
+- Kinmesh only reads GitHub: one pull request at a time, at `https://api.github.com/repos/<owner>/<name>/pulls/<number>`, built from a linked repository and number that match GitHub's own name rules. It never fetches an address a person or an agent gave, never follows redirects and never writes to GitHub.
+- The token in `KINMESH_GITHUB_TOKEN_FILE` is a read-only credential the deployment keeps secret, readable only by the hub; it is sent only to GitHub's API and never logged or shown. The repositories it reaches are the ones the team may see: anyone in the team can link a pull request there and read what GitHub says about it. Reading GitHub confers no Kinmesh, task or T3 authority.
+- A link is its author's claim and GitHub's answer an observation with its time. Neither accepts or reviews a task; an unreadable or stale answer is shown as such.
+
 ## Team MCP
 
 The Team MCP listener binds `127.0.0.1` only. Plain-HTTP clients must use `http://127.0.0.1:<port>/mcp`; remote clients use a same-host HTTPS reverse proxy with `KINMESH_TEAM_MCP_ORIGIN`. Host must match the configured origin or the exact loopback host; an `Origin`, when present, must match exactly. Limits: 16 KiB bodies, 600 requests/minute per connected IP (proxied clients share one bucket), 10-second request and connection timeouts, 16 requests in progress by default (1–64; overload is 503) and 128 connections. Results are not cacheable. Bearer authentication only; no cookies, no sessions, no OAuth.

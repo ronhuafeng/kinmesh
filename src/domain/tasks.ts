@@ -10,6 +10,7 @@ import { Author, Principal, CorrelationInput } from './agents.js';
 import { DomainError } from './errors.js';
 import { Member, TopicId, Mutation, memberKey } from './communication.js';
 import { TaskAction, type TaskStatus } from './task-state.js';
+import { PullRequestRef, TaskPullRequest } from './pull-requests.js';
 export { TaskId } from './contracts.js';
 const Note = z.string().trim().min(1).max(2000);
 const Working = {
@@ -162,6 +163,14 @@ export const TaskCommand = z.discriminatedUnion('type', [
     type: z.literal('link-execution'),
     reference: CorrelationInput.shape.reference,
     note: Note,
+  }),
+  /**
+   * A pull request said to belong to the task. It is the linker's claim:
+   * it changes nothing about who works, reviews or accepts.
+   */
+  CommandBase.extend({
+    type: z.literal('link-pull-request'),
+    pullRequest: PullRequestRef,
   }),
   /**
    * Its acceptor says what is asked again: title, description, criteria,
@@ -360,6 +369,9 @@ export function transition(
         throw new DomainError('invalid');
       return TaskState.parse({ ...state, reviewer: command.reviewer });
     }
+    case 'link-pull-request':
+      // Anyone who may change the task's channel's tasks, until it ends.
+      return state;
     case 'link-execution':
       if (
         !owns &&
@@ -384,6 +396,8 @@ export const TaskResult = z.strictObject({
   task: Task,
   eventId: z.uuid(),
   executionLink: TaskExecution.nullable(),
+  // Absent from receipts kept from before tasks linked pull requests.
+  pullRequestLink: TaskPullRequest.nullable().default(null),
 });
 export const TaskEvent = z.strictObject({
   id: z.uuid(),

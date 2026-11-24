@@ -277,7 +277,7 @@ export function workspaceReader(
       step: d.step,
     });
     const messageIds = messages.items.map((m) => m.id);
-    const [deliveries, replies, reactions] = channel
+    const [deliveries, replies, reactions, taskPullRequests] = channel
       ? await together([
           store.inboxViews.deliveriesFor(
             principal,
@@ -293,8 +293,11 @@ export function workspaceReader(
             messageIds,
           ),
           store.reactions.reactions(principal, teamId, channel.id, messageIds),
+          opened
+            ? store.tasks.pullRequests(principal, teamId, channel.id, opened.id)
+            : [],
         ])
-      : [[], [], []];
+      : [[], [], [], []];
     // Every member reaches this route; what waits on them is theirs: tasks
     // they decide on, and the deliveries and setup the team shares.
     const live = new Set(wake.filter((w) => w.connected).map((w) => w.agentId));
@@ -387,6 +390,7 @@ export function workspaceReader(
         activeTopics,
         tasks,
         openTask,
+        taskPullRequests,
       }),
     );
   };

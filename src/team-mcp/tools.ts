@@ -1,4 +1,5 @@
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
+import { TaskPullRequestView } from '../domain/pull-requests.js';
 import { z } from 'zod';
 import { ChannelId, TaskId } from '../domain/contracts.js';
 import type { Principal } from '../domain/agents.js';
@@ -277,6 +278,14 @@ export function teamServer(
     true,
     (p, { channelId, taskId, ...page }) =>
       store.tasks.executions(p, p.teamId, channelId, taskId, page),
+  );
+  register(
+    'team_task_pull_requests',
+    "Read the pull requests linked to a task, each with what GitHub last said and when. A link is its linker's claim; GitHub's state never accepts a task.",
+    task,
+    z.array(TaskPullRequestView),
+    true,
+    (p, a) => store.tasks.pullRequests(p, p.teamId, a.channelId, a.taskId),
   );
   register(
     'team_task_create',

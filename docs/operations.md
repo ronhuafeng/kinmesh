@@ -38,6 +38,12 @@ The bytes of the files people attach are in an S3-compatible bucket, never in th
 
 A browser uploads to the store itself, so `KINMESH_S3_PUBLIC_ENDPOINT` must be reachable from people's browsers, and the store must allow the workspace's origin (silo allows any origin by default); the hub adds that origin to its `connect-src`. Reached under the hub's own origin, it needs neither: route `/<bucket>/` there to the store, unchanged and with the original `Host` (the upload's signature covers both), taking bodies up to 200 MB (below). Downloads go through the hub, which streams them and answers a `Range` with that part. The hub, the Inbox worker and Team MCP reach the store at `KINMESH_S3_ENDPOINT`; none of them ever holds a whole file.
 
+### GitHub
+
+The hub reads the [pull requests linked to tasks](collaboration.md#pull-requests) from GitHub's REST API, read-only. Without configuration it reads public repositories as an anonymous visitor, which GitHub allows 60 times an hour. For private repositories, or more reads, put a fine-grained token with **Pull requests: Read** (and **Metadata: Read**) on the repositories the team may see in a file only the hub reads, and set `KINMESH_GITHUB_TOKEN_FILE` to it; the hub reads the file for every request, so a renewed token takes effect at once. Whatever repositories the token reaches, every member of the team can see the linked pull requests of.
+
+Every 30 seconds the hub asks about up to 20 pull requests that are due: never asked, open and last asked 5 minutes ago, or merged or closed and last asked 6 hours ago. A rate limit ends the round; the next one carries on. `pull_request_upkeep_failed` in the log means a round could not run.
+
 ### In a container
 
 The image holds the compiled server, its migrations and the built workspace; it runs as the unprivileged `node` user, keeps its own files in the `/data` volume and reports healthy only when ready (`/health`). Everything else comes from the environment. `compose.yaml` runs it beside PostgreSQL, whose data is in the `kinmesh-postgres` volume. With a `.env` beside it (never committed; `npm run setup` writes one, then add the Feishu app and domain):

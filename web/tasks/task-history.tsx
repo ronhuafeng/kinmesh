@@ -56,6 +56,8 @@ function said(e: z.infer<typeof TaskEvent>, data: WorkspaceSnapshot): string {
       return `${who} 取消了任务${quote(c.note)}`;
     case 'link-execution':
       return `${who} 关联了一次 T3 运行`;
+    case 'link-pull-request':
+      return `${who} 关联了 PR ${c.pullRequest.repository}#${String(c.pullRequest.number)}`;
     case 'edit': {
       const before = e.before;
       const changed = before

@@ -154,6 +154,7 @@ Any joined member with write authority may create an unowned task or one owned b
 | cancel                  | Acceptor; any nonterminal task                                 | Terminal `cancelled`, server human ID and time             |
 | link-execution          | Work owner, or the assigned reviewer while review is requested | Immutable execution reference; state unchanged             |
 | edit                    | Acceptor (a person); any nonterminal task                      | New title, description, criteria and reviewer; same status |
+| link-pull-request       | Any authorized writer; any nonterminal task                    | Immutable pull request link; state unchanged               |
 
 Owner and reviewer must differ and stay active and joined. Rework always needs another review before acceptance. Terminal tasks reject every command. Creator, context and acceptor are immutable; progress is a note, not a patch. A task may say the day it is due (`due`, `YYYY-MM-DD`, null when none) and how much it matters (`priority`: `high`, `normal` — the default — or `low`); both are set on create, by anyone who creates, and changed by an edit. Only the acceptor edits what is asked: an edit gives title, description, criteria, reviewer, due day and priority as they should be, must change at least one (400 otherwise), and keeps the reviewer once review is asked for (`review-requested`, `awaiting-human`; 409 otherwise); a changed reviewer must be an active joined member other than the owner. An edit wakes no agent and notifies nobody; its history entry carries the task before and after. Agents never edit (403). Audit keeps before/after snapshots, command, verified author (with grant ID for agents), time, version and event ID. Runtime completion is not part of the transition algebra; execution links and reports never accept a task.
 
@@ -164,6 +165,7 @@ Owner and reviewer must differ and stay active and joined. Rework always needs a
 | `GET T/:taskId`                           | Task                                                                                                                            |
 | `GET T/:taskId/history`                   | Page of immutable task events                                                                                                   |
 | `GET T/:taskId/executions`                | Page of execution links                                                                                                         |
+| `GET T/:taskId/pull-requests`             | Linked pull requests, oldest first, each with what GitHub last said                                                             |
 | `POST T/:taskId/claim`                    | Common fields                                                                                                                   |
 | `POST T/:taskId/progress`                 | Common + `{note}`                                                                                                               |
 | `POST T/:taskId/handoff`                  | Common + `{recipient,mode:"work"\|"review",note}`                                                                               |
@@ -172,8 +174,17 @@ Owner and reviewer must differ and stay active and joined. Rework always needs a
 | `POST T/:taskId/accept, /rework, /cancel` | Common + `{note}`                                                                                                               |
 | `POST T/:taskId/link-execution`           | Common + `{reference,note}`                                                                                                     |
 | `POST T/:taskId/edit`                     | Common + `{title,description,criteria,reviewer,due,priority}`                                                                   |
+| `POST T/:taskId/link-pull-request`        | Common + `{pullRequest:{repository,number}}`                                                                                    |
 
-Common command fields are `{operationKey,expectedVersion}`; the route names the command, so `type` in a body is rejected. A member is `{kind:"human"|"agent",id}` and names a target, never the caller. Nullable create fields must be explicit `null`. Limits: title 1–160, description 0–4000, criteria 1–20 distinct entries of at most 500, notes 1–2000 characters. Commands return `{task,eventId,executionLink}`. Status codes: 401/403 or hiding 404 for authorization, 400 schema or cursor, 409 transition, version or key conflict, 413 oversized body.
+Common command fields are `{operationKey,expectedVersion}`; the route names the command, so `type` in a body is rejected. A member is `{kind:"human"|"agent",id}` and names a target, never the caller. Nullable create fields must be explicit `null`. Limits: title 1–160, description 0–4000, criteria 1–20 distinct entries of at most 500, notes 1–2000 characters. Commands return `{task,eventId,executionLink,pullRequestLink}`. Status codes: 401/403 or hiding 404 for authorization, 400 schema or cursor, 409 transition, version or key conflict, 413 oversized body.
+
+### Pull requests
+
+A task links GitHub pull requests as evidence of its work: `repository` is `owner/name` as GitHub allows it, `number` the pull request's. A link is its author's claim, kept with the server's author and time; it never changes, wakes nobody, notifies nobody and changes no responsibility, review or acceptance. A pull request is linked to a task once however its repository is cased (409 otherwise), and a task links at most 20 (413).
+
+What GitHub says is kept apart from the link, per pull request, as an observation: its repository and number as GitHub names them, title, `open`, `closed` or `merged`, draft, address, head and base branch, head commit and `observedAt`; or `unavailable` with why (`not-found`, `forbidden`, `rate-limited`, `unreachable`) and when. Null means GitHub has not been asked yet. The hub asks about a new link within half a minute, about open ones every 5 minutes and about merged or closed ones every 6 hours (see [operations](operations.md#github)). A rate limit or an outage keeps the last answer, which then shows its age; an answer older than three of its intervals is stale. GitHub's state never accepts a task, and no state of a pull request is a review.
+
+The workspace snapshot carries the open task's pull requests as `taskPullRequests`, so an open task shows a new link or a newer answer as it happens.
 
 ## Atomicity, idempotency and pagination
 
