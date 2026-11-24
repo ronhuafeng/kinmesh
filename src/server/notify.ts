@@ -1,5 +1,5 @@
 import type { FastifyInstance } from 'fastify';
-import webpush from 'web-push';
+import { generateVAPIDKeys, sendNotification, WebPushError } from 'web-push';
 import { z } from 'zod';
 import { withinHours, PushPayload } from '../domain/notify.js';
 import type { Store } from '../persistence/store.js';
@@ -83,7 +83,7 @@ export function registerNotifications(
   /** Feishu, whose bot forwards what stays unread. */
   feishu: Feishu,
 ) {
-  const keys = pushKeys(directory, () => webpush.generateVAPIDKeys());
+  const keys = pushKeys(directory, () => generateVAPIDKeys());
   const vapidDetails = {
     // Who sends, for push services to reach: the hub's own site.
     subject:
@@ -105,7 +105,7 @@ export function registerNotifications(
     payload: string,
   ) {
     try {
-      await webpush.sendNotification(
+      await sendNotification(
         {
           endpoint: browser.endpoint,
           keys: { p256dh: browser.p256dh, auth: browser.auth },
@@ -116,7 +116,7 @@ export function registerNotifications(
       return 'sent';
     } catch (error) {
       if (
-        error instanceof webpush.WebPushError &&
+        error instanceof WebPushError &&
         (error.statusCode === 404 || error.statusCode === 410)
       ) {
         await store.browsers.gone(browser.endpoint);
@@ -124,8 +124,7 @@ export function registerNotifications(
       }
       app.log.error(
         {
-          status:
-            error instanceof webpush.WebPushError ? error.statusCode : null,
+          status: error instanceof WebPushError ? error.statusCode : null,
         },
         'push_failed',
       );
