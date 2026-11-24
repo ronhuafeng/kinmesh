@@ -2860,10 +2860,15 @@ a.button-link {
     opacity: 1;
   }
 }
-/* A fenced block is one block, in the block's own type. */
+/* A fenced block is one block: the code inside takes none of inline
+ * code's box, which would otherwise be drawn around every line. */
 .message-text pre code {
   display: block;
   font-family: inherit;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: none;
   font-size: inherit;
 }
 /* Code in its language, coloured from the tints: a few kinds of token, the
