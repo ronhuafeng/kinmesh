@@ -4580,6 +4580,7 @@ button.inbox-main:focus-visible::after {
 .task-pull-requests {
   display: grid;
   gap: 0.4rem;
+  margin-top: 0.75rem;
 }
 .task-pull-requests h3 {
   display: flex;
@@ -4590,17 +4591,30 @@ button.inbox-main:focus-visible::after {
   font-weight: 500;
   color: var(--ink-muted);
 }
+/* The "+" is as tall as the heading's line, so the heading is as tall as
+   its neighbours'. */
 .task-pull-requests h3 .add-button {
   padding: 0.15rem;
+  margin-block: -0.2rem;
 }
 .task-pull-requests h3 .add-button .icon {
   width: 16px;
   height: 16px;
 }
-.pull-state {
+/* After the title, quietly: which PR it is, then what GitHub says. */
+.pull-meta {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
   margin-left: 0.5rem;
   font-size: 13px;
   color: var(--ink-muted);
+}
+.pull-meta code {
+  font-family: var(--mono);
+  font-size: 12px;
+  background: none;
+  padding: 0;
 }
 .pull-request-field {
   display: grid;
