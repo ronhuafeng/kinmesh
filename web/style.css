@@ -4582,6 +4582,10 @@ button.inbox-main:focus-visible::after {
   gap: 0.4rem;
   margin-top: 0.75rem;
 }
+/* In the decision it belongs to the decision, as close as its other lines. */
+.task-decision + .task-pull-requests {
+  margin-top: 0;
+}
 .task-pull-requests h3 {
   display: flex;
   align-items: center;
@@ -4609,6 +4613,9 @@ button.inbox-main:focus-visible::after {
   margin-left: 0.5rem;
   font-size: 13px;
   color: var(--ink-muted);
+}
+.pull-meta [data-failing] {
+  color: var(--danger);
 }
 .pull-meta code {
   font-family: var(--mono);

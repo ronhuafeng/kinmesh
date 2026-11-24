@@ -743,11 +743,15 @@ Corners are tight and few, an instrument's rather than a toy's: the `rounded` to
   then 取消任务, the only red — are quiet buttons with no
   ellipsis; choosing one opens its note (and, to hand on, who to) in place of the row,
   with **返回**. Disabled with a reason only when offline.
-- **PRs**: headed "PR" with a `+` beside it while the task is open (an ended task
+- **PRs**: what a review or acceptance is decided on, so while you review or accept they
+  sit in the decision, under its buttons, and not again below; otherwise after
+  "完成标准". Headed "PR" with a `+` beside it while the task is open (an ended task
   without any shows nothing). Each row reads like history — when it was linked, the
   face of who linked it, then its title as the link to GitHub, and after it in the
-  muted ink `owner/name#12` (small, in mono) and what GitHub last said: 进行中, 草稿,
-  已合并 or 已关闭, with
+  muted ink `owner/name#12` (small, in mono), what GitHub last said: 进行中, 草稿,
+  已合并 or 已关闭, and its head commit's checks: CI 通过, CI 失败 (the one in the
+  danger colour), CI 进行中 or 没有 CI (no checks is not a pass), or "读不到 CI：没有权限" /
+  "暂时读不到 CI"; with
   "，可能已过时" once the answer is stale; "GitHub 上找不到，或没有权限查看",
   "GitHub 拒绝了 Kinmesh 的读取权限" or "暂时读不到 GitHub" when it can't say. Before
   GitHub has answered, the row is `owner/name#12` alone, as the link. The time of the answer is on the

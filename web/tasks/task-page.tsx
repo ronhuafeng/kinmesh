@@ -50,6 +50,7 @@ export function TaskPage({
     : undefined;
   const acceptor = { kind: 'human', id: task.acceptorHumanId } satisfies Member;
   const { lead, rest, done } = taskActions(task, data);
+  const judging = lead.some((i) => i === 'approve' || i === 'accept');
   // One of the row's actions, chosen: its note opens in place of the row.
   const [picked, setPicked] = useState<Intent | null>(null);
   // Edited, the task is the page it was created on, filled in.
@@ -155,6 +156,11 @@ export function TaskPage({
                   onSettled={settled}
                 />
               )}
+              {/* Reviewing or accepting, its PRs and their checks are
+                  what you decide on. */}
+              {judging && (
+                <TaskPullRequests task={task} data={data} path={path} />
+              )}
               {deliveries.length > 0 && (
                 <ul className="deliveries" aria-label="智能体响应">
                   {deliveries.map((d) => (
@@ -174,7 +180,7 @@ export function TaskPage({
             </>
           }
         >
-          <TaskPullRequests task={task} data={data} path={path} />
+          {!judging && <TaskPullRequests task={task} data={data} path={path} />}
           <TaskHistory task={task} path={path} data={data} />
           {chosen ? (
             <div className="task-actions">
