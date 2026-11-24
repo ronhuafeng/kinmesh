@@ -106,6 +106,13 @@ code {
   background: var(--sunken);
   border: 1px solid var(--hairline);
 }
+/* Code in a block is the block's text, not a chip of its own. */
+pre code {
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: none;
+}
 .reference {
   font-size: 0.78rem;
   color: var(--ink-muted);
@@ -2853,15 +2860,10 @@ a.button-link {
     opacity: 1;
   }
 }
-/* A fenced block is one block: the code inside takes none of inline
- * code's box, which would otherwise be drawn around every line. */
+/* A fenced block is one block, in the block's own type. */
 .message-text pre code {
   display: block;
   font-family: inherit;
-  padding: 0;
-  border: 0;
-  border-radius: 0;
-  background: none;
   font-size: inherit;
 }
 /* Code in its language, coloured from the tints: a few kinds of token, the

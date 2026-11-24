@@ -24,6 +24,8 @@ export async function t3Providers(credential: Credential, signal: AbortSignal) {
       )
       .map((p) => ({
         id: p.providerInstanceId,
+        /** What kind of provider it is, such as `codex`. */
+        driver: p.driverKind,
         models: p.models.map((m) => m.id),
       }));
   } finally {
