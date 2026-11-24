@@ -289,7 +289,8 @@ await test('Team MCP HTTP boundary rejects unauthenticated/cookie/spoofed/origin
         await fetch(f.endpoint, {
           method: 'POST',
           headers,
-          body: JSON.stringify({ huge: 'x'.repeat(20000) }),
+          // Past the 2 MiB a pull request's change may take.
+          body: JSON.stringify({ huge: 'x'.repeat(2 * 1024 * 1024 + 1) }),
         })
       ).status,
       413,
