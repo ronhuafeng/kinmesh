@@ -67,7 +67,12 @@ export function GitHubConnection({ teamId }: { teamId: string }) {
                         .map((name) => name.split('/')[1])
                         .join('、') + (status.more ? ' 等' : '')}
                 </span>
-                <a href={status.manageUrl} target="_blank" rel="noreferrer">
+                <a
+                  className="link-button"
+                  href={status.manageUrl}
+                  target="_blank"
+                  rel="noreferrer"
+                >
                   更改
                 </a>
               </span>
@@ -78,7 +83,9 @@ export function GitHubConnection({ teamId }: { teamId: string }) {
         <Row label="仓库">
           {status?.state === 'created' ? (
             <span className="github-repositories">
-              <a href={status.installUrl}>选择仓库</a>
+              <a className="link-button" href={status.installUrl}>
+                选择仓库
+              </a>
               {/* Created under the wrong account, say: start over. */}
               <button
                 type="button"
