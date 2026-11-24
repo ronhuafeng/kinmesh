@@ -180,7 +180,9 @@ button text.
 - **Top bar**: three parts beside the sidebar. Its start holds the way back from a
   page on a tablet (‹, its stroke on the content's edge; a task's way back is its
   看板 tab) and the sidebar icon when the sidebar is closed; the views' segmented
-  control is in its middle, 38 px tall, 12 px above and below; its end holds only
+  control is in its middle, 38 px tall, 12 px above and below, centred over the
+  conversation's column whatever view is open, so a view pressed never moves the
+  control from under the pointer; its end holds only
   "正在刷新…" when a refresh is slow. A page has no back row of its own there. On a
   phone the bar is the way back, the place's name and the views, as before.
 
