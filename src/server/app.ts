@@ -33,7 +33,7 @@ import { registerWeb } from './web.js';
 import { registerTasks } from './tasks.js';
 import { registerCommunication } from './communication.js';
 import { registerAttachments } from './attachments.js';
-import { spacePairer } from '../adapters/space/client.js';
+import { spaceCodexHomes, spacePairer } from '../adapters/space/client.js';
 import { attachmentStore } from '../persistence/attachment-store.js';
 import { registerNotifications } from './notify.js';
 import { registerMe } from './me.js';
@@ -87,7 +87,14 @@ export async function createApp(
   const changes = watchChanges(store);
   const { grants } = registerAgents(app, store, hub.directory);
   registerPeople(app, store);
-  registerAgentWorkers(app, store, hub);
+  registerAgentWorkers(
+    app,
+    store,
+    hub,
+    config.space === null || config.teamMcpUrl === null
+      ? null
+      : { homes: spaceCodexHomes(config.space), url: config.teamMcpUrl },
+  );
   const { t3Status, renewal, runCredential } = registerConnect(
     app,
     store,

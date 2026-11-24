@@ -62,17 +62,24 @@ export function managedRepository(
             s.agentGrants.expiresAt,
             new Date(now + (lifetime * 2) / 3).toISOString(),
           ),
-          inArray(
-            s.agentGrants.id,
-            q()
-              .select({ id: s.managedBindings.grantId })
+          inArray(s.agentGrants.id, [
+            ...(await q()
+              .select({
+                worker: s.managedBindings.grantId,
+                teamMcp: s.managedBindings.teamMcpGrantId,
+              })
               .from(s.managedBindings)
               .where(
                 agentId === undefined
                   ? undefined
                   : eq(s.managedBindings.agentId, agentId),
-              ),
-          ),
+              )
+              .then((rows) =>
+                rows.flatMap((r) =>
+                  r.teamMcp === null ? [r.worker] : [r.worker, r.teamMcp],
+                ),
+              )),
+          ]),
         ),
       );
     return renewed.count;
@@ -172,13 +179,57 @@ export function managedRepository(
         return issued;
       });
     },
-    /** Stop serving the agent and revoke its worker credential. */
+    /**
+     * A new Team MCP credential for an agent the hub serves, to be written
+     * into its Codex home; kept with `keepTeamMcp` once it is there.
+     */
+    issueTeamMcp(
+      p: Principal,
+      teamId: TeamId,
+      agentId: AgentId,
+      input: GrantInput,
+    ) {
+      return atomic(async () => {
+        await person(p, teamId);
+        if ((await binding(teamId, agentId)) === null)
+          throw new DomainError('conflict');
+        return agents.issue(p, teamId, agentId, input);
+      });
+    },
+    /**
+     * The credential now in the agent's Codex home: the hub renews it from
+     * here on, and the one it replaces is revoked.
+     */
+    keepTeamMcp(
+      p: Principal,
+      teamId: TeamId,
+      agentId: AgentId,
+      grantId: string,
+    ) {
+      return atomic(async () => {
+        await person(p, teamId);
+        const old = await binding(teamId, agentId);
+        if (old === null) throw new DomainError('conflict');
+        await q()
+          .update(s.managedBindings)
+          .set({ teamMcpGrantId: grantId })
+          .where(eq(s.managedBindings.agentId, agentId));
+        if (old.teamMcpGrantId !== null && old.teamMcpGrantId !== grantId)
+          await agents.revoke(p, teamId, agentId, old.teamMcpGrantId);
+      });
+    },
+    /**
+     * Stop serving the agent and revoke its worker credential, and the Team
+     * MCP credential the hub wrote for it.
+     */
     disconnect(p: Principal, teamId: TeamId, agentId: AgentId) {
       return atomic(async () => {
         await person(p, teamId);
         const old = await binding(teamId, agentId);
         if (old === null) return false;
         await agents.revoke(p, teamId, agentId, old.grantId);
+        if (old.teamMcpGrantId !== null)
+          await agents.revoke(p, teamId, agentId, old.teamMcpGrantId);
         await q()
           .delete(s.managedBindings)
           .where(eq(s.managedBindings.agentId, agentId));

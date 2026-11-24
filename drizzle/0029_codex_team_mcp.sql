@@ -1,0 +1,2 @@
+ALTER TABLE "managed_bindings" ADD COLUMN "team_mcp_grant_id" text;--> statement-breakpoint
+ALTER TABLE "managed_bindings" ADD CONSTRAINT "managed_bindings_team_mcp_grant_id_agent_grants_id_fk" FOREIGN KEY ("team_mcp_grant_id") REFERENCES "public"."agent_grants"("id") ON DELETE no action ON UPDATE no action;

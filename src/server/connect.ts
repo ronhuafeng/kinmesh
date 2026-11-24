@@ -109,6 +109,22 @@ export const WORKER_GRANT = {
   ] satisfies Scope[],
   lifetimeSeconds: 90 * 86400,
 };
+/**
+ * The Team MCP credential Kinmesh writes into an agent's Codex home beside
+ * T3: what an agent does in the team while it works, renewed like the
+ * worker's while the hub serves the agent.
+ */
+export const TEAM_MCP_GRANT = {
+  label: 'Team MCP (Codex)',
+  scopes: [
+    'channels:read',
+    'channels:write',
+    'tasks:read',
+    'tasks:write',
+    'tasks:review',
+  ] satisfies Scope[],
+  lifetimeSeconds: 90 * 86400,
+};
 const TeamPath = z.object({ teamId: TeamId });
 
 /**

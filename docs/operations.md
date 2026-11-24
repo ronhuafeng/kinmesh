@@ -246,6 +246,8 @@ It writes `<folder>/attachments/<first 8 of the ID>-<name>` whole (a temporary f
 
 `POST {KINMESH_SPACE_ENDPOINT}/pair` with `{"label": "Kinmesh"}` runs `t3 pair --ttl 5m --label <label>` and answers `200 {"token": "…", "expiresAt": "…"}`: a pairing code that lets a browser into T3 for five minutes, which the hub hands to a person in 连接 › T3 ([T3](t3.md#t3-adapter)).
 
+It keeps each agent's own Codex home, for the agent's Codex provider in T3 ([provider configuration](t3.md#provider-configuration)). `GET {KINMESH_SPACE_ENDPOINT}/agents/<agentId>/codex` answers `200 {"home": "…/<agentId>/codex"}` without writing anything; `PUT` with `{"url": "<Team MCP URL>", "token": "<credential>"}` writes the home's `config.toml` whole (0600, the folder 0700), links `auth.json` to the machine's Codex sign-in when the home has none, and answers the same. An agent ID that is not one, a credential that is not one, or a URL that is not HTTP(S) is `400`.
+
 The provisioner ships in the `kinmesh-t3` image as `/opt/kinmesh/space.ts` and runs with Node alone, wherever the `t3` CLI reaches T3's state: `node /opt/kinmesh/space.ts` beside T3 in the deployment, or `node deploy/t3/space.ts` on the machine running T3 desktop. It answers one request at a time and is configured by its environment:
 
 | Variable                      | Meaning                                                                                                                                                   |
@@ -256,6 +258,8 @@ The provisioner ships in the `kinmesh-t3` image as `/opt/kinmesh/space.ts` and r
 | `KINMESH_SPACE_TOKEN_SECRET`  | Instead of a file, a Kubernetes Secret (`namespace/name`) whose `token` it makes once, through the API with the pod's service account; the hub mounts it. |
 | `KINMESH_SPACE_ACCOUNT`       | That service account's directory (`token`, `ca.crt`); default the pod's own.                                                                              |
 | `KINMESH_SPACE_T3`            | T3's CLI; default `t3`.                                                                                                                                   |
+| `KINMESH_AGENT_HOMES`         | Where agents' own Codex homes are kept; default `~/.kinmesh/agents`. Back it up with T3's state.                                                          |
+| `KINMESH_CODEX_AUTH`          | The machine's Codex sign-in that agents' homes link to; default `~/.codex/auth.json`, empty for none.                                                     |
 
 A hub on the same machine as T3 desktop gets a space with the provisioner started from the repository and the hub pointed at it:
 
