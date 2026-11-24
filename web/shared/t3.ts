@@ -39,13 +39,7 @@ export const T3Status = z.object({
 });
 export type T3Status = z.infer<typeof T3Status>;
 export const Providers = z.object({
-  providers: z.array(
-    z.object({
-      id: z.string(),
-      driver: z.string(),
-      models: z.array(z.string()),
-    }),
-  ),
+  providers: z.array(z.object({ id: z.string(), models: z.array(z.string()) })),
 });
 export type Step = 'done' | 'todo' | 'manual';
 type T3Connection = NonNullable<T3Status['connection']>;

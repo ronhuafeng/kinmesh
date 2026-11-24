@@ -262,12 +262,7 @@ export function AgentAbout({
         <dt>工作进程</dt>
         <dd>{managed ? '由 Kinmesh 运行' : awake ? '由你运行' : '未运行'}</dd>
       </dl>
-      <TeamMcp
-        agent={agent}
-        data={data}
-        providerId={provider ?? null}
-        managed={managed !== null}
-      />
+      <TeamMcp agent={agent} data={data} managed={managed !== null} />
       <dl>
         <dt>智能体 ID</dt>
         <dd className="agent-id">
