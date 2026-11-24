@@ -362,7 +362,8 @@ The token frontmatter above holds every colour, light and dark (`dark-<name>`). 
 generated from [tokens/](../../tokens) by `npm run design:build`, which also writes
 [web/shared/tokens.css](../../web/shared/tokens.css), the stylesheet's custom
 properties: change a colour in the tokens, never here or in a stylesheet. Use the
-custom property for its role, never a raw colour; `npm run lint:css` refuses one.
+custom property for its role, never a raw colour, in a stylesheet or in code; CI
+refuses one ([operations](../operations.md#ci)).
 
 The palette is iOS's, light and dark, following `prefers-color-scheme` unless a person
 chose one (外观 in settings):

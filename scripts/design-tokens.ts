@@ -13,8 +13,9 @@ import { format, resolveConfig } from 'prettier';
 /**
  * The design tokens in `tokens/` are the one authority for Kinmesh's reusable
  * visual decisions. This projects them, unchanged, into the stylesheet's
- * custom properties (`web/shared/tokens.css`) and the token frontmatter of
- * `docs/design/DESIGN.md`. `npm run design:build` writes both;
+ * custom properties (`web/shared/tokens.css`), the token frontmatter of
+ * `docs/design/DESIGN.md`, and the theme colours of the page and the web app
+ * manifest. `npm run design:build` writes both;
  * `npm run design:check` fails when either is stale.
  */
 
@@ -263,9 +264,53 @@ function body(source: string): string {
   return source.slice(close + '\n---\n'.length);
 }
 
+/** Where the browser and the installed app take their colours before the
+ * stylesheet loads: the page's theme colour and the web app manifest. */
+export const INDEX_HTML = 'web/index.html';
+export const MANIFEST = 'web/public/manifest.webmanifest';
+
 export interface Projection {
   readonly css: string;
   readonly designMd: string;
+  readonly theme: {
+    readonly paper: string;
+    readonly darkPaper: string;
+    readonly primary: string;
+  };
+}
+
+function replaceOnce(source: string, pattern: RegExp, value: string): string {
+  if (!pattern.test(source))
+    throw new Error(`Nothing matches ${String(pattern)} to project into.`);
+  return source.replace(pattern, (_match, head: string) => `${head}${value}`);
+}
+
+/** The page's theme colours and the manifest's, from the same tokens. */
+export function projectHostColors(
+  html: string,
+  manifest: string,
+  theme: Projection['theme'],
+): { readonly html: string; readonly manifest: string } {
+  return {
+    html: replaceOnce(
+      replaceOnce(
+        html,
+        /(name="theme-color"\s+content=")#[0-9a-f]+(?="\s+media="\(prefers-color-scheme: light\)")/,
+        theme.paper,
+      ),
+      /(name="theme-color"\s+content=")#[0-9a-f]+(?="\s+media="\(prefers-color-scheme: dark\)")/,
+      theme.darkPaper,
+    ),
+    manifest: replaceOnce(
+      replaceOnce(
+        manifest,
+        /("background_color": ")#[0-9a-f]+(?=")/,
+        theme.paper,
+      ),
+      /("theme_color": ")#[0-9a-f]+(?=")/,
+      theme.primary,
+    ),
+  };
 }
 
 export async function projectDesignTokens(
@@ -308,16 +353,28 @@ export async function projectDesignTokens(
   return {
     css: String(file.contents).replace(/^--/gm, '  --'),
     designMd: projected,
+    theme: {
+      paper: hex(light, 'color.paper'),
+      darkPaper: hex(dark, 'color.paper'),
+      primary: hex(light, 'color.primary'),
+    },
   };
 }
 
 async function main(): Promise<void> {
   const check = process.argv.includes('--check');
   const projection = await projectDesignTokens(readFileSync(DESIGN_MD, 'utf8'));
+  const host = projectHostColors(
+    readFileSync(INDEX_HTML, 'utf8'),
+    readFileSync(MANIFEST, 'utf8'),
+    projection.theme,
+  );
   const stale: string[] = [];
   for (const [path, contents] of [
     [TOKENS_CSS, projection.css],
     [DESIGN_MD, projection.designMd],
+    [INDEX_HTML, host.html],
+    [MANIFEST, host.manifest],
   ] as const) {
     if (readFileSync(path, 'utf8') === contents) continue;
     if (check) stale.push(path);
