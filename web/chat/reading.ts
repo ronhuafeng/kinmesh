@@ -55,6 +55,15 @@ const toBottom = () => {
  * older messages are added above. `sent()` goes to the bottom, so what you
  * just sent comes into view however far back you were.
  */
+/**
+ * Where a message ends on screen as laid out, leaving out any animation's
+ * transform: a message rising in as it arrives must not count as moved.
+ */
+function layoutBottom(row: HTMLElement) {
+  const { transform } = getComputedStyle(row);
+  const shift = transform === 'none' ? 0 : new DOMMatrix(transform).m42;
+  return row.getBoundingClientRect().bottom - shift;
+}
 export function useReadingPosition(place: string, messages: ChatMessage[]) {
   const held = useRef<{
     place: string;
@@ -78,10 +87,9 @@ export function useReadingPosition(place: string, messages: ChatMessage[]) {
     for (const row of document.querySelectorAll<HTMLElement>(
       '.messages > li[id^="message-"]',
     )) {
-      const end = row.getBoundingClientRect().bottom;
-      if (end > 0) {
+      if (row.getBoundingClientRect().bottom > 0) {
         h.anchor = row.id.slice('message-'.length);
-        h.end = end;
+        h.end = layoutBottom(row);
         break;
       }
     }
@@ -104,7 +112,7 @@ export function useReadingPosition(place: string, messages: ChatMessage[]) {
       h.anchor === undefined
         ? null
         : document.getElementById('message-' + h.anchor);
-    const moved = row ? row.getBoundingClientRect().bottom - h.end : 0;
+    const moved = row ? layoutBottom(row) - h.end : 0;
     if (moved !== 0) window.scrollBy({ top: moved });
   };
   useLayoutEffect(() => {

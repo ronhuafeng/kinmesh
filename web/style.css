@@ -652,8 +652,7 @@ textarea {
 .sidebar-inbox .count {
   margin-left: auto;
 }
-.sidebar-inbox .count,
-.view-switch .count {
+.sidebar-inbox .count {
   min-width: 1.1rem;
   padding: 0 0.35rem;
   border-radius: var(--radius-pill);
