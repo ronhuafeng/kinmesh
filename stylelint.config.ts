@@ -14,6 +14,8 @@ const tokens = [
 
 export default {
   plugins: [tokenPolicy],
+  // A disable comment does not go around the tokens.
+  ignoreDisables: true,
   ignoreFiles: ['web/shared/tokens.css', 'web/shared/fonts/**'],
   rules: {
     // Colours come from the tokens: no hex, no colour functions, no names.

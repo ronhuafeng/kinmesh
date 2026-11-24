@@ -12,7 +12,13 @@ import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import stylelint from 'stylelint';
 import { z } from 'zod';
-import { DESIGN_MD, projectDesignTokens } from '../scripts/design-tokens.js';
+import {
+  DESIGN_MD,
+  INDEX_HTML,
+  MANIFEST,
+  projectDesignTokens,
+  projectHostColors,
+} from '../scripts/design-tokens.js';
 import config from '../stylelint.config.js';
 
 // `npm run design:check` (CI) proves the committed projections are fresh;
@@ -107,4 +113,34 @@ await test('a stylesheet uses the tokens: no raw colour, corner or shadow, no un
     /--primary is a generated token/,
   ])
     assert.match(refused, reason);
+});
+
+await test('the page and the installed app take their theme colours from the tokens', () => {
+  const host = projectHostColors(
+    readFileSync(INDEX_HTML, 'utf8'),
+    readFileSync(MANIFEST, 'utf8'),
+    { paper: '#010203', darkPaper: '#040506', primary: '#070809' },
+  );
+  assert.match(
+    host.html,
+    /content="#010203"\s+media="\(prefers-color-scheme: light\)"/,
+  );
+  assert.match(
+    host.html,
+    /content="#040506"\s+media="\(prefers-color-scheme: dark\)"/,
+  );
+  assert.match(host.manifest, /"background_color": "#010203"/);
+  assert.match(host.manifest, /"theme_color": "#070809"/);
+});
+
+await test('a disable comment does not turn the token policy off', async () => {
+  const [result] = (
+    await stylelint.lint({
+      code: '/* stylelint-disable */\n.a { color: #fff; }\n',
+      config,
+    })
+  ).results;
+  assert.ok(
+    result?.warnings.some((warning) => warning.text.includes('hex color')),
+  );
 });

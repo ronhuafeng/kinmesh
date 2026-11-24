@@ -368,13 +368,15 @@ Before any model runs, the aggregate rejects linked or non-private files, aliase
 
 ## CI
 
-| Workflow                      | Trigger                               | Runs                                                                                                                                     |
-| ----------------------------- | ------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
-| `CI` → `foundation`           | Pull requests to and pushes on `main` | Build, type-aware lint, formatting, all unit/persistence/HTTP/process tests, migration drift, architecture guard, `npm audit --omit=dev` |
-| `CI` → `chromium`             | Same                                  | `npm run test:browser`: real desktop and mobile Chromium against disposable databases                                                    |
-| `Live collaboration`          | Manual dispatch on `main`             | `test:collaboration-live` for Codex and Grok, each on a fresh GitHub-hosted VM                                                           |
-| `Authenticated T3 acceptance` | Manual dispatch on `main`             | `release:check` on the owner's `kinmesh-t3-acceptance` self-hosted runner                                                                |
-| `Publish image`               | Pushes on `main`                      | Both images for both architectures, then the [deployment](#deploying-a-commit)                                                           |
+| Workflow                      | Trigger                               | Runs                                                                                                                                                                     |
+| ----------------------------- | ------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `CI` → `foundation`           | Pull requests to and pushes on `main` | Build, type-aware lint, formatting, the design-token guard (below), all unit/persistence/HTTP/process tests, migration drift, architecture guard, `npm audit --omit=dev` |
+| `CI` → `chromium`             | Same                                  | `npm run test:browser`: real desktop and mobile Chromium against disposable databases                                                                                    |
+| `Live collaboration`          | Manual dispatch on `main`             | `test:collaboration-live` for Codex and Grok, each on a fresh GitHub-hosted VM                                                                                           |
+| `Authenticated T3 acceptance` | Manual dispatch on `main`             | `release:check` on the owner's `kinmesh-t3-acceptance` self-hosted runner                                                                                                |
+| `Publish image`               | Pushes on `main`                      | Both images for both architectures, then the [deployment](#deploying-a-commit)                                                                                           |
+
+The design-token guard keeps [tokens/](../tokens) the one authority for the workspace's look ([DESIGN.md](design/DESIGN.md#colors)). `npm run design:check` fails when anything generated from the tokens is stale: the stylesheet's `web/shared/tokens.css`, DESIGN.md's frontmatter, and the theme colours of `web/index.html` and the web app manifest (`npm run design:build` regenerates them). `npm run lint:css` refuses, in any stylesheet, a raw colour, a corner other than the radius tokens, a custom property that hides a raw colour or shadow, or one that names nothing; a `stylelint-disable` comment does not turn it off. The type-aware lint refuses a colour literal or a `style` attribute in the workspace's code.
 
 Tests run against PostgreSQL and the file store in Docker containers that each run starts once; every test's hub has a bucket of its own, and the database's migrated template is copied into a new database for every test, dropped afterwards. `main` requires `foundation` and `chromium`. Routine CI has no model credentials and never starts a provider run; native DTO cases use labelled fixtures. Browser tests use real Chromium with generated secrets, no Inbox or T3 credentials, and no traces or video. A green CI run is not live evidence.
 
