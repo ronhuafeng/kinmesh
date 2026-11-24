@@ -42,11 +42,15 @@ async function notify(message: WorkerEvent) {
     });
   });
 }
+/** The parent's next message, unless the worker stops first. */
+function fromParent() {
+  // `process` is an EventEmitter, typed only as its interface.
+  // eslint-disable-next-line @typescript-eslint/no-unsafe-class-instance-assignment
+  return once(process, 'message', { signal: stopping.signal });
+}
 try {
   const initialize = supervised
-    ? Initialize.parse(
-        (await once(process, 'message', { signal: stopping.signal }))[0],
-      )
+    ? Initialize.parse((await fromParent())[0])
     : undefined;
   const path = process.env.KINMESH_INBOX_CONFIG;
   if (!initialize && !path) throw new Error('Missing configuration');
@@ -59,7 +63,7 @@ try {
       throw new Error('Database changed');
     // Install the command listener before notifying the parent; no claims before HTTP bind.
     const [run] = await Promise.all([
-      once(process, 'message', { signal: stopping.signal }),
+      fromParent(),
       notify({ type: 'inbox.prepared', identity }),
     ]);
     Run.parse(run[0]);
