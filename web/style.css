@@ -194,8 +194,9 @@ a.button:hover {
   background: var(--primary-hover);
   border-color: var(--primary-hover);
 }
-/* Pressed, a control darkens its fill and gives a little, as on iOS; a row
- * or a link in a sentence only darkens. Without motion only the colour
+/* Pressed, a control darkens its fill and gives a little, as on iOS; a row,
+ * a link in a sentence, or what opens a menu (the menu is placed against it,
+ * and would follow it as it gives) only darkens. Without motion only the colour
  * changes. iOS's own grey tap box is not drawn: this is the press state. */
 :root {
   -webkit-tap-highlight-color: transparent;
@@ -210,7 +211,8 @@ a.button:active {
     .sidebar .person,
     button.inbox-main,
     .link-button,
-    [role='tab']
+    [role='tab'],
+    [aria-haspopup]
   ):active:not(:disabled) {
   scale: none;
 }
@@ -5389,14 +5391,20 @@ button.list-row-main:hover:not(:disabled) .list-row-title {
     box-shadow: var(--elev-3);
     transform: translateX(calc(-100% - 1rem));
     visibility: hidden;
-    transition:
-      transform 180ms var(--ease-out),
-      visibility 0s 180ms;
   }
   .workspace-shell[data-sidebar='floating'] > .sidebar {
     transform: none;
     visibility: visible;
-    transition: transform 180ms var(--ease-out);
+  }
+  /* It slides only when a person opens or closes it; a window crossing
+   * 900 px puts it in its place at once. */
+  .workspace-shell[data-sidebar-moving] > .sidebar {
+    transition:
+      transform var(--dur) var(--ease-out),
+      visibility 0s var(--dur);
+  }
+  .workspace-shell[data-sidebar-moving][data-sidebar='floating'] > .sidebar {
+    transition: transform var(--dur) var(--ease-out);
   }
   .workspace-shell[data-sidebar='floating'] .workspace-header .sidebar-toggle {
     visibility: hidden;

@@ -542,7 +542,8 @@ Corners are tight and few, an instrument's rather than a toy's: the `rounded` to
 - **Buttons**: primary is filled green; secondary a grey fill; destructive red text
   on the grey fill; a quiet one has no fill until hovered. Pressed, a control darkens
   its fill (lighter in dark mode; a quiet one takes the hover fill) and gives to 0.97
-  of its size, a card as a whole; a row, a tab and a link in a sentence only darken.
+  of its size, a card as a whole; a row, a tab, a link in a sentence and what opens a
+  menu (the menu stands against it, so it must not move) only darken.
   iOS's grey tap box is never drawn. A disabled control fades; the pointer stays.
 - **Names**: a person is their Feishu name everywhere they appear (messages, the
   sidebar, Team, tasks, the Inbox, mentions, delivery lines), said once and never
@@ -948,7 +949,9 @@ Corners are tight and few, an instrument's rather than a toy's: the `rounded` to
   finger's 44 px after it; while searching the field takes the whole row and the icon
   steps aside. From 900 px an open sidebar is a column beside the content. Narrower,
   it floats over the content's edge — inset 0.5 rem from the window, rounded, at the
-  third elevation, at its usual width, nothing dimmed, the header under it unmoved — and closes
+  third elevation, at its usual width, nothing dimmed, the header under it unmoved — sliding
+  in and out only when a person opens or closes it (a window crossing 900 px puts it in its
+  place at once) — and closes
   again on a choice of place, a click or tap outside, or Esc. Nothing opens it on its
   own: no hover, no edge. `⌘\` / `Ctrl+\` opens and closes it; ⌘K opens it with search.
   From 900 px it starts open and each device remembers whether it was left open;
