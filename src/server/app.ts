@@ -26,6 +26,7 @@ import { startPullRequestUpkeep } from './pull-request-upkeep.js';
 import { githubPullRequests } from '../adapters/github/pull-requests.js';
 import { githubTokens, registerGitHub } from './github.js';
 import { registerOpenPullRequest } from './open-pull-request.js';
+import { registerReadRepository } from './read-repository.js';
 import { registerTeam } from './team.js';
 import { registerShutdown } from './shutdown.js';
 import { watchChanges } from './changes.js';
@@ -126,6 +127,10 @@ export async function createApp(
     api: config.github.api,
     token: githubToken,
     origin: config.origin,
+  });
+  registerReadRepository(app, store, {
+    api: config.github.api,
+    token: githubToken,
   });
   startPullRequestUpkeep(
     app,
