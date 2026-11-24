@@ -1,122 +1,20 @@
 @import './shared/fonts/maple-mono.css';
+@import './shared/tokens.css';
 
 /* ------------------------------------------------------------------
- * Design tokens (docs/design/DESIGN.md)
- * Native iOS: a grey grouped canvas, white content, hairline separators,
- * one deep green. Orange marks only what waits on a human.
+ * Theme. Every reusable value (colour, type, radius, elevation, motion)
+ * is a token in tokens/, generated into shared/tokens.css with its dark
+ * equivalent; docs/design/DESIGN.md says what each is for. What follows
+ * only applies them.
  * ------------------------------------------------------------------ */
 :root {
   color-scheme: light dark;
-  --canvas: light-dark(#f2f2f7, #000000);
-  --paper: light-dark(#ffffff, #1c1c1e);
-  --surface: light-dark(#ffffff, #2c2c2e);
-  --raised: light-dark(#f7f7f9, #242426);
-  --sunken: light-dark(#ececf1, #2c2c2e);
-  --hover: light-dark(#e5e5ea, #2c2c2e);
-  --selected: light-dark(#ffffff, #636366);
-  --ink: light-dark(#1c1c1e, #ffffff);
-  --ink-muted: light-dark(#6c6c70, #98989f);
-  --ink-subtle: light-dark(#8e8e93, #8e8e93);
+  /* A hairline is one device pixel (0.5 px on a 2x screen, below). */
   --hairline-width: 1px;
-  --hairline: light-dark(#e5e5ea, #38383a);
-  --hairline-strong: light-dark(#d1d1d6, #48484a);
-  --primary: light-dark(#1d7a4f, #3fc587);
-  --primary-hover: light-dark(#17653f, #5bd29a);
-  --on-primary: light-dark(#ffffff, #0e2a1c);
-  --primary-soft: light-dark(#e3f1e9, #173826);
-  --primary-soft-text: light-dark(#1d7a4f, #7fdcae);
-  --focus: light-dark(#1d7a4f, #3fc587);
-  --human: light-dark(#c27c0e, #ffb340);
-  --human-soft: light-dark(#fbefd9, #3a2c14);
-  --human-text: light-dark(#8a5a08, #ffc976);
-  --agent: light-dark(#4f5fd6, #8e98ff);
-  --agent-soft: light-dark(#e8eafb, #23264a);
-  --agent-text: light-dark(#3a48b0, #b3b9ff);
-  --decision: light-dark(#eb6a00, #ff9f0a);
-  --decision-soft: light-dark(#fff1e5, #3a2608);
-  --decision-text: light-dark(#b04a00, #ffb340);
-  --danger: light-dark(#d70015, #ff6961);
-  --danger-soft: light-dark(#ffe9eb, #3d1715);
-  --ok: light-dark(#1d7a4f, #3fc587);
-  --warn: light-dark(#b25f00, #ffb340);
-  --warn-soft: light-dark(#fff3e0, #3a2a10);
-  --s-proposed: light-dark(#6c6c70, #98989f);
-  --s-in-progress: light-dark(#0064d2, #64a8ff);
-  --s-review-requested: light-dark(#8944ab, #c78bea);
-  --s-awaiting-human: light-dark(#c25100, #ff9f0a);
-  --s-rework-requested: light-dark(#d70015, #ff6961);
-  --s-accepted: light-dark(#1d7a4f, #3fc587);
-  --s-cancelled: light-dark(#8e8e93, #8e8e93);
-  --fill: light-dark(rgb(118 118 128 / 0.12), rgb(118 118 128 / 0.24));
-  --badge: light-dark(#c25100, #ff9f0a);
-  --on-badge: light-dark(#ffffff, #1c1c1e);
-  --tint-green: light-dark(#e3f4ea, #173826);
-  --tint-green-text: light-dark(#1d7a4f, #7fdcae);
-  --tint-blue: light-dark(#e5efff, #142c4d);
-  --tint-blue-text: light-dark(#0058b8, #8cc0ff);
-  --tint-indigo: light-dark(#ebeafd, #25234d);
-  --tint-indigo-text: light-dark(#4b45c6, #b0acff);
-  --tint-orange: light-dark(#fff0de, #3a2608);
-  --tint-orange-text: light-dark(#a84e00, #ffc070);
-  --tint-pink: light-dark(#fde8f0, #3d1828);
-  --tint-pink-text: light-dark(#b3245e, #ff9cc3);
-  --tint-teal: light-dark(#e0f4f5, #0e3236);
-  --tint-teal-text: light-dark(#08707a, #7fd8df);
-  --radius-sm: 6px;
-  --radius: 10px;
-  --radius-lg: 12px;
-  /* Elevation: three levels of material, for structure, never decoration.
-   * 1 rests on its surface (a card on its column); 2 floats over content
-   * (the composer); 3 is above everything (popovers, search, a floating
-   * sidebar). */
-  --elev-1: 0 0 0 0.5px rgb(0 0 0 / 0.05), 0 1px 2px rgb(0 0 0 / 0.06);
-  --elev-1-hover:
-    0 0 0 0.5px rgb(0 0 0 / 0.06), 0 4px 12px -2px rgb(0 0 0 / 0.1);
-  --elev-2:
-    0 0 0 0.5px rgb(0 0 0 / 0.07), 0 2px 6px rgb(0 0 0 / 0.04),
-    0 10px 28px -6px rgb(0 0 0 / 0.12);
-  --elev-3:
-    0 0 0 0.5px rgb(0 0 0 / 0.08), 0 4px 12px rgb(0 0 0 / 0.06),
-    0 20px 48px -8px rgb(0 0 0 / 0.2);
-  --shadow-pop: var(--elev-3);
-  --shadow-card: var(--elev-1);
-  /* Translucent material: what scrolls under it shows through, blurred. */
-  --material: color-mix(in srgb, var(--paper) 78%, transparent);
-  --material-strong: color-mix(in srgb, var(--surface) 86%, transparent);
-  --blur: saturate(180%) blur(20px);
-  --bar: light-dark(rgb(249 249 249 / 0.78), rgb(22 22 23 / 0.78));
-  --scroll-thumb: light-dark(rgb(0 0 0 / 0.28), rgb(255 255 255 / 0.3));
-  /* Type: body 16, controls and rows 15, secondary 13 (17 for a phone's
-   * reading, below). */
-  --text-body: 1rem;
-  --text-ui: 0.9375rem;
-  --text-small: 13px;
-  /* Motion: hover, press and selection ease in 150 ms; things that move
-   * or appear take 200 ms. */
-  --dur-fast: 150ms;
-  --dur-press: 100ms;
-  --dur: 200ms;
-  /* The reading column: a conversation, a page, its composer. */
-  --reading: 45rem;
-  /* A conversation: prose keeps the reading measure; code, tables and
-   * diagrams may use this much. */
-  --conversation: 60rem;
-  --font:
-    -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'PingFang SC',
-    'Hiragino Sans GB', 'Microsoft YaHei', system-ui, sans-serif;
-  /* Code and identifiers: Maple Mono, Chinese in the system's face. */
-  --mono:
-    'Maple Mono', ui-monospace, 'SF Mono', SFMono-Regular, Menlo, Consolas,
-    'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', 'Noto Sans CJK SC',
-    monospace;
-  /* A block of code, which keeps columns: its Chinese is two columns wide. */
-  --mono-block: 'Maple Mono', 'Code Han', var(--mono);
-  --ease-out: cubic-bezier(0.2, 0.8, 0.2, 1);
-  --spring: cubic-bezier(0.34, 1.3, 0.64, 1);
   /* A pressed control's fill: darker on light, lighter on dark. */
   --pressed: brightness(0.92);
-  /* The light that passes over words while an agent works. */
-  --sheen: light-dark(#c7c7cc, #ffffff);
+  /* What is read all day: larger on a phone (below). */
+  --reading-size: var(--text-body);
 
   font-family: var(--font);
   color: var(--ink);
@@ -137,9 +35,8 @@
   }
 }
 /* Dark: the system's choice unless a person chose light, and theirs when
- * they chose dark (外观 in settings). Each colour above is written once,
- * light then dark (light-dark()), and follows the colour scheme chosen here;
- * the one effect that isn't a colour follows the same choice. */
+ * they chose dark (外观 in settings). The tokens' dark values follow the
+ * same choice, and so does the one effect that isn't a token. */
 :root[data-theme='light'] {
   color-scheme: light;
 }
@@ -203,9 +100,9 @@ time {
   font-variant-numeric: tabular-nums;
 }
 code {
-  font-size: 0.85em;
+  font-size: var(--text-code);
   padding: 0.1rem 0.35rem;
-  border-radius: 5px;
+  border-radius: var(--radius-sm);
   background: var(--sunken);
   border: 1px solid var(--hairline);
 }
@@ -264,7 +161,7 @@ code {
     background: transparent;
   }
   ::-webkit-scrollbar-thumb {
-    border-radius: 999px;
+    border-radius: var(--radius-pill);
     background: var(--thumb, var(--scroll-thumb));
   }
 }
@@ -470,7 +367,7 @@ textarea {
   place-items: center;
   width: 1.75rem;
   height: 1.75rem;
-  border-radius: 7px;
+  border-radius: var(--radius);
   background: var(--primary);
   color: var(--on-primary);
   font-size: 0.95rem;
@@ -608,7 +505,7 @@ textarea {
   display: inline-block;
   font-size: 13px;
   padding: 0.15rem 0.65rem;
-  border-radius: 999px;
+  border-radius: var(--radius-pill);
   background: var(--fill);
   color: var(--ink-muted);
   margin-bottom: 0.75rem;
@@ -649,7 +546,7 @@ textarea {
   background: var(--paper);
   border: 0;
   border-radius: var(--radius-lg);
-  box-shadow: var(--shadow-card);
+  box-shadow: var(--elev-1);
   padding: 2rem;
   display: grid;
   gap: 1rem;
@@ -676,7 +573,7 @@ textarea {
   display: inline-flex;
   gap: 2px;
   padding: 3px;
-  border-radius: 11px;
+  border-radius: var(--radius-lg);
   background: var(--fill);
   border: 0;
 }
@@ -686,7 +583,7 @@ textarea {
   color: var(--ink);
   min-height: 2rem;
   padding: 0.3125rem 1.125rem;
-  border-radius: 8px;
+  border-radius: var(--radius);
   font-size: var(--text-ui);
   font-weight: 500;
   line-height: 1.375rem;
@@ -712,9 +609,7 @@ textarea {
   background: var(--selected);
   color: var(--ink);
   font-weight: 600;
-  box-shadow:
-    0 3px 8px rgb(0 0 0 / 0.12),
-    0 0 0 0.5px rgb(0 0 0 / 0.04);
+  box-shadow: var(--elev-thumb);
 }
 
 /* ------------------------------------------------------------------
@@ -759,7 +654,7 @@ textarea {
 .view-switch .count {
   min-width: 1.1rem;
   padding: 0 0.35rem;
-  border-radius: 999px;
+  border-radius: var(--radius-pill);
   background: var(--badge);
   color: var(--on-badge);
   font-size: 12px;
@@ -788,7 +683,7 @@ textarea {
   font-size: var(--text-ui);
   font-weight: 500;
   padding: 0.25rem 0.5rem;
-  border-radius: 10px;
+  border-radius: var(--radius);
 }
 .sidebar nav button:hover:not(:disabled) {
   background: var(--hover);
@@ -834,7 +729,11 @@ textarea {
   white-space: nowrap;
   /* A name too long for the row fades out at its edge; hovered, it is
    * said in full. */
-  mask-image: linear-gradient(to right, #000 calc(100% - 1.5rem), transparent);
+  mask-image: linear-gradient(
+    to right,
+    currentColor calc(100% - 1.5rem),
+    transparent
+  );
 }
 .sidebar nav button span.waiting-dot {
   flex: none;
@@ -926,7 +825,7 @@ button.person {
   color: var(--ink);
   font-weight: 500;
   text-align: left;
-  border-radius: 10px;
+  border-radius: var(--radius);
 }
 button.person:hover:not(:disabled),
 button.person[aria-pressed='true'] {
@@ -972,7 +871,7 @@ a.link-button {
   gap: 0.55rem;
   padding: 0.3rem 0.75rem;
   border: 0;
-  border-radius: 999px;
+  border-radius: var(--radius-pill);
   background: var(--fill);
 }
 .connection-dot {
@@ -1060,7 +959,7 @@ a.link-button {
   background: var(--fill);
   color: var(--ink);
   border-color: transparent;
-  border-radius: 999px;
+  border-radius: var(--radius-pill);
   padding: 0 0.85rem;
   font-size: 0.875rem;
   font-weight: 500;
@@ -1102,7 +1001,7 @@ a.link-button {
   min-height: 0;
   height: 1.875rem;
   padding: 0 0.85rem;
-  border-radius: 999px;
+  border-radius: var(--radius-pill);
   font-size: 0.875rem;
 }
 .inline-error {
@@ -1154,7 +1053,7 @@ a.link-button {
   align-self: start;
   justify-self: end;
   font-size: 11px;
-  line-height: calc(var(--text-body) * 1.6);
+  line-height: calc(var(--reading-size) * 1.6);
   color: var(--ink-muted);
   white-space: nowrap;
   opacity: 0;
@@ -1265,7 +1164,7 @@ button.author-link:hover:not(:disabled) {
   font-weight: 500;
   line-height: 1.125rem;
   padding: 0 0.5rem;
-  border-radius: 999px;
+  border-radius: var(--radius-pill);
   background: var(--fill);
   /* A little deeper than secondary text: it sits on a fill, and on a
    * hovered row. */
@@ -1295,7 +1194,7 @@ button.author-link:hover:not(:disabled) {
   gap: 0.3rem;
   padding: 0.1rem 0.5rem;
   border: var(--hairline-width) solid var(--hairline);
-  border-radius: 999px;
+  border-radius: var(--radius-pill);
   background: var(--paper);
   color: var(--ink-muted);
   font-size: 13px;
@@ -1326,7 +1225,7 @@ button.author-link:hover:not(:disabled) {
   font-size: 13px;
   font-weight: 500;
   padding: 0.05rem 0.45rem;
-  border-radius: 6px;
+  border-radius: var(--radius-sm);
   background: var(--primary-soft);
   color: var(--primary-soft-text);
 }
@@ -1370,7 +1269,7 @@ button.author-link:hover:not(:disabled) {
 }
 /* The composer floats on the bottom edge of the reading column: a band
  * of the page fades the conversation out behind it, and the field itself
- * is translucent material at the second elevation. */
+ * is solid surface at the second elevation. */
 .workspace-main:has(.composer) {
   padding-bottom: 0;
 }
@@ -1388,7 +1287,7 @@ button.author-link:hover:not(:disabled) {
   bottom: 6.25rem;
   padding: 0.3rem 0.8rem;
   border: 0;
-  border-radius: 999px;
+  border-radius: var(--radius-pill);
   background: var(--surface);
   box-shadow: var(--elev-2);
   color: var(--ink);
@@ -1422,11 +1321,9 @@ button.author-link:hover:not(:disabled) {
 }
 .composer > .action-form {
   gap: 0.4rem;
-  background: var(--material-strong);
-  -webkit-backdrop-filter: var(--blur);
-  backdrop-filter: var(--blur);
+  background: var(--surface);
   border: 0;
-  border-radius: 24px;
+  border-radius: var(--radius-lg);
   padding: 0.375rem 0.375rem 0.375rem 0.75rem;
   box-shadow: var(--elev-2);
   transition: box-shadow var(--dur) var(--ease-out);
@@ -1460,7 +1357,7 @@ button.author-link:hover:not(:disabled) {
   height: 2.25rem;
   min-width: 2.25rem;
   padding-block: 0;
-  border-radius: 999px;
+  border-radius: var(--radius-pill);
 }
 .composer .mention-chips {
   grid-column: 1 / -1;
@@ -1470,17 +1367,13 @@ button.author-link:hover:not(:disabled) {
   box-shadow:
     0 0 0 2px var(--primary),
     var(--elev-2);
-  background: color-mix(
-    in srgb,
-    var(--primary-soft) 70%,
-    var(--material-strong)
-  );
+  background: color-mix(in srgb, var(--primary-soft) 70%, var(--surface));
 }
 .composer .composer-attach {
   height: 2.25rem;
   min-width: 2.25rem;
   padding: 0;
-  border-radius: 999px;
+  border-radius: var(--radius-pill);
   color: var(--ink-muted);
 }
 /* What the message answers, above the text: the same quiet quote a reply
@@ -1539,7 +1432,7 @@ button.author-link:hover:not(:disabled) {
   height: 3px;
   appearance: none;
   border: 0;
-  border-radius: 999px;
+  border-radius: var(--radius-pill);
   background: var(--hairline-strong);
   overflow: hidden;
 }
@@ -1593,7 +1486,7 @@ button.author-link:hover:not(:disabled) {
   height: 1.25rem;
   min-width: 0;
   padding: 0;
-  border-radius: 999px;
+  border-radius: var(--radius-pill);
   background: var(--ink);
   color: var(--paper);
   font-size: 0.8rem;
@@ -1694,7 +1587,7 @@ button.author-link:hover:not(:disabled) {
   padding: calc((2.25rem - 1lh) / 2) 0.25rem;
   resize: none;
   background: transparent;
-  font-size: var(--text-body);
+  font-size: var(--reading-size);
   line-height: 1.5;
   /* One line until more is written, then it grows (where supported; else
    * its two rows). */
@@ -1719,7 +1612,7 @@ button.author-link:hover:not(:disabled) {
 .mention-chips li {
   display: inline-flex;
   align-items: center;
-  border-radius: 6px;
+  border-radius: var(--radius-sm);
   background: var(--primary-soft);
 }
 .mention-chips button {
@@ -1734,9 +1627,7 @@ button.author-link:hover:not(:disabled) {
   list-style: none;
   margin: 0;
   padding: 0.25rem;
-  background: var(--material-strong);
-  -webkit-backdrop-filter: var(--blur);
-  backdrop-filter: var(--blur);
+  background: var(--surface);
   border: 0;
   border-radius: var(--radius-lg);
   box-shadow: var(--elev-3);
@@ -1750,7 +1641,7 @@ button.author-link:hover:not(:disabled) {
   align-items: center;
   gap: 0.55rem;
   padding: 0.4rem 0.5rem;
-  border-radius: 8px;
+  border-radius: var(--radius);
   cursor: pointer;
   font-size: 0.9375rem;
 }
@@ -1885,7 +1776,7 @@ button.card-link:focus-visible::after {
 .lifecycle li::before {
   content: '';
   height: 4px;
-  border-radius: 999px;
+  border-radius: var(--radius-pill);
   background: var(--hairline);
   transition: background-color 320ms ease;
 }
@@ -2144,7 +2035,7 @@ dd {
   overflow-x: auto;
   scrollbar-width: none;
   padding: 2px;
-  border-radius: 9px;
+  border-radius: var(--radius-lg);
   background: var(--fill);
 }
 .column-switcher {
@@ -2165,7 +2056,7 @@ dd {
   max-width: 12rem;
   padding: 0.3rem 1.6rem 0.3rem 0.65rem;
   border: 0;
-  border-radius: 9px;
+  border-radius: var(--radius-lg);
   background-color: var(--fill);
   color: var(--ink);
   font-size: 0.875rem;
@@ -2184,7 +2075,7 @@ dd {
   background: transparent;
   color: var(--ink);
   border-color: transparent;
-  border-radius: 7px;
+  border-radius: var(--radius);
   padding: 0.3rem 0.75rem;
   font-size: 0.875rem;
   font-weight: 500;
@@ -2208,9 +2099,7 @@ dd {
   color: var(--ink);
   font-weight: 600;
   background: var(--selected);
-  box-shadow:
-    0 3px 8px rgb(0 0 0 / 0.12),
-    0 0 0 0.5px rgb(0 0 0 / 0.04);
+  box-shadow: var(--elev-thumb);
 }
 
 /* ------------------------------------------------------------------
@@ -2236,7 +2125,7 @@ dd {
   gap: 1rem;
   min-height: 2.25rem;
   padding: 0.35rem 0.6rem;
-  border-radius: 8px;
+  border-radius: var(--radius);
   cursor: pointer;
 }
 .palette-label.with-icon {
@@ -2281,7 +2170,7 @@ dd {
   background: var(--ink);
   color: var(--paper);
   font-size: 0.88rem;
-  box-shadow: var(--shadow-pop);
+  box-shadow: var(--elev-3);
   animation: fade-rise 200ms var(--ease-out);
 }
 /* A notice: what just concerned you, two lines, and it opens its place. */
@@ -2407,7 +2296,7 @@ button.quiet.subtle-danger:hover:not(:disabled) {
   place-items: center;
   width: 1.5rem;
   height: 1.5rem;
-  border-radius: 999px;
+  border-radius: var(--radius-pill);
   background: var(--fill);
   color: var(--ink-muted);
   font-size: 12px;
@@ -2661,7 +2550,7 @@ a.button-link {
   font-size: 12px;
   font-weight: 600;
   padding: 0.05rem 0.45rem;
-  border-radius: 6px;
+  border-radius: var(--radius-sm);
   color: var(--tone);
   background: color-mix(in srgb, var(--tone) 12%, var(--paper));
 }
@@ -2778,7 +2667,7 @@ a.button-link {
   margin-left: -16px;
   padding: 0;
 }
-/* The top bar: translucent material over a hairline, its one row the
+/* The top bar: solid paper over a hairline, its one row the
  * height of the views' segmented control (38 px) with 12 px above and
  * below. Every control in it is that tall: the sidebar icon, the views,
  * sign out. */
@@ -2794,9 +2683,7 @@ a.button-link {
   min-height: calc(38px + 1.5rem);
   margin-inline: calc(-1 * var(--gutter));
   padding: 0.75rem var(--gutter);
-  background: var(--material);
-  -webkit-backdrop-filter: var(--blur);
-  backdrop-filter: var(--blur);
+  background: var(--paper);
   border-bottom: var(--hairline-width) solid var(--hairline);
 }
 .workspace-header[data-bare] {
@@ -2821,7 +2708,7 @@ a.button-link {
     justify-self: center;
   }
   /* Wider than a conversation, the bar's three parts span the conversation's
-   * column alone (its material still runs edge to edge), whatever view is
+   * column alone (its paper still runs edge to edge), whatever view is
    * open: the views stay where they were pressed. */
   .workspace-header {
     padding-inline-end: max(
@@ -2848,11 +2735,9 @@ a.button-link {
   left: 0;
   width: var(--thumb-w, 0);
   translate: var(--thumb-x, 0) 0;
-  border-radius: 8px;
+  border-radius: var(--radius);
   background: var(--selected);
-  box-shadow:
-    0 3px 8px rgb(0 0 0 / 0.12),
-    0 0 0 0.5px rgb(0 0 0 / 0.04);
+  box-shadow: var(--elev-thumb);
   opacity: 0;
   transition: opacity var(--dur-fast) ease;
 }
@@ -2878,10 +2763,10 @@ a.button-link {
   width: 38px;
   height: 38px;
   padding: 0;
-  border-radius: 10px;
+  border-radius: var(--radius);
 }
 .message-text {
-  font-size: var(--text-body);
+  font-size: var(--reading-size);
   line-height: 1.6;
   overflow-wrap: anywhere;
 }
@@ -2913,9 +2798,9 @@ a.button-link {
 }
 .message-text code {
   font-family: var(--mono);
-  font-size: 0.85em;
+  font-size: var(--text-code);
   padding: 0.05em 0.35em;
-  border-radius: 5px;
+  border-radius: var(--radius-sm);
   background: var(--sunken);
 }
 /* A fenced block: one rounded block in the monospace. */
@@ -2924,7 +2809,7 @@ a.button-link {
   margin: 0.3em 0 0.55em;
   padding: 0.75rem 1rem;
   font-family: var(--mono-block);
-  font-size: 0.85em;
+  font-size: var(--text-code);
   line-height: 1.55;
   overflow-x: auto;
   border: var(--hairline-width) solid var(--hairline);
@@ -3345,7 +3230,7 @@ button.icon-button.confirm:disabled {
   margin: auto 0;
   padding: 0 2.25rem 0 calc(0.5rem + 1px);
   font-size: var(--text-ui);
-  border-radius: 10px;
+  border-radius: var(--radius);
   animation: search-grow 180ms var(--ease-out);
 }
 .team-row input:focus {
@@ -3368,7 +3253,7 @@ button.icon-button.confirm:disabled {
   border-radius: var(--radius-lg);
   background: var(--surface);
   color: var(--ink);
-  box-shadow: var(--shadow-pop);
+  box-shadow: var(--elev-3);
   overflow: hidden;
 }
 .search-results:popover-open {
@@ -3805,7 +3690,7 @@ span.person {
   margin-top: -0.35rem;
   padding: 0.35rem 0.6rem;
   border: 0;
-  border-radius: 8px;
+  border-radius: var(--radius);
   background: var(--fill);
   text-align: left;
 }
@@ -3831,7 +3716,7 @@ span.person {
   margin: -0.2rem -0.4rem;
   padding: 0.2rem 0.4rem;
   border: var(--hairline-width) solid transparent;
-  border-radius: 6px;
+  border-radius: var(--radius-sm);
   background: transparent;
   color: var(--ink);
   font: inherit;
@@ -4005,7 +3890,7 @@ button.roster-person:hover:not(:disabled) {
   max-width: 100%;
   font-size: 13px;
   padding: 0.3rem 0.75rem;
-  border-radius: 999px;
+  border-radius: var(--radius-pill);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -4118,7 +4003,7 @@ button.roster-person:hover:not(:disabled) {
   right: 0;
   bottom: calc(-0.5 * var(--gutter) - 2px);
   height: 4px;
-  border-radius: 999px;
+  border-radius: var(--radius-pill);
   /* Softer than the dot: it underlines, it doesn't call. */
   background: color-mix(in srgb, var(--tone) 40%, transparent);
 }
@@ -4253,7 +4138,7 @@ button.roster-person:hover:not(:disabled) {
   top: 0.8rem;
   bottom: 0.8rem;
   width: 3px;
-  border-radius: 2px;
+  border-radius: var(--radius-sm);
   background: transparent;
 }
 .inbox-row[data-tone='decide']::before {
@@ -4863,7 +4748,7 @@ button.new-agent-go {
   align-items: center;
   gap: 0.3rem;
   padding: 0.0625rem 0.5rem;
-  border-radius: 999px;
+  border-radius: var(--radius-pill);
   background: var(--fill);
   color: var(--ink-muted);
   font-size: var(--text-small);
@@ -4879,7 +4764,7 @@ button.new-agent-go {
   content: '';
   width: 0.375rem;
   height: 0.375rem;
-  border-radius: 999px;
+  border-radius: var(--radius-pill);
   background: currentColor;
 }
 /* Under 通知时段, its hours and days, on the same edges. */
@@ -4939,7 +4824,7 @@ button.new-agent-go {
   display: block;
   width: 8rem;
   height: 0.625rem;
-  border-radius: 999px;
+  border-radius: var(--radius-pill);
   background: var(--fill);
 }
 /* One thing in a list: its face, its name over what to know, and what can
@@ -5175,7 +5060,7 @@ button.list-row-main:hover:not(:disabled) .list-row-title {
   }
   /* What is read all day is set larger on a phone. */
   :root {
-    --text-body: 17px;
+    --reading-size: var(--text-body-phone);
   }
   .message-body header strong,
   .author-link {
@@ -5267,9 +5152,7 @@ button.list-row-main:hover:not(:disabled) .list-row-title {
     margin: 0 -1rem 0.5rem;
     padding: 0.6rem 1rem;
     border-bottom: var(--hairline-width) solid var(--hairline);
-    background: color-mix(in srgb, var(--paper) 80%, transparent);
-    -webkit-backdrop-filter: saturate(180%) blur(20px);
-    backdrop-filter: saturate(180%) blur(20px);
+    background: var(--paper);
   }
   .page-bar-title {
     flex: 1;
@@ -5281,7 +5164,7 @@ button.list-row-main:hover:not(:disabled) .list-row-title {
   }
   /* Channels, Search, Inbox and You, at the bottom of Home and of their
    * pages: icons only, the current one in the primary colour, on a
-   * translucent bar that blurs what scrolls under it. */
+   * solid bar over a hairline. */
   .phone-tabs {
     position: fixed;
     left: 0;
@@ -5292,9 +5175,7 @@ button.list-row-main:hover:not(:disabled) .list-row-title {
     grid-template-columns: repeat(4, 1fr);
     padding: 0.3rem 0.6rem calc(0.3rem + env(safe-area-inset-bottom));
     border-top: var(--hairline-width) solid var(--hairline);
-    background: var(--bar);
-    -webkit-backdrop-filter: saturate(180%) blur(20px);
-    backdrop-filter: saturate(180%) blur(20px);
+    background: var(--paper);
   }
   .workspace-shell[data-screen='channel'] .phone-tabs,
   .workspace-shell[data-screen='page'] .phone-tabs {
@@ -5371,7 +5252,7 @@ button.list-row-main:hover:not(:disabled) .list-row-title {
   .search-page-field {
     flex: none;
     height: 44px;
-    border-radius: 12px;
+    border-radius: var(--radius-lg);
     padding: 0 1rem;
   }
   .search-page-field:focus {
@@ -5384,7 +5265,7 @@ button.list-row-main:hover:not(:disabled) .list-row-title {
     left: calc(50% + 0.35rem);
     min-width: 1rem;
     padding: 0 0.3rem;
-    border-radius: 999px;
+    border-radius: var(--radius-pill);
     background: var(--badge);
     color: var(--on-badge);
     font-size: 11px;
@@ -5505,7 +5386,7 @@ button.list-row-main:hover:not(:disabled) .list-row-title {
     height: auto;
     border: var(--hairline-width) solid var(--hairline);
     border-radius: var(--radius-lg);
-    box-shadow: var(--shadow-pop);
+    box-shadow: var(--elev-3);
     transform: translateX(calc(-100% - 1rem));
     visibility: hidden;
     transition:
@@ -5576,7 +5457,7 @@ button.list-row-main:hover:not(:disabled) .list-row-title {
   /* A 32 px mark in a 40 px row, like the rows above it. */
   padding: 0.125rem 0.5rem;
   border: 1px solid transparent;
-  border-radius: 10px;
+  border-radius: var(--radius);
   background: transparent;
   color: var(--ink);
   font-size: var(--text-ui);
@@ -5644,7 +5525,7 @@ button.list-row-main:hover:not(:disabled) .list-row-title {
   margin: 0 0 0 -0.375rem;
   padding: 0.125rem 0.375rem;
   border: 0;
-  border-radius: 8px;
+  border-radius: var(--radius);
   background: transparent;
   color: inherit;
   font: inherit;
@@ -5662,7 +5543,7 @@ button.list-row-main:hover:not(:disabled) .list-row-title {
   border-radius: var(--radius-lg);
   background: var(--surface);
   color: var(--ink);
-  box-shadow: var(--shadow-pop);
+  box-shadow: var(--elev-3);
   animation: fade-rise 140ms var(--ease-out);
 }
 @media (prefers-reduced-motion: reduce) {
@@ -5698,7 +5579,7 @@ button.list-row-main:hover:not(:disabled) .list-row-title {
   gap: 0.5rem;
   min-height: 2.25rem;
   padding: 0 0.5rem;
-  border-radius: 8px;
+  border-radius: var(--radius);
   font-size: var(--text-ui);
   outline: none;
   cursor: default;
@@ -5799,7 +5680,7 @@ button.list-row-main:hover:not(:disabled) .list-row-title {
 }
 .you-row-end kbd {
   padding: 0.1rem 0.45rem;
-  border-radius: 6px;
+  border-radius: var(--radius-sm);
   background: var(--fill);
   font-family: inherit;
   font-size: 13px;

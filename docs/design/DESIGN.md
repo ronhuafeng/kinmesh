@@ -1,17 +1,266 @@
+---
+version: alpha
+name: Kinmesh
+description: A calm precision workroom for people and AI agents; solid paper on a grey canvas, crisp hairlines, tight corners and one deep green.
+colors:
+  agent: '#4f5fd6'
+  agent-soft: '#e8eafb'
+  agent-text: '#3a48b0'
+  badge: '#c25100'
+  canvas: '#f2f2f7'
+  danger: '#d70015'
+  danger-soft: '#ffe9eb'
+  decision: '#eb6a00'
+  decision-soft: '#fff1e5'
+  decision-text: '#b04a00'
+  fill: '#7676801f'
+  focus: '#1d7a4f'
+  hairline: '#e5e5ea'
+  hairline-strong: '#d1d1d6'
+  hover: '#e5e5ea'
+  human: '#c27c0e'
+  human-soft: '#fbefd9'
+  human-text: '#8a5a08'
+  ink: '#1c1c1e'
+  ink-muted: '#6c6c70'
+  ink-subtle: '#8e8e93'
+  ok: '#1d7a4f'
+  on-badge: '#ffffff'
+  on-primary: '#ffffff'
+  paper: '#ffffff'
+  primary: '#1d7a4f'
+  primary-hover: '#17653f'
+  primary-soft: '#e3f1e9'
+  primary-soft-text: '#1d7a4f'
+  raised: '#f7f7f9'
+  s-accepted: '#1d7a4f'
+  s-awaiting-human: '#c25100'
+  s-cancelled: '#8e8e93'
+  s-in-progress: '#0064d2'
+  s-proposed: '#6c6c70'
+  s-review-requested: '#8944ab'
+  s-rework-requested: '#d70015'
+  scroll-thumb: '#00000047'
+  selected: '#ffffff'
+  sheen: '#c7c7cc'
+  sunken: '#ececf1'
+  surface: '#ffffff'
+  tint-blue: '#e5efff'
+  tint-blue-text: '#0058b8'
+  tint-green: '#e3f4ea'
+  tint-green-text: '#1d7a4f'
+  tint-indigo: '#ebeafd'
+  tint-indigo-text: '#4b45c6'
+  tint-orange: '#fff0de'
+  tint-orange-text: '#a84e00'
+  tint-pink: '#fde8f0'
+  tint-pink-text: '#b3245e'
+  tint-teal: '#e0f4f5'
+  tint-teal-text: '#08707a'
+  warn: '#b25f00'
+  warn-soft: '#fff3e0'
+  dark-agent: '#8e98ff'
+  dark-agent-soft: '#23264a'
+  dark-agent-text: '#b3b9ff'
+  dark-badge: '#ff9f0a'
+  dark-canvas: '#000000'
+  dark-danger: '#ff6961'
+  dark-danger-soft: '#3d1715'
+  dark-decision: '#ff9f0a'
+  dark-decision-soft: '#3a2608'
+  dark-decision-text: '#ffb340'
+  dark-fill: '#7676803d'
+  dark-focus: '#3fc587'
+  dark-hairline: '#38383a'
+  dark-hairline-strong: '#48484a'
+  dark-hover: '#2c2c2e'
+  dark-human: '#ffb340'
+  dark-human-soft: '#3a2c14'
+  dark-human-text: '#ffc976'
+  dark-ink: '#ffffff'
+  dark-ink-muted: '#98989f'
+  dark-ink-subtle: '#8e8e93'
+  dark-ok: '#3fc587'
+  dark-on-badge: '#1c1c1e'
+  dark-on-primary: '#0e2a1c'
+  dark-paper: '#1c1c1e'
+  dark-primary: '#3fc587'
+  dark-primary-hover: '#5bd29a'
+  dark-primary-soft: '#173826'
+  dark-primary-soft-text: '#7fdcae'
+  dark-raised: '#242426'
+  dark-s-accepted: '#3fc587'
+  dark-s-awaiting-human: '#ff9f0a'
+  dark-s-cancelled: '#8e8e93'
+  dark-s-in-progress: '#64a8ff'
+  dark-s-proposed: '#98989f'
+  dark-s-review-requested: '#c78bea'
+  dark-s-rework-requested: '#ff6961'
+  dark-scroll-thumb: '#ffffff4d'
+  dark-selected: '#636366'
+  dark-sheen: '#ffffff'
+  dark-sunken: '#2c2c2e'
+  dark-surface: '#2c2c2e'
+  dark-tint-blue: '#142c4d'
+  dark-tint-blue-text: '#8cc0ff'
+  dark-tint-green: '#173826'
+  dark-tint-green-text: '#7fdcae'
+  dark-tint-indigo: '#25234d'
+  dark-tint-indigo-text: '#b0acff'
+  dark-tint-orange: '#3a2608'
+  dark-tint-orange-text: '#ffc070'
+  dark-tint-pink: '#3d1828'
+  dark-tint-pink-text: '#ff9cc3'
+  dark-tint-teal: '#0e3236'
+  dark-tint-teal-text: '#7fd8df'
+  dark-warn: '#ffb340'
+  dark-warn-soft: '#3a2a10'
+typography:
+  body:
+    fontFamily: '-apple-system, BlinkMacSystemFont, "SF Pro Text", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", system-ui, sans-serif'
+    fontSize: 1rem
+    fontWeight: 400
+    lineHeight: 1.5
+  body-phone:
+    fontFamily: '-apple-system, BlinkMacSystemFont, "SF Pro Text", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", system-ui, sans-serif'
+    fontSize: 17px
+    fontWeight: 400
+    lineHeight: 1.5
+  code:
+    fontFamily: '"Maple Mono", "Code Han", ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", "Noto Sans CJK SC", monospace'
+    fontSize: 13.6px
+    fontWeight: 400
+    lineHeight: 1.5
+  heading:
+    fontFamily: '-apple-system, BlinkMacSystemFont, "SF Pro Text", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", system-ui, sans-serif'
+    fontSize: 15px
+    fontWeight: 600
+    lineHeight: 1.4
+    letterSpacing: -0.015em
+  label:
+    fontFamily: '-apple-system, BlinkMacSystemFont, "SF Pro Text", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", system-ui, sans-serif'
+    fontSize: 0.9375rem
+    fontWeight: 600
+    lineHeight: 1.4
+  large-title:
+    fontFamily: '-apple-system, BlinkMacSystemFont, "SF Pro Text", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", system-ui, sans-serif'
+    fontSize: 34px
+    fontWeight: 700
+    lineHeight: 1.2
+    letterSpacing: -0.015em
+  small:
+    fontFamily: '-apple-system, BlinkMacSystemFont, "SF Pro Text", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", system-ui, sans-serif'
+    fontSize: 13px
+    fontWeight: 400
+    lineHeight: 1.4
+  title:
+    fontFamily: '-apple-system, BlinkMacSystemFont, "SF Pro Text", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", system-ui, sans-serif'
+    fontSize: 18px
+    fontWeight: 700
+    lineHeight: 1.3
+    letterSpacing: -0.015em
+  ui:
+    fontFamily: '-apple-system, BlinkMacSystemFont, "SF Pro Text", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", system-ui, sans-serif'
+    fontSize: 0.9375rem
+    fontWeight: 400
+    lineHeight: 1.4
+rounded:
+  full: 999px
+  lg: 8px
+  md: 6px
+  none: 0px
+  sm: 4px
+spacing:
+  '1': 4px
+  '2': 8px
+  '3': 12px
+  '4': 16px
+  '5': 24px
+  '6': 32px
+  '7': 48px
+  target-header: 38px
+  target-row: 40px
+  target-touch: 44px
+  conversation: 60rem
+  reading: 45rem
+components:
+  button-primary:
+    backgroundColor: '{colors.primary}'
+    textColor: '{colors.on-primary}'
+    typography: '{typography.label}'
+    rounded: '{rounded.md}'
+    height: '{spacing.target-header}'
+  button-secondary:
+    backgroundColor: '{colors.fill}'
+    textColor: '{colors.ink}'
+    typography: '{typography.label}'
+    rounded: '{rounded.md}'
+    height: '{spacing.target-header}'
+  field:
+    backgroundColor: '{colors.fill}'
+    textColor: '{colors.ink}'
+    typography: '{typography.ui}'
+    rounded: '{rounded.md}'
+  card:
+    backgroundColor: '{colors.paper}'
+    textColor: '{colors.ink}'
+    rounded: '{rounded.md}'
+    padding: '{spacing.3}'
+  list:
+    backgroundColor: '{colors.paper}'
+    rounded: '{rounded.lg}'
+  popover:
+    backgroundColor: '{colors.surface}'
+    textColor: '{colors.ink}'
+    rounded: '{rounded.lg}'
+  composer:
+    backgroundColor: '{colors.surface}'
+    rounded: '{rounded.lg}'
+  segmented:
+    backgroundColor: '{colors.fill}'
+    rounded: '{rounded.lg}'
+  segmented-selected:
+    backgroundColor: '{colors.selected}'
+    textColor: '{colors.ink}'
+    rounded: '{rounded.md}'
+  sidebar:
+    backgroundColor: '{colors.canvas}'
+    textColor: '{colors.ink}'
+  sidebar-row:
+    typography: '{typography.ui}'
+    rounded: '{rounded.md}'
+    height: '{spacing.target-row}'
+  inline-code:
+    backgroundColor: '{colors.sunken}'
+    typography: '{typography.code}'
+    rounded: '{rounded.sm}'
+  decision:
+    backgroundColor: '{colors.decision-soft}'
+    textColor: '{colors.decision-text}'
+  badge:
+    backgroundColor: '{colors.badge}'
+    textColor: '{colors.on-badge}'
+    rounded: '{rounded.full}'
+  avatar:
+    rounded: '{rounded.full}'
+---
+
 # Kinmesh design system
 
-## Character
+## Overview
 
-A calm, precise workroom where people and AI agents work side by side, built like a
-native iOS and macOS app: a grey grouped canvas, white content, hairline separators,
-translucent material and a little depth where things layer, the system's own type at a
-generous size, and one deep green. Agents feel like teammates with
+A calm, precise workroom where people and AI agents work side by side, with the
+visual order of a precision instrument and the ease of a native iOS and macOS app: a
+grey grouped canvas, solid white content, crisp hairline separators, tight corners and
+a little depth only where things layer, the system's own type at a generous size,
+Maple Mono for code, and one deep green. Hierarchy comes from type, alignment and
+spacing, never from decoration. Agents feel like teammates with
 personality, never like settings. The human decision is always the most prominent
 thing on the screen.
 
 Words: trustworthy, legible, alive, unhurried, honest about what is verified.
 
-## Principles
+### Principles
 
 Every screen is judged by one standard: don't make people think, and show nothing
 that isn't needed now. The one exception is the settings map, which shows where
@@ -90,7 +339,7 @@ Check a change against these before it ships.
     720 px (an agent's wider); the board uses the whole width, in equal-height
     columns; the composer is on the conversation's edges. No dead areas.
 18. Hierarchy and material express structure — grouping, layering, focus — never
-    decoration. Depth comes from the elevation scale (see **Elevation and material**)
+    decoration. Depth comes from the elevation scale (see **Elevation & Depth**)
     and only where something truly sits on or over something else: a card on its
     column, the composer over the conversation, a popover over the page. The grey
     canvas holds only what iOS groups on it — the sidebar, a phone's Home list, the
@@ -107,27 +356,31 @@ Check a change against these before it ships.
     hints, navigation repeated in the page).
 21. Verify UI in a real browser: screenshot it and measure the boxes.
 
-## Color
+## Colors
 
-Values live in [web/style.css](../../web/style.css) (`:root`, redefined for dark mode);
-it is the authority. Use the custom property for its role, never a raw colour.
+The token frontmatter above holds every colour, light and dark (`dark-<name>`). It is
+generated from [tokens/](../../tokens) by `npm run design:build`, which also writes
+[web/shared/tokens.css](../../web/shared/tokens.css), the stylesheet's custom
+properties: change a colour in the tokens, never here or in a stylesheet. Use the
+custom property for its role, never a raw colour; `npm run lint:css` refuses one.
 
-The palette is iOS's, light and dark, following `prefers-color-scheme`:
+The palette is iOS's, light and dark, following `prefers-color-scheme` unless a person
+chose one (外观 in settings):
 
-| Token                                         | Light / dark                     | Role                                                                           |
-| --------------------------------------------- | -------------------------------- | ------------------------------------------------------------------------------ |
-| `--canvas`                                    | #F2F2F7 / #000000                | Grouped background: sidebar, phone Home, board columns, sign-in                |
-| `--paper`                                     | #FFFFFF / #1C1C1E                | Content: the main column, lists and cards on the canvas                        |
-| `--surface`, `--raised`                       | #FFF, #F7F7F9 / #2C2C2E          | Popovers and controls; a hovered row, a table's head                           |
-| `--fill`, `--sunken`, `--hover`, `--selected` | grey at 12% / 24%                | Fields, segmented track, grey buttons; code; a current row; the chosen segment |
-| `--ink`, `--ink-muted`, `--ink-subtle`        | #1C1C1E, #6C6C70 / #FFF, #98989F | Primary and secondary text; tertiary (#8E8E93) for glyphs only, never text     |
-| `--hairline`, `--hairline-strong`             | #E5E5EA, #D1D1D6 / #38383A       | Separators, 0.5 px on a 2x screen (`--hairline-width`); control edges          |
-| `--primary` (+ `-hover`, `-soft`), `--focus`  | #1D7A4F / #3FC587                | Primary actions, the current tab, links, focus                                 |
-| `--human`, `--agent` (+ `-soft`, `-text`)     | ochre, indigo                    | Identity colour of people and agents (avatar grounds)                          |
-| `--decision` (+ `-soft`, `-text`), `--badge`  | orange                           | The decision waiting on you, the Inbox; used sparingly                         |
-| `--danger`, `--ok`, `--warn` (+ `-soft`)      | system red, green, amber         | A problem; done; offline or stale                                              |
-| `--s-<status>`                                | one hue per status               | Task status dot and its stage column; 待验收 is orange                         |
-| `--tint-<hue>` (+ `-text`)                    | six soft pastels                 | Channel icons                                                                  |
+| Token                                         | Role                                                                           |
+| --------------------------------------------- | ------------------------------------------------------------------------------ |
+| `--canvas`                                    | Grouped background: sidebar, phone Home, board columns, sign-in                |
+| `--paper`                                     | Content: the main column, its bars, lists and cards on the canvas              |
+| `--surface`, `--raised`                       | Popovers, the composer and controls; a hovered row, a table's head             |
+| `--fill`, `--sunken`, `--hover`, `--selected` | Fields, segmented track, grey buttons; code; a current row; the chosen segment |
+| `--ink`, `--ink-muted`, `--ink-subtle`        | Primary and secondary text; tertiary for glyphs only, never text               |
+| `--hairline`, `--hairline-strong`             | Separators (`--hairline-width`: 0.5 px on a 2x screen); control edges          |
+| `--primary` (+ `-hover`, `-soft`), `--focus`  | Primary actions, the current tab, links, focus                                 |
+| `--human`, `--agent` (+ `-soft`, `-text`)     | Identity colour of people and agents (avatar grounds)                          |
+| `--decision` (+ `-soft`, `-text`), `--badge`  | The decision waiting on you, the Inbox; used sparingly                         |
+| `--danger`, `--ok`, `--warn` (+ `-soft`)      | A problem; done; offline or stale                                              |
+| `--s-<status>`                                | Task status dot and its stage column; 待验收 is orange                         |
+| `--tint-<hue>` (+ `-text`)                    | Channel icons                                                                  |
 
 Every text colour reaches 4.5:1 on the surface it sits on, light and dark: secondary
 text is at least 4.69:1 on the grey canvas, the green 5.32:1 as text and under white
@@ -147,7 +400,8 @@ button text.
   size. Chinese punctuation in code keeps its full width. A visit whose font is not
   there in time keeps the system's `ui-monospace` throughout; code never changes
   width while it is read.
-- The scale, on a 16 px root (`--text-body`, `--text-ui`, `--text-small`): what is
+- The scale, on a 16 px root (`--text-body`, `--text-ui`, `--text-small`; the
+  `typography` tokens): what is
   read — messages, a task's text — 16 px on a wide screen and 17 px on a phone;
   controls, sidebar rows, names and fields 15 px (fields 16 px on a phone); secondary
   text (times, where, presence, section labels, the day) 12–13 px in `--ink-muted`.
@@ -155,20 +409,10 @@ button text.
   small and muted above the large title.
 - A phone's Home has an iOS large title, "频道", 34 px bold.
 
-## Shape and spacing
-
-- Radius: 10 px fields, buttons and cards; 12 px lists, board columns and popovers;
-  22 px the composer; 999 px pills; channel icons a rounded square (26% of their
-  size); 50% for every avatar.
-- Borders: hairline separators (0.5 px on a 2x screen, otherwise 1 px). Fields are
-  filled grey with no border until focused (then green).
-- Bars: a sticky header and a phone's bars are translucent, blurring what scrolls
-  under them (`--material`, `--blur`: `saturate(180%) blur(20px)`), over a hairline;
-  never an opaque slab. They run edge to edge across the content.
-- Spacing scale: 4, 8, 12, 16, 24, 32, 48. Targets are generous: sidebar rows 40 px,
-  header controls 38 px, a finger's 44 px on touch.
-
 ## Layout
+
+- **Spacing**: the `spacing` tokens, 4, 8, 12, 16, 24, 32, 48. Targets are generous:
+  sidebar rows 40 px, header controls 38 px, a finger's 44 px on touch.
 
 - **Columns**: every view starts on the main area's gutter, beside the navigation:
   32 px on a wide screen, 20 px on a tablet, 16 px on a phone.
@@ -186,10 +430,66 @@ button text.
   "正在刷新…" when a refresh is slow. A page has no back row of its own there. On a
   phone the bar is the way back, the place's name and the views, as before.
 
-## Elevation and material
+### Phone
 
-Three levels, as tokens (`--elev-1`…`--elev-3`), each with a dark equivalent where
-depth is a lighter surface and a faint top rim of light:
+Below 576 px the places stack instead of sitting side by side (from 576 px the
+sidebar sits beside a content column of at least 360 px):
+
+- **Home** (the 频道 tab) is the sidebar as an iOS grouped page: the team name small
+  and muted, the large title "频道" with its `+`, then the channels as one inset white
+  list on the grey canvas, the most recently written in first (by name among the
+  silent ones). A row is the channel's icon, its name and the time of its newest
+  message (the time today, otherwise the day), then "author：text" on one line — the
+  text without its Markdown, cut with an ellipsis — and the waiting dot. While the
+  channel is unread its name is semibold rather than medium, and the text and time
+  are in ink rather than muted. Hairlines
+  between rows start at the text. No channel is current
+  here, and the team is not here: it is a view of each channel.
+- **Opening**: an address with no place in it opens on 收件箱 when something waits on
+  you, otherwise on Home; an address that names a place always opens there.
+- **Bottom tabs**: icons only, each named for a screen reader — 频道 (`#`, Home), 搜索
+  (the magnifier), 收件箱 (with how many things wait on you) and 我 (your mark) — four
+  equal 44 px tabs with 24 px icons, the current one in the primary colour and a
+  heavier stroke (your mark is already the primary colour), on a solid bar. They sit under
+  Home and the pages they open.
+- **Search** is the 搜索 tab, a page at `?search` (⌘K on a keyboard): the field at
+  the bottom, just above the keyboard (or the tabs, with none) and ready to type in,
+  the results above it with the best match nearest the thumb — the same results,
+  keys and actions as beside a sidebar. A choice goes there and leaves search; Esc or
+  Back returns to where it was opened.
+- **A channel** has the screen under a bar: back to Home, `# name`, then 聊天 | 看板 |
+  团队 (the same gallery as on a wider screen, its add tile included).
+  Its topics are pills above the conversation; there is no bottom bar.
+- **Fingers and fields**: every target takes taps over 44 px, drawn no larger than it
+  is; fields are 16 px, so nothing zooms.
+- **A page** (agent, task, a worker you run) opens under its own bar: back, then what it
+  is — the agent's name, or a task's channel since its title leads the page.
+- **我** is the settings map (see **Settings**); 退出登录 is in 账户与设备.
+
+### Tablet
+
+From 576 to 1279 px the sidebar sits beside the content (see **Sidebar**: closed below 900 px,
+open from there). On a touch screen (a coarse pointer, whatever the width) every target takes a
+finger: sidebar rows, topics and the board's stage pills grow to 44 px; the header's
+tabs and icons, the new-channel `+`, the sidebar icon and the magnifier keep their drawn
+size and take 44 px of taps around it. A mouse keeps the compact sizes. The edges are
+narrow so the content has the screen: 0.75 rem gutters beside and below the content, 0.5 rem inside
+the sidebar, a header no taller than its tabs need. Touch has no Esc, so a page leads back
+from a bar at its top-left; the sidebar already says where you are, so the bar holds
+only the way back. A task has no bar: it sits on the board, and the 看板 tab lit above
+it leads back. Held upright (below 1024 px) the board shows one stage at a time
+and a page replaces the view. Held wide, an open task sits beside the board — one
+stage, its card marked by a green edge — instead of replacing it.
+
+## Elevation & Depth
+
+Depth is tone first, shadow second. Surfaces are solid: no translucency and no blur
+anywhere. A bar is paper over a hairline, edge to edge across the content; what
+scrolls under it is hidden, not shown through. The sidebar is set apart from the
+content by tone (the grey canvas beside white), its hairline only finishing the edge.
+
+Three levels, as tokens (`--elev-1`…`--elev-3`), each a crisp 0.5 px ring with a short
+shadow, which on dark is a light ring over a deeper shadow:
 
 | Level | Token      | What sits there                                                    |
 | ----- | ---------- | ------------------------------------------------------------------ |
@@ -197,26 +497,23 @@ depth is a lighter surface and a faint top rim of light:
 | 2     | `--elev-2` | Floats over content: the composer, a message's hover action        |
 | 3     | `--elev-3` | Above everything: popovers, the search results, a floating sidebar |
 
-Material (`--material`, `--material-strong`) is translucent paper or surface with the
-blur, used by what floats or stays put while content scrolls under it: the bars, the
-composer, the mention popover. The sidebar is set apart from the content by tone (the
-grey canvas beside white), its hairline only finishing the edge. A card pointed at
-lifts to its hover level and 1 px up.
+The chosen segment of a segmented control sits on `--elev-thumb`. A card pointed at
+lifts to `--elev-1-hover` and 1 px up.
 
-## Icons
+## Shapes
 
-One maintained set, Lucide (`lucide-react`, pinned), wrapped in
-[web/icons.tsx](../../web/icons.tsx) so every icon is drawn the same way: in the text
-colour, a 1.5 px non-scaling stroke, at 16 px inline, 20 px in bars and headers, 24 px
-for a phone's tabs and large marks. Icons are decorative; the control carries the
-accessible name.
+Corners are tight and few, an instrument's rather than a toy's: the `rounded` tokens.
 
-## Scrollbars
-
-Thin overlays: the page's always (the system hides it when idle), a panel's (the
-sidebar, the board, a code block, a table, search results) only while the pointer is
-over it, using the standard `scrollbar-width` / `scrollbar-color` with a WebKit
-fallback.
+- `--radius-sm` (4 px): what sits inside a line or a control: inline code, a mention
+  chip, a key, a marker.
+- `--radius` (6 px): fields, buttons, cards, rows, menu items, a chosen segment.
+- `--radius-lg` (8 px): what holds others: lists, board columns, popovers, the
+  composer, a segmented control's track (2 px outside its 6 px segment).
+- `--radius-pill`: counts, status pills, reactions, progress and switch tracks.
+- 50% for every avatar, presence and status dot; channel icons a rounded square (26%
+  of their size). Nothing else gets its own radius; `npm run lint:css` refuses one.
+- Borders are hairlines (0.5 px on a 2x screen, otherwise 1 px). Fields are filled grey
+  with no border until focused (then green).
 
 ## Components
 
@@ -233,7 +530,7 @@ fallback.
   stages: a grey track, the chosen segment a raised white (dark: grey) thumb that
   eases in. In the top bar it is the page's primary control: 38 px tall, 15 px labels.
 - **Menu**: what pops over the page from the control that opens it (Radix
-  DropdownMenu): a white surface at the third elevation, rounded 12 px, rows of 36 px
+  DropdownMenu): a white surface at the third elevation, `--radius-lg`, rows of 36 px
   with a 16 px icon in the muted ink and the words, a shortcut or tick at the end in
   the muted ink, hairline separators between groups, a danger row in the danger
   colour. A pointer or the arrow keys light a row with the hover fill; Esc or a
@@ -339,7 +636,7 @@ fallback.
   and other people, found by a word of their name or a person's handle, which shows
   beside a name only when two people share it; a choice is written as @Name), floating on the bottom edge of
   the reading column, over a band of the page that fades the conversation out behind
-  it. It is one large rounded field of translucent material at the second elevation,
+  it. It is one large field of solid surface at the second elevation, `--radius-lg`,
   a single line until more is written, with "@" and Send sharing its centre; focus
   draws a soft green ring. Hints live in the placeholder. Send is the round green
   confirm button with an upward arrow, drawn larger here, growing in once there is
@@ -665,58 +962,22 @@ fallback.
   was sent and offers **重试同一操作**; nothing is resent on its own. A message
   instead stays in the conversation with **重试** (see **Composer**).
 
-## Phone
+### Icons
 
-Below 576 px the places stack instead of sitting side by side (from 576 px the
-sidebar sits beside a content column of at least 360 px):
+One maintained set, Lucide (`lucide-react`, pinned), wrapped in
+[web/icons.tsx](../../web/icons.tsx) so every icon is drawn the same way: in the text
+colour, a 1.5 px non-scaling stroke, at 16 px inline, 20 px in bars and headers, 24 px
+for a phone's tabs and large marks. Icons are decorative; the control carries the
+accessible name.
 
-- **Home** (the 频道 tab) is the sidebar as an iOS grouped page: the team name small
-  and muted, the large title "频道" with its `+`, then the channels as one inset white
-  list on the grey canvas, the most recently written in first (by name among the
-  silent ones). A row is the channel's icon, its name and the time of its newest
-  message (the time today, otherwise the day), then "author：text" on one line — the
-  text without its Markdown, cut with an ellipsis — and the waiting dot. While the
-  channel is unread its name is semibold rather than medium, and the text and time
-  are in ink rather than muted. Hairlines
-  between rows start at the text. No channel is current
-  here, and the team is not here: it is a view of each channel.
-- **Opening**: an address with no place in it opens on 收件箱 when something waits on
-  you, otherwise on Home; an address that names a place always opens there.
-- **Bottom tabs**: icons only, each named for a screen reader — 频道 (`#`, Home), 搜索
-  (the magnifier), 收件箱 (with how many things wait on you) and 我 (your mark) — four
-  equal 44 px tabs with 24 px icons, the current one in the primary colour and a
-  heavier stroke (your mark is already the primary colour), on a translucent bar. They sit under
-  Home and the pages they open.
-- **Search** is the 搜索 tab, a page at `?search` (⌘K on a keyboard): the field at
-  the bottom, just above the keyboard (or the tabs, with none) and ready to type in,
-  the results above it with the best match nearest the thumb — the same results,
-  keys and actions as beside a sidebar. A choice goes there and leaves search; Esc or
-  Back returns to where it was opened.
-- **A channel** has the screen under a bar: back to Home, `# name`, then 聊天 | 看板 |
-  团队 (the same gallery as on a wider screen, its add tile included).
-  Its topics are pills above the conversation; there is no bottom bar.
-- **Fingers and fields**: every target takes taps over 44 px, drawn no larger than it
-  is; fields are 16 px, so nothing zooms.
-- **A page** (agent, task, a worker you run) opens under its own bar: back, then what it
-  is — the agent's name, or a task's channel since its title leads the page.
-- **我** is the settings map (see **Settings**); 退出登录 is in 账户与设备.
+### Scrollbars
 
-## Tablet
+Thin overlays: the page's always (the system hides it when idle), a panel's (the
+sidebar, the board, a code block, a table, search results) only while the pointer is
+over it, using the standard `scrollbar-width` / `scrollbar-color` with a WebKit
+fallback.
 
-From 576 to 1279 px the sidebar sits beside the content (see **Sidebar**: closed below 900 px,
-open from there). On a touch screen (a coarse pointer, whatever the width) every target takes a
-finger: sidebar rows, topics and the board's stage pills grow to 44 px; the header's
-tabs and icons, the new-channel `+`, the sidebar icon and the magnifier keep their drawn
-size and take 44 px of taps around it. A mouse keeps the compact sizes. The edges are
-narrow so the content has the screen: 0.75 rem gutters beside and below the content, 0.5 rem inside
-the sidebar, a header no taller than its tabs need. Touch has no Esc, so a page leads back
-from a bar at its top-left; the sidebar already says where you are, so the bar holds
-only the way back. A task has no bar: it sits on the board, and the 看板 tab lit above
-it leads back. Held upright (below 1024 px) the board shows one stage at a time
-and a page replaces the view. Held wide, an open task sits beside the board — one
-stage, its card marked by a green edge — instead of replacing it.
-
-## Motion
+### Motion
 
 Short and purposeful: 100 ms (`--dur-press`) for a press; 150 ms (`--dur-fast`) for
 hover and selection; 200 ms
@@ -728,7 +989,7 @@ same level (one view to the next, one settings section to the next) shows the ne
 once; only opening something new eases in. With reduced motion nothing moves, slides
 or scales; colour and fades that only say a state changed keep their short ease.
 
-## Voice
+### Voice
 
 The interface speaks Simplified Chinese (zh-CN): short, everyday words, one word per
 concept (频道, 话题, 任务, 看板, 团队, 收件箱, 智能体, 成员), full-width punctuation, a

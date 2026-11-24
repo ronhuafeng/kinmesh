@@ -24,6 +24,9 @@ jobs:
       - run: npm ci
       - run: npm run build
       - run: npm run lint
+      - run: npm run lint:css
+      - name: The stylesheet's tokens and DESIGN.md match tokens/
+        run: npm run design:check
       - run: npm run format:check
       - name: Unit, persistence, HTTP and independent Team MCP SDK process tests
         run: npm test
