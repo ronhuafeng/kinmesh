@@ -36,7 +36,7 @@ export function Views() {
     data,
     channel,
     channelPath,
-    switching,
+    switchingSlowly,
     canAct,
     looking,
     pageAgent,
@@ -45,7 +45,7 @@ export function Views() {
   const { openMessageIn, openDirect, incoming, refresh } = useActions();
   return (
     <>
-      {switching && (
+      {switchingSlowly && (
         <div className="view-skeleton" aria-hidden="true">
           <span className="skeleton-card" />
           <span className="skeleton-card" />

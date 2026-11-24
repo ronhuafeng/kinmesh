@@ -31,6 +31,9 @@ export function screenOf(
     (channel !== null && selection.channel === channel.id);
   // Switching channels: the screen still holds the previous one.
   const switching = status === 'loading' && !onScreen;
+  // A quick switch changes nothing until the next channel is there, then
+  // shows it at once; only a slow one puts a skeleton in the old one's place.
+  const switchingSlowly = switching && slow;
   // Act on a confirmed snapshot of the channel in view. A background refresh
   // changes neither, so it never interrupts typing or sending.
   const canAct = lastOk && onScreen && status !== 'offline';
@@ -119,6 +122,7 @@ export function screenOf(
     channelPath,
     onScreen,
     switching,
+    switchingSlowly,
     canAct,
     refreshing,
     stale,
