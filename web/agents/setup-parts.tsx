@@ -68,14 +68,19 @@ export function NextStep({
     </div>
   );
 }
-/** Shown once: the token lives only in this component until dismissed. */
+/**
+ * Shown once: the token lives only in this component until dismissed. With
+ * `config`, the provider's configuration that carries it is what to copy.
+ */
 export function TokenOnce({
   token,
+  config = null,
   agent,
   where,
   onDismiss,
 }: {
   token: string;
+  config?: string | null;
   agent: Agent;
   where: ReactNode;
   onDismiss: () => void;
@@ -84,21 +89,36 @@ export function TokenOnce({
   return (
     <div className="token-once" role="status">
       <p>
-        <strong>现在就复制这个凭据。</strong>Kinmesh
-        只保存它的哈希，之后无法再显示。
+        <strong>
+          {config === null ? '现在就复制这个凭据。' : '现在就复制这段配置。'}
+        </strong>
+        Kinmesh 只保存凭据的哈希，之后无法再显示。
       </p>
-      <code className="reference">{token}</code>
+      {config === null ? (
+        <code className="reference">{token}</code>
+      ) : (
+        <pre className="binding-snippet">
+          <code>{config}</code>
+        </pre>
+      )}
       <div className="token-actions">
-        <CopyButton text={token} label="复制凭据" />
-        <a
-          className="button-link"
-          download={`${agent.name.toLowerCase().replace(/[^a-z0-9]+/g, '-')}-token.json`}
-          href={
-            'data:application/json;charset=utf-8,' + encodeURIComponent(file)
-          }
-        >
-          下载凭据文件
-        </a>
+        {config === null ? (
+          <>
+            <CopyButton text={token} label="复制凭据" />
+            <a
+              className="button-link"
+              download={`${agent.name.toLowerCase().replace(/[^a-z0-9]+/g, '-')}-token.json`}
+              href={
+                'data:application/json;charset=utf-8,' +
+                encodeURIComponent(file)
+              }
+            >
+              下载凭据文件
+            </a>
+          </>
+        ) : (
+          <CopyButton text={config} label="复制配置" />
+        )}
         <button type="button" className="quiet" onClick={onDismiss}>
           我已保存
         </button>
