@@ -12,6 +12,8 @@ import {
   pullRequestFromUrl,
   pullRequestKey,
   pullRequestStale,
+  askAgainAfter,
+  commitChecks,
   PULL_REQUEST_FRESH_MS,
 } from '../src/domain/pull-requests.js';
 import { githubPullRequests } from '../src/adapters/github/pull-requests.js';
@@ -57,6 +59,17 @@ await test('a PR address names one pull request; nothing else is read as one', (
     pullRequestKey({ repository: 'Acme/Widgets', number: 7 }),
     pullRequestKey({ repository: 'acme/widgets', number: 7 }),
   );
+  // Checks sum to one state: any failure fails, else anything running is
+  // pending, else any pass passes; none at all is not a pass.
+  const read = new Date().toISOString();
+  const state = (o: Parameters<typeof commitChecks>[1]) => {
+    const c = commitChecks(sha, o, read);
+    return c.kind === 'observed' ? c.state : c.kind;
+  };
+  assert.equal(state(['passed', 'pending', 'failed']), 'failing');
+  assert.equal(state(['passed', 'pending']), 'pending');
+  assert.equal(state(['passed', 'passed']), 'passing');
+  assert.equal(state([]), 'none');
   // An answer is stale only after three missed askings, by its state.
   const now = Date.now();
   const at = (ms: number) => new Date(now - ms).toISOString();
@@ -315,20 +328,78 @@ await test('GitHub is read at the address the PR names, with the token when ther
       head: { ref: 'widget', sha },
       base: { ref: 'main', repo: { full_name: 'Acme/Widgets' } },
     };
-    reply = () => ({ status: 200, body: pull });
+    // The head commit's checks: two check runs and one commit status.
+    let runs: { status: string; conclusion: string | null }[] = [
+      { status: 'completed', conclusion: 'success' },
+      { status: 'completed', conclusion: 'skipped' },
+    ];
+    let statuses = [{ state: 'success' }];
+    let checksStatus = 200;
+    const github = (body: unknown) => (url: string) =>
+      url.includes('/check-runs')
+        ? { status: checksStatus, body: { check_runs: runs } }
+        : url.includes('/status')
+          ? { status: checksStatus, body: { statuses } }
+          : { status: 200, body };
+    reply = github(pull);
     const withToken = githubPullRequests({ api, tokenFile });
     const merged = await withToken(ref, signal);
     assert.ok(merged.kind === 'observed');
     assert.equal(merged.state, 'merged');
     assert.equal(seen.at(0)?.url, '/repos/Acme/Widgets/pulls/7');
     assert.equal(seen.at(0)?.headers.authorization, 'Bearer read-only-token');
+    // Its checks are its head commit's, read with it.
+    assert.deepEqual(
+      seen
+        .slice(1, 3)
+        .map((r) => r.url.split('?')[0])
+        .sort(),
+      [
+        `/repos/Acme/Widgets/commits/${sha}/check-runs`,
+        `/repos/Acme/Widgets/commits/${sha}/status`,
+      ],
+    );
+    assert.ok(merged.checks?.kind === 'observed');
+    assert.equal(merged.checks.sha, sha);
+    assert.equal(merged.checks.state, 'passing');
+    assert.equal(merged.checks.passed, 3);
     // Without a token, Kinmesh reads as an anonymous visitor would.
+    const before = seen.length;
     await githubPullRequests({ api, tokenFile: null })(ref, signal);
-    assert.equal(seen.at(1)?.headers.authorization, undefined);
-    reply = () => ({
-      status: 200,
-      body: { ...pull, state: 'open', merged_at: null, draft: true },
-    });
+    assert.ok(
+      seen.slice(before).every((r) => r.headers.authorization === undefined),
+    );
+    // A check still running, then one failed, then none at all.
+    runs = [{ status: 'in_progress', conclusion: null }];
+    statuses = [];
+    const running = await withToken(ref, signal);
+    assert.ok(
+      running.kind === 'observed' && running.checks?.kind === 'observed',
+    );
+    assert.equal(running.checks.state, 'pending');
+    assert.equal(askAgainAfter(running), PULL_REQUEST_FRESH_MS.checking);
+    runs = [
+      { status: 'in_progress', conclusion: null },
+      { status: 'completed', conclusion: 'failure' },
+    ];
+    const failing = await withToken(ref, signal);
+    assert.ok(
+      failing.kind === 'observed' && failing.checks?.kind === 'observed',
+    );
+    assert.equal(failing.checks.state, 'failing');
+    runs = [];
+    const bare = await withToken(ref, signal);
+    assert.ok(bare.kind === 'observed' && bare.checks?.kind === 'observed');
+    assert.equal(bare.checks.state, 'none', 'no checks is not a pass');
+    // Checks GitHub won't show: the pull request is still read.
+    checksStatus = 403;
+    const hidden = await withToken(ref, signal);
+    assert.ok(
+      hidden.kind === 'observed' && hidden.checks?.kind === 'unavailable',
+    );
+    assert.equal(hidden.checks.reason, 'forbidden');
+    checksStatus = 200;
+    reply = github({ ...pull, state: 'open', merged_at: null, draft: true });
     const draft = await withToken(ref, signal);
     assert.ok(
       draft.kind === 'observed' && draft.state === 'open' && draft.draft,

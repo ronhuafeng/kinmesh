@@ -4,6 +4,10 @@ import { Member, memberKey } from '../../src/domain/communication.js';
 import type { WorkspaceSnapshot } from '../../src/workspace/contracts.js';
 import { value } from '../shared/api.js';
 import type { Status } from '../shared/task-status.js';
+import {
+  pullRequestStale,
+  type TaskPullRequestView,
+} from '../../src/domain/pull-requests.js';
 
 /** A member chosen in a picker, written there as "kind:id". */
 export function memberFrom(value: string): Member | null {
@@ -173,4 +177,51 @@ export function yours(task: Task, me: string) {
     (owner?.kind === 'human' && owner.id === me) ||
     (reviewer?.kind === 'human' && reviewer.id === me)
   );
+}
+/**
+ * What GitHub last said about a linked PR, in the person's words: its state
+ * (with its age once stale) and its head commit's checks; null where GitHub
+ * has not said. `failing` when its checks failed.
+ */
+export function pullRequestWords(view: TaskPullRequestView, now: number) {
+  const o = view.observation;
+  if (o === null) return { state: null, checks: null, failing: false };
+  if (o.kind === 'unavailable')
+    return {
+      state:
+        o.reason === 'not-found'
+          ? 'GitHub 上找不到，或没有权限查看'
+          : o.reason === 'forbidden'
+            ? 'GitHub 拒绝了 Kinmesh 的读取权限'
+            : '暂时读不到 GitHub',
+      checks: null,
+      failing: false,
+    };
+  const state =
+    o.state === 'merged'
+      ? '已合并'
+      : o.state === 'closed'
+        ? '已关闭'
+        : o.draft
+          ? '草稿'
+          : '进行中';
+  const c = o.checks;
+  const checks =
+    c === null
+      ? null
+      : c.kind === 'unavailable'
+        ? c.reason === 'forbidden'
+          ? '读不到 CI：没有权限'
+          : '暂时读不到 CI'
+        : {
+            passing: 'CI 通过',
+            failing: 'CI 失败',
+            pending: 'CI 进行中',
+            none: '没有 CI',
+          }[c.state];
+  return {
+    state: pullRequestStale(o, now) ? `${state}，可能已过时` : state,
+    checks,
+    failing: c?.kind === 'observed' && c.state === 'failing',
+  };
 }

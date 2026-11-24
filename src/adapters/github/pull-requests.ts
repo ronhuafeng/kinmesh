@@ -1,8 +1,10 @@
 import { readFileSync } from 'node:fs';
 import { z } from 'zod';
 import {
+  CommitChecks,
   PullRequestObservation,
   Repository,
+  commitChecks,
   type PullRequestRef,
 } from '../../domain/pull-requests.js';
 
@@ -36,23 +38,37 @@ const Answer = z.object({
   }),
 });
 
+const CheckRuns = z.object({
+  check_runs: z.array(
+    z.object({ status: z.string(), conclusion: z.string().nullable() }),
+  ),
+});
+const Statuses = z.object({
+  statuses: z.array(z.object({ state: z.string() })),
+});
+/** A check run's end, as Kinmesh counts it. */
+const runOutcome = (run: { status: string; conclusion: string | null }) =>
+  run.status !== 'completed' || run.conclusion === null
+    ? ('pending' as const)
+    : ['success', 'neutral', 'skipped'].includes(run.conclusion)
+      ? ('passed' as const)
+      : ('failed' as const);
+/** A commit status's end, as Kinmesh counts it. */
+const statusOutcome = (status: { state: string }) =>
+  status.state === 'success'
+    ? ('passed' as const)
+    : status.state === 'pending'
+      ? ('pending' as const)
+      : ('failed' as const);
+type Refusal = 'not-found' | 'forbidden' | 'rate-limited' | 'unreachable';
+
 /**
  * Reads pull requests from GitHub's REST API: the one address the
- * repository and number name, never one a person gave.
+ * repository and number name, never one a person gave, and the checks and
+ * statuses of its head commit.
  */
 export function githubPullRequests(reader: GitHubReader): ReadPullRequest {
   return async (ref, signal) => {
-    const unavailable = (
-      reason: Extract<
-        PullRequestObservation,
-        { kind: 'unavailable' }
-      >['reason'],
-    ) =>
-      PullRequestObservation.parse({
-        kind: 'unavailable',
-        reason,
-        observedAt: new Date().toISOString(),
-      });
     let token = '';
     if (reader.tokenFile !== null) {
       try {
@@ -62,38 +78,57 @@ export function githubPullRequests(reader: GitHubReader): ReadPullRequest {
       }
     }
     const [owner = '', name = ''] = ref.repository.split('/');
-    const url = new URL(
-      `/repos/${encodeURIComponent(owner)}/${encodeURIComponent(name)}/pulls/${String(ref.number)}`,
-      reader.api,
-    );
-    let response: Response;
-    try {
-      response = await fetch(url, {
-        headers: {
-          accept: 'application/vnd.github+json',
-          'x-github-api-version': '2022-11-28',
-          'user-agent': 'kinmesh',
-          ...(token ? { authorization: `Bearer ${token}` } : {}),
-        },
-        redirect: 'error',
-        signal: AbortSignal.any([signal, AbortSignal.timeout(10_000)]),
+    const repo = `/repos/${encodeURIComponent(owner)}/${encodeURIComponent(name)}`;
+    /** One GitHub answer as JSON, or why there is none. */
+    const get = async (
+      path: string,
+    ): Promise<{ refused: Refusal } | { json: unknown }> => {
+      let response: Response;
+      try {
+        response = await fetch(new URL(repo + path, reader.api), {
+          headers: {
+            accept: 'application/vnd.github+json',
+            'x-github-api-version': '2022-11-28',
+            'user-agent': 'kinmesh',
+            ...(token ? { authorization: `Bearer ${token}` } : {}),
+          },
+          redirect: 'error',
+          signal: AbortSignal.any([signal, AbortSignal.timeout(10_000)]),
+        });
+      } catch {
+        return { refused: 'unreachable' };
+      }
+      if (response.status === 404) return { refused: 'not-found' };
+      if (
+        (response.status === 403 || response.status === 429) &&
+        (response.headers.get('x-ratelimit-remaining') === '0' ||
+          response.headers.has('retry-after'))
+      )
+        return { refused: 'rate-limited' };
+      if (response.status === 401 || response.status === 403)
+        return { refused: 'forbidden' };
+      if (!response.ok) return { refused: 'unreachable' };
+      return { json: (await response.json().catch(() => null)) as unknown };
+    };
+    const refusal = (answer: { refused: Refusal } | { json: unknown }) =>
+      'refused' in answer ? answer.refused : null;
+    const body = (answer: { refused: Refusal } | { json: unknown }) =>
+      'json' in answer ? answer.json : null;
+    const at = () => new Date().toISOString();
+    const unavailable = (reason: Refusal) =>
+      PullRequestObservation.parse({
+        kind: 'unavailable',
+        reason,
+        observedAt: at(),
       });
-    } catch {
-      return unavailable('unreachable');
-    }
-    if (response.status === 404) return unavailable('not-found');
-    if (
-      (response.status === 403 || response.status === 429) &&
-      (response.headers.get('x-ratelimit-remaining') === '0' ||
-        response.headers.has('retry-after'))
-    )
-      return unavailable('rate-limited');
-    if (response.status === 401 || response.status === 403)
-      return unavailable('forbidden');
-    if (!response.ok) return unavailable('unreachable');
-    const answer = Answer.safeParse(await response.json().catch(() => null));
+
+    const read = await get(`/pulls/${String(ref.number)}`);
+    const refused = refusal(read);
+    if (refused !== null) return unavailable(refused);
+    const answer = Answer.safeParse(body(read));
     if (!answer.success) return unavailable('unreachable');
     const pull = answer.data;
+    const checks = await commitChecksOf(pull.head.sha);
     const observed = PullRequestObservation.safeParse({
       kind: 'observed',
       repository: pull.base.repo.full_name,
@@ -110,8 +145,45 @@ export function githubPullRequests(reader: GitHubReader): ReadPullRequest {
       headRef: pull.head.ref.slice(0, 256),
       headSha: pull.head.sha,
       baseRef: pull.base.ref.slice(0, 256),
-      observedAt: new Date().toISOString(),
+      checks,
+      observedAt: at(),
     });
     return observed.success ? observed.data : unavailable('unreachable');
+
+    /** The head commit's check runs and statuses, summed. */
+    async function commitChecksOf(sha: string): Promise<CommitChecks | null> {
+      if (!/^[0-9a-f]{40}$/.test(sha)) return null;
+      const [runs, statuses] = await Promise.all([
+        get(`/commits/${sha}/check-runs?per_page=100`),
+        get(`/commits/${sha}/status?per_page=100`),
+      ]);
+      const failed = refusal(runs) ?? refusal(statuses);
+      if (failed !== null)
+        return CommitChecks.parse({
+          kind: 'unavailable',
+          sha,
+          // A commit of a readable pull request that GitHub hides is a
+          // permission Kinmesh's credential lacks.
+          reason: failed === 'not-found' ? 'forbidden' : failed,
+          observedAt: at(),
+        });
+      const r = CheckRuns.safeParse(body(runs));
+      const st = Statuses.safeParse(body(statuses));
+      if (!r.success || !st.success)
+        return CommitChecks.parse({
+          kind: 'unavailable',
+          sha,
+          reason: 'unreachable',
+          observedAt: at(),
+        });
+      return commitChecks(
+        sha,
+        [
+          ...r.data.check_runs.map(runOutcome),
+          ...st.data.statuses.map(statusOutcome),
+        ],
+        at(),
+      );
+    }
   };
 }

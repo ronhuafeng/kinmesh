@@ -4,9 +4,8 @@ import type { WorkspaceSnapshot } from '../../src/workspace/contracts.js';
 import {
   pullRequestFromUrl,
   pullRequestKey,
-  pullRequestStale,
-  type TaskPullRequestView,
 } from '../../src/domain/pull-requests.js';
+import { pullRequestWords } from './model.js';
 import { useAction } from '../shared/api.js';
 import { AddButton } from '../shared/forms.js';
 import { composing } from '../shared/keys.js';
@@ -14,31 +13,11 @@ import { someoneOf } from '../shared/names.js';
 import { shortTime } from '../shared/format.js';
 import { MemberAvatar } from './members.js';
 
-/** What GitHub last said, in the person's words; nothing before it says. */
-function stateOf(view: TaskPullRequestView, now: number) {
-  const o = view.observation;
-  if (o === null) return null;
-  if (o.kind === 'unavailable')
-    return o.reason === 'not-found'
-      ? 'GitHub 上找不到，或没有权限查看'
-      : o.reason === 'forbidden'
-        ? 'GitHub 拒绝了 Kinmesh 的读取权限'
-        : '暂时读不到 GitHub';
-  const state =
-    o.state === 'merged'
-      ? '已合并'
-      : o.state === 'closed'
-        ? '已关闭'
-        : o.draft
-          ? '草稿'
-          : '进行中';
-  return pullRequestStale(o, now) ? `${state}，可能已过时` : state;
-}
-
 /**
  * The pull requests said to belong to the task: who linked each and when,
- * its name as the link to GitHub, and what GitHub last said about it. While
- * the task is open, "+" pastes another one's address.
+ * its name as the link to GitHub, and what GitHub last said about it and
+ * its head commit's checks. While the task is open, "+" pastes another
+ * one's address.
  */
 export function TaskPullRequests({
   task,
@@ -78,7 +57,7 @@ export function TaskPullRequests({
               o?.kind === 'observed'
                 ? o.url
                 : `https://github.com/${repository}/pull/${String(number)}`;
-            const state = stateOf(link, now);
+            const words = pullRequestWords(link, now);
             const name = `${repository}#${String(number)}`;
             return (
               <li key={link.id}>
@@ -92,13 +71,18 @@ export function TaskPullRequests({
                   </a>
                   <span className="pull-meta">
                     {o?.kind === 'observed' && <code>{name}</code>}
-                    {state !== null && o !== null && (
+                    {words.state !== null && o !== null && (
                       <time
                         dateTime={o.observedAt}
                         title={`GitHub ${shortTime(o.observedAt)}`}
                       >
-                        {state}
+                        {words.state}
                       </time>
+                    )}
+                    {words.checks !== null && (
+                      <span data-failing={words.failing || undefined}>
+                        {words.checks}
+                      </span>
                     )}
                   </span>
                 </span>

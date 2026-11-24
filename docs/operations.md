@@ -40,9 +40,9 @@ A browser uploads to the store itself, so `KINMESH_S3_PUBLIC_ENDPOINT` must be r
 
 ### GitHub
 
-The hub reads the [pull requests linked to tasks](collaboration.md#pull-requests) from GitHub's REST API, read-only. Without configuration it reads public repositories as an anonymous visitor, which GitHub allows 60 times an hour. For private repositories, or more reads, put a fine-grained token with **Pull requests: Read** (and **Metadata: Read**) on the repositories the team may see in a file only the hub reads, and set `KINMESH_GITHUB_TOKEN_FILE` to it; the hub reads the file for every request, so a renewed token takes effect at once. Whatever repositories the token reaches, every member of the team can see the linked pull requests of.
+The hub reads the [pull requests linked to tasks](collaboration.md#pull-requests) from GitHub's REST API, read-only. Without configuration it reads public repositories as an anonymous visitor, which GitHub allows 60 times an hour; each pull request takes three (itself, its check runs and its statuses). For private repositories, or more reads, put a fine-grained token with **Pull requests**, **Checks** and **Commit statuses: Read** (and **Metadata: Read**) on the repositories the team may see in a file only the hub reads, and set `KINMESH_GITHUB_TOKEN_FILE` to it; the hub reads the file for every request, so a renewed token takes effect at once. Whatever repositories the token reaches, every member of the team can see the linked pull requests of.
 
-Every 30 seconds the hub asks about up to 20 pull requests that are due: never asked, open and last asked 5 minutes ago, or merged or closed and last asked 6 hours ago. A rate limit ends the round; the next one carries on. `pull_request_upkeep_failed` in the log means a round could not run.
+Every 30 seconds the hub asks about up to 20 pull requests that are due: never asked, with checks running and last asked a minute ago, open and last asked 5 minutes ago, or merged or closed and last asked 6 hours ago. A rate limit ends the round; the next one carries on. `pull_request_upkeep_failed` in the log means a round could not run.
 
 ### In a container
 
