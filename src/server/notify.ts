@@ -63,7 +63,11 @@ export function payloadOf(n: Due, about: About) {
         ? 'task:' + n.taskId
         : n.deliveryId !== null
           ? 'delivery:' + n.deliveryId
-          : 'channel:' + n.channelId + ':' + (n.topicId ?? ''),
+          : // A topic's ID is unique on its own; with its channel's it
+            // would not fit in a tag.
+            n.topicId !== null
+            ? 'topic:' + n.topicId
+            : 'channel:' + n.channelId,
     kind,
     channelId: n.channelId,
     taskId: n.taskId,

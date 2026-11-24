@@ -182,7 +182,10 @@ await test('a notification says who and where, and is dropped once read', async 
       payload.url,
       '/?channel=' + f.channelId + '&message=' + messageId,
     );
-    assert.equal(payload.tag, 'channel:' + f.channelId + ':');
+    assert.equal(payload.tag, 'channel:' + f.channelId);
+    // In a topic, one notification per topic, and its tag still fits.
+    const topicId = randomUUID();
+    assert.equal(payloadOf({ ...n, topicId }, about).tag, 'topic:' + topicId);
 
     // Read since, it no longer concerns her.
     const read = await f.app.inject({
