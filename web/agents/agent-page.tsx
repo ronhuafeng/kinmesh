@@ -17,7 +17,7 @@ import {
   unanswered,
   stoppable,
   type DeliveryView,
-  Outcome,
+  ApproveInT3,
   Recovery,
   Stop,
 } from '../shared/deliveries.js';
@@ -406,14 +406,7 @@ export function Requests({
               <span className="request-text">
                 {what ? `“${what}”` : '一个请求'}
               </span>
-              <Outcome
-                delivery={d}
-                teamId={data.team.id}
-                t3Origin={data.nativeT3Origin}
-                className="request-outcome"
-              >
-                {outcome}
-              </Outcome>
+              <span className="request-outcome">{outcome}</span>
               <span className="request-time">{when ? ago(when) : ''}</span>
               {onPage ? (
                 <button
@@ -426,7 +419,14 @@ export function Requests({
                   查看回复
                 </button>
               ) : stoppable(d) ? (
-                <Stop delivery={d} teamId={data.team.id} onDone={onDone} />
+                <span className="request-actions">
+                  <ApproveInT3
+                    delivery={d}
+                    teamId={data.team.id}
+                    t3Origin={data.nativeT3Origin}
+                  />
+                  <Stop delivery={d} teamId={data.team.id} onDone={onDone} />
+                </span>
               ) : (
                 <span />
               )}

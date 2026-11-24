@@ -623,8 +623,8 @@ Corners are tight and few, an instrument's rather than a toy's: the `rounded` to
   one, one line per agent in plain words, the agent's name first. A new state
   cross-fades over the old words; while the agent works a slow light passes over
   them (no spinner): 会接手 (will pick this up),
-  离线，还没人接手 (offline), 正在处理 (working on it), 正在等待 T3 中的批准 (linking the run in
-  T3, where it is approved), "T3 重新连接后 _Ada_ 会继续", 已回复（用时 3 分钟） (linking the
+  离线，还没人接手 (offline), 正在处理 (working on it), 正在等待 T3 中的批准 (waiting on an
+  approval; **去批准 ↗** beside 停止 opens the run in T3, where it is approved), "T3 重新连接后 _Ada_ 会继续", 已回复（用时 3 分钟） (linking the
   reply; no line when the reply is the very next message), 卡住了 (what was lost and the
   one fix — re-enable the agent, add it back or open its setup — next to a retry), or
   一直没有接手. Between Chinese words there are no spaces ("小助手正在处理"); a Latin name
@@ -632,7 +632,8 @@ Corners are tight and few, an instrument's rather than a toy's: the `rounded` to
   code, cut to one line: "要执行 `pnpm test`" in the decision ink when it waits on an
   approval, or the step it is taking in the muted ink. The
   machine state is only a tooltip. Until it is answered a line ends in **停止**
-  (also beside the request on the agent's page); then it reads "_Ada_ 正在停止" until
+  (also beside the request on the agent's page, with **去批准 ↗** before it while it
+  waits on an approval); then it reads "_Ada_ 正在停止" until
   the run's stopped reply ("还没回复就停止了。") arrives, or "_Ada_ 开始前已停止" when
   nothing had reached T3. A line stuck because _Ada_'s T3 access changed also ends in
   **停止**, which ends it at once: "_Ada_ 的 T3 权限变了，已停止".
