@@ -4,6 +4,11 @@ import {
   PULL_REQUEST_CHANGE_BYTES,
   TaskPullRequestView,
 } from '../domain/pull-requests.js';
+import {
+  ReadingRefusal,
+  RepositoryContent,
+  RepositoryRead,
+} from '../domain/repository.js';
 import { hubRequest } from './hub.js';
 import { z } from 'zod';
 import { ChannelId, TaskId } from '../domain/contracts.js';
@@ -68,7 +73,7 @@ export const Failure = z.strictObject({
     'Operation failed',
   ]),
   /** What to change, when the code alone would not say. */
-  reason: OpeningRefusal.optional(),
+  reason: z.union([OpeningRefusal, ReadingRefusal]).optional(),
 });
 export const outcome = <T extends z.ZodType>(data: T) =>
   z.strictObject({
@@ -79,7 +84,9 @@ export const outcome = <T extends z.ZodType>(data: T) =>
   });
 function failure(error: unknown): z.infer<typeof Failure> {
   if (error instanceof DomainError) {
-    const reason = OpeningRefusal.safeParse(error.reason);
+    const reason = z
+      .union([OpeningRefusal, ReadingRefusal])
+      .safeParse(error.reason);
     return {
       ...refusal(error),
       ...(reason.success ? { reason: reason.data } : {}),
@@ -356,6 +363,20 @@ export function teamServer(
         hub,
         authorization,
         `/api/teams/${p.teamId}/channels/${channelId}/tasks/${taskId}/open-pull-request`,
+        data,
+      ),
+  );
+  register(
+    'team_task_read_repository',
+    `Read the repository of a task you are working on, as Kinmesh's GitHub app: a file's whole text, or a directory's entries (path empty for the top), at ref (a branch or commit; the default branch when null). Read a file before changing it, then pass its whole new text to team_task_open_pull_request. Use this, never a personal GitHub tool. A refusal's reason says what to change: github-not-connected (ask a person to connect GitHub), repository-not-connected, ref-missing, path-missing, not-text or too-large (that file cannot be read here).`,
+    z.strictObject({ ...task.shape, ...RepositoryRead }),
+    RepositoryContent,
+    true,
+    (p, { channelId, taskId, ...data }) =>
+      hubRequest(
+        hub,
+        authorization,
+        `/api/teams/${p.teamId}/channels/${channelId}/tasks/${taskId}/read-repository`,
         data,
       ),
   );

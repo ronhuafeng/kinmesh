@@ -36,7 +36,7 @@ export const BranchName = z
       v.split('/').every((part) => part !== '' && !part.startsWith('.')),
   );
 /** A path in a repository: relative, without `.`/`..` parts or `.git`. */
-const FilePath = z
+export const FilePath = z
   .string()
   .min(1)
   .max(400)
