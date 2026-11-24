@@ -1,6 +1,13 @@
 import { useCallback, useLayoutEffect, useRef } from 'react';
 
-/** Puts the views' one thumb under the chosen tab, or hides it on no tab. */
+/** The tab each list's thumb was last put under. */
+const marked = new WeakMap<HTMLElement, HTMLElement>();
+/**
+ * Puts the views' one thumb under the chosen tab, or hides it on no tab. It
+ * slides only to a newly chosen tab; when the same tab moves or changes size
+ * (the window, a breakpoint) it goes with it at once, or it would trail
+ * behind the tab it marks.
+ */
 function placeThumb(list: HTMLElement | null) {
   if (!list) return;
   const tab = list.querySelector<HTMLElement>(
@@ -10,8 +17,17 @@ function placeThumb(list: HTMLElement | null) {
     delete list.dataset.thumb;
     return;
   }
-  list.style.setProperty('--thumb-x', String(tab.offsetLeft) + 'px');
-  list.style.setProperty('--thumb-w', String(tab.offsetWidth) + 'px');
+  const x = String(tab.offsetLeft) + 'px';
+  const w = String(tab.offsetWidth) + 'px';
+  const chosen = marked.get(list) !== tab;
+  marked.set(list, tab);
+  const unmoved =
+    list.style.getPropertyValue('--thumb-x') === x &&
+    list.style.getPropertyValue('--thumb-w') === w;
+  if (!chosen && unmoved && list.dataset.thumb) return;
+  if (!chosen && list.dataset.thumb) delete list.dataset.thumb;
+  list.style.setProperty('--thumb-x', x);
+  list.style.setProperty('--thumb-w', w);
   if (list.dataset.thumb) return;
   // Shown where it belongs first; it slides from the next placement on.
   list.dataset.thumb = 'shown';
