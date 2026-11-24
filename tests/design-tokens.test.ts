@@ -37,7 +37,8 @@ await test('a token changed in tokens/ reaches the stylesheet and DESIGN.md, lig
     ) => {
       const path = join(directory, file);
       const tokens = z
-        .record(z.string(), z.record(z.string(), z.unknown()))
+        .object({ $schema: z.string() })
+        .catchall(z.record(z.string(), z.unknown()))
         .parse(JSON.parse(readFileSync(path, 'utf8')));
       const tokenGroup = tokens[group];
       assert.ok(tokenGroup);
