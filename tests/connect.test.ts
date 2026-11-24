@@ -58,9 +58,7 @@ async function connectFixture(overrides: Partial<Omit<Hub, 'directory'>> = {}) {
       return credential;
     },
     providers: () =>
-      Promise.resolve([
-        { id: 'isolated-dev', driver: 'codex', models: ['model-a'] },
-      ]),
+      Promise.resolve([{ id: 'isolated-dev', models: ['model-a'] }]),
     // The person chose Full access on T3's approval page.
     ceiling: () => Promise.resolve('full-access' as const),
     discover: () => Promise.resolve('http://127.0.0.1:3773/mcp'),
@@ -259,7 +257,7 @@ await test('a person connects T3 from the browser; the credential is saved priva
     );
     const providers = await f.call('GET', f.team + '/t3/providers');
     assert.deepEqual(providers.json<unknown>(), {
-      providers: [{ id: 'isolated-dev', driver: 'codex', models: ['model-a'] }],
+      providers: [{ id: 'isolated-dev', models: ['model-a'] }],
     });
     // A refused sign-in is reported, and nothing is saved.
     await f.call('POST', f.team + '/t3/connect', { endpoint, replace: true });

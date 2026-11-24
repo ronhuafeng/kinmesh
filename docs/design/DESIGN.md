@@ -778,8 +778,8 @@ Corners are tight and few, an instrument's rather than a toy's: the `rounded` to
   state — the request it is on and whether that waits on an approval, 空闲, or
   未运行 — then its requests in this channel and its runs; under a hairline, 设置
   holds the status card with its actions and About (every fact visible, picture to
-  change, Team MCP credential, given as the lines its Codex adds when it runs on Codex;
-  none to issue for an agent Kinmesh connected whose Codex home it writes). In About its name and role change in place: they read
+  change, Team MCP credential; none to issue for an agent Kinmesh connected whose
+  Codex home it writes). In About its name and role change in place: they read
   as values until touched, Enter or leaving the field keeps a new name, Esc puts it
   back. **停用智能体** (danger colour) takes a second press that says what it does
   (确认停用：_name_ 不再接新的请求); a disabled agent is left out of the @ list, and

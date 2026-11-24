@@ -340,8 +340,8 @@ test('connect T3 and an agent in two clicks: the hub keeps the credential and wa
       ? route.fulfill({
           json: {
             providers: [
-              { id: 'cursor', driver: 'cursor', models: [] },
-              { id: 'isolated-ada', driver: 'codex', models: ['model-x'] },
+              { id: 'cursor', models: [] },
+              { id: 'isolated-ada', models: ['model-x'] },
             ],
           },
         })
@@ -414,14 +414,6 @@ test('connect T3 and an agent in two clicks: the hub keeps the credential and wa
     .object({ token: z.string() })
     .parse(JSON.parse(readFileSync(tokenFile, 'utf8')));
   expect(await page.content()).not.toContain(token);
-  // Ada runs on Codex: its Team MCP credential comes as the lines its Codex
-  // adds, which let Kinmesh's tools run without asking anyone.
-  await about.getByRole('button', { name: '签发 Team MCP 凭据' }).click();
-  const config = about.locator('.token-once pre');
-  await expect(config).toContainText('[mcp_servers.kinmesh]');
-  await expect(config).toContainText('Authorization = "Bearer ');
-  await expect(config).toContainText('default_tools_approval_mode = "approve"');
-  await expect(about.getByRole('button', { name: '复制配置' })).toBeVisible();
 });
 
 test('the agent panel still walks an operator through a self-run worker binding', async ({
