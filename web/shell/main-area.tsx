@@ -134,24 +134,27 @@ export function MainArea() {
               </Tabs.List>
             )}
             <div className="header-end">
-              {/* Healthy is silent; a refresh asked for, or a slow
-                          one, says so. */}
-              {refreshing && (
-                <div className="connection">
+              {/* Healthy is silent. Out of reach, it says so here, in the
+                  bar's own room, so nothing under it moves; it comes back
+                  by itself. A refresh asked for, or a slow one, says so. */}
+              {stale ? (
+                <div className="connection" data-stale="true">
                   <span className="connection-dot" aria-hidden="true" />
-                  <span role="status">正在刷新…</span>
+                  <span role="status">连不上 Kinmesh</span>
                 </div>
+              ) : (
+                refreshing && (
+                  <div className="connection">
+                    <span className="connection-dot" aria-hidden="true" />
+                    <span role="status">正在刷新…</span>
+                  </div>
+                )
               )}
             </div>
           </header>
-          {/* One line, and nothing to press: it comes back by itself. */}
-          {stale && (
-            <p className="stale-line" role="status">
-              连不上 Kinmesh。先显示之前的内容，恢复连接前暂停发送。
-            </p>
-          )}
           <fieldset
             className="view-content"
+            data-stale={stale ? 'true' : undefined}
             data-switching={switchingSlowly ? 'true' : undefined}
             data-page={onPage ? 'true' : undefined}
             // A wide tablet keeps the board beside a task's page.

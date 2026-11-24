@@ -13,7 +13,7 @@ import {
 import {
   snapshot,
   withoutStream,
-  staleLine,
+  outOfReach,
   expectHealthy,
   contrast,
 } from './helpers.js';
@@ -250,18 +250,27 @@ test('real workspace onboarding, mentions and reconnect on a phone', async ({
   await page.reload();
   await expect(page.getByText(sent, { exact: true })).toBeVisible();
   expect(await page.locator('.messages img').count()).toBe(0);
-  // Healthy is silent. Out of reach is one line with nothing to press, and
-  // nothing in it speaks HTTP.
+  // Healthy is silent. Out of reach is said in the top bar with nothing to
+  // press, nothing in it speaks HTTP, and nothing under the bar moves.
   await expectHealthy(page);
+  const contentTop = () =>
+    page
+      .locator('.view-content')
+      .evaluate((el) => el.getBoundingClientRect().top);
+  const before = await contentTop();
   await context.setOffline(true);
   await refreshNow(page);
-  await expect(staleLine(page)).toBeVisible();
+  await expect(outOfReach(page)).toBeVisible();
+  await expect(page.locator('.workspace-header')).toContainText(
+    '连不上 Kinmesh',
+  );
+  expect(await contentTop()).toBe(before);
   await expect(
     page.getByRole('button', { name: /重新连接|再试一次|重试/ }),
   ).toHaveCount(0);
   // Asking again while still out of reach keeps the honest state.
   await refreshNow(page);
-  await expect(staleLine(page)).toBeVisible();
+  await expect(outOfReach(page)).toBeVisible();
   // Coming back online reconnects by itself.
   await context.setOffline(false);
   await expectHealthy(page);
@@ -425,7 +434,7 @@ test('a menu action the hub refuses, and one that can’t go while out of reach,
   // Out of reach, signing out says why it waits instead of doing nothing.
   await context.setOffline(true);
   await refreshNow(page);
-  await expect(staleLine(page)).toBeVisible();
+  await expect(outOfReach(page)).toBeVisible();
   await page.getByRole('button', { name: '你的账户' }).click();
   await page.getByRole('menuitem', { name: '退出登录', exact: true }).click();
   await expect(
@@ -464,7 +473,7 @@ test('a workspace the page cannot read reloads it once, then offers the way back
     page.getByRole('heading', { name: '页面出了问题' }),
   ).toBeVisible();
   await expect(page.getByRole('button', { name: '重新加载' })).toBeVisible();
-  await expect(staleLine(page)).toHaveCount(0);
+  await expect(outOfReach(page)).toHaveCount(0);
   // One reload by itself, then it waits for the person.
   expect(loads).toBe(2);
 });
@@ -488,10 +497,10 @@ test('a workspace read the network never answers ends, says so, and recovers', a
     await route.continue();
   });
   await refreshNow(page);
-  await expect(staleLine(page)).toBeVisible({ timeout: 15_000 });
+  await expect(outOfReach(page)).toBeVisible({ timeout: 15_000 });
   // The page asks again every 5 seconds while out of reach.
   hold = false;
-  await expect(staleLine(page)).toHaveCount(0, { timeout: 15_000 });
+  await expect(outOfReach(page)).toHaveCount(0, { timeout: 15_000 });
   await expectHealthy(page);
 });
 
@@ -563,7 +572,7 @@ test('a heartbeat refresh never interrupts work; after a failure nothing submits
   ).toBeEnabled();
   // B: once a refresh fails, the snapshot is stale and every submission stops.
   failRefresh();
-  await expect(staleLine(page)).toBeVisible();
+  await expect(outOfReach(page)).toBeVisible();
   // Typing goes on (nothing is lost); only sending waits for a confirmed snapshot.
   await expect(create.getByLabel('频道名称')).toBeEditable();
   await expect(composer.getByLabel('消息', { exact: true })).toBeEditable();
@@ -571,7 +580,7 @@ test('a heartbeat refresh never interrupts work; after a failure nothing submits
   // B': a reconnect still in flight has not confirmed anything yet.
   const succeed = await holdWorkspace(200);
   await refreshNow(page);
-  await expect(staleLine(page)).toBeVisible();
+  await expect(outOfReach(page)).toBeVisible();
   await expect(create.getByLabel('频道名称')).toBeEditable();
   await expectNothingSubmits();
   // Asked to send anyway, the composer says why nothing went.

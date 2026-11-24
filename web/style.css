@@ -886,26 +886,16 @@ a.link-button {
   font-size: 0.82rem;
   font-weight: 600;
 }
-/* Out of reach: one quiet line under the views, and what is on screen
- * loses a little colour. */
-.stale-line {
-  display: flex;
-  align-items: baseline;
-  gap: 0.5rem;
-  margin: 0;
-  font-size: 13px;
-  color: var(--ink-muted);
-  animation: banner-down 160ms var(--ease-out);
-}
-.stale-line::before {
-  content: '';
-  flex: none;
-  width: 0.5rem;
-  height: 0.5rem;
-  border-radius: 50%;
+/* Out of reach: said in the bar's own room, so nothing under it moves,
+ * and what is on screen loses a little colour. */
+.connection[data-stale] .connection-dot {
   background: var(--warn);
+  animation: none;
 }
-.workspace-shell:has(.stale-line) .view-content {
+.connection [role='status'] {
+  white-space: nowrap;
+}
+.view-content[data-stale] {
   filter: saturate(0.7);
 }
 .view-content {
@@ -2647,6 +2637,21 @@ a.button-link {
   align-items: center;
   gap: 0.5rem;
   margin-left: auto;
+}
+/* Narrower than the bar can hold it beside the views, what is under way
+ * hangs just under the bar's end, over the content, so neither the bar nor
+ * anything under it moves when it comes and goes. */
+@media (max-width: 1023px) {
+  .workspace-header > .header-end {
+    position: absolute;
+    top: calc(100% + 0.5rem);
+    right: var(--gutter);
+    margin: 0;
+  }
+  .header-end > .connection {
+    box-shadow: var(--elev-2);
+    background: var(--surface);
+  }
 }
 /* The start of the bar: the way back and the sidebar's control. */
 .header-start {
