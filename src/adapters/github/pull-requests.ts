@@ -1,4 +1,3 @@
-import { readFileSync } from 'node:fs';
 import { z } from 'zod';
 import {
   CommitChecks,
@@ -13,10 +12,10 @@ export interface GitHubReader {
   /** GitHub's REST API origin; a stand-in's for tests. */
   api: string;
   /**
-   * A file holding a read-only token, read for every request so a renewed
-   * one takes effect at once; null reads public repositories only.
+   * The team's GitHub credential for this read, or null to read public
+   * repositories only, as an anonymous visitor would.
    */
-  tokenFile: string | null;
+  token: () => Promise<string | null>;
 }
 /** Asks GitHub about one pull request; never throws. */
 export type ReadPullRequest = (
@@ -69,14 +68,9 @@ type Refusal = 'not-found' | 'forbidden' | 'rate-limited' | 'unreachable';
  */
 export function githubPullRequests(reader: GitHubReader): ReadPullRequest {
   return async (ref, signal) => {
-    let token = '';
-    if (reader.tokenFile !== null) {
-      try {
-        token = readFileSync(reader.tokenFile, 'utf8').trim();
-      } catch {
-        // Not there: read as an anonymous visitor would.
-      }
-    }
+    // Without one (not connected, or GitHub refused to mint one), read as
+    // an anonymous visitor would.
+    const token = (await reader.token().catch(() => null)) ?? '';
     const [owner = '', name = ''] = ref.repository.split('/');
     const repo = `/repos/${encodeURIComponent(owner)}/${encodeURIComponent(name)}`;
     /** One GitHub answer as JSON, or why there is none. */

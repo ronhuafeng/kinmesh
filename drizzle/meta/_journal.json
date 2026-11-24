@@ -197,6 +197,13 @@
       "when": 1795500197766,
       "tag": "0027_task_pull_requests",
       "breakpoints": true
+    },
+    {
+      "idx": 28,
+      "version": "7",
+      "when": 1795508436575,
+      "tag": "0028_github_connections",
+      "breakpoints": true
     }
   ]
 }

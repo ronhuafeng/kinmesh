@@ -9,6 +9,7 @@ import { useRequest } from '../shared/api.js';
 import { MODE_NAMES, t3Where, useT3 } from '../shared/t3.js';
 import type { z } from 'zod';
 import { Paired } from './sections.js';
+import { GitHubConnection } from './github-connection.js';
 
 /**
  * The people of the team by name. A handle shows only where two share a
@@ -221,6 +222,7 @@ export function Connections({ data }: { data: WorkspaceSnapshot }) {
           </>
         )}
       </Group>
+      <GitHubConnection teamId={data.team.id} />
       <Group title="飞书">
         <Row label="机器人">
           <button
