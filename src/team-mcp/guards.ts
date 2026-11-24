@@ -42,6 +42,8 @@ export function registerGuards(
     try {
       // Evidence for the workspace that this agent's provider reaches Team MCP.
       await store.teamMcpPresence.seenByTeamMcp(agent);
+      // An agent acting is not waiting on an approval: say so promptly.
+      await store.inbox.lookNow(agent.agentId, agent.teamId);
     } catch {
       // Evidence only: a failed write never refuses an authenticated request.
     }
