@@ -47,7 +47,7 @@ await test('an agent acting through Team MCP has its approval wait looked at now
     const waiting = await attempt();
     assert.equal(waiting.reason, 'human-or-approval-wait');
     assert.ok(waiting.nextAttempt > Date.now(), 'looked at again later');
-    assert.equal(await f.inbox.claim([f.agent.id]), null);
+    assert.equal(await f.inbox.claim([f.agent.id]), undefined, 'not due');
 
     // The person approved; the agent goes on and asks Kinmesh something.
     f.wire.values.t3_thread_read = { ...mockRead('running'), items: [] };
