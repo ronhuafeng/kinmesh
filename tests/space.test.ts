@@ -302,6 +302,16 @@ await test('the provisioner writes an agent’s Codex home: Team MCP as the agen
       /^http_headers = \{ Authorization = "Bearer kma_first" \}$/m,
     );
     assert.match(written, /^default_tools_approval_mode = "approve"$/m);
+    // The shared sign-in brings none of its person's apps, plugins, desktop
+    // or browser.
+    for (const feature of [
+      'apps',
+      'plugins',
+      'remote_plugin',
+      'computer_use',
+      'browser_use_external',
+    ])
+      assert.match(written, new RegExp(`^${feature} = false$`, 'm'));
     // Only this OS user reads the credential.
     assert.equal(statSync(config).mode & 0o777, 0o600);
     assert.equal(statSync(home).mode & 0o777, 0o700);

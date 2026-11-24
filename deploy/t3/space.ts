@@ -70,7 +70,9 @@ const codexHome = (options: SpaceOptions, agent: string) =>
 /**
  * Writes the agent's Codex configuration: Kinmesh's Team MCP at `url` as
  * the agent (`token`), its tools let through without asking a person, and
- * this machine's Codex sign-in. The file is Kinmesh's, written whole.
+ * this machine's Codex sign-in without what that sign-in's person reaches
+ * (ChatGPT's apps, plugins, their desktop and browser). The file is
+ * Kinmesh's, written whole.
  */
 function writeCodex(
   options: SpaceOptions,
@@ -99,6 +101,15 @@ function writeCodex(
       '# Written by Kinmesh for this agent; it is replaced when Kinmesh',
       '# connects the agent again.',
       'cli_auth_credentials_store = "file"',
+      '',
+      // The sign-in is a person's: their ChatGPT apps, plugins, desktop and
+      // browser are theirs, never an agent's.
+      '[features]',
+      'apps = false',
+      'plugins = false',
+      'remote_plugin = false',
+      'computer_use = false',
+      'browser_use_external = false',
       '',
       '[mcp_servers.kinmesh]',
       `url = ${JSON.stringify(url)}`,
