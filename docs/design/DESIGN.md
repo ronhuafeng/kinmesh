@@ -743,6 +743,13 @@ Corners are tight and few, an instrument's rather than a toy's: the `rounded` to
   then 取消任务, the only red — are quiet buttons with no
   ellipsis; choosing one opens its note (and, to hand on, who to) in place of the row,
   with **返回**. Disabled with a reason only when offline.
+- **连接 › GitHub**: one group, two rows at most, never naming how GitHub does it (no
+  "App", "installation" or token). Not connected: 仓库 — **连接 GitHub**, which goes to
+  GitHub's page to create the team's app and straight on to choosing repositories, then
+  back here. Created but no repositories chosen: 仓库 — **选择仓库**. Connected: 账号 —
+  the GitHub account; 仓库 — the repositories by name ("全部仓库" when all, "等" when
+  more), then **更改** to GitHub's page for them. GitHub unreadable: "暂时读不到 GitHub".
+  A step that didn't finish says "没有连上 GitHub，再试一次。" under the group.
 - **PRs**: what a review or acceptance is decided on, so while you review or accept they
   sit in the decision, under its buttons, and not again below; otherwise after
   "完成标准". Headed "PR" with a `+` beside it while the task is open (an ended task

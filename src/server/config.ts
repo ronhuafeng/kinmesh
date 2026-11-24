@@ -71,13 +71,9 @@ const Environment = z.object({
    */
   KINMESH_SPACE_ENDPOINT: z.url({ protocol: /^https?$/ }).optional(),
   KINMESH_SPACE_TOKEN_FILE: z.string().min(1).optional(),
-  /**
-   * A file holding a read-only GitHub token, for pull requests in private
-   * repositories linked to tasks. Unset, Kinmesh reads public ones only.
-   */
-  KINMESH_GITHUB_TOKEN_FILE: z.string().min(1).optional(),
-  /** A stand-in for GitHub's API, for tests only. */
+  /** Stand-ins for GitHub's API and pages, for tests only. */
   KINMESH_GITHUB_API: z.url().optional(),
+  KINMESH_GITHUB_WEB: z.url().optional(),
   /** The most the team's files may hold together, in bytes; 10 GiB. */
   KINMESH_ATTACHMENTS_ROOM: z.coerce
     .number()
@@ -188,7 +184,9 @@ export function loadConfig(env: NodeJS.ProcessEnv) {
       api: value.KINMESH_GITHUB_API
         ? new URL(value.KINMESH_GITHUB_API).origin
         : 'https://api.github.com',
-      tokenFile: value.KINMESH_GITHUB_TOKEN_FILE ?? null,
+      web: value.KINMESH_GITHUB_WEB
+        ? new URL(value.KINMESH_GITHUB_WEB).origin
+        : 'https://github.com',
     },
     feishu: {
       appId: value.FEISHU_APP_ID,

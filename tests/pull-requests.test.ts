@@ -2,8 +2,6 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { createServer, type IncomingHttpHeaders } from 'node:http';
 import { once } from 'node:events';
-import { writeFileSync } from 'node:fs';
-import { join } from 'node:path';
 import { z } from 'zod';
 import { TaskResult, type TaskEvent } from '../src/domain/tasks.js';
 import {
@@ -310,11 +308,6 @@ await test('GitHub is read at the address the PR names, with the token when ther
   server.listen(0, '127.0.0.1');
   await once(server, 'listening');
   const api = `http://127.0.0.1:${String(z.object({ port: z.number() }).parse(server.address()).port)}`;
-  const directory = (await import('node:fs')).mkdtempSync(
-    join((await import('node:os')).tmpdir(), 'kinmesh-github-'),
-  );
-  const tokenFile = join(directory, 'token');
-  writeFileSync(tokenFile, 'read-only-token\n', { mode: 0o600 });
   const signal = new AbortController().signal;
   const ref = { repository: 'Acme/Widgets', number: 7 };
   try {
@@ -342,7 +335,10 @@ await test('GitHub is read at the address the PR names, with the token when ther
           ? { status: checksStatus, body: { statuses } }
           : { status: 200, body };
     reply = github(pull);
-    const withToken = githubPullRequests({ api, tokenFile });
+    const withToken = githubPullRequests({
+      api,
+      token: () => Promise.resolve('read-only-token'),
+    });
     const merged = await withToken(ref, signal);
     assert.ok(merged.kind === 'observed');
     assert.equal(merged.state, 'merged');
@@ -365,7 +361,10 @@ await test('GitHub is read at the address the PR names, with the token when ther
     assert.equal(merged.checks.passed, 3);
     // Without a token, Kinmesh reads as an anonymous visitor would.
     const before = seen.length;
-    await githubPullRequests({ api, tokenFile: null })(ref, signal);
+    await githubPullRequests({ api, token: () => Promise.resolve(null) })(
+      ref,
+      signal,
+    );
     assert.ok(
       seen.slice(before).every((r) => r.headers.authorization === undefined),
     );
@@ -423,16 +422,12 @@ await test('GitHub is read at the address the PR names, with the token when ther
     // Nothing answering at all.
     const nowhere = githubPullRequests({
       api: 'http://127.0.0.1:9',
-      tokenFile: null,
+      token: () => Promise.resolve(null),
     });
     const down = await nowhere(ref, signal);
     assert.ok(down.kind === 'unavailable' && down.reason === 'unreachable');
   } finally {
     server.close();
-    (await import('node:fs')).rmSync(directory, {
-      recursive: true,
-      force: true,
-    });
   }
 });
 

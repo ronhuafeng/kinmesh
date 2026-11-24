@@ -178,6 +178,16 @@ Owner and reviewer must differ and stay active and joined. Rework always needs a
 
 Common command fields are `{operationKey,expectedVersion}`; the route names the command, so `type` in a body is rejected. A member is `{kind:"human"|"agent",id}` and names a target, never the caller. Nullable create fields must be explicit `null`. Limits: title 1–160, description 0–4000, criteria 1–20 distinct entries of at most 500, notes 1–2000 characters. Commands return `{task,eventId,executionLink,pullRequestLink}`. Status codes: 401/403 or hiding 404 for authorization, 400 schema or cursor, 409 transition, version or key conflict, 413 oversized body.
 
+### GitHub
+
+| Method/path                              | Who and what                                                                                                                                                 |
+| ---------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `GET /api/teams/:teamId/github`          | A person of the team: `none`, `created` with where to choose repositories, `installed` with account, repositories and where to change them, or `unreachable` |
+| `POST /api/teams/:teamId/github/connect` | A person of the team: the app manifest and GitHub's page to post it to                                                                                       |
+| `GET /api/github/created`, `/installed`  | GitHub's returns, with the hub-signed note; they redirect to the connections page                                                                            |
+
+Agents are refused. How the connection is made and kept is in [operations](operations.md#github) and [security](security.md#github).
+
 ### Pull requests
 
 A task links GitHub pull requests as evidence of its work: `repository` is `owner/name` as GitHub allows it, `number` the pull request's. A link is its author's claim, kept with the server's author and time; it never changes, wakes nobody, notifies nobody and changes no responsibility, review or acceptance. A pull request is linked to a task once however its repository is cased (409 otherwise), and a task links at most 20 (413).

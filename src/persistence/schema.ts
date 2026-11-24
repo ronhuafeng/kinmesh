@@ -880,6 +880,23 @@ export const t3Connections = pgTable('t3_connections', {
   connectedAt: millis('connected_at').notNull(),
 });
 /**
+ * The GitHub App a team connected: its name on GitHub and where it is
+ * installed. Its private key is a hub-held secret, never in this row.
+ */
+export const githubConnections = pgTable('github_connections', {
+  teamId: text('team_id')
+    .primaryKey()
+    .references(() => teams.id),
+  slug: text('slug').notNull(),
+  /** Null until the person chooses repositories for it on GitHub. */
+  installationId: bigint('installation_id', { mode: 'number' }),
+  account: text('account'),
+  createdBy: text('created_by')
+    .notNull()
+    .references(() => humans.id),
+  createdAt: millis('created_at').notNull(),
+});
+/**
  * Agents the hub's own worker serves. The token lives in a private file named
  * by the agent ID; this row holds no secret.
  */

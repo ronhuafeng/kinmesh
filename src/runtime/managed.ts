@@ -57,6 +57,42 @@ function writePrivate(path: string, content: string) {
     rmSync(temporary, { force: true });
   }
 }
+/**
+ * The team's GitHub App: its ID, its name on GitHub and its private key,
+ * from the moment a person created it. The key never leaves the hub.
+ */
+export const GitHubApp = z.strictObject({
+  appId: z.number().int().positive(),
+  slug: z.string().regex(/^[a-z0-9-]{1,100}$/),
+  pem: z.string().startsWith('-----BEGIN'),
+});
+export type GitHubApp = z.infer<typeof GitHubApp>;
+export const githubAppFile = (directory: string) =>
+  join(directory, 'github-app.json');
+export function writeGitHubApp(directory: string, app: GitHubApp) {
+  privateDirectory(directory);
+  const path = githubAppFile(directory);
+  const temporary = path + '.' + randomUUID() + '.tmp';
+  try {
+    writeFileSync(temporary, JSON.stringify(GitHubApp.parse(app)), {
+      mode: 0o600,
+      flag: 'wx',
+    });
+    renameSync(temporary, path);
+  } finally {
+    rmSync(temporary, { force: true });
+  }
+}
+/** The team's GitHub App, or null before one was created. */
+export function readGitHubApp(directory: string): GitHubApp | null {
+  let text: string;
+  try {
+    text = readFileSync(githubAppFile(directory), 'utf8');
+  } catch {
+    return null;
+  }
+  return GitHubApp.parse(JSON.parse(text));
+}
 export function writeAgentToken(
   directory: string,
   agentId: string,

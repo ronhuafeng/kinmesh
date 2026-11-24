@@ -4575,6 +4575,13 @@ button.inbox-main:focus-visible::after {
 .task-side {
   display: grid;
 }
+/* The repositories agents work in, then where to change them. */
+.github-repositories {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  justify-content: flex-end;
+}
 /* PRs read like history: when it was linked, by whom, its name the link to
    GitHub, then what GitHub last said. "+" sits beside the heading. */
 .task-pull-requests {

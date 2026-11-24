@@ -24,6 +24,7 @@ import { startInboxExpiry } from './inbox-expiry.js';
 import { startAttachmentUpkeep } from './attachment-upkeep.js';
 import { startPullRequestUpkeep } from './pull-request-upkeep.js';
 import { githubPullRequests } from '../adapters/github/pull-requests.js';
+import { githubTokens, registerGitHub } from './github.js';
 import { registerTeam } from './team.js';
 import { registerShutdown } from './shutdown.js';
 import { watchChanges } from './changes.js';
@@ -105,7 +106,19 @@ export async function createApp(
   registerSearch(app, store);
   startAttachmentUpkeep(app, store, files, config.space);
   registerTasks(app, store);
-  startPullRequestUpkeep(app, store, githubPullRequests(config.github));
+  const githubToken = githubTokens(store, hub.directory, config.github);
+  registerGitHub(app, store, {
+    directory: hub.directory,
+    places: config.github,
+    origin: config.origin,
+    sessionKey: config.sessionKey,
+    token: githubToken,
+  });
+  startPullRequestUpkeep(
+    app,
+    store,
+    githubPullRequests({ api: config.github.api, token: githubToken }),
+  );
   const notifier = registerNotifications(
     app,
     store,

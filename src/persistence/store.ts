@@ -11,6 +11,7 @@ import { inboxViews } from './inbox-views.js';
 import { taskRepository } from './tasks.js';
 import { pullRequestRepository } from './pull-requests.js';
 import { githubObservationRepository } from './github-observations.js';
+import { githubConnectionRepository } from './github-connections.js';
 import { channelAccess } from './channel-access.js';
 import { factsOf } from './facts.js';
 import { messageViews } from './message-views.js';
@@ -76,6 +77,8 @@ export async function openStore(url: string) {
     tasks,
     /** What GitHub said about pull requests linked to tasks, kept current by the hub. */
     githubObservations: githubObservationRepository(d),
+    /** The GitHub App the team connected, and where it is installed. */
+    githubConnections: githubConnectionRepository(d, agentStore),
     channels,
     topics,
     messages,
