@@ -428,7 +428,9 @@ button text.
   control is in its middle, 38 px tall, 12 px above and below, centred over the
   conversation's column whatever view is open, so a view pressed never moves the
   control from under the pointer; its end holds only
-  "正在刷新…" when a refresh is slow. A page has no back row of its own there. On a
+  "正在刷新…" when a refresh is slow, or "连不上 Kinmesh" when out of reach; narrower
+  than 1024 px, where it would crowd the views, it hangs just under the bar's end, over
+  the content, so neither the bar nor anything under it moves when it comes and goes. A page has no back row of its own there. On a
   phone the bar is the way back, the place's name and the views, as before.
 
 ### Phone
@@ -959,9 +961,9 @@ Corners are tight and few, an instrument's rather than a toy's: the `rounded` to
   overlay Principles 7–8 allow: an upright tablet cannot spare a column for it.
 - **Refreshing**: absent while healthy. A refresh asked for (**立即刷新** in
   search) or a slow one shows a dot and "正在刷新…".
-- **Out of reach**: one quiet line under the views — "连不上 Kinmesh。先显示之前的内容，恢复连接前暂停发送。"
-  — with nothing to press:
-  it comes back by itself.
+- **Out of reach**: "连不上 Kinmesh" with an amber dot where "正在刷新…" would be, in
+  the bar's own room so nothing under it moves, and what is on screen loses a little
+  colour; nothing to press: it comes back by itself.
 - **Uncertain send**: when a request's outcome is unknown, the form keeps exactly what
   was sent and offers **重试同一操作**; nothing is resent on its own. A message
   instead stays in the conversation with **重试** (see **Composer**).

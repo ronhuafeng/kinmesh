@@ -46,16 +46,16 @@ export async function withoutStream(page: Page) {
     () => undefined,
   );
 }
-/** The one line that says what is on screen is stale. */
-export function staleLine(page: Page) {
+/** What says, in the top bar, that what is on screen is stale. */
+export function outOfReach(page: Page) {
   return page.getByRole('status').filter({ hasText: '连不上 Kinmesh' });
 }
-/** Healthy is silent: no refresh pill and no stale line. */
+/** Healthy is silent: no refresh pill and nothing saying it is out of reach. */
 export async function expectHealthy(page: Page) {
   await expect(
     page.getByRole('status').filter({ hasText: /^正在刷新…$/ }),
   ).toHaveCount(0);
-  await expect(staleLine(page)).toHaveCount(0);
+  await expect(outOfReach(page)).toHaveCount(0);
 }
 /** WCAG contrast of an element's text against the surface it sits on. */
 export function contrast(page: Page, selector: string) {
