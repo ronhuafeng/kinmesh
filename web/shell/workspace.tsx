@@ -63,6 +63,7 @@ export function Workspace({
                     className="workspace-shell"
                     data-screen={screen.screen}
                     data-sidebar={sidebar.state}
+                    data-sidebar-moving={sidebar.moving ? 'true' : undefined}
                   >
                     <Sidebar />
                     <MainArea />

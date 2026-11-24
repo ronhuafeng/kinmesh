@@ -35,11 +35,15 @@ export function useSidebar(place: string) {
   const pad = usePad();
   const [choice, setChoice] = useState(readOpen);
   const [visiting, setVisiting] = useState(false);
+  // Only a person's choice slides the sidebar; a screen that changes size
+  // puts it in its new place at once.
+  const [moving, setMoving] = useState(false);
   // A sidebar visiting a narrow screen goes when the screen changes.
   const [visitedPad, setVisitedPad] = useState(pad);
   if (visitedPad !== pad) {
     setVisitedPad(pad);
     setVisiting(false);
+    setMoving(false);
   }
   const open = pad === null || (pad === 'narrow' ? visiting : (choice ?? true));
   const floating = pad === 'narrow' && open;
@@ -50,6 +54,7 @@ export function useSidebar(place: string) {
   // its new place, unless something else (search, a page) takes it.
   const focusNext = useRef<'header' | 'row' | null>(null);
   function set(next: boolean, moveFocus: boolean) {
+    setMoving(true);
     if (pad === 'narrow') setVisiting(next);
     else {
       setChoice(next);
@@ -78,6 +83,19 @@ export function useSidebar(place: string) {
         headerToggle.current?.focus({ preventScroll: true });
     }
   }, [open]);
+  useEffect(() => {
+    const sidebar = sidebarRef.current;
+    if (!moving || !sidebar) return;
+    const settled = (e: TransitionEvent) => {
+      if (e.target === sidebar) setMoving(false);
+    };
+    sidebar.addEventListener('transitionend', settled);
+    sidebar.addEventListener('transitioncancel', settled);
+    return () => {
+      sidebar.removeEventListener('transitionend', settled);
+      sidebar.removeEventListener('transitioncancel', settled);
+    };
+  }, [moving]);
   // A choice of place closes the floating sidebar.
   const lastPlace = useRef(place);
   useEffect(() => {
@@ -128,6 +146,8 @@ export function useSidebar(place: string) {
   return {
     pad,
     open,
+    /** True while a person's choice slides it in or out. */
+    moving,
     /** For the shell: closed, or open over the content; docked otherwise. */
     state: !pad
       ? undefined
