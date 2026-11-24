@@ -1,0 +1,380 @@
+{
+  "$schema": "https://www.designtokens.org/schemas/2025.10/format.json",
+  "font": {
+    "sans": {
+      "$type": "fontFamily",
+      "$value": [
+        "-apple-system",
+        "BlinkMacSystemFont",
+        "SF Pro Text",
+        "PingFang SC",
+        "Hiragino Sans GB",
+        "Microsoft YaHei",
+        "system-ui",
+        "sans-serif"
+      ]
+    },
+    "mono": {
+      "$type": "fontFamily",
+      "$value": [
+        "Maple Mono",
+        "ui-monospace",
+        "SF Mono",
+        "SFMono-Regular",
+        "Menlo",
+        "Consolas",
+        "PingFang SC",
+        "Hiragino Sans GB",
+        "Microsoft YaHei",
+        "Noto Sans CJK SC",
+        "monospace"
+      ]
+    },
+    "code": {
+      "$description": "A block of code, which keeps columns: its Chinese is two columns wide.",
+      "$type": "fontFamily",
+      "$value": [
+        "Maple Mono",
+        "Code Han",
+        "ui-monospace",
+        "SF Mono",
+        "SFMono-Regular",
+        "Menlo",
+        "Consolas",
+        "PingFang SC",
+        "Hiragino Sans GB",
+        "Microsoft YaHei",
+        "Noto Sans CJK SC",
+        "monospace"
+      ]
+    }
+  },
+  "text": {
+    "body": {
+      "$type": "dimension",
+      "$value": {
+        "value": 1,
+        "unit": "rem"
+      }
+    },
+    "body-phone": {
+      "$type": "dimension",
+      "$value": {
+        "value": 17,
+        "unit": "px"
+      }
+    },
+    "ui": {
+      "$type": "dimension",
+      "$value": {
+        "value": 0.9375,
+        "unit": "rem"
+      }
+    },
+    "small": {
+      "$type": "dimension",
+      "$value": {
+        "value": 13,
+        "unit": "px"
+      }
+    },
+    "code": {
+      "$type": "dimension",
+      "$value": {
+        "value": 0.85,
+        "unit": "em"
+      }
+    }
+  },
+  "typography": {
+    "large-title": {
+      "$type": "typography",
+      "$value": {
+        "fontFamily": "{font.sans}",
+        "fontSize": {
+          "value": 34,
+          "unit": "px"
+        },
+        "fontWeight": 700,
+        "lineHeight": 1.2,
+        "letterSpacing": {
+          "value": -0.015,
+          "unit": "em"
+        }
+      }
+    },
+    "title": {
+      "$type": "typography",
+      "$value": {
+        "fontFamily": "{font.sans}",
+        "fontSize": {
+          "value": 18,
+          "unit": "px"
+        },
+        "fontWeight": 700,
+        "lineHeight": 1.3,
+        "letterSpacing": {
+          "value": -0.015,
+          "unit": "em"
+        }
+      }
+    },
+    "heading": {
+      "$type": "typography",
+      "$value": {
+        "fontFamily": "{font.sans}",
+        "fontSize": {
+          "value": 15,
+          "unit": "px"
+        },
+        "fontWeight": 600,
+        "lineHeight": 1.4,
+        "letterSpacing": {
+          "value": -0.015,
+          "unit": "em"
+        }
+      }
+    },
+    "body": {
+      "$type": "typography",
+      "$value": {
+        "fontFamily": "{font.sans}",
+        "fontSize": "{text.body}",
+        "fontWeight": 400,
+        "lineHeight": 1.5,
+        "letterSpacing": {
+          "value": 0,
+          "unit": "em"
+        }
+      }
+    },
+    "body-phone": {
+      "$type": "typography",
+      "$value": {
+        "fontFamily": "{font.sans}",
+        "fontSize": "{text.body-phone}",
+        "fontWeight": 400,
+        "lineHeight": 1.5,
+        "letterSpacing": {
+          "value": 0,
+          "unit": "em"
+        }
+      }
+    },
+    "ui": {
+      "$type": "typography",
+      "$value": {
+        "fontFamily": "{font.sans}",
+        "fontSize": "{text.ui}",
+        "fontWeight": 400,
+        "lineHeight": 1.4,
+        "letterSpacing": {
+          "value": 0,
+          "unit": "em"
+        }
+      }
+    },
+    "label": {
+      "$type": "typography",
+      "$value": {
+        "fontFamily": "{font.sans}",
+        "fontSize": "{text.ui}",
+        "fontWeight": 600,
+        "lineHeight": 1.4,
+        "letterSpacing": {
+          "value": 0,
+          "unit": "em"
+        }
+      }
+    },
+    "small": {
+      "$type": "typography",
+      "$value": {
+        "fontFamily": "{font.sans}",
+        "fontSize": "{text.small}",
+        "fontWeight": 400,
+        "lineHeight": 1.4,
+        "letterSpacing": {
+          "value": 0,
+          "unit": "em"
+        }
+      }
+    },
+    "code": {
+      "$type": "typography",
+      "$value": {
+        "fontFamily": "{font.code}",
+        "fontSize": {
+          "value": 13.6,
+          "unit": "px"
+        },
+        "fontWeight": 400,
+        "lineHeight": 1.5,
+        "letterSpacing": {
+          "value": 0,
+          "unit": "em"
+        }
+      }
+    }
+  },
+  "rounded": {
+    "none": {
+      "$type": "dimension",
+      "$value": {
+        "value": 0,
+        "unit": "px"
+      }
+    },
+    "sm": {
+      "$type": "dimension",
+      "$value": {
+        "value": 4,
+        "unit": "px"
+      }
+    },
+    "md": {
+      "$type": "dimension",
+      "$value": {
+        "value": 6,
+        "unit": "px"
+      }
+    },
+    "lg": {
+      "$type": "dimension",
+      "$value": {
+        "value": 8,
+        "unit": "px"
+      }
+    },
+    "full": {
+      "$type": "dimension",
+      "$value": {
+        "value": 999,
+        "unit": "px"
+      }
+    }
+  },
+  "space": {
+    "1": {
+      "$type": "dimension",
+      "$value": {
+        "value": 4,
+        "unit": "px"
+      }
+    },
+    "2": {
+      "$type": "dimension",
+      "$value": {
+        "value": 8,
+        "unit": "px"
+      }
+    },
+    "3": {
+      "$type": "dimension",
+      "$value": {
+        "value": 12,
+        "unit": "px"
+      }
+    },
+    "4": {
+      "$type": "dimension",
+      "$value": {
+        "value": 16,
+        "unit": "px"
+      }
+    },
+    "5": {
+      "$type": "dimension",
+      "$value": {
+        "value": 24,
+        "unit": "px"
+      }
+    },
+    "6": {
+      "$type": "dimension",
+      "$value": {
+        "value": 32,
+        "unit": "px"
+      }
+    },
+    "7": {
+      "$type": "dimension",
+      "$value": {
+        "value": 48,
+        "unit": "px"
+      }
+    }
+  },
+  "control": {
+    "touch": {
+      "$type": "dimension",
+      "$value": {
+        "value": 44,
+        "unit": "px"
+      }
+    },
+    "row": {
+      "$type": "dimension",
+      "$value": {
+        "value": 40,
+        "unit": "px"
+      }
+    },
+    "header": {
+      "$type": "dimension",
+      "$value": {
+        "value": 38,
+        "unit": "px"
+      }
+    }
+  },
+  "size": {
+    "reading": {
+      "$type": "dimension",
+      "$value": {
+        "value": 45,
+        "unit": "rem"
+      }
+    },
+    "conversation": {
+      "$type": "dimension",
+      "$value": {
+        "value": 60,
+        "unit": "rem"
+      }
+    }
+  },
+  "duration": {
+    "press": {
+      "$type": "duration",
+      "$value": {
+        "value": 100,
+        "unit": "ms"
+      }
+    },
+    "fast": {
+      "$type": "duration",
+      "$value": {
+        "value": 150,
+        "unit": "ms"
+      }
+    },
+    "base": {
+      "$type": "duration",
+      "$value": {
+        "value": 200,
+        "unit": "ms"
+      }
+    }
+  },
+  "easing": {
+    "out": {
+      "$type": "cubicBezier",
+      "$value": [0.2, 0.8, 0.2, 1]
+    },
+    "spring": {
+      "$type": "cubicBezier",
+      "$value": [0.34, 1.3, 0.64, 1]
+    }
+  }
+}

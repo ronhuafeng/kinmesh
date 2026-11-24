@@ -1,0 +1,46 @@
+{
+  "$schema": "https://www.designtokens.org/schemas/2025.10/resolver.json",
+  "name": "Kinmesh",
+  "description": "The workspace palette, type, shape, spacing, elevation and motion.",
+  "version": "2025.10",
+  "resolutionOrder": [
+    {
+      "$ref": "#/sets/shared"
+    },
+    {
+      "$ref": "#/sets/color"
+    },
+    {
+      "$ref": "#/modifiers/theme"
+    }
+  ],
+  "sets": {
+    "shared": {
+      "sources": [
+        {
+          "$ref": "shared.tokens.json"
+        }
+      ]
+    },
+    "color": {
+      "sources": [
+        {
+          "$ref": "light.tokens.json"
+        }
+      ]
+    }
+  },
+  "modifiers": {
+    "theme": {
+      "default": "light",
+      "contexts": {
+        "light": [],
+        "dark": [
+          {
+            "$ref": "dark.tokens.json"
+          }
+        ]
+      }
+    }
+  }
+}

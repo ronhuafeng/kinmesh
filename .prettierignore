@@ -8,3 +8,4 @@ web-dist
 test-results
 playwright-report
 artifacts
+web/shared/tokens.css

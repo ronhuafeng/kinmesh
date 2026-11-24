@@ -40,7 +40,10 @@ and cycles in `.dependency-cruiser.json`).
 The **Principles** in [docs/design/DESIGN.md](docs/design/DESIGN.md) are mandatory for
 any change under `web/`; read them first. New UI must match the existing style and be
 beautiful, reuse the shared elements instead of adding variants, and be checked and
-measured in a real browser. In short: remove rather than explain; no folds, drawers,
+measured in a real browser. Reusable visual values (colour, type, radius, spacing,
+elevation, motion) are design tokens in [tokens/](tokens), the one authority: they
+generate the stylesheet's custom properties and DESIGN.md's token frontmatter, and
+neither is edited by hand. In short: remove rather than explain; no folds, drawers,
 annotation text or anything that repeats the navigation; alignment is measured, not
 eyeballed.
 
@@ -53,6 +56,8 @@ npm run typecheck
 npx eslint <changed files>
 npm run architecture
 npx vite build          # UI changes
+npm run lint:css        # stylesheets: colours, corners and shadows come from tokens
+npm run design:build    # after changing tokens/: regenerates web/shared/tokens.css and DESIGN.md's frontmatter
 npm run db:generate     # only after an intentional schema change; review the SQL, never edit applied migrations
 ```
 
