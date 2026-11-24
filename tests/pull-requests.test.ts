@@ -17,7 +17,7 @@ import {
 import { githubPullRequests } from '../src/adapters/github/pull-requests.js';
 import { key } from './communication-helpers.js';
 import { taskFixture } from './task-helpers.js';
-import { signInAs } from './feishu.js';
+import { feishuPerson, signInAs } from './feishu.js';
 
 const sha = 'a'.repeat(40);
 const observed = (over: Partial<PullRequestObservation> = {}) =>
@@ -153,15 +153,23 @@ await test('linking a PR to a task is attributed, idempotent, once per PR, and c
       TaskResult.parse(byAgent.json<unknown>()).pullRequestLink?.author.kind,
       'agent',
     );
-    // Someone not in the channel cannot link.
+    // Someone who left the channel cannot link (a newcomer joins it first).
     const newcomer = await signInAs(f.app, 'newcomer@example.com');
+    const left = await f.store.signIn(feishuPerson('newcomer@example.com'));
+    await f.store.channels.membership(
+      { kind: 'human', humanId: left.id },
+      f.teamId,
+      f.channelId,
+      { operationKey: key() },
+      'leave',
+    );
     const refused = await link(
       { repository: 'Acme/Widgets', number: 10 },
       3,
       key(),
       { cookies: newcomer },
     );
-    assert.ok([403, 404].includes(refused.statusCode));
+    assert.equal(refused.statusCode, 404);
     // Read back: both links, oldest first, nothing GitHub said yet.
     const listed = z.array(TaskPullRequestView).parse(
       (
