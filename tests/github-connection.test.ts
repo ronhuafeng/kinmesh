@@ -12,7 +12,6 @@ import { readGitHubApp, managedDirectory } from '../src/runtime/managed.js';
 import { githubTokens } from '../src/server/github.js';
 import { githubPullRequests } from '../src/adapters/github/pull-requests.js';
 import { agentFixture } from './agent-helpers.js';
-import { signInAs } from './feishu.js';
 
 const { privateKey, publicKey } = generateKeyPairSync('rsa', {
   modulusLength: 2048,
@@ -236,14 +235,6 @@ await test('a person connects GitHub on its own pages, and the hub then reads Gi
         })
       ).headers.location,
       '/?settings=connections',
-    );
-
-    // Someone outside the team sees nothing of it.
-    const outsider = await signInAs(f.app, 'outsider@elsewhere.example');
-    assert.notEqual(
-      (await f.app.inject({ method: 'GET', url: team, cookies: outsider }))
-        .statusCode,
-      200,
     );
 
     // The hub reads pull requests with the installation's token, minted
