@@ -35,6 +35,13 @@ await test('every task action reads as a plain sentence in history', async () =>
     ).task;
     a = (
       await f.act(f.developer, a, {
+        type: 'open-pull-request',
+        change: 'c'.repeat(64),
+        pullRequest: { repository: 'Acme/Widgets', number: 8 },
+      })
+    ).task;
+    a = (
+      await f.act(f.developer, a, {
         type: 'request-review',
         reviewer: rev,
         note: 'Ready',
@@ -99,6 +106,7 @@ await test('every task action reads as a plain sentence in history', async () =>
       /^Developer 发布了进展：“Halfway”$/,
       /^Developer 关联了一次 T3 运行$/,
       /^Developer 关联了 PR Acme\/Widgets#7$/,
+      /^Developer 开了 PR Acme\/Widgets#8$/,
       /^Developer 请 Reviewer 审核：“Ready”$/,
       /^Reviewer 审核通过：“Looks right”$/,
       mine('验收通过：“Ship it”'),
@@ -114,7 +122,7 @@ await test('every task action reads as a plain sentence in history', async () =>
       assert.match(line, expected[i] ?? /^$/);
       assert.doesNotMatch(
         line,
-        /request-review|link-execution|link-pull-request|version|v\d/,
+        /request-review|link-execution|link-pull-request|open-pull-request|version|v\d/,
       );
       assert.doesNotMatch(line, /^你/);
     });

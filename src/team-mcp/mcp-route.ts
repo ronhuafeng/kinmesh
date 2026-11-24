@@ -19,6 +19,8 @@ export function registerMcp(
   app.route({
     method: ['POST', 'GET', 'DELETE'],
     url: '/mcp',
+    // A pull request's change carries up to 1 MiB of text.
+    bodyLimit: 2 * 1024 * 1024,
     handler: async (request, reply) => {
       if (request.method !== 'POST')
         return reply
@@ -32,7 +34,7 @@ export function registerMcp(
         return reply.code(401).send({ error: 'Authentication required' });
       reply.raw.setHeader('Cache-Control', 'no-store');
       reply.raw.setHeader('X-Content-Type-Options', 'nosniff');
-      const server = teamServer(store, authorization, files);
+      const server = teamServer(store, authorization, files, config.hub);
       const transport = new StreamableHTTPServerTransport({
         enableJsonResponse: true,
       });

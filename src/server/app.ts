@@ -25,6 +25,7 @@ import { startAttachmentUpkeep } from './attachment-upkeep.js';
 import { startPullRequestUpkeep } from './pull-request-upkeep.js';
 import { githubPullRequests } from '../adapters/github/pull-requests.js';
 import { githubTokens, registerGitHub } from './github.js';
+import { registerOpenPullRequest } from './open-pull-request.js';
 import { registerTeam } from './team.js';
 import { registerShutdown } from './shutdown.js';
 import { watchChanges } from './changes.js';
@@ -113,6 +114,11 @@ export async function createApp(
     origin: config.origin,
     sessionKey: config.sessionKey,
     token: githubToken,
+  });
+  registerOpenPullRequest(app, store, {
+    api: config.github.api,
+    token: githubToken,
+    origin: config.origin,
   });
   startPullRequestUpkeep(
     app,

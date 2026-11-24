@@ -27,8 +27,10 @@ export const commandInput = (task: Task, input: CommandData) =>
     expectedVersion: task.version,
     ...input,
   });
-export async function taskFixture() {
-  const f = await communicationFixture();
+export async function taskFixture(
+  overrides: Parameters<typeof communicationFixture>[0] = {},
+) {
+  const f = await communicationFixture(overrides);
   await f.invite();
   const developerGrant = await f.store.agents.issue(
     f.principal,

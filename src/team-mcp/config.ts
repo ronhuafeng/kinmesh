@@ -10,6 +10,8 @@ const Environment = z.object({
     .max(65535)
     .default(3001),
   KINMESH_TEAM_MCP_ORIGIN: z.url().optional(),
+  /** The hub's origin, as the hub itself reads it. */
+  KINMESH_ORIGIN: z.url().default('http://127.0.0.1:3000'),
   KINMESH_TEAM_MCP_CONCURRENCY: z.coerce
     .number()
     .int()
@@ -33,6 +35,8 @@ export function teamConfig(env: NodeJS.ProcessEnv) {
     origin: origin.origin,
     hosts: [new URL(local).host, origin.host],
     concurrency: data.KINMESH_TEAM_MCP_CONCURRENCY,
+    /** Where Team MCP asks the hub for what only the hub may do. */
+    hub: new URL(data.KINMESH_ORIGIN).origin,
   };
 }
 export type TeamConfig = ReturnType<typeof teamConfig>;

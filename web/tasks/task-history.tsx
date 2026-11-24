@@ -58,6 +58,8 @@ function said(e: z.infer<typeof TaskEvent>, data: WorkspaceSnapshot): string {
       return `${who} 关联了一次 T3 运行`;
     case 'link-pull-request':
       return `${who} 关联了 PR ${c.pullRequest.repository}#${String(c.pullRequest.number)}`;
+    case 'open-pull-request':
+      return `${who} 开了 PR ${c.pullRequest.repository}#${String(c.pullRequest.number)}`;
     case 'edit': {
       const before = e.before;
       const changed = before
@@ -133,7 +135,8 @@ export function TaskHistory({
       .filter(
         (e) =>
           e.command.type !== 'link-execution' &&
-          e.command.type !== 'link-pull-request',
+          e.command.type !== 'link-pull-request' &&
+          e.command.type !== 'open-pull-request',
       )
       .map((e) => ({
         key: e.id,
