@@ -306,6 +306,26 @@ export function inboxRepository(
     /** Refuses a claim this worker no longer holds. */
     owned,
     get,
+    /**
+     * The agent is acting through Team MCP, so no run of its waits on a
+     * person's approval any longer: its deliveries said to are looked at
+     * now, not at the next of their slowing looks. Nothing on screen
+     * changes until the worker has looked.
+     */
+    async lookNow(agentId: AgentId, teamId: TeamId) {
+      await q()
+        .update(t)
+        .set({ nextAttempt: dbNow })
+        .where(
+          and(
+            eq(t.agentId, AgentId.parse(agentId)),
+            eq(t.teamId, teamId),
+            eq(t.state, 'waiting'),
+            eq(t.reason, 'human-or-approval-wait'),
+            gt(t.nextAttempt, dbNow),
+          ),
+        );
+    },
     async find(eventId: string, agentId: AgentId) {
       z.uuid().parse(eventId);
       AgentId.parse(agentId);
