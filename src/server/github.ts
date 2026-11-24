@@ -181,7 +181,9 @@ export function registerGitHub(
       redirect_url: origin + '/api/github/created',
       setup_url: origin + '/api/github/installed',
       setup_on_update: true,
-      public: false,
+      // Installable on any account or organization the person chooses;
+      // the hub takes only the installation its own steps finish.
+      public: true,
       default_permissions: {
         contents: 'write',
         pull_requests: 'write',

@@ -27,6 +27,12 @@ export function humanOf(request: FastifyRequest) {
 export function registerPrincipals(app: FastifyInstance, store: Store) {
   app.addHook('preHandler', async (request, reply) => {
     if (!request.url.startsWith('/api/')) return;
+    // GitHub's returns come from its site without the session cookie
+    // (SameSite=Strict); they answer to the note the hub signed instead.
+    if (request.url.startsWith('/api/github/')) {
+      request.principal = null;
+      return;
+    }
     request.principal = await resolvePrincipal(
       store,
       request.headers.authorization,
