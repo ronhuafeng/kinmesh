@@ -3104,6 +3104,15 @@ a.button-link {
 .md-diagram[data-drawn] {
   min-height: 0;
 }
+/* Where Mermaid measures a drawing: out of the flow and unseen, so the
+ * page neither grows nor scrolls meanwhile. */
+.diagram-stage {
+  position: fixed;
+  top: 0;
+  left: 0;
+  visibility: hidden;
+  pointer-events: none;
+}
 /* Its width and height attributes keep its shape before it decodes. */
 .md-diagram img {
   display: block;

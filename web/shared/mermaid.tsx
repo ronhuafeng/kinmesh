@@ -5,7 +5,8 @@ import { useEffect, useState, useSyncExternalStore } from 'react';
  * message holds one, runs at its strict security level, and its drawing is
  * shown as an image: an SVG in an <img> runs no script and loads nothing,
  * and needs no inline style on this page. Until it is drawn the block keeps
- * its place; if it can't be drawn it stays the code it was, silently.
+ * its place, at the size it was last drawn at on this device, so drawing it
+ * moves nothing; if it can't be drawn it stays the code it was, silently.
  */
 export function MermaidBlock({ source }: { source: string }) {
   const dark = useDark();
@@ -15,12 +16,14 @@ export function MermaidBlock({ source }: { source: string }) {
   const [last, setLast] = useState<Drawing | null>(null);
   const [failed, setFailed] = useState<string | null>(null);
   const drawn = failed === at ? 'failed' : (cache.get(at) ?? last);
+  const size = drawn ? null : sizeOf(source);
   useEffect(() => {
     if (cache.has(at)) return;
     let live = true;
     draw(source, dark).then(
       (drawing) => {
         cache.set(at, drawing);
+        keepSize(source, drawing);
         if (live) setLast(drawing);
       },
       () => {
@@ -37,20 +40,84 @@ export function MermaidBlock({ source }: { source: string }) {
         <code className="language-mermaid">{source}</code>
       </pre>
     );
+  const shown = drawn ?? (size && { ...size, src: blank(size), label: '' });
   return (
-    <figure className="md-diagram" data-drawn={drawn ? 'true' : undefined}>
-      {drawn && (
+    <figure className="md-diagram" data-drawn={shown ? 'true' : undefined}>
+      {shown && (
         <img
-          src={drawn.src}
-          alt={drawn.label}
-          width={drawn.width}
-          height={drawn.height}
+          // The drawing is a new image, so it fades in over its held place.
+          key={drawn ? 'drawn' : 'held'}
+          src={shown.src}
+          alt={shown.label}
+          width={shown.width}
+          height={shown.height}
           draggable={false}
         />
       )}
     </figure>
   );
 }
+/**
+ * The size each diagram was drawn at, on this device, by a short hash of its
+ * source: the next time it is shown, its place is already that size.
+ */
+const SIZES = 'kinmesh:diagram-sizes';
+const KEPT = 300;
+interface Size {
+  width: number;
+  height: number;
+}
+let sizes: Map<string, Size> | null = null;
+function storedSizes() {
+  if (sizes) return sizes;
+  sizes = new Map();
+  try {
+    const raw: unknown = JSON.parse(localStorage.getItem(SIZES) ?? '[]');
+    if (Array.isArray(raw))
+      for (const entry of raw as unknown[])
+        if (
+          Array.isArray(entry) &&
+          typeof entry[0] === 'string' &&
+          typeof entry[1] === 'number' &&
+          typeof entry[2] === 'number'
+        )
+          sizes.set(entry[0], { width: entry[1], height: entry[2] });
+  } catch {
+    // Storage refused or unreadable: sizes are learnt again as drawn.
+  }
+  return sizes;
+}
+const hash = (text: string) => {
+  // FNV-1a, 32 bits: enough to tell one diagram from another on a device.
+  let h = 0x811c9dc5;
+  for (let i = 0; i < text.length; i++)
+    h = Math.imul(h ^ text.charCodeAt(i), 0x01000193);
+  return (h >>> 0).toString(36);
+};
+const sizeOf = (source: string) => storedSizes().get(hash(source)) ?? null;
+function keepSize(source: string, { width, height }: Size) {
+  const all = storedSizes();
+  const id = hash(source);
+  const old = all.get(id);
+  if (old?.width === width && old.height === height) return;
+  all.delete(id);
+  all.set(id, { width, height });
+  while (all.size > KEPT) all.delete(all.keys().next().value ?? '');
+  try {
+    localStorage.setItem(
+      SIZES,
+      JSON.stringify([...all].map(([key, s]) => [key, s.width, s.height])),
+    );
+  } catch {
+    // Storage refused: the size is kept for this visit only.
+  }
+}
+/** An empty picture of a size, holding the place of the diagram to come. */
+const blank = ({ width, height }: Size) =>
+  'data:image/svg+xml;charset=utf-8,' +
+  encodeURIComponent(
+    `<svg xmlns="http://www.w3.org/2000/svg" width="${String(width)}" height="${String(height)}"/>`,
+  );
 interface Drawing {
   src: string;
   width: number;
@@ -152,10 +219,17 @@ function draw(source: string, dark: boolean): Promise<Drawing> {
       },
     });
     probe.remove();
-    const { svg } = await mermaid.render(
-      'mermaid-' + String(++counter),
-      source,
-    );
+    // Mermaid measures its drawing in the page; on a stage of its own,
+    // out of the flow, the page never grows or scrolls while it does.
+    const stage = document.createElement('div');
+    stage.className = 'diagram-stage';
+    stage.setAttribute('aria-hidden', 'true');
+    document.body.append(stage);
+    const { svg } = await mermaid
+      .render('mermaid-' + String(++counter), source, stage)
+      .finally(() => {
+        stage.remove();
+      });
     // Mermaid writes its labels as HTML (a `<br/>` in one comes out `<br>`),
     // which an XML parser refuses; read it as a page would, and it is
     // written back as XML below.
