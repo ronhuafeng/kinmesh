@@ -10,7 +10,12 @@ import { Author, Principal, CorrelationInput } from './agents.js';
 import { DomainError } from './errors.js';
 import { Member, TopicId, Mutation, memberKey } from './communication.js';
 import { TaskAction, type TaskStatus } from './task-state.js';
-import { PullRequestRef, TaskPullRequest } from './pull-requests.js';
+import {
+  PullRequestChange,
+  PullRequestRef,
+  TaskPullRequest,
+  changeFits,
+} from './pull-requests.js';
 export { TaskId } from './contracts.js';
 const Note = z.string().trim().min(1).max(2000);
 const Working = {
@@ -173,6 +178,16 @@ export const TaskCommand = z.discriminatedUnion('type', [
     pullRequest: PullRequestRef,
   }),
   /**
+   * A pull request Kinmesh opened on GitHub for the agent working on the
+   * task, from the change it handed over (`change`, its digest). Only the
+   * hub makes it, once the pull request exists.
+   */
+  CommandBase.extend({
+    type: z.literal('open-pull-request'),
+    change: z.string().regex(/^[0-9a-f]{64}$/),
+    pullRequest: PullRequestRef,
+  }),
+  /**
    * Its acceptor says what is asked again: title, description, criteria,
    * who reviews, when it is due and how much it matters, all given as they
    * should be.
@@ -188,6 +203,13 @@ export const TaskCommand = z.discriminatedUnion('type', [
   }),
 ]);
 export type TaskCommand = z.infer<typeof TaskCommand>;
+/**
+ * What the agent working on a task hands over to have Kinmesh open a pull
+ * request for it ([`open-pull-request`](#TaskCommand)).
+ */
+export const OpenPullRequest =
+  CommandBase.extend(PullRequestChange).refine(changeFits);
+export type OpenPullRequest = z.infer<typeof OpenPullRequest>;
 export const principalMember = (p: Principal): z.infer<typeof Member> =>
   p.kind === 'human'
     ? { kind: 'human', id: p.humanId }
@@ -198,6 +220,27 @@ export const principalAuthor = (p: Principal) =>
       ? { kind: 'human', humanId: p.humanId }
       : { kind: 'agent', agentId: p.agentId, grantId: p.grantId },
   );
+/**
+ * Whether an agent may have Kinmesh open a pull request for a task: only
+ * the agent working on it, while it is worked on, at the version it read.
+ * People open their own on GitHub.
+ */
+export function mayOpenPullRequest(
+  task: Task,
+  principal: Principal,
+  expectedVersion: number,
+) {
+  const state = task.state;
+  if (expectedVersion !== task.version) throw new DomainError('conflict');
+  if (
+    principal.kind !== 'agent' ||
+    state.owner === null ||
+    memberKey(state.owner) !== memberKey(principalMember(principal))
+  )
+    throw new DomainError('forbidden');
+  if (state.status !== 'in-progress' && state.status !== 'rework-requested')
+    throw new DomainError('conflict');
+}
 /** Pure policy/algebra. Repository additionally checks live membership, grants, targets and SQL CAS. */
 export function transition(
   task: Task,
@@ -371,6 +414,9 @@ export function transition(
     }
     case 'link-pull-request':
       // Anyone who may change the task's channel's tasks, until it ends.
+      return state;
+    case 'open-pull-request':
+      mayOpenPullRequest(current, principal, command.expectedVersion);
       return state;
     case 'link-execution':
       if (

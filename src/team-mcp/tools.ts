@@ -1,5 +1,10 @@
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
-import { TaskPullRequestView } from '../domain/pull-requests.js';
+import {
+  OpeningRefusal,
+  PULL_REQUEST_CHANGE_BYTES,
+  TaskPullRequestView,
+} from '../domain/pull-requests.js';
+import { hubRequest } from './hub.js';
 import { z } from 'zod';
 import { ChannelId, TaskId } from '../domain/contracts.js';
 import type { Principal } from '../domain/agents.js';
@@ -19,6 +24,7 @@ import {
   Task,
   TaskCreate,
   TaskCommand,
+  OpenPullRequest,
   TaskEvent,
   TaskExecution,
   TaskResult,
@@ -61,6 +67,8 @@ export const Failure = z.strictObject({
     'Invalid input',
     'Operation failed',
   ]),
+  /** What to change, when the code alone would not say. */
+  reason: OpeningRefusal.optional(),
 });
 export const outcome = <T extends z.ZodType>(data: T) =>
   z.strictObject({
@@ -71,21 +79,28 @@ export const outcome = <T extends z.ZodType>(data: T) =>
   });
 function failure(error: unknown): z.infer<typeof Failure> {
   if (error instanceof DomainError) {
-    switch (error.kind) {
-      case 'invalid':
-      case 'too-large':
-        return { code: 'invalid_input', message: 'Invalid input' };
-      case 'unauthenticated':
-        return { code: 'unauthenticated', message: 'Authentication required' };
-      case 'forbidden':
-        return { code: 'forbidden', message: 'Permission denied' };
-      case 'not-found':
-        return { code: 'not_found', message: 'Resource unavailable' };
-      case 'conflict':
-        return { code: 'conflict', message: 'Operation conflicts' };
-    }
+    const reason = OpeningRefusal.safeParse(error.reason);
+    return {
+      ...refusal(error),
+      ...(reason.success ? { reason: reason.data } : {}),
+    };
   }
   return { code: 'internal', message: 'Operation failed' };
+}
+function refusal(error: DomainError): z.infer<typeof Failure> {
+  switch (error.kind) {
+    case 'invalid':
+    case 'too-large':
+      return { code: 'invalid_input', message: 'Invalid input' };
+    case 'unauthenticated':
+      return { code: 'unauthenticated', message: 'Authentication required' };
+    case 'forbidden':
+      return { code: 'forbidden', message: 'Permission denied' };
+    case 'not-found':
+      return { code: 'not_found', message: 'Resource unavailable' };
+    case 'conflict':
+      return { code: 'conflict', message: 'Operation conflicts' };
+  }
 }
 export async function agentPrincipal(
   store: Store,
@@ -100,6 +115,7 @@ export function teamServer(
   store: Store,
   authorization: string,
   files: AttachmentStore,
+  hub: string,
 ) {
   const server = new McpServer({ name: 'kinmesh-team', version: '0.1.0' });
   const channel = z.strictObject({ channelId: ChannelId });
@@ -302,11 +318,13 @@ export function teamServer(
     const action = type.value;
     // Human-only decisions, and the acceptor's say over what is asked, are
     // deliberately absent from the agent transport.
+    // An opened pull request is the hub's to record, below.
     if (
       action === 'accept' ||
       action === 'rework' ||
       action === 'cancel' ||
-      action === 'edit'
+      action === 'edit' ||
+      action === 'open-pull-request'
     )
       continue;
     register(
@@ -327,5 +345,19 @@ export function teamServer(
         ),
     );
   }
+  register(
+    'team_task_open_pull_request',
+    `Open your change as a pull request linked to a task you are working on. Kinmesh makes a new branch from base (the repository's default branch when null) with one commit of each file's whole new text (null removes the file), at most ${String(PULL_REQUEST_CHANGE_BYTES / 1024 / 1024)} MiB, and opens the pull request in Kinmesh's name on your behalf. Requires stable operationKey and current expectedVersion; a retry never opens a second one. A refusal's reason says what to change: github-not-connected (ask a person to connect GitHub), repository-not-connected, base-missing, branch-taken (choose another branch).`,
+    z.strictObject({ ...task.shape, ...OpenPullRequest.shape }),
+    TaskResult,
+    false,
+    (p, { channelId, taskId, ...data }) =>
+      hubRequest(
+        hub,
+        authorization,
+        `/api/teams/${p.teamId}/channels/${channelId}/tasks/${taskId}/open-pull-request`,
+        data,
+      ),
+  );
   return server;
 }

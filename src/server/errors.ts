@@ -52,6 +52,9 @@ export function registerErrors(app: FastifyInstance) {
           : status < 500
             ? 'Request rejected'
             : 'Internal service error',
+      ...(error instanceof DomainError && error.reason !== null
+        ? { reason: error.reason }
+        : {}),
     });
   });
 }

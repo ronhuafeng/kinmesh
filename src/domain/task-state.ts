@@ -21,4 +21,5 @@ export const TaskAction = z.enum([
   'link-execution',
   'edit',
   'link-pull-request',
+  'open-pull-request',
 ]);

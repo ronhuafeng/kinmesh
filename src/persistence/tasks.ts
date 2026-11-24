@@ -53,6 +53,7 @@ import {
   principalMember,
   principalAuthor,
   retainsExecutionResponsibility,
+  mayOpenPullRequest,
 } from '../domain/tasks.js';
 type ChannelId = z.infer<typeof ChannelId>;
 const decode = (value: string): unknown => JSON.parse(value);
@@ -64,7 +65,27 @@ export function taskRepository(
   messages: ReturnType<typeof messageRepository>,
   pullRequests: ReturnType<typeof pullRequestRepository>,
 ) {
-  const { q, atomic, receipt } = transactional(d);
+  const { q, atomic, receipt, recall } = transactional(d);
+  /** Where one member's operation keys for one task and action live. */
+  const scopeOf = (
+    p: Principal,
+    teamId: TeamId,
+    id: TaskId,
+    type: TaskCommand['type'],
+  ) =>
+    JSON.stringify([teamId, memberKey(principalMember(p)), id, 'task.' + type]);
+  /**
+   * What a command asked, which its receipt keeps. An opened pull request is
+   * the hub's answer, not part of the question.
+   */
+  const opened = (
+    c: Pick<
+      Extract<TaskCommand, { type: 'open-pull-request' }>,
+      'operationKey' | 'expectedVersion' | 'change'
+    >,
+  ) => ['open', c.operationKey, c.expectedVersion, c.change];
+  const asked = (data: TaskCommand) =>
+    data.type === 'open-pull-request' ? opened(data) : data;
   async function access(
     p: Principal,
     teamId: TeamId,
@@ -571,14 +592,9 @@ export function taskRepository(
         );
         const old = await row(teamId, channelId, id);
         return receipt(
-          JSON.stringify([
-            teamId,
-            memberKey(principalMember(p)),
-            id,
-            'task.' + data.type,
-          ]),
+          scopeOf(p, teamId, id, data.type),
           data.operationKey,
-          data,
+          asked(data),
           TaskResult,
           async () => {
             const current = view(old);
@@ -631,7 +647,8 @@ export function taskRepository(
               );
             if (changed.count !== 1) throw new DomainError('conflict');
             const pullRequestLink =
-              data.type === 'link-pull-request'
+              data.type === 'link-pull-request' ||
+              data.type === 'open-pull-request'
                 ? await pullRequests.link(p, id, data.pullRequest, time)
                 : null;
             let executionLink: z.infer<typeof TaskExecution> | null = null;
@@ -668,6 +685,42 @@ export function taskRepository(
             );
           },
         );
+      });
+    },
+    /**
+     * Before Kinmesh opens a pull request on GitHub for an agent's task:
+     * what the same operation already answered, or else the task and the
+     * agent's name once it may open one now.
+     */
+    opening(
+      p: Principal,
+      teamId: TeamId,
+      channelId: ChannelId,
+      id: TaskId,
+      change: Parameters<typeof opened>[0],
+    ) {
+      return atomic(async () => {
+        await access(p, teamId, channelId, 'tasks:write');
+        const old = await row(teamId, channelId, id);
+        const replay = await recall(
+          scopeOf(p, teamId, id, 'open-pull-request'),
+          change.operationKey,
+          opened(change),
+          TaskResult,
+        );
+        if (replay !== null) return { replay } as const;
+        const task = view(old);
+        mayOpenPullRequest(task, p, change.expectedVersion);
+        const [agent] =
+          p.kind === 'agent'
+            ? await q()
+                .select({ id: s.agents.id, name: s.agents.name })
+                .from(s.agents)
+                .where(eq(s.agents.id, p.agentId))
+                .limit(1)
+            : [];
+        if (agent === undefined) throw new DomainError('forbidden');
+        return { replay: null, task, agent } as const;
       });
     },
     history(

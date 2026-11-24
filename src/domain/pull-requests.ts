@@ -17,6 +17,85 @@ export type PullRequestRef = z.infer<typeof PullRequestRef>;
 export const pullRequestKey = (ref: PullRequestRef) =>
   `${ref.repository.toLowerCase()}#${String(ref.number)}`;
 /**
+ * A branch name Git and GitHub both take: no `..`, `//` or `@{`, no part
+ * starting with `.`, nothing starting with `-` or ending with `/`, `.` or
+ * `.lock`.
+ */
+export const BranchName = z
+  .string()
+  .min(1)
+  .max(200)
+  .regex(/^[A-Za-z0-9._/-]+$/)
+  .refine(
+    (v) =>
+      !v.startsWith('-') &&
+      !v.endsWith('/') &&
+      !v.endsWith('.') &&
+      !v.endsWith('.lock') &&
+      !v.includes('//') &&
+      v.split('/').every((part) => part !== '' && !part.startsWith('.')),
+  );
+/** A path in a repository: relative, without `.`/`..` parts or `.git`. */
+const FilePath = z
+  .string()
+  .min(1)
+  .max(400)
+  .refine(
+    (v) =>
+      !/[\\\0]/.test(v) &&
+      v
+        .split('/')
+        .every(
+          (part) =>
+            part !== '' &&
+            part !== '.' &&
+            part !== '..' &&
+            part.toLowerCase() !== '.git',
+        ),
+  );
+/** Most bytes of text one pull request opened through Kinmesh carries. */
+export const PULL_REQUEST_CHANGE_BYTES = 1024 * 1024;
+/**
+ * A pull request an agent asks Kinmesh to open: one commit on a new branch
+ * from `base` (the repository's default branch when null), with each file's
+ * whole new text, or null to remove it.
+ */
+export const PullRequestChange = {
+  repository: Repository,
+  base: BranchName.nullable().default(null),
+  branch: BranchName,
+  title: z.string().trim().min(1).max(256),
+  body: z.string().max(20_000).default(''),
+  files: z
+    .array(z.strictObject({ path: FilePath, content: z.string().nullable() }))
+    .min(1)
+    .max(100),
+};
+/** What a whole change must also be: each path once, within the size. */
+export const changeFits = (change: {
+  base: string | null;
+  branch: string;
+  files: { path: string; content: string | null }[];
+}) =>
+  change.branch !== change.base &&
+  new Set(change.files.map((f) => f.path)).size === change.files.length &&
+  change.files.reduce(
+    (sum, f) => sum + new TextEncoder().encode(f.content ?? '').length,
+    0,
+  ) <= PULL_REQUEST_CHANGE_BYTES;
+/**
+ * Why GitHub would not take a change, in words an agent can pass on: the
+ * team has no GitHub connected, the app is not installed on the repository,
+ * the base branch is missing, or the branch is already someone else's.
+ */
+export const OpeningRefusal = z.enum([
+  'github-not-connected',
+  'repository-not-connected',
+  'base-missing',
+  'branch-taken',
+]);
+export type OpeningRefusal = z.infer<typeof OpeningRefusal>;
+/**
  * The pull request a GitHub address names, such as
  * `https://github.com/owner/name/pull/12/files`; null for anything else.
  * Kinmesh never fetches the address: it only reads which pull request it is.

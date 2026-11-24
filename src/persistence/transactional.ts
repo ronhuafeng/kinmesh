@@ -31,7 +31,29 @@ export function transactional(d: Database) {
     schema: z.ZodType<T>,
     effect: () => Promise<T>,
   ): Promise<T> {
-    const digest = fingerprint(input);
+    const kept = await recall(scope, operationKey, input, schema);
+    if (kept !== null) return kept;
+    const result = schema.parse(await effect());
+    await q()
+      .insert(s.communicationOperations)
+      .values({
+        scope,
+        operationKey,
+        fingerprint: fingerprint(input),
+        result: JSON.stringify(result),
+      });
+    return result;
+  }
+  /**
+   * The result an operation key already has, or null before it ran; the
+   * same key with other input is refused. Run inside `atomic`.
+   */
+  async function recall<T>(
+    scope: string,
+    operationKey: string,
+    input: unknown,
+    schema: z.ZodType<T>,
+  ): Promise<T | null> {
     const [old] = await q()
       .select()
       .from(s.communicationOperations)
@@ -42,22 +64,12 @@ export function transactional(d: Database) {
         ),
       )
       .limit(1);
-    if (old !== undefined) {
-      if (old.fingerprint !== digest) throw new DomainError('conflict');
-      return schema.parse(decode(old.result));
-    }
-    const result = schema.parse(await effect());
-    await q()
-      .insert(s.communicationOperations)
-      .values({
-        scope,
-        operationKey,
-        fingerprint: digest,
-        result: JSON.stringify(result),
-      });
-    return result;
+    if (old === undefined) return null;
+    if (old.fingerprint !== fingerprint(input))
+      throw new DomainError('conflict');
+    return schema.parse(decode(old.result));
   }
-  return { q, atomic, receipt };
+  return { q, atomic, receipt, recall };
 }
 const Cursor = z
   .strictObject({
