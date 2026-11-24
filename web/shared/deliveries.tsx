@@ -1,4 +1,4 @@
-import { useEffect, useState, type ReactNode } from 'react';
+import { useEffect, useState } from 'react';
 import type { WorkspaceSnapshot } from '../../src/workspace/contracts.js';
 import {
   BlockedReason,
@@ -239,38 +239,28 @@ export function Stop({
   );
 }
 /**
- * What came of a request; while its run waits for an approval, a link to the
- * run in T3, where it is approved.
+ * Beside a request whose run waits for an approval: where it is approved,
+ * the run in T3. Nothing until T3 has said where that is.
  */
-export function Outcome({
+export function ApproveInT3({
   delivery,
   teamId,
   t3Origin,
-  className,
-  children,
 }: {
   delivery: DeliveryView;
   teamId: string;
   t3Origin: string | null;
-  className?: string;
-  children: ReactNode;
 }) {
-  const approve = useApproval(delivery, teamId, t3Origin);
-  return (
-    <span className={className}>
-      {approve ? (
-        <a
-          className="link-button"
-          href={approve}
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          {children} ↗
-        </a>
-      ) : (
-        children
-      )}
-    </span>
+  const url = useApproval(delivery, teamId, t3Origin);
+  return url === null ? null : (
+    <a
+      className="link-button"
+      href={url}
+      target="_blank"
+      rel="noopener noreferrer"
+    >
+      去批准 ↗
+    </a>
   );
 }
 export function DeliveryLine({
@@ -314,13 +304,7 @@ export function DeliveryLine({
           <Words text={text} /> ↓
         </button>
       ) : (
-        <Outcome
-          delivery={delivery}
-          teamId={data.team.id}
-          t3Origin={data.nativeT3Origin}
-        >
-          <Words text={text} />
-        </Outcome>
+        <Words text={text} />
       )}
       {unanswered(delivery) && delivery.step && (
         // What its run is on in T3: what waits on your approval there, or
@@ -333,6 +317,11 @@ export function DeliveryLine({
           <code>{delivery.step.text}</code>
         </span>
       )}
+      <ApproveInT3
+        delivery={delivery}
+        teamId={data.team.id}
+        t3Origin={data.nativeT3Origin}
+      />
       {stoppable(delivery) && (
         <Stop delivery={delivery} teamId={data.team.id} onDone={onDone} />
       )}

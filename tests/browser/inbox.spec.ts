@@ -202,11 +202,13 @@ test('a request waiting for an approval in T3 is stopped from its line, and one 
   } finally {
     await sql.close();
   }
-  // The sentence itself goes to T3, where the approval is given.
-  const approve = waiting.getByRole('link', {
-    name: 'Ada 正在等待 T3 中的批准 ↗',
-    exact: true,
-  });
+  // The line says what it waits on; beside 停止, 去批准 opens the run in
+  // T3, where the approval is given.
+  await expect(waiting).toContainText('Ada 正在等待 T3 中的批准');
+  await expect(
+    waiting.getByRole('link', { name: /正在等待 T3 中的批准/ }),
+  ).toHaveCount(0);
+  const approve = waiting.getByRole('link', { name: '去批准 ↗', exact: true });
   await expect(approve).toHaveAttribute('href', thread);
   await expect(approve).toHaveAttribute('target', '_blank');
   await waiting.getByRole('button', { name: '停止', exact: true }).click();
