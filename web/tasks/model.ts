@@ -144,11 +144,14 @@ export function editOf(f: FormData, task: Task) {
   return {
     title: value(f, 'title').trim(),
     description: value(f, 'description').trim(),
-    criteria: f
-      .getAll('criteria')
-      .map((c) => (typeof c === 'string' ? c.trim() : ''))
-      .filter(Boolean),
-    // Settled once review is asked for, it is shown, not chosen.
+    // Settled once review is asked for, criteria and reviewer are shown,
+    // not written or chosen.
+    criteria: f.has('criteria')
+      ? f
+          .getAll('criteria')
+          .map((c) => (typeof c === 'string' ? c.trim() : ''))
+          .filter(Boolean)
+      : task.criteria,
     reviewer:
       reviewer === null
         ? task.state.reviewer

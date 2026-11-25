@@ -397,9 +397,12 @@ export function transition(
       const same = (a: Member | null, b: Member | null) =>
         (a === null ? null : memberKey(a)) ===
         (b === null ? null : memberKey(b));
-      // Who reviews is settled once review is asked for.
+      // What is asked, and who reviews it, are settled once review is
+      // asked for: the owner's proof is for these criteria.
       if (
-        !same(command.reviewer, state.reviewer) &&
+        (!same(command.reviewer, state.reviewer) ||
+          JSON.stringify(command.criteria) !==
+            JSON.stringify(current.criteria)) &&
         (state.status === 'review-requested' ||
           state.status === 'awaiting-human')
       )
