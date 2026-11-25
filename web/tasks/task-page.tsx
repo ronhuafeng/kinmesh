@@ -22,7 +22,7 @@ import { MemberChip } from './members.js';
 import { SideValue } from './due-and-priority.js';
 import { TaskDecision } from './decision.js';
 import { TaskHistory } from './task-history.js';
-import { TaskPullRequests } from './pull-requests.js';
+import { TaskPullRequests, uncitedPullRequests } from './pull-requests.js';
 import { CriterionProof } from './criterion-proof.js';
 import { DecisionForm } from './decision.js';
 
@@ -52,6 +52,10 @@ export function TaskPage({
   const acceptor = { kind: 'human', id: task.acceptorHumanId } satisfies Member;
   const { lead, rest, done } = taskActions(task, data);
   const judging = lead.some((i) => i === 'approve' || i === 'accept');
+  // Deciding, the PRs not already under a criterion are part of the
+  // decision; otherwise they follow the criteria.
+  const decidedOnPullRequests =
+    judging && uncitedPullRequests(task, data).length > 0;
   // One of the row's actions, chosen: its note opens in place of the row.
   const [picked, setPicked] = useState<Intent | null>(null);
   // Edited, the task is the page it was created on, filled in.
@@ -167,7 +171,7 @@ export function TaskPage({
               )}
               {/* Reviewing or accepting, its PRs and their checks are
                   what you decide on. */}
-              {judging && (
+              {decidedOnPullRequests && (
                 <TaskPullRequests task={task} data={data} path={path} />
               )}
               {deliveries.length > 0 && (
@@ -189,7 +193,9 @@ export function TaskPage({
             </>
           }
         >
-          {!judging && <TaskPullRequests task={task} data={data} path={path} />}
+          {!decidedOnPullRequests && (
+            <TaskPullRequests task={task} data={data} path={path} />
+          )}
           <TaskHistory task={task} path={path} data={data} />
           {chosen ? (
             <div className="task-actions">

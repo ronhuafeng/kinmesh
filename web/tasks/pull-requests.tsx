@@ -30,15 +30,7 @@ export function TaskPullRequests({
   path: string;
 }) {
   const links = data.taskPullRequests.filter((l) => l.taskId === task.id);
-  // A PR cited under a criterion is said there, not again here.
-  const cited = new Set(
-    (task.proof?.criteria ?? []).flatMap((c) =>
-      c.pieces.flatMap((p) =>
-        p.kind === 'pull-request' ? [pullRequestKey(p.pullRequest)] : [],
-      ),
-    ),
-  );
-  const shown = links.filter((l) => !cited.has(pullRequestKey(l.pullRequest)));
+  const shown = uncitedPullRequests(task, data);
   const open =
     task.state.status !== 'accepted' && task.state.status !== 'cancelled';
   const [adding, setAdding] = useState(false);
@@ -80,6 +72,23 @@ export function TaskPullRequests({
         />
       )}
     </section>
+  );
+}
+
+/**
+ * The task's PRs not cited under a criterion: a cited one is said there,
+ * not again under PR.
+ */
+export function uncitedPullRequests(task: Task, data: WorkspaceSnapshot) {
+  const cited = new Set(
+    (task.proof?.criteria ?? []).flatMap((c) =>
+      c.pieces.flatMap((p) =>
+        p.kind === 'pull-request' ? [pullRequestKey(p.pullRequest)] : [],
+      ),
+    ),
+  );
+  return data.taskPullRequests.filter(
+    (l) => l.taskId === task.id && !cited.has(pullRequestKey(l.pullRequest)),
   );
 }
 

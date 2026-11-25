@@ -4497,6 +4497,25 @@ button.inbox-main:focus-visible::after {
 .criterion-proof li::before {
   content: none;
 }
+/* A PR's line wraps onto the column's own edge. */
+.criterion-proof li > span {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  column-gap: 0.5rem;
+}
+.criterion-proof .pull-meta {
+  margin-left: 0;
+}
+/* A message reads like the links beside it. */
+.criterion-proof .link-button {
+  min-height: 0;
+  padding: 0;
+  border: 0;
+  font: inherit;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
 .criterion-proof time {
   margin-left: 0.35rem;
   font-size: 13px;

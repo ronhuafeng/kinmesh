@@ -726,7 +726,7 @@ Corners are tight and few, an instrument's rather than a toy's: the `rounded` to
   title; the description, unless it only repeats the title; on the left, in order of
   importance, the decision waiting on you (orange rule) only when one does, then where
   the task is now (its delivery lines, a reply linking to it in the chat, or
-  "任务已关闭。"), "完成标准" as a checklist, each criterion followed by what its owner offered for it when it last asked for review (its face and its words, then each piece as the thing itself: a PR as its PR row, a T3 run as its link with its time, a message as "_name_ 的消息" that opens it in the conversation, an address as its host and path; nothing when it offered none), its PRs (a PR said under a criterion is not said again), history as one timeline with faces, and
+  "任务已关闭。"), "完成标准" as a checklist, each criterion followed by what its owner offered for it when it last asked for review (its face and its words, then each piece as the thing itself: a PR as its PR row, a T3 run as its link, then its time, a message as "_name_ 的消息" that opens it in the conversation, then its time, each reading like the links beside it, an address as its host and path; nothing when it offered none), its PRs (a PR said under a criterion is not said again), history as one timeline with faces, and
   last one quiet row of what else you may do; on the right owner, reviewer, acceptor,
   then 截止 and 优先级 only when set (a due day past and open in the danger colour;
   normal priority is not said), each led by its glyph (a calendar, a flag) where a face
@@ -751,9 +751,9 @@ Corners are tight and few, an instrument's rather than a toy's: the `rounded` to
   the GitHub account; 仓库 — the repositories by name ("全部仓库" when all, "等" when
   more), then **更改** to GitHub's page for them. GitHub unreadable: "暂时读不到 GitHub".
   A step that didn't finish says "没有连上 GitHub，再试一次。" under the group.
-- **PRs**: what a review or acceptance is decided on, so while you review or accept they
-  sit in the decision, under its buttons, and not again below; otherwise after
-  "完成标准". Headed "PR" with a `+` beside it while the task is open (an ended task
+- **PRs**: what a review or acceptance is decided on, so while you review or accept the
+  ones not already under a criterion sit in the decision, under its buttons, and not
+  again below; otherwise, or when every one is under a criterion, after "完成标准". Headed "PR" with a `+` beside it while the task is open (an ended task
   without any shows nothing). Each row reads like history — when it was linked, the
   face of who linked it, then its title as the link to GitHub, and after it in the
   muted ink `owner/name#12` (small, in mono), what GitHub last said: 进行中, 草稿,
