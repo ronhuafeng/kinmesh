@@ -598,6 +598,8 @@ export const tasks = pgTable(
     /** The day it should be done by (YYYY-MM-DD); null if none. */
     due: text('due'),
     priority: text('priority').notNull().default('normal'),
+    /** What its owner offered as proof when it last asked for review. */
+    proof: text('proof'),
   },
   (t) => [
     foreignKey({

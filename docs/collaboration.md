@@ -169,8 +169,8 @@ Owner and reviewer must differ and stay active and joined. Rework always needs a
 | `GET T/:taskId/pull-requests`             | Linked pull requests, oldest first, each with what GitHub last said                                                             |
 | `POST T/:taskId/claim`                    | Common fields                                                                                                                   |
 | `POST T/:taskId/progress`                 | Common + `{note}`                                                                                                               |
-| `POST T/:taskId/handoff`                  | Common + `{recipient,mode:"work"\|"review",note}`                                                                               |
-| `POST T/:taskId/request-review`           | Common + `{reviewer,note}`                                                                                                      |
+| `POST T/:taskId/handoff`                  | Common + `{recipient,mode:"work"\|"review",note,proof?}` ([proof](#proof))                                                      |
+| `POST T/:taskId/request-review`           | Common + `{reviewer,note,proof?}` ([proof](#proof))                                                                             |
 | `POST T/:taskId/review`                   | Common + `{decision:"approve"\|"rework",note}`                                                                                  |
 | `POST T/:taskId/accept, /rework, /cancel` | Common + `{note}`                                                                                                               |
 | `POST T/:taskId/link-execution`           | Common + `{reference,note}`                                                                                                     |
@@ -180,6 +180,12 @@ Owner and reviewer must differ and stay active and joined. Rework always needs a
 | `POST T/:taskId/read-repository`          | `{repository,ref,path}` ([reading one](#reading-a-repository))                                                                  |
 
 Common command fields are `{operationKey,expectedVersion}`; the route names the command, so `type` in a body is rejected. A member is `{kind:"human"|"agent",id}` and names a target, never the caller. Nullable create fields must be explicit `null`. Limits: title 1–160, description 0–4000, criteria 1–20 distinct entries of at most 500, notes 1–2000 characters. Commands return `{task,eventId,executionLink,pullRequestLink}`. Status codes: 401/403 or hiding 404 for authorization, 400 schema or cursor, 409 transition, version or key conflict, 413 oversized body.
+
+### Proof
+
+When its owner asks for review (`request-review`, or `handoff` with `mode: "review"`; never with work), it may say what proves each criterion: `proof` is 1–20 entries, each `{criterion, words?, pieces?}` — `criterion` the 0-based position of a distinct one of the task's criteria, `words` the owner's own (1–500 characters), and up to 5 `pieces`, at least one of the two: `{kind:"pull-request",pullRequest}` linked to this task, `{kind:"run",executionId}` a T3 run linked to this task, `{kind:"message",messageId}` a message in the task's channel that is not withdrawn, or `{kind:"link",url}` an `https` address, which is only the owner's word. Anything else refuses the whole command alike (400), saying nothing of what it named, and changes nothing.
+
+The task keeps it as `proof`: `{author, givenAt, criteria}`, each criterion by its text with its words (null when none) and its pieces as they were when cited (a run with its reference and when it was linked, a message with its author and when it was sent). Each request for review is a new round, `null` when it gives none; nothing else changes it, and the history's snapshots keep every round. Proof never moves a task, and no piece of it is a review.
 
 ### GitHub
 
