@@ -96,7 +96,19 @@ export function TaskEdit({
               />
             </Field>
           }
-          criteria={<CriteriaInput initial={task.criteria} />}
+          criteria={
+            settled ? (
+              <ol className="criteria">
+                {task.criteria.map((c, index) => (
+                  <li key={index}>
+                    <span>{c}</span>
+                  </li>
+                ))}
+              </ol>
+            ) : (
+              <CriteriaInput initial={task.criteria} />
+            )
+          }
           {...DueAndPriority(task)}
           owner={<MemberChip member={owner} data={data} />}
           reviewer={

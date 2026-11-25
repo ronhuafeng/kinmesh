@@ -100,7 +100,8 @@ await test('the acceptor edits an open task on the record; the reviewer stays on
       rejected('conflict'),
     );
 
-    // Under review the reviewer is settled; what is asked can still change.
+    // Under review the reviewer and the criteria are settled — the owner's
+    // proof is for them; the rest of what is asked can still change.
     task = (
       await f.act(f.developer, task, {
         type: 'request-review',
@@ -110,6 +111,15 @@ await test('the acceptor edits an open task on the record; the reviewer stays on
     ).task;
     await assert.rejects(
       () => f.act(f.principal, task, edit({ reviewer: null })),
+      rejected('conflict'),
+    );
+    await assert.rejects(
+      () =>
+        f.act(
+          f.principal,
+          task,
+          edit({ criteria: [...task.criteria.slice(0, -1), 'Docs updated.'] }),
+        ),
       rejected('conflict'),
     );
     task = (

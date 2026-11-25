@@ -563,6 +563,16 @@ test('asking for review, the agent’s proof appears under each criterion on the
         .getByRole('region', { name: 'PR' })
         .getByRole('link', { name: 'acme/widgets#7' }),
     ).toHaveCount(0);
+    // Under review the criteria the proof is for are shown, not written.
+    await open.getByRole('button', { name: '编辑任务', exact: true }).click();
+    const editing = page.getByRole('form', { name: '编辑任务' });
+    await expect(
+      editing.getByText('Tests pass', { exact: true }),
+    ).toBeVisible();
+    await expect(editing.getByLabel('完成标准', { exact: true })).toHaveCount(
+      0,
+    );
+    await editing.getByRole('button', { name: '取消', exact: true }).click();
     await criterion('Deployed')
       .getByRole('button', { name: /Developer 的消息/ })
       .click();

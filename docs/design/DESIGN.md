@@ -734,7 +734,7 @@ Corners are tight and few, an instrument's rather than a toy's: the `rounded` to
   day (a date field) and priority (高 / 普通 / 低, 普通 to start) in the same places. A new task's acceptor is a picker of the channel's people, starting at
   you; whoever it names decides. Its acceptor edits an open task with **编辑任务** from
   that row: the page becomes the new-task page filled in — title, description,
-  criteria and the reviewer picker (shown, not chosen, once review is asked for) —
+  criteria and the reviewer picker (both shown, not written or chosen, once review is asked for) —
   with **保存** and **取消**; Esc leaves it as it was, and saving nothing new only
   closes it. History says what changed ("_Ada_ 修改了标题、完成标准").
 - **Decision**: waits on you when you accept, review, claim, or own work sent back:
