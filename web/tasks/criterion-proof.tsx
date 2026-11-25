@@ -81,29 +81,33 @@ function Piece({
     case 'run': {
       const origin = data.nativeT3Origin;
       const href = origin ? threadLink(origin, piece.reference) : null;
-      const when = (
-        <time dateTime={piece.linkedAt}>{shortTime(piece.linkedAt)}</time>
-      );
-      return href ? (
-        <a href={href} target="_blank" rel="noopener noreferrer">
-          T3 运行 {when}
-        </a>
-      ) : (
-        <span>T3 运行 {when}</span>
+      return (
+        <>
+          {href ? (
+            <a href={href} target="_blank" rel="noopener noreferrer">
+              T3 运行
+            </a>
+          ) : (
+            'T3 运行'
+          )}
+          <time dateTime={piece.linkedAt}>{shortTime(piece.linkedAt)}</time>
+        </>
       );
     }
     case 'message':
       return (
-        <button
-          type="button"
-          className="link-button"
-          onClick={() => {
-            onMessage(piece.messageId);
-          }}
-        >
-          {cjk(`${memberName(someoneOf(piece.author), data)} 的消息`)}{' '}
+        <>
+          <button
+            type="button"
+            className="link-button"
+            onClick={() => {
+              onMessage(piece.messageId);
+            }}
+          >
+            {cjk(`${memberName(someoneOf(piece.author), data)} 的消息`)}
+          </button>
           <time dateTime={piece.sentAt}>{shortTime(piece.sentAt)}</time>
-        </button>
+        </>
       );
     case 'link': {
       const url = new URL(piece.url);
