@@ -4458,11 +4458,49 @@ button.inbox-main:focus-visible::after {
   gap: 0.45rem;
   font-size: 0.9375rem;
 }
-.criteria li,
 .criteria-input li {
   display: flex;
   align-items: center;
   gap: 0.6rem;
+}
+/* Each criterion, then under its words what its owner offered for it. */
+.criteria li {
+  display: grid;
+  grid-template-columns: 0.9rem minmax(0, 1fr);
+  align-items: center;
+  column-gap: 0.6rem;
+}
+.criterion-proof {
+  grid-column: 2;
+  display: grid;
+  gap: 0.3rem;
+  margin-top: 0.35rem;
+  font-size: 0.875rem;
+}
+.criterion-words {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin: 0;
+}
+.criterion-proof ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 0.3rem;
+}
+.criterion-proof li {
+  display: block;
+  overflow-wrap: anywhere;
+}
+.criterion-proof li::before {
+  content: none;
+}
+.criterion-proof time {
+  margin-left: 0.35rem;
+  font-size: 13px;
+  color: var(--ink-muted);
 }
 .criteria li::before,
 .criteria-input li:not(:last-child)::before {

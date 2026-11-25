@@ -23,6 +23,7 @@ import { SideValue } from './due-and-priority.js';
 import { TaskDecision } from './decision.js';
 import { TaskHistory } from './task-history.js';
 import { TaskPullRequests } from './pull-requests.js';
+import { CriterionProof } from './criterion-proof.js';
 import { DecisionForm } from './decision.js';
 
 export function TaskPage({
@@ -41,7 +42,7 @@ export function TaskPage({
   onDone: () => void;
   onClose: () => void;
   onDecided: (message: string) => void;
-  /** Opens an agent's reply in the conversation. */
+  /** Opens a message (an agent's reply, a cited one) in the conversation. */
   onReply: (messageId: string) => void;
   openAgent: (agentId: string) => void;
 }) {
@@ -116,7 +117,15 @@ export function TaskPage({
           criteria={
             <ol className="criteria">
               {task.criteria.map((c, index) => (
-                <li key={index}>{c}</li>
+                <li key={index}>
+                  <span>{c}</span>
+                  <CriterionProof
+                    task={task}
+                    criterion={c}
+                    data={data}
+                    onMessage={onReply}
+                  />
+                </li>
               ))}
             </ol>
           }

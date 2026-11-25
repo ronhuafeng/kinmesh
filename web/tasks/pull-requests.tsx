@@ -4,6 +4,7 @@ import type { WorkspaceSnapshot } from '../../src/workspace/contracts.js';
 import {
   pullRequestFromUrl,
   pullRequestKey,
+  type TaskPullRequestView,
 } from '../../src/domain/pull-requests.js';
 import { pullRequestWords } from './model.js';
 import { useAction } from '../shared/api.js';
@@ -29,10 +30,19 @@ export function TaskPullRequests({
   path: string;
 }) {
   const links = data.taskPullRequests.filter((l) => l.taskId === task.id);
+  // A PR cited under a criterion is said there, not again here.
+  const cited = new Set(
+    (task.proof?.criteria ?? []).flatMap((c) =>
+      c.pieces.flatMap((p) =>
+        p.kind === 'pull-request' ? [pullRequestKey(p.pullRequest)] : [],
+      ),
+    ),
+  );
+  const shown = links.filter((l) => !cited.has(pullRequestKey(l.pullRequest)));
   const open =
     task.state.status !== 'accepted' && task.state.status !== 'cancelled';
   const [adding, setAdding] = useState(false);
-  if (links.length === 0 && !open) return null;
+  if (shown.length === 0 && !open) return null;
   // As of the snapshot: what GitHub said, measured against when it was read.
   const now = Date.parse(data.observedAt);
   return (
@@ -48,47 +58,15 @@ export function TaskPullRequests({
           />
         )}
       </h3>
-      {links.length > 0 && (
+      {shown.length > 0 && (
         <ol className="history">
-          {links.map((link) => {
-            const { repository, number } = link.pullRequest;
-            const o = link.observation;
-            const href =
-              o?.kind === 'observed'
-                ? o.url
-                : `https://github.com/${repository}/pull/${String(number)}`;
-            const words = pullRequestWords(link, now);
-            const name = `${repository}#${String(number)}`;
-            return (
-              <li key={link.id}>
-                <time dateTime={link.createdAt}>
-                  {shortTime(link.createdAt)}
-                </time>
-                <MemberAvatar member={someoneOf(link.author)} data={data} />
-                <span>
-                  <a href={href} target="_blank" rel="noopener noreferrer">
-                    {o?.kind === 'observed' ? o.title : name}
-                  </a>
-                  <span className="pull-meta">
-                    {o?.kind === 'observed' && <code>{name}</code>}
-                    {words.state !== null && o !== null && (
-                      <time
-                        dateTime={o.observedAt}
-                        title={`GitHub ${shortTime(o.observedAt)}`}
-                      >
-                        {words.state}
-                      </time>
-                    )}
-                    {words.checks !== null && (
-                      <span data-failing={words.failing || undefined}>
-                        {words.checks}
-                      </span>
-                    )}
-                  </span>
-                </span>
-              </li>
-            );
-          })}
+          {shown.map((link) => (
+            <li key={link.id}>
+              <time dateTime={link.createdAt}>{shortTime(link.createdAt)}</time>
+              <MemberAvatar member={someoneOf(link.author)} data={data} />
+              <PullRequestLine link={link} now={now} />
+            </li>
+          ))}
         </ol>
       )}
       {adding && (
@@ -102,6 +80,48 @@ export function TaskPullRequests({
         />
       )}
     </section>
+  );
+}
+
+/**
+ * A linked PR by name: its title as the link to GitHub, then quietly which
+ * one it is and what GitHub last said of it and its checks.
+ */
+export function PullRequestLine({
+  link,
+  now,
+}: {
+  link: TaskPullRequestView;
+  now: number;
+}) {
+  const { repository, number } = link.pullRequest;
+  const o = link.observation;
+  const href =
+    o?.kind === 'observed'
+      ? o.url
+      : `https://github.com/${repository}/pull/${String(number)}`;
+  const words = pullRequestWords(link, now);
+  const name = `${repository}#${String(number)}`;
+  return (
+    <span>
+      <a href={href} target="_blank" rel="noopener noreferrer">
+        {o?.kind === 'observed' ? o.title : name}
+      </a>
+      <span className="pull-meta">
+        {o?.kind === 'observed' && <code>{name}</code>}
+        {words.state !== null && o !== null && (
+          <time
+            dateTime={o.observedAt}
+            title={`GitHub ${shortTime(o.observedAt)}`}
+          >
+            {words.state}
+          </time>
+        )}
+        {words.checks !== null && (
+          <span data-failing={words.failing || undefined}>{words.checks}</span>
+        )}
+      </span>
+    </span>
   );
 }
 

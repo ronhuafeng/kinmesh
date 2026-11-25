@@ -1,4 +1,5 @@
 import type { APIRequestContext } from '@playwright/test';
+import { z } from 'zod';
 import { randomUUID } from 'node:crypto';
 import { rawDatabase } from '../raw.js';
 import { Task, TaskResult } from '../../src/domain/tasks.js';
@@ -449,4 +450,124 @@ test('a wide tablet keeps the board, one stage, beside the task that is open', a
   await boardTab.click();
   await expect(task).toHaveCount(0);
   await expect(board).toBeVisible();
+});
+
+/**
+ * Proves the reviewer, with the task open, sees under each criterion what
+ * its agent offered for it the moment it asks for review: its words, its PR
+ * (said there and not again under PR), an address and a message that opens
+ * in the conversation; a criterion it offered nothing for shows nothing.
+ */
+test('asking for review, the agent’s proof appears under each criterion on the open task', async ({
+  page,
+  context,
+  playwright,
+  hub,
+}) => {
+  await signIn(page, hub);
+  await register(page, 'Developer', 'developer');
+  const state = await snapshot(context.request, hub.origin);
+  const developer = state.agents[0];
+  if (!developer || !state.channel)
+    throw new Error('Local fixture unavailable');
+  const token = await agentGrant(
+    context.request,
+    hub.origin,
+    state.team.id,
+    developer.id,
+  );
+  const agent = await playwright.request.newContext({
+    extraHTTPHeaders: { authorization: 'Bearer ' + token },
+  });
+  try {
+    await newTask(page, {
+      title: 'Ship gamma',
+      criteria: ['Tests pass', 'Deployed', 'Docs updated'],
+      owner: 'agent:' + developer.id,
+      reviewer: 'human:' + state.human.id,
+    });
+    const open = taskPage(page, 'Ship gamma');
+    await expect(open).toBeVisible();
+    const channel = `${hub.origin}/api/teams/${state.team.id}/channels/${state.channel.id}`;
+    const base = channel + '/tasks';
+    let task = pageOf(Task).parse(
+      await (await context.request.get(base)).json(),
+    ).items[0];
+    if (!task) throw new Error('The task was not created');
+    const message = await agent.post(channel + '/messages', {
+      data: {
+        operationKey: randomUUID(),
+        body: 'Deployed to staging',
+        topicId: null,
+        mentions: [],
+        sourceMessageId: null,
+        sourceEventId: null,
+      },
+    });
+    expect(message.status()).toBe(201);
+    const messageId = z
+      .object({ id: z.string() })
+      .parse(await message.json()).id;
+    const linked = await agent.post(
+      base + '/' + task.id + '/link-pull-request',
+      {
+        data: {
+          operationKey: randomUUID(),
+          expectedVersion: task.version,
+          pullRequest: { repository: 'acme/widgets', number: 7 },
+        },
+      },
+    );
+    expect(linked.status()).toBe(200);
+    task = TaskResult.parse(await linked.json()).task;
+    const asked = await agent.post(base + '/' + task.id + '/request-review', {
+      data: {
+        operationKey: randomUUID(),
+        expectedVersion: task.version,
+        note: 'Ready',
+        reviewer: { kind: 'human', id: state.human.id },
+        proof: [
+          {
+            criterion: 0,
+            words: 'CI passes on the PR',
+            pieces: [
+              {
+                kind: 'pull-request',
+                pullRequest: { repository: 'acme/widgets', number: 7 },
+              },
+              { kind: 'link', url: 'https://ci.example.com/build/12' },
+            ],
+          },
+          { criterion: 1, pieces: [{ kind: 'message', messageId }] },
+        ],
+      },
+    });
+    expect(asked.status()).toBe(200);
+
+    const criterion = (text: string) =>
+      open
+        .getByRole('listitem')
+        .filter({ has: page.getByText(text, { exact: true }) });
+    const tests = criterion('Tests pass');
+    await expect(tests.getByText('CI passes on the PR')).toBeVisible();
+    await expect(
+      tests.getByRole('link', { name: 'acme/widgets#7' }),
+    ).toBeVisible();
+    await expect(
+      tests.getByRole('link', { name: 'ci.example.com/build/12' }),
+    ).toHaveAttribute('href', 'https://ci.example.com/build/12');
+    await expect(criterion('Docs updated')).toHaveText('Docs updated');
+    // The PR is said under its criterion, not again under PR.
+    await expect(
+      open
+        .getByRole('region', { name: 'PR' })
+        .getByRole('link', { name: 'acme/widgets#7' }),
+    ).toHaveCount(0);
+    await criterion('Deployed')
+      .getByRole('button', { name: /Developer 的消息/ })
+      .click();
+    await expect(page.getByText('Deployed to staging')).toBeVisible();
+  } finally {
+    await agent.dispose();
+  }
 });

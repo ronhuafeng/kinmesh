@@ -332,7 +332,10 @@ export function teamServer(
       'team_task_' + action.replaceAll('-', '_'),
       'Apply ' +
         action +
-        '. Requires assignment/scope, stable operationKey and current expectedVersion. Technical review never accepts a task.',
+        '. Requires assignment/scope, stable operationKey and current expectedVersion. Technical review never accepts a task.' +
+        (action === 'request-review' || action === 'handoff'
+          ? ' Asking for review, give `proof`: for each completion criterion (its 0-based position) your words on how it is met and what proves it: pull requests and T3 runs already linked to this task, messages in its channel, or https addresses. The reviewer and acceptor see it under each criterion.'
+          : ''),
       z.strictObject({ ...fields, ...task.shape }),
       TaskResult,
       false,

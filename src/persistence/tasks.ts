@@ -55,6 +55,7 @@ import {
   retainsExecutionResponsibility,
   mayOpenPullRequest,
 } from '../domain/tasks.js';
+import { proofOf } from './task-proof.js';
 type ChannelId = z.infer<typeof ChannelId>;
 const decode = (value: string): unknown => JSON.parse(value);
 export function taskRepository(
@@ -134,6 +135,7 @@ export function taskRepository(
       criteria: decode(value.criteria),
       creator: decode(value.creator),
       state: decode(value.state),
+      proof: value.proof === null ? null : decode(value.proof),
     });
   }
   async function target(
@@ -600,6 +602,22 @@ export function taskRepository(
             const current = view(old);
             const time = new Date().toISOString();
             const state = transition(current, p, data, time);
+            // Each request for review is a new round of proof, or none.
+            const review =
+              data.type === 'request-review' ||
+              (data.type === 'handoff' && data.mode === 'review')
+                ? data
+                : null;
+            const proof =
+              review?.proof === undefined
+                ? null
+                : await proofOf(
+                    q,
+                    current,
+                    review.proof,
+                    principalAuthor(p),
+                    time,
+                  );
             if (data.type === 'handoff')
               await target(p, teamId, channelId, data.recipient);
             if (data.type === 'request-review')
@@ -619,6 +637,9 @@ export function taskRepository(
                 ownerKey: state.owner === null ? null : memberKey(state.owner),
                 version: old.version + 1,
                 updatedAt: time,
+                ...(review === null
+                  ? {}
+                  : { proof: proof === null ? null : JSON.stringify(proof) }),
                 ...(data.type === 'edit'
                   ? {
                       title: data.title,

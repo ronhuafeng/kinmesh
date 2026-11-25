@@ -16,6 +16,7 @@ import {
   TaskPullRequest,
   changeFits,
 } from './pull-requests.js';
+import { ProofInput, TaskProof } from './task-proof.js';
 export { TaskId } from './contracts.js';
 const Note = z.string().trim().min(1).max(2000);
 const Working = {
@@ -111,6 +112,8 @@ export const Task = z
     // Absent from what history and receipts kept from before tasks had them.
     due: TaskDue.default(null),
     priority: TaskPriority.default('normal'),
+    /** What its owner offered as proof the last time it asked for review. */
+    proof: TaskProof.nullable().default(null),
   })
   .refine(
     (v) =>
@@ -150,11 +153,15 @@ export const TaskCommand = z.discriminatedUnion('type', [
     recipient: Member,
     mode: z.enum(['work', 'review']),
     note: Note,
+    /** Asking for review, what proves each criterion. */
+    proof: ProofInput.optional(),
   }),
   CommandBase.extend({
     type: z.literal('request-review'),
     reviewer: Member,
     note: Note,
+    /** What proves each criterion. */
+    proof: ProofInput.optional(),
   }),
   CommandBase.extend({
     type: z.literal('review'),
@@ -289,6 +296,9 @@ export function transition(
         note: command.note,
       });
     case 'handoff':
+      // Proof goes with a request for review, never with work.
+      if (command.mode === 'work' && command.proof !== undefined)
+        throw new DomainError('invalid');
       if (command.mode === 'work' && finalHuman) {
         // Explicit audited recovery when the old owner cannot act, or the
         // acceptor giving work nobody has started to someone. Review
