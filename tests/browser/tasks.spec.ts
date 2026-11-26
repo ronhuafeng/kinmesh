@@ -603,7 +603,11 @@ test('asking for review, the agent’s proof appears under each criterion on the
     await criterion('Deployed')
       .getByRole('button', { name: /Developer 的消息/ })
       .click();
-    await expect(page.getByText('Deployed to staging')).toBeVisible();
+    await expect(
+      page
+        .getByRole('list', { name: '频道消息' })
+        .getByText('Deployed to staging'),
+    ).toBeVisible();
   } finally {
     await agent.dispose();
   }

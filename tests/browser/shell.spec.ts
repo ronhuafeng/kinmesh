@@ -57,13 +57,15 @@ test('a person’s face opens your own conversation with them', async ({
     const composer = page.getByRole('form', { name: '给团队发消息' });
     await composer.getByLabel('消息', { exact: true }).fill('Just between us');
     await composer.getByRole('button', { name: '发送消息' }).click();
-    await expect(page.getByText('Just between us')).toBeVisible();
+    const said = (p: typeof page) =>
+      p.getByRole('list', { name: '频道消息' }).getByText('Just between us');
+    await expect(said(page)).toBeVisible();
     // Grace finds it under Ada's name; it is theirs alone.
     await grace
       .locator('aside.sidebar')
       .getByRole('button', { name: 'ada', exact: true })
       .click();
-    await expect(grace.getByText('Just between us')).toBeVisible();
+    await expect(said(grace)).toBeVisible();
     await expect(
       grace.getByRole('region', { name: '本频道成员' }).locator('.person'),
     ).toHaveCount(1);
