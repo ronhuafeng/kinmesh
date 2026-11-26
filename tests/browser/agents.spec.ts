@@ -90,7 +90,7 @@ test('an agent whose channel invite fails still opens, with the way into the cha
   await page.route('**/participants/invite', (route) =>
     refuse ? route.fulfill({ status: 500, json: {} }) : route.continue(),
   );
-  await page.getByRole('tab', { name: '成员', exact: true }).click();
+  await page.getByRole('link', { name: '成员', exact: true }).click();
   await page
     .getByRole('list', { name: '团队', exact: true })
     .getByRole('button', { name: '添加智能体', exact: true })
@@ -192,7 +192,7 @@ test('an agent is renamed, given another role, disabled and enabled from its pag
   ).toBeVisible();
   // Disabled, it isn't offered in the @ list.
   await page.keyboard.press('Escape');
-  await page.getByRole('tab', { name: '聊天', exact: true }).click();
+  await page.getByRole('link', { name: '聊天', exact: true }).click();
   const field = page
     .getByRole('form', { name: '给团队发消息' })
     .getByLabel('消息', { exact: true });
@@ -439,6 +439,14 @@ test('the agent panel still walks an operator through a self-run worker binding'
   const step = (title: string) =>
     setup.getByRole('listitem').filter({ hasText: title });
   await expect(step('运行偏好')).toContainText('（待完成）');
+  // IDs are typed as they are: a phone neither capitalises, corrects nor
+  // marks them misspelt.
+  for (const label of ['T3 环境 ID', '隔离的提供方 ID', '模型 ID']) {
+    const id = setup.getByLabel(label);
+    await expect(id).toHaveAttribute('autocapitalize', 'none');
+    await expect(id).toHaveAttribute('autocorrect', 'off');
+    await expect(id).toHaveAttribute('spellcheck', 'false');
+  }
   await setup.getByLabel('T3 环境 ID').fill('env-primary');
   await setup.getByLabel('隔离的提供方 ID').fill('isolated-ada');
   await setup.getByLabel('模型 ID').fill('model-x');

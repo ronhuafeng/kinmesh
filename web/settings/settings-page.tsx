@@ -73,6 +73,7 @@ export function SettingsPage({
   section,
   phone,
   data,
+  sectionHref,
   onSection,
   onClose,
   ...rest
@@ -80,6 +81,8 @@ export function SettingsPage({
   section: string;
   phone: boolean;
   data: WorkspaceSnapshot;
+  /** A section's address. */
+  sectionHref: (id: string) => string;
   onSection: (id: string) => void;
   onClose: () => void;
   onSignOut: () => void;
@@ -91,7 +94,7 @@ export function SettingsPage({
   if (phone && section === '')
     return (
       <Page label="设置" onClose={onClose} bar={false}>
-        <SettingsList onSelect={onSection} />
+        <SettingsList hrefOf={sectionHref} onSelect={onSection} />
       </Page>
     );
   const id = sectionOf(section) ? section : FIRST.personal;

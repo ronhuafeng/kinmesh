@@ -10,6 +10,7 @@ import { usePush } from './shell/use-push.js';
 import { useShared } from './shell/use-shared.js';
 import { useShortcuts } from './shell/use-shortcuts.js';
 import { useSidebar } from './shell/use-sidebar.js';
+import { useTitle } from './shell/use-title.js';
 import { useWorkspace } from './shell/use-workspace.js';
 import { Workspace } from './shell/workspace.js';
 import { usePhone } from './shared/screen-size.js';
@@ -31,6 +32,7 @@ export function App() {
   useShortcuts(phone, place);
   useAppBadge(workspace.data, workspace.status === 'signedout');
   usePush(workspace.data);
+  useTitle(workspace.status === 'signedout' ? null : workspace.data, place);
   if (workspace.unreadable) return <Broken />;
   if (workspace.status === 'signedout')
     return <Auth denied={workspace.denied} />;

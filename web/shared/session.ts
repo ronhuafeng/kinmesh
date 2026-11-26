@@ -19,3 +19,21 @@ export function kept(key: string): unknown {
     return null;
   }
 }
+/**
+ * Signed out, or access lost: nothing the last person left is kept in the
+ * tab (drafts, messages not yet confirmed, a new task), so whoever signs in
+ * here next never sees or sends it. The signed-out mark isn't `kinmesh:`, so
+ * it stays.
+ */
+export function forgetAll() {
+  try {
+    const keys: string[] = [];
+    for (let i = 0; i < sessionStorage.length; i++) {
+      const key = sessionStorage.key(i);
+      if (key?.startsWith('kinmesh:')) keys.push(key);
+    }
+    for (const key of keys) sessionStorage.removeItem(key);
+  } catch {
+    // Storage refused: nothing was kept.
+  }
+}

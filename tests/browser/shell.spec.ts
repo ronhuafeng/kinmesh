@@ -1,3 +1,4 @@
+import type { Page } from '@playwright/test';
 import { z } from 'zod';
 import { randomUUID } from 'node:crypto';
 import { test, expect } from './fixture.js';
@@ -9,6 +10,7 @@ import {
   refreshNow,
   register,
   signIn,
+  taskPage,
 } from './ui.js';
 import {
   snapshot,
@@ -16,6 +18,7 @@ import {
   outOfReach,
   expectHealthy,
   contrast,
+  readAgain,
 } from './helpers.js';
 
 test('a desktop workspace loads without sideways scrolling', async ({
@@ -51,7 +54,7 @@ test('a person’s face opens your own conversation with them', async ({
       .click();
     const row = page
       .locator('aside.sidebar')
-      .getByRole('button', { name: 'Grace Hopper', exact: true });
+      .getByRole('link', { name: 'Grace Hopper', exact: true });
     await expect(row).toHaveAttribute('aria-current', 'page');
     await expect(row.locator('.avatar')).toBeVisible();
     const composer = page.getByRole('form', { name: '给团队发消息' });
@@ -63,7 +66,7 @@ test('a person’s face opens your own conversation with them', async ({
     // Grace finds it under Ada's name; it is theirs alone.
     await grace
       .locator('aside.sidebar')
-      .getByRole('button', { name: 'ada', exact: true })
+      .getByRole('link', { name: 'ada', exact: true })
       .click();
     await expect(said(grace)).toBeVisible();
     await expect(
@@ -124,7 +127,7 @@ test('a second person of the organization signs in to the same workspace and see
     // A person is added to a channel the way an agent is: from their tile.
     await createChannel(page, 'design');
     await expect(graceRow).toHaveCount(0);
-    await page.getByRole('tab', { name: '成员', exact: true }).click();
+    await page.getByRole('link', { name: '成员', exact: true }).click();
     const add = page.getByRole('button', {
       name: '把 Grace Hopper 加入 #design',
     });
@@ -133,7 +136,7 @@ test('a second person of the organization signs in to the same workspace and see
     await expect(add).toHaveCount(0);
     // The @ popover finds her by a word of her name, and the message says
     // her name once, with no second chip.
-    await page.getByRole('tab', { name: '聊天', exact: true }).click();
+    await page.getByRole('link', { name: '聊天', exact: true }).click();
     const message = composer.getByLabel('消息', { exact: true });
     await message.pressSequentially('Thanks @Hop');
     await page
@@ -152,7 +155,7 @@ test('a second person of the organization signs in to the same workspace and see
     await expect(
       grace
         .getByRole('navigation', { name: '频道' })
-        .getByRole('button', { name: 'design', exact: true }),
+        .getByRole('link', { name: 'design', exact: true }),
     ).toBeVisible();
   } finally {
     await theirs.close();
@@ -172,8 +175,8 @@ test('real workspace onboarding, mentions and reconnect on a phone', async ({
   // its chat and board, as on a wider screen.
   await page.setViewportSize({ width: 375, height: 1000 });
   await expect(
-    page.getByRole('tab', { name: '成员', exact: true }),
-  ).toHaveAttribute('aria-selected', 'true');
+    page.getByRole('link', { name: '成员', exact: true }),
+  ).toHaveAttribute('aria-current', 'page');
   await expect(agentRow(page, 'Ada')).toBeVisible();
   // Back leads Home: the channels as conversations, and no gallery.
   await page.getByRole('button', { name: '返回', exact: true }).click();
@@ -211,7 +214,7 @@ test('real workspace onboarding, mentions and reconnect on a phone', async ({
     page.getByRole('heading', { name: '# design', exact: true }),
   ).toBeVisible();
   await expect(places).toBeHidden();
-  await page.getByRole('tab', { name: '聊天', exact: true }).click();
+  await page.getByRole('link', { name: '聊天', exact: true }).click();
   await page.getByRole('button', { name: '新建话题' }).click();
   await page.getByLabel('话题名称').fill('Release planning');
   await page.getByLabel('话题名称').press('Enter');
@@ -292,7 +295,7 @@ test('real workspace onboarding, mentions and reconnect on a phone', async ({
   await page.getByRole('button', { name: '返回', exact: true }).click();
   await expect(places).toBeVisible();
   await places.getByRole('button', { name: '我' }).click();
-  await page.getByRole('button', { name: '账户与设备', exact: true }).click();
+  await page.getByRole('link', { name: '账户与设备', exact: true }).click();
   await page.getByRole('button', { name: '退出登录', exact: true }).click();
   await expect(page.getByRole('link', { name: '使用飞书登录' })).toBeVisible();
 });
@@ -350,23 +353,25 @@ test('a channel is renamed in place, archived, opened from Settings, and brought
   await createChannel(page, 'design');
   const channels = page.getByRole('navigation', { name: '频道' });
   await channels
-    .getByRole('button', { name: 'design', exact: true })
+    .getByRole('link', { name: 'design', exact: true })
     .click({ button: 'right' });
   await page.getByRole('menuitem', { name: '重命名…' }).click();
   const field = channels.getByLabel('频道名称');
   await field.fill('launch');
   await field.press('Enter');
-  const launch = channels.getByRole('button', { name: 'launch', exact: true });
+  const launch = channels.getByRole('link', { name: 'launch', exact: true });
   await expect(launch).toBeVisible();
   await launch.click({ button: 'right' });
   await page.getByRole('menuitem', { name: /^归档 #launch/ }).click();
   await page.getByRole('menuitem', { name: /^确认：从列表移走/ }).click();
   await expect(launch).toHaveCount(0);
-  await page.getByRole('button', { name: '你的账户' }).click();
+  await page
+    .getByRole('button', { name: 'browser_owner', exact: true })
+    .click();
   await page.getByRole('menuitem', { name: /^设置/ }).click();
   await page
     .getByRole('navigation', { name: '设置' })
-    .getByRole('button', { name: '频道', exact: true })
+    .getByRole('link', { name: '频道', exact: true })
     .click();
   await page
     .getByRole('list', { name: '已归档的频道' })
@@ -410,7 +415,9 @@ test('two notices arriving together are both shown, one after the other', async 
   await refreshNow(page);
   const first = page.getByRole('button', { name: /Ada 提到了你/ });
   await expect(first).toBeVisible();
-  await expect(page.getByRole('status')).toContainText('Ada 提到了你');
+  await expect(
+    page.getByRole('status').filter({ hasText: 'Ada 提到了你' }),
+  ).toBeVisible();
   await first.click();
   await expect(page.getByRole('button', { name: /Pi 回复了你/ })).toBeVisible();
 });
@@ -428,7 +435,9 @@ test('a menu action the hub refuses, and one that can’t go while out of reach,
   await page.route('**/api/me/pause', (route) =>
     route.fulfill({ status: 500, json: {} }),
   );
-  await page.getByRole('button', { name: '你的账户' }).click();
+  await page
+    .getByRole('button', { name: 'browser_owner', exact: true })
+    .click();
   await page.getByRole('menuitem', { name: '暂停 1 小时' }).click();
   await expect(
     page.getByRole('status').filter({ hasText: '没能改好，请再试一次。' }),
@@ -437,7 +446,9 @@ test('a menu action the hub refuses, and one that can’t go while out of reach,
   await context.setOffline(true);
   await refreshNow(page);
   await expect(outOfReach(page)).toBeVisible();
-  await page.getByRole('button', { name: '你的账户' }).click();
+  await page
+    .getByRole('button', { name: 'browser_owner', exact: true })
+    .click();
   await page.getByRole('menuitem', { name: '退出登录', exact: true }).click();
   await expect(
     page
@@ -685,34 +696,36 @@ test('the organization names the team at the top of the sidebar; nobody renames 
   ).toHaveCount(0);
   // Your tile on Team is one of the team's, not a way in: what is about you
   // is your mark at the foot of the sidebar.
-  await page.getByRole('tab', { name: '成员', exact: true }).click();
+  await page.getByRole('link', { name: '成员', exact: true }).click();
   await expect(
     page
       .getByRole('list', { name: '团队' })
       .getByRole('button', { name: /^browser_owner/ }),
   ).toHaveCount(0);
-  await page.getByRole('button', { name: '你的账户' }).click();
+  await page
+    .getByRole('button', { name: 'browser_owner', exact: true })
+    .click();
   await expect(
     page.getByRole('menuitem', { name: '在所有设备上退出登录' }),
   ).toBeVisible();
   // 设置 turns the sidebar into the settings map, with no channel views.
   await page.getByRole('menuitem', { name: /^设置/ }).click();
   const map = page.getByRole('navigation', { name: '设置' });
-  await expect(map.getByRole('button', { name: '通知' })).toHaveAttribute(
+  await expect(map.getByRole('link', { name: '通知' })).toHaveAttribute(
     'aria-current',
     'page',
   );
   await expect(
-    page.getByRole('tab', { name: '聊天', exact: true }),
+    page.getByRole('link', { name: '聊天', exact: true }),
   ).toHaveCount(0);
-  await map.getByRole('button', { name: '账户与设备' }).click();
+  await map.getByRole('link', { name: '账户与设备' }).click();
   await expect(
     page.getByRole('button', { name: '在所有设备上退出登录' }),
   ).toBeVisible();
   // Back returns to the channel.
   await map.getByRole('button', { name: '返回' }).click();
   await expect(
-    page.getByRole('tab', { name: '聊天', exact: true }),
+    page.getByRole('link', { name: '聊天', exact: true }),
   ).toBeVisible();
 });
 
@@ -825,7 +838,7 @@ test('the Files list keeps older pages through a change and lists each file once
       json: { items: firstReads === 1 ? [a] : [c, a], next: 7 },
     });
   });
-  await page.getByRole('tab', { name: '文件', exact: true }).click();
+  await page.getByRole('link', { name: '文件', exact: true }).click();
   const list = page.getByRole('list', { name: '文件' });
   await expect(list.getByRole('listitem')).toHaveCount(1);
   await page.getByRole('button', { name: '更早的文件' }).click();
@@ -867,7 +880,7 @@ test('a reload keeps the place and unsent work; Back returns to where you were',
     'half a thought',
   );
   // A new task half written survives a reload, in place.
-  await page.getByRole('tab', { name: '看板', exact: true }).click();
+  await page.getByRole('link', { name: '看板', exact: true }).click();
   await page.getByRole('button', { name: '新任务' }).click();
   const form = page.getByRole('form', { name: '新任务' });
   await form.getByLabel('任务标题').fill('Write the release notes');
@@ -896,6 +909,49 @@ test('a reload keeps the place and unsent work; Back returns to where you were',
   await expect(page).toHaveURL(/inbox/);
   await page.goBack();
   await expect(task).toBeVisible();
+});
+/**
+ * Proves the app's back is Back: a task's page closed with its back returns
+ * to the board's own history entry, so history doesn't grow and the
+ * browser's Back then leaves the channel instead of opening the task again.
+ */
+test('a page’s back returns to the entry it came from, so Back then leaves the channel', async ({
+  page,
+  hub,
+}) => {
+  await signIn(page, hub);
+  const title = 'Write the changelog';
+  await newTask(page, { title, criteria: ['Changelog published'] });
+  await backToBoard(page);
+  await createChannel(page, 'ops');
+  await page.getByRole('link', { name: '看板', exact: true }).click();
+  await page
+    .getByRole('navigation', { name: '频道' })
+    .getByRole('link', { name: /^general( |$)/ })
+    .click();
+  await expect(
+    page.getByRole('heading', { name: '# general', exact: true }),
+  ).toBeAttached();
+  await expect(page.getByRole('region', { name: '任务看板' })).toBeVisible();
+  const board = page.url();
+  // On a phone, where a page has its own way back.
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page
+    .getByRole('article', { name: title, exact: true })
+    .getByRole('link', { name: title, exact: true })
+    .click();
+  const task = taskPage(page, title);
+  await expect(task).toBeVisible();
+  const length = await page.evaluate(() => history.length);
+  await task.getByRole('button', { name: '返回' }).click();
+  await expect(task).toHaveCount(0);
+  await expect(page).toHaveURL(board);
+  expect(await page.evaluate(() => history.length)).toBe(length);
+  await page.goBack();
+  await expect(
+    page.getByRole('heading', { name: '# ops', exact: true }),
+  ).toBeAttached();
+  await expect(task).toHaveCount(0);
 });
 
 test('one control opens and closes the sidebar: it floats on an upright tablet and docks on a wide screen', async ({
@@ -941,4 +997,668 @@ test('one control opens and closes the sidebar: it floats on an upright tablet a
   await page.reload();
   await expect(open).toBeVisible();
   await expect(sidebar).toBeHidden();
+});
+
+/**
+ * Proves focus never falls to the start of the page: Esc on the Inbox and
+ * on a task's page gives focus back to what opened them, and Esc in a field
+ * typed in place (a PR's address, a new topic) gives it back to the "+"
+ * the field stood in for. The PR field is a URL field.
+ */
+test('closing a page or a field typed in place gives focus back to what opened it', async ({
+  page,
+  hub,
+}) => {
+  await signIn(page, hub);
+  const inboxButton = page
+    .getByRole('navigation', { name: '收件箱' })
+    .getByRole('button', { name: /^收件箱/ });
+  await inboxButton.click();
+  const inbox = page.getByRole('region', { name: '收件箱' });
+  await expect(inbox).toBeFocused();
+  await page.keyboard.press('Escape');
+  await expect(inbox).toHaveCount(0);
+  await expect(inboxButton).toBeFocused();
+  // A field typed in place on a task's page.
+  const task = await newTask(page, {
+    title: 'Ship the notes',
+    criteria: ['The notes are out'],
+  });
+  await task.getByRole('button', { name: '关联 PR' }).click();
+  const address = task.getByLabel('PR 地址');
+  await expect(address).toBeFocused();
+  await expect(address).toHaveAttribute('type', 'url');
+  await page.keyboard.press('Escape');
+  await expect(address).toHaveCount(0);
+  await expect(task.getByRole('button', { name: '关联 PR' })).toBeFocused();
+  await backToBoard(page);
+  // A task opened from its card by keyboard closes back onto the card.
+  const card = page
+    .getByRole('article', { name: 'Ship the notes', exact: true })
+    .getByRole('link', { name: 'Ship the notes', exact: true });
+  await card.focus();
+  await page.keyboard.press('Enter');
+  await expect(taskPage(page, 'Ship the notes')).toBeVisible();
+  await page.keyboard.press('Escape');
+  await expect(taskPage(page, 'Ship the notes')).toHaveCount(0);
+  await expect(card).toBeFocused();
+  // A new topic's field, Esc'd, gives focus back to its "+".
+  await page.getByRole('link', { name: '聊天', exact: true }).click();
+  await page.getByRole('button', { name: '新建话题' }).click();
+  await expect(page.getByLabel('话题名称')).toBeFocused();
+  await page.keyboard.press('Escape');
+  await expect(page.getByRole('button', { name: '新建话题' })).toBeFocused();
+});
+
+/**
+ * Proves a notice waits while it is pointed at or focused, and goes in its
+ * own time once let go: the page's clock runs past its 8 s while held.
+ */
+test('a notice waits while it is pointed at or focused', async ({
+  page,
+  hub,
+}) => {
+  await page.clock.install();
+  await withoutStream(page);
+  await signIn(page, hub);
+  await page.route('**/api/workspace?*', async (route) => {
+    const response = await route.fetch();
+    const body = z.record(z.string(), z.unknown()).parse(await response.json());
+    await route.fulfill({
+      response,
+      json: {
+        ...body,
+        revision: 'e'.repeat(64),
+        notices: [{ id: 'n1', title: 'Ada 提到了你', body: 'first', url: '/' }],
+      },
+    });
+  });
+  await refreshNow(page);
+  const notice = page.getByRole('button', { name: /Ada 提到了你/ });
+  await notice.hover();
+  await page.clock.runFor(10_000);
+  await expect(notice).toBeVisible();
+  await page.mouse.move(0, 0);
+  await notice.focus();
+  await page.clock.runFor(10_000);
+  await expect(notice).toBeVisible();
+  await notice.blur();
+  await page.clock.runFor(10_000);
+  await expect(notice).toHaveCount(0);
+});
+
+/**
+ * Proves the screen reader hears what the screen shows: the account button
+ * is named by the person's name on it, and what the top bar says about the
+ * connection comes from one status region that is there, empty, while all
+ * is well.
+ */
+test('the account is named as shown, and the connection is said from a region always there', async ({
+  page,
+  context,
+  hub,
+}) => {
+  await signIn(page, hub);
+  await expect(
+    page.getByRole('button', { name: 'browser_owner', exact: true }),
+  ).toContainText('browser_owner');
+  const said = page.locator('.workspace-header').getByRole('status');
+  await expect(said).toHaveText('');
+  // The same node, filled: a region that was already there is announced.
+  await said.evaluate((el) => {
+    el.setAttribute('data-probe', 'before');
+  });
+  await context.setOffline(true);
+  await refreshNow(page);
+  await expect(said).toHaveText('连不上 Kinmesh');
+  await expect(said).toHaveAttribute('data-probe', 'before');
+  await context.setOffline(false);
+  await expectHealthy(page);
+});
+
+/**
+ * Proves search keeps the highlighted result in view and says what it
+ * found: arrowing past what the list shows scrolls it along, the results
+ * are grouped by kind in the accessibility tree, and the count (or that
+ * nothing matched) is a polite status.
+ */
+test('search keeps the highlighted result in view, grouped and counted', async ({
+  page,
+  context,
+  hub,
+}) => {
+  await signIn(page, hub);
+  const state = await snapshot(context.request, hub.origin);
+  for (let i = 1; i <= 16; i++) {
+    const made = await context.request.post(
+      `${hub.origin}/api/teams/${state.team.id}/channels`,
+      {
+        data: {
+          name: 'room-' + String(i).padStart(2, '0'),
+          visibility: 'public',
+          operationKey: randomUUID(),
+        },
+      },
+    );
+    expect(made.ok()).toBe(true);
+  }
+  await readAgain(page);
+  await expect(
+    page
+      .getByRole('navigation', { name: '频道' })
+      .getByRole('link', { name: /^room-16( |$)/ }),
+  ).toBeVisible();
+  await page.keyboard.press('ControlOrMeta+k');
+  const search = page.getByRole('combobox', { name: /搜索/ });
+  await search.fill('room');
+  const results = page.getByRole('listbox', { name: '结果' });
+  const channels = results.getByRole('group', { name: '频道' });
+  await expect(channels.getByRole('option')).toHaveCount(16);
+  await expect(
+    page.getByRole('status').filter({ hasText: '个结果' }),
+  ).toHaveText('16 个结果');
+  for (let i = 0; i < 15; i++) await search.press('ArrowDown');
+  const active = results.getByRole('option', { selected: true });
+  await expect(active).toHaveAccessibleName(/room-16/);
+  const inside = await active.evaluate((option) => {
+    const list = option.closest('[role="listbox"]');
+    if (!list) return false;
+    const box = option.getBoundingClientRect();
+    const view = list.getBoundingClientRect();
+    // Within the list's own box, to the pixel.
+    return box.top >= view.top - 1 && box.bottom <= view.bottom + 1;
+  });
+  expect(inside).toBe(true);
+  await search.fill('nothing like this');
+  await expect(
+    page.getByRole('status').filter({ hasText: '没有和' }),
+  ).toBeVisible();
+});
+
+/**
+ * Proves signing out leaves nothing of the last person in the tab: whoever
+ * signs in there next finds neither their draft nor their unsent message,
+ * so it can't be read, or sent again as theirs.
+ */
+test('signing out leaves no draft or unsent message for whoever signs in next in the tab', async ({
+  page,
+  hub,
+}) => {
+  await signIn(page, hub, 'ada@example.com');
+  const composer = page.getByRole('form', { name: '给团队发消息' });
+  const field = composer.getByLabel('消息', { exact: true });
+  const messages = page.getByRole('list', { name: '频道消息' });
+  // A message that didn't go waits to be sent again; a draft is half typed.
+  const send = '**/api/teams/*/channels/*/messages';
+  await page.route(send, (route) =>
+    route.request().method() === 'POST'
+      ? route.abort('failed')
+      : route.continue(),
+  );
+  await field.fill('Ada’s unsent message');
+  await composer.getByRole('button', { name: '发送消息' }).click();
+  const unsent = messages
+    .getByRole('listitem')
+    .filter({ hasText: 'Ada’s unsent message' });
+  await expect(unsent).toHaveAttribute('data-pending', 'failed');
+  await page.unroute(send);
+  await field.fill('Ada’s half-written draft');
+  await page.getByRole('button', { name: 'ada', exact: true }).click();
+  await page.getByRole('menuitem', { name: '退出登录', exact: true }).click();
+  await expect(page.getByRole('link', { name: '使用飞书登录' })).toBeVisible();
+  // Someone else signs in, in the same tab.
+  await signIn(page, hub, 'grace@example.com');
+  await expect(field).toHaveValue('');
+  await expect(messages.getByText('Ada’s unsent message')).toHaveCount(0);
+  await expect(page.getByRole('button', { name: '重试' })).toHaveCount(0);
+});
+
+/**
+ * Proves what the page says about days stays true as time passes with
+ * nothing new arriving: past midnight, yesterday's divider says 昨天, and a
+ * card due on the day that has just ended is late.
+ */
+test('a tab left open past midnight says 昨天 and marks a due day gone by as late', async ({
+  page,
+  hub,
+}) => {
+  await page.clock.install({ time: new Date() });
+  await signIn(page, hub);
+  const now = await page.evaluate(() => Date.now());
+  /** The local day `days` after today, as a due date says it. */
+  const day = (days: number) => {
+    const at = new Date(now);
+    at.setDate(at.getDate() + days);
+    const pad = (n: number) => String(n).padStart(2, '0');
+    return `${String(at.getFullYear())}-${pad(at.getMonth() + 1)}-${pad(at.getDate())}`;
+  };
+  /** How long from the page's now until just into the given local day. */
+  const until = async (days: number) => {
+    const at = new Date(now);
+    at.setDate(at.getDate() + days);
+    at.setHours(0, 1, 0, 0);
+    return at.getTime() - (await page.evaluate(() => Date.now()));
+  };
+  await newTask(page, {
+    title: 'Due tomorrow',
+    criteria: ['Done by then'],
+    due: day(1),
+  });
+  await backToBoard(page);
+  const due = page
+    .getByRole('article', { name: 'Due tomorrow', exact: true })
+    .locator('time');
+  await expect(due).not.toHaveAttribute('data-late');
+  await page.getByRole('link', { name: '聊天', exact: true }).click();
+  const composer = page.getByRole('form', { name: '给团队发消息' });
+  await composer
+    .getByLabel('消息', { exact: true })
+    .fill('Said before midnight');
+  await composer.getByRole('button', { name: '发送消息' }).click();
+  const messages = page.getByRole('list', { name: '频道消息' });
+  // Settled: the conversation has the message, and nothing more is coming.
+  const said = messages
+    .getByRole('listitem')
+    .filter({ hasText: 'Said before midnight' });
+  await expect(said).toBeVisible();
+  await expect(said).not.toHaveAttribute('data-pending');
+  await expectHealthy(page);
+  const divider = messages.locator('.day-divider');
+  await expect(divider).toHaveText(['今天']);
+  // Midnight passes with the conversation on screen.
+  await page.clock.fastForward(await until(1));
+  await expect(divider).toHaveText(['昨天']);
+  // The task is due today; once today has ended, with the board on screen,
+  // it is late.
+  await page.getByRole('link', { name: '看板', exact: true }).click();
+  await expect(due).not.toHaveAttribute('data-late');
+  await page.clock.fastForward(await until(2));
+  await expect(due).toHaveAttribute('data-late', 'true');
+});
+
+/**
+ * Stands in for the tab being hidden and shown again (a headless browser
+ * never hides one), and records the app's badge as the browser would show
+ * it.
+ */
+async function visibilityAndBadge(page: Page) {
+  await page.addInitScript(() => {
+    let hidden = false;
+    Object.defineProperty(Document.prototype, 'hidden', {
+      configurable: true,
+      get: () => hidden,
+    });
+    Object.defineProperty(Document.prototype, 'visibilityState', {
+      configurable: true,
+      get: () => (hidden ? 'hidden' : 'visible'),
+    });
+    window.addEventListener('test-visibility', (event) => {
+      hidden = event instanceof CustomEvent && event.detail === 'hidden';
+      document.dispatchEvent(new Event('visibilitychange'));
+    });
+    const badges: (number | boolean | null)[] = [];
+    Reflect.set(window, '__badges', badges);
+    Object.defineProperty(navigator, 'setAppBadge', {
+      configurable: true,
+      value: (count?: number) => {
+        badges.push(count ?? true);
+        return Promise.resolve();
+      },
+    });
+    Object.defineProperty(navigator, 'clearAppBadge', {
+      configurable: true,
+      value: () => {
+        badges.push(null);
+        return Promise.resolve();
+      },
+    });
+  });
+  return {
+    hide: (hidden: boolean) =>
+      page.evaluate(
+        (detail) => {
+          window.dispatchEvent(new CustomEvent('test-visibility', { detail }));
+        },
+        hidden ? 'hidden' : 'visible',
+      ),
+    badge: async () =>
+      z
+        .array(z.union([z.number(), z.boolean(), z.null()]))
+        .parse(
+          await page.evaluate((): unknown => Reflect.get(window, '__badges')),
+        )
+        .at(-1),
+  };
+}
+/** A number the page keeps under `name`. */
+const counted = async (page: Page, name: string) =>
+  z
+    .number()
+    .parse(
+      await page.evaluate((key): unknown => Reflect.get(window, key), name),
+    );
+
+/**
+ * Proves a hidden tab doesn't draw every change: snapshots arriving while
+ * it is hidden change nothing on the page, though the badge follows them;
+ * shown again, the newest is on screen.
+ */
+test('a hidden tab draws no change until shown, then the newest, while its badge stays current', async ({
+  page,
+  browser,
+  context,
+  hub,
+}) => {
+  const tab = await visibilityAndBadge(page);
+  await signIn(page, hub, 'ada@example.com');
+  const theirs = await browser.newContext();
+  try {
+    const grace = await theirs.newPage();
+    await signIn(grace, hub, 'grace@example.com');
+    const state = await snapshot(context.request, hub.origin);
+    if (!state.channel) throw new Error('Local channel missing');
+    const base = `${hub.origin}/api/teams/${state.team.id}/channels/${state.channel.id}/messages`;
+    const messages = page.getByRole('list', { name: '频道消息' });
+    await expectHealthy(page);
+    await expect.poll(tab.badge).not.toBe(true);
+    // Whatever changes the conversation on screen is counted from here.
+    await page.evaluate(() => {
+      const list = document.querySelector('.messages');
+      if (!list) throw new Error('No conversation');
+      let changes = 0;
+      Reflect.set(window, '__changes', changes);
+      new MutationObserver((records) => {
+        changes += records.length;
+        Reflect.set(window, '__changes', changes);
+      }).observe(list, { childList: true, subtree: true, characterData: true });
+    });
+    await tab.hide(true);
+    for (const n of [1, 2, 3]) {
+      const sent = await theirs.request.post(base, {
+        data: {
+          operationKey: randomUUID(),
+          body: `From Grace ${String(n)}`,
+          topicId: null,
+          mentions: [],
+          sourceMessageId: null,
+          sourceEventId: null,
+        },
+      });
+      expect(sent.status()).toBe(201);
+    }
+    // The badge says something is unread, from what arrived hidden...
+    await expect.poll(tab.badge).toBe(true);
+    // ...and the conversation on screen didn't change.
+    expect(await counted(page, '__changes')).toBe(0);
+    await expect(messages.getByText(/^From Grace/)).toHaveCount(0);
+    await tab.hide(false);
+    await expect(messages.getByText(/^From Grace/)).toHaveText([
+      'From Grace 1',
+      'From Grace 2',
+      'From Grace 3',
+    ]);
+  } finally {
+    await theirs.close();
+  }
+});
+
+/**
+ * Proves a hidden tab out of reach doesn't keep asking: no retries while
+ * nobody sees it, and one at once when it is shown.
+ */
+test('a hidden tab out of reach asks again only once it is shown', async ({
+  page,
+  hub,
+}) => {
+  const tab = await visibilityAndBadge(page);
+  await page.clock.install({ time: new Date() });
+  await signIn(page, hub);
+  // Each read of the workspace the page asks for, counted as it asks.
+  await page.evaluate(() => {
+    let reads = 0;
+    Reflect.set(window, '__reads', reads);
+    const fetching = window.fetch.bind(window);
+    window.fetch = (input, init) => {
+      const url = new URL(
+        input instanceof Request ? input.url : String(input),
+        location.href,
+      );
+      if (url.pathname === '/api/workspace')
+        Reflect.set(window, '__reads', ++reads);
+      return fetching(input, init);
+    };
+  });
+  const reads = () => counted(page, '__reads');
+  await page.route('**/api/workspace?*', (route) => route.abort('failed'));
+  await refreshNow(page);
+  await expect(outOfReach(page)).toBeVisible();
+  await tab.hide(true);
+  const hidden = await reads();
+  // A minute passes hidden: twelve retries' worth, and none is made.
+  await page.clock.fastForward('01:00');
+  await page.evaluate(
+    () =>
+      new Promise((resolve) => {
+        requestAnimationFrame(() => setTimeout(resolve));
+      }),
+  );
+  expect(await reads()).toBe(hidden);
+  // Shown again, it asks at once.
+  await tab.hide(false);
+  await expect.poll(reads).toBeGreaterThan(hidden);
+});
+
+/**
+ * Proves channels and views are links to their addresses: a plain click
+ * opens one in place, a modified click opens the same address in a new tab
+ * and leaves this one be, the view on screen is the current page, and the
+ * title names each place.
+ */
+test('channels and views are links to their places, and the title names each', async ({
+  page,
+  context,
+  hub,
+}) => {
+  await signIn(page, hub);
+  await expect(page).toHaveTitle('# general · Kinmesh');
+  const channels = page.getByRole('navigation', { name: '频道' });
+  const general = channels.getByRole('link', { name: 'general', exact: true });
+  const href = (await general.getAttribute('href')) ?? '';
+  expect(href).toMatch(/^\/\?channel=[^&]+$/);
+  await createChannel(page, 'design');
+  await expect(page).toHaveTitle('# design · Kinmesh');
+  const [tab] = await Promise.all([
+    context.waitForEvent('page'),
+    general.click({ modifiers: ['ControlOrMeta'] }),
+  ]);
+  await expect(tab).toHaveURL(hub.origin + href);
+  await expect(tab).toHaveTitle('# general · Kinmesh');
+  await tab.close();
+  await expect(page).toHaveTitle('# design · Kinmesh');
+  await general.click();
+  await expect(general).toHaveAttribute('aria-current', 'page');
+  await expect(page).toHaveURL(hub.origin + href);
+  await expect(page).toHaveTitle('# general · Kinmesh');
+  // The views are navigation: links to the channel's views.
+  const views = page.getByRole('navigation', { name: '工作区视图' });
+  const chat = views.getByRole('link', { name: '聊天', exact: true });
+  const board = views.getByRole('link', { name: '看板', exact: true });
+  await expect(chat).toHaveAttribute('aria-current', 'page');
+  await expect(board).toHaveAttribute('href', href + '&view=board');
+  await board.click();
+  await expect(board).toHaveAttribute('aria-current', 'page');
+  await expect(chat).not.toHaveAttribute('aria-current');
+  await expect(page).toHaveURL(hub.origin + href + '&view=board');
+  await expect(page).toHaveTitle('看板 · # general · Kinmesh');
+  await expect(chat).toHaveAttribute('href', href);
+});
+
+/**
+ * Proves search offers every action a channel's and a member's menu holds,
+ * each run by keyboard alone: renaming in place, making it private,
+ * taking an agent out, archiving.
+ */
+test('every channel and member action runs from search by keyboard alone', async ({
+  page,
+  hub,
+}) => {
+  await signIn(page, hub);
+  await createChannel(page, 'design');
+  await register(page, 'Ada', 'developer');
+  const run = async (typed: string, option: string | RegExp) => {
+    await page.keyboard.press('ControlOrMeta+k');
+    await page.getByRole('combobox', { name: /搜索/ }).fill(typed);
+    await expect(
+      page
+        .getByRole('listbox', { name: '结果' })
+        .getByRole('option', { name: option }),
+    ).toHaveAttribute('aria-selected', 'true');
+    await page.keyboard.press('Enter');
+  };
+  const channels = page.getByRole('navigation', { name: '频道' });
+  // Renamed in its row, the old name ready to type over.
+  await run('重命名', '重命名 #design');
+  await expect(channels.getByLabel('频道名称')).toBeFocused();
+  await page.keyboard.type('launch');
+  await page.keyboard.press('Enter');
+  await expect(
+    channels.getByRole('link', { name: 'launch', exact: true }),
+  ).toBeVisible();
+  // Private, then search offers to open it again.
+  await run('设为私密', '设为私密 #launch');
+  await page.keyboard.press('ControlOrMeta+k');
+  await page.getByRole('combobox', { name: /搜索/ }).fill('设为公开');
+  await expect(
+    page
+      .getByRole('listbox', { name: '结果' })
+      .getByRole('option', { name: /^设为公开 #launch/ }),
+  ).toBeVisible();
+  await page.keyboard.press('Escape');
+  // A member taken out.
+  const people = page.getByRole('region', { name: '本频道成员' });
+  await expect(people.getByRole('button', { name: /Ada/ })).toBeVisible();
+  await run('移出', '把 Ada 移出 #launch');
+  await expect(people.getByRole('button', { name: /Ada/ })).toHaveCount(0);
+  // Archived: out of the list.
+  await run('归档', /^归档 #launch/);
+  await expect(
+    channels.getByRole('link', { name: 'launch', exact: true }),
+  ).toHaveCount(0);
+});
+
+/**
+ * Proves a channel row says in words what its weight, grey and bell show:
+ * unread, muted, followed.
+ */
+test('a channel row says it is unread, muted or followed', async ({
+  page,
+  browser,
+  hub,
+}) => {
+  await signIn(page, hub, 'ada@example.com');
+  const theirs = await browser.newContext();
+  try {
+    const grace = await theirs.newPage();
+    await signIn(grace, hub, 'grace@example.com');
+    await createChannel(page, 'design');
+    const composer = grace.getByRole('form', { name: '给团队发消息' });
+    await composer.getByLabel('消息', { exact: true }).fill('News for all');
+    await composer.getByRole('button', { name: '发送消息' }).click();
+  } finally {
+    await theirs.close();
+  }
+  const channels = page.getByRole('navigation', { name: '频道' });
+  const general = channels.getByRole('link', { name: /^general/ });
+  await expect(general).toHaveAccessibleName(/未读/);
+  const design = channels.getByRole('link', { name: /^design/ });
+  await expect(design).not.toHaveAccessibleName(/未读|已静音|每条消息/);
+  await page.keyboard.press('ControlOrMeta+k');
+  await page.getByRole('combobox', { name: /搜索/ }).fill('静音 #design');
+  await page.keyboard.press('Enter');
+  await expect(design).toHaveAccessibleName(/已静音/);
+  await page.keyboard.press('ControlOrMeta+k');
+  await page
+    .getByRole('combobox', { name: /搜索/ })
+    .fill('每条消息都通知 #design');
+  await page.keyboard.press('Enter');
+  await expect(design).toHaveAccessibleName(/每条消息都通知你/);
+  await expect(design).not.toHaveAccessibleName(/已静音/);
+});
+
+/**
+ * Proves the sign-in screen fits a phone's visible height: no vertical
+ * scroll when its content fits.
+ */
+test('the sign-in screen fits a phone without scrolling', async ({
+  page,
+  hub,
+}) => {
+  await page.setViewportSize({ width: 375, height: 667 });
+  await page.goto(hub.origin);
+  await expect(page.getByRole('link', { name: '使用飞书登录' })).toBeVisible();
+  expect(
+    await page.evaluate(
+      () => document.documentElement.scrollHeight <= window.innerHeight,
+    ),
+  ).toBe(true);
+});
+
+/**
+ * Proves the due day and priority fields of a task show where focus is,
+ * and that in forced colours a focused field and the current place keep an
+ * outline.
+ */
+test('focus and the current place stay visible, also in forced colours', async ({
+  page,
+  context,
+  hub,
+}) => {
+  await signIn(page, hub);
+  const state = await snapshot(context.request, hub.origin);
+  await page.goto(`${hub.origin}/?channel=${state.channel?.id ?? ''}&task=new`);
+  const due = page.getByLabel('截止日期', { exact: true });
+  await expect(due).toBeVisible();
+  await page.getByLabel('任务标题').focus();
+  // Tab until the due day is reached, as a keyboard user would.
+  for (let n = 0; n < 20; n++) {
+    if (await due.evaluate((el) => el === document.activeElement)) break;
+    await page.keyboard.press('Tab');
+  }
+  const ring = (selector: string) =>
+    page.evaluate((s) => {
+      const el = document.querySelector(s) ?? document.activeElement;
+      if (!el) return 'none';
+      const style = getComputedStyle(el);
+      return `${style.outlineStyle} ${style.outlineWidth}`;
+    }, selector);
+  expect(await ring(':focus')).toBe('solid 2px');
+  await page.emulateMedia({ forcedColors: 'active' });
+  expect(await ring('[aria-current="page"]')).toBe('solid 2px');
+  await page.getByLabel('任务标题').focus();
+  expect(await ring(':focus')).toBe('solid 2px');
+});
+
+/**
+ * Proves text follows the person's font size: at the browser's default it
+ * measures as designed, and with a larger default every size grows with it.
+ */
+test('text follows the browser’s font size', async ({ page, hub }) => {
+  await signIn(page, hub);
+  const sizes = () =>
+    page.evaluate(() =>
+      [
+        document.body,
+        document.querySelector('.composer textarea'),
+        document.querySelector('.sidebar nav button'),
+      ].map((el) => (el ? parseFloat(getComputedStyle(el).fontSize) : 0)),
+    );
+  const before = await sizes();
+  expect(before[0]).toBe(16);
+  // What a larger default font size in the browser's settings does.
+  await page.evaluate(() => {
+    document.documentElement.style.fontSize = '20px';
+  });
+  const after = await sizes();
+  for (const [index, size] of before.entries())
+    expect(after[index]).toBeCloseTo(size * 1.25, 1);
 });

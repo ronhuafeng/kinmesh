@@ -15,16 +15,16 @@ export function memberFrom(value: string): Member | null {
   const [kind, id] = value.split(':');
   return Member.parse({ kind, id });
 }
-/** Today, as a due date says a day (YYYY-MM-DD), where you are. */
-function today(now = new Date()) {
+/** A day as a due date says it (YYYY-MM-DD), where you are. */
+function dueDay(date: Date) {
   const pad = (n: number) => String(n).padStart(2, '0');
-  return `${String(now.getFullYear())}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
+  return `${String(date.getFullYear())}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
 }
-/** Past its day and still open. */
-export function late(task: Task) {
+/** Past its day and still open; `today` is the shared clock's day. */
+export function late(task: Task, today: Date) {
   return (
     task.due !== null &&
-    task.due < today() &&
+    task.due < dueDay(today) &&
     task.state.status !== 'accepted' &&
     task.state.status !== 'cancelled'
   );

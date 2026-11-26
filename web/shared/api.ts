@@ -137,7 +137,9 @@ export function useRequest(
     error,
     setError,
     permitted,
-    disabled: !permitted || busy,
+    // Never while it sends: the control chosen keeps focus, and `run`
+    // ignores another press until this one is done.
+    disabled: !permitted,
     run,
     send: (...args: Parameters<typeof request>) => run(() => request(...args)),
   };

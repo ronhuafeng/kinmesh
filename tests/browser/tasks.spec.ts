@@ -86,7 +86,7 @@ test('two independent task cards: real agent handoff, human review, acceptance a
     const alphaPage = taskPage(page, 'Ship alpha');
     const betaPage = taskPage(page, 'Ship beta');
     await expect(inStage(page, '审核中', 'Ship alpha')).toBeVisible();
-    await alpha.getByRole('button', { name: 'Ship alpha' }).click();
+    await alpha.getByRole('link', { name: 'Ship alpha' }).click();
     await expect(page.getByRole('region', { name: '任务看板' })).toBeHidden();
     await alphaPage.getByLabel('决定备注').fill('Technical review complete');
     await alphaPage
@@ -98,7 +98,7 @@ test('two independent task cards: real agent handoff, human review, acceptance a
     await backToBoard(page);
     await expect(inStage(page, '待验收', 'Ship alpha')).toBeVisible();
     await expect(inStage(page, '审核中', 'Ship beta')).toBeVisible();
-    await alpha.getByRole('button', { name: 'Ship alpha' }).click();
+    await alpha.getByRole('link', { name: 'Ship alpha' }).click();
     await alphaPage.getByLabel('决定备注').fill('I accept the alpha outcome');
     await alphaPage
       .getByRole('button', { name: '验收通过', exact: true })
@@ -106,7 +106,7 @@ test('two independent task cards: real agent handoff, human review, acceptance a
     await expect(alphaPage.getByText('任务已关闭。')).toBeVisible();
     await backToBoard(page);
     await expect(inStage(page, '已完成', 'Ship alpha')).toBeVisible();
-    await beta.getByRole('button', { name: 'Ship beta' }).click();
+    await beta.getByRole('link', { name: 'Ship beta' }).click();
     await expect(alphaPage).toHaveCount(0);
     // Sending back is in the quiet row after the review decision; chosen,
     // it is a form of its own with its own note.
@@ -131,7 +131,7 @@ test('two independent task cards: real agent handoff, human review, acceptance a
     await expect(beta.getByText('已退回', { exact: true })).toBeVisible();
     await expect(inStage(page, '已完成', 'Ship alpha')).toBeVisible();
     await page.reload();
-    await page.getByRole('tab', { name: '看板', exact: true }).click();
+    await page.getByRole('link', { name: '看板', exact: true }).click();
     await expect(inStage(page, '已完成', 'Ship alpha')).toBeVisible();
     await expect(inStage(page, '进行中', 'Ship beta')).toBeVisible();
   } finally {
@@ -188,7 +188,7 @@ test('every unfinished task is on the board, which narrows to yours, kept across
   } finally {
     await theirs.close();
   }
-  await page.getByRole('tab', { name: '看板', exact: true }).click();
+  await page.getByRole('link', { name: '看板', exact: true }).click();
   const board = page.getByRole('region', { name: '任务看板' });
   await expect(board.getByText('Grace decides this')).toBeVisible();
   // However old, open work is in its column, with nothing to page through.
@@ -241,7 +241,7 @@ test('human claim and request-review controls, plus leave/rejoin of known member
   await backToBoard(page);
   await expect(inStage(page, '审核中', 'Human owned task')).toBeVisible();
   // Leaving has no place in the sidebar: it is an action in the palette.
-  await page.getByRole('tab', { name: '聊天', exact: true }).click();
+  await page.getByRole('link', { name: '聊天', exact: true }).click();
   await expect(
     page.locator('aside.sidebar').getByRole('button', { name: '退出频道' }),
   ).toHaveCount(0);
@@ -262,7 +262,7 @@ test('human claim and request-review controls, plus leave/rejoin of known member
   const left = page.getByRole('list', { name: '可加入的频道' });
   await expect(left.getByRole('listitem')).toHaveText([/general/]);
   // #general is public: it opens to read, with joining where the composer was.
-  await left.getByRole('button', { name: 'general', exact: true }).click();
+  await left.getByRole('link', { name: 'general', exact: true }).click();
   await expect(page.getByRole('heading', { name: '# general' })).toBeVisible();
   await expect(page.getByRole('form', { name: '给团队发消息' })).toHaveCount(0);
   await page
@@ -271,7 +271,7 @@ test('human claim and request-review controls, plus leave/rejoin of known member
   await expect(page.getByRole('form', { name: '给团队发消息' })).toBeVisible();
   // Nothing left to join: the list disappears.
   await expect(left).toHaveCount(0);
-  await page.getByRole('tab', { name: '看板', exact: true }).click();
+  await page.getByRole('link', { name: '看板', exact: true }).click();
   await expect(inStage(page, '审核中', 'Human owned task')).toBeVisible();
 });
 
@@ -429,7 +429,7 @@ test('a criterion row removed with Backspace stays removed after a reload', asyn
   hub,
 }) => {
   await signIn(page, hub);
-  await page.getByRole('tab', { name: '看板', exact: true }).click();
+  await page.getByRole('link', { name: '看板', exact: true }).click();
   await page.getByRole('button', { name: '新任务' }).click();
   const form = page.getByRole('form', { name: '新任务' });
   await form.getByLabel('任务标题').fill('Ship it');
@@ -455,7 +455,7 @@ test('a wide tablet keeps the board, one stage, beside the task that is open', a
 }) => {
   await signIn(page, hub);
   await page.setViewportSize({ width: 1194, height: 834 });
-  await page.getByRole('tab', { name: '看板', exact: true }).click();
+  await page.getByRole('link', { name: '看板', exact: true }).click();
   await page.getByRole('button', { name: '新任务' }).first().click();
   const task = page.getByRole('region', { name: '新任务', exact: true });
   await expect(task).toBeVisible();
@@ -472,11 +472,88 @@ test('a wide tablet keeps the board, one stage, beside the task that is open', a
   await expect(
     task.getByRole('button', { name: '返回', exact: true }),
   ).toBeHidden();
-  const boardTab = page.getByRole('tab', { name: '看板', exact: true });
-  await expect(boardTab).toHaveAttribute('aria-selected', 'true');
+  const boardTab = page.getByRole('link', { name: '看板', exact: true });
+  await expect(boardTab).toHaveAttribute('aria-current', 'page');
   await boardTab.click();
   await expect(task).toHaveCount(0);
   await expect(board).toBeVisible();
+});
+
+/**
+ * Proves a card is a link to its task's page: a modified click opens that
+ * address in a new tab, a plain one opens the task here and the title
+ * follows; a card's title is a heading one level under its stage's.
+ */
+test('a card is a link to its task, titled one level under its stage', async ({
+  page,
+  context,
+  hub,
+}) => {
+  await signIn(page, hub);
+  await newTask(page, { title: 'Ship links', criteria: ['Links open'] });
+  await backToBoard(page);
+  await expect(page).toHaveTitle('看板 · # general · Kinmesh');
+  const stage = page.getByRole('region', { name: '待开始', exact: true });
+  await expect(
+    stage.getByRole('heading', { level: 3, name: '待开始' }),
+  ).toBeVisible();
+  const card = stage.getByRole('article', { name: 'Ship links' });
+  await expect(
+    card.getByRole('heading', { level: 4, name: 'Ship links' }),
+  ).toBeVisible();
+  const link = card.getByRole('link', { name: 'Ship links' });
+  const href = await link.getAttribute('href');
+  expect(href).toMatch(/^\/\?(channel=[^&]+&)?task=[0-9a-f-]{36}$/);
+  const [tab] = await Promise.all([
+    context.waitForEvent('page'),
+    link.click({ modifiers: ['ControlOrMeta'] }),
+  ]);
+  await expect(tab).toHaveURL(hub.origin + (href ?? ''));
+  await expect(taskPage(tab, 'Ship links')).toBeVisible();
+  await expect(tab).toHaveTitle('Ship links · Kinmesh');
+  await tab.close();
+  // Here the board stays.
+  await expect(card).toBeVisible();
+  await link.click();
+  await expect(taskPage(page, 'Ship links')).toBeVisible();
+  await expect(page).toHaveURL(hub.origin + (href ?? ''));
+  await expect(page).toHaveTitle('Ship links · Kinmesh');
+});
+
+/**
+ * Proves a narrow board's other stages are hidden until found: their tasks
+ * are out of sight, yet a find-in-page match in one (its `beforematch`)
+ * switches the board to that stage, with the task on screen.
+ */
+test('find in page reaches a task in a stage a narrow board isn’t showing', async ({
+  page,
+  hub,
+}) => {
+  await signIn(page, hub);
+  await newTask(page, { title: 'Hidden until found', criteria: ['Found'] });
+  await backToBoard(page);
+  await page.setViewportSize({ width: 800, height: 900 });
+  const stages = page.getByRole('group', { name: '阶段' });
+  await stages.getByRole('button', { name: '已完成' }).click();
+  const proposed = page.locator('.board-column[aria-label="待开始"]');
+  await expect(proposed).toHaveAttribute('hidden', 'until-found');
+  const card = page.getByRole('article', { name: 'Hidden until found' });
+  await expect(card).toBeHidden();
+  // What the browser does on a match there, before it scrolls to it.
+  await proposed.dispatchEvent('beforematch');
+  await expect(stages.getByRole('button', { name: '待开始' })).toHaveAttribute(
+    'aria-pressed',
+    'true',
+  );
+  await expect(proposed).not.toHaveAttribute('hidden');
+  await expect(card).toBeVisible();
+  await expect(
+    page.locator('.board-column[aria-label="已完成"]'),
+  ).toHaveAttribute('hidden', 'until-found');
+  // Where every stage shows, none is hidden.
+  await page.setViewportSize({ width: 1440, height: 900 });
+  for (const name of ['待开始', '进行中', '审核中', '待验收', '已完成'])
+    await expect(page.getByRole('region', { name, exact: true })).toBeVisible();
 });
 
 /**
@@ -611,4 +688,114 @@ test('asking for review, the agent’s proof appears under each criterion on the
   } finally {
     await agent.dispose();
   }
+});
+
+/**
+ * Proves a card moving between columns moves alone: as its transition
+ * starts, the page isn't captured to cross-fade, and a click on the board's
+ * filter reaches the filter, not the transition's layer.
+ */
+test('a card moving on the board leaves the page still and taking clicks', async ({
+  page,
+  context,
+  hub,
+}) => {
+  // What the page is like as each transition is ready to run.
+  await page.addInitScript(() => {
+    const seen: { root: string; rootAnimated: boolean; hit: boolean }[] = [];
+    Reflect.set(window, '__transitions', seen);
+    const start = document.startViewTransition.bind(document);
+    document.startViewTransition = (update?: ViewTransitionUpdateCallback) => {
+      const transition = start(update);
+      void transition.ready.then(() => {
+        const filter = document.querySelector('.board-filter button');
+        if (!filter) return;
+        const box = filter.getBoundingClientRect();
+        seen.push({
+          root: getComputedStyle(document.documentElement).viewTransitionName,
+          rootAnimated: document
+            .getAnimations()
+            .some(
+              (a) =>
+                a.effect instanceof KeyframeEffect &&
+                (a.effect.pseudoElement ?? '').includes('(root)'),
+            ),
+          hit:
+            document.elementFromPoint(
+              box.x + box.width / 2,
+              box.y + box.height / 2,
+            ) === filter,
+        });
+      });
+      return transition;
+    };
+  });
+  await signIn(page, hub);
+  await newTask(page, { title: 'Moves on', criteria: ['Moved'] });
+  await backToBoard(page);
+  const state = await snapshot(context.request, hub.origin);
+  const task = state.tasks.items[0];
+  if (!task || !state.channel) throw new Error('Task missing');
+  // Someone else moves it: the board shows it travel.
+  const cancelled = await context.request.post(
+    `${hub.origin}/api/teams/${state.team.id}/channels/${state.channel.id}/tasks/${task.id}/cancel`,
+    {
+      data: {
+        operationKey: randomUUID(),
+        expectedVersion: task.version,
+        note: 'Not needed',
+      },
+    },
+  );
+  expect(cancelled.status()).toBe(200);
+  const seen = async () =>
+    z
+      .array(
+        z.object({
+          root: z.string(),
+          rootAnimated: z.boolean(),
+          hit: z.boolean(),
+        }),
+      )
+      .parse(
+        await page.evaluate((): unknown =>
+          Reflect.get(window, '__transitions'),
+        ),
+      );
+  await expect.poll(async () => (await seen()).length).toBeGreaterThan(0);
+  expect((await seen())[0]).toEqual({
+    root: 'none',
+    rootAnimated: false,
+    hit: true,
+  });
+});
+
+/**
+ * Proves a phone's board shows all five stages in its pills, each wholly
+ * inside the board, with nothing to scroll sideways.
+ */
+test('a phone’s board shows every stage in its pills', async ({
+  page,
+  context,
+  hub,
+}) => {
+  await signIn(page, hub);
+  await page.setViewportSize({ width: 375, height: 800 });
+  const state = await snapshot(context.request, hub.origin);
+  await page.goto(
+    `${hub.origin}/?channel=${state.channel?.id ?? ''}&view=board`,
+  );
+  const pills = page.getByRole('group', { name: '阶段' });
+  await expect(pills.getByRole('button')).toHaveCount(5);
+  const box = await pills.boundingBox();
+  if (!box) throw new Error('Stage pills missing');
+  for (const pill of await pills.getByRole('button').all()) {
+    const each = await pill.boundingBox();
+    if (!each) throw new Error('Stage pill missing');
+    expect(each.x).toBeGreaterThanOrEqual(box.x);
+    expect(each.x + each.width).toBeLessThanOrEqual(box.x + box.width + 0.5);
+  }
+  expect(await pills.evaluate((el) => el.scrollWidth <= el.clientWidth)).toBe(
+    true,
+  );
 });

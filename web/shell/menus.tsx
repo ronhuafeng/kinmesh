@@ -4,7 +4,7 @@ import { SettingsIcons } from '../shared/icons.js';
 import type { WorkspaceSnapshot } from '../../src/workspace/contracts.js';
 import { request } from '../shared/api.js';
 import { tomorrowMorning } from '../shared/format.js';
-import { applyTheme, readTheme, type Theme } from '../shared/theme.js';
+import { applyTheme, useTheme, type Theme } from '../shared/theme.js';
 import {
   nextOpening,
   withinHours,
@@ -99,7 +99,7 @@ export function AccountMenu({
   /** Says an action didn't happen, where the person will see it. */
   onFailed: (message: string) => void;
 }) {
-  const [theme, setTheme] = useState<Theme>(readTheme);
+  const theme = useTheme();
   const paused = until(data.pausedUntil);
   // Outside your hours, when they open again.
   const opens = withinHours(new Date(), data.hours)
@@ -115,7 +115,7 @@ export function AccountMenu({
     });
   return (
     <Menu.Root>
-      <Menu.Trigger className="account-row" aria-label="你的账户">
+      <Menu.Trigger className="account-row">
         <Mark
           name={data.human.name}
           quiet={paused !== null || opens !== null}
@@ -180,7 +180,6 @@ export function AccountMenu({
               const next: Theme =
                 value === 'light' || value === 'dark' ? value : 'system';
               applyTheme(next);
-              setTheme(next);
             }}
           >
             {(
@@ -319,7 +318,8 @@ export function ChannelMenu({
   onLeave,
   onFailed,
   onRename,
-  onArchived,
+  onVisibility,
+  onArchive,
   children,
 }: {
   data: WorkspaceSnapshot;
@@ -330,7 +330,8 @@ export function ChannelMenu({
   onFailed: (message: string) => void;
   /** Names the channel again, in place in its row. */
   onRename: (channelId: string) => void;
-  onArchived: (channelId: string) => void;
+  onVisibility: (channelId: string, visibility: 'public' | 'private') => void;
+  onArchive: (channelId: string) => void;
   children: ReactNode;
 }) {
   const level = levelOf(data, channelId);
@@ -399,16 +400,10 @@ export function ChannelMenu({
                     setOpening(true);
                     return;
                   }
-                  void request(
-                    `/api/teams/${data.team.id}/channels/${channelId}/visibility`,
-                    {
-                      operationKey: crypto.randomUUID(),
-                      visibility:
-                        visibility === 'private' ? 'public' : 'private',
-                    },
-                  ).catch(() => {
-                    onFailed('没能改好，请再试一次。');
-                  });
+                  onVisibility(
+                    channelId,
+                    visibility === 'private' ? 'public' : 'private',
+                  );
                 }}
               >
                 <span className="menu-icon">
@@ -445,17 +440,7 @@ export function ChannelMenu({
                     setArchiving(true);
                     return;
                   }
-                  void request(
-                    `/api/teams/${data.team.id}/channels/${channelId}/archive`,
-                    { operationKey: crypto.randomUUID(), archived: true },
-                  ).then(
-                    () => {
-                      onArchived(channelId);
-                    },
-                    () => {
-                      onFailed('没能归档，请再试一次。');
-                    },
-                  );
+                  onArchive(channelId);
                 }}
               >
                 <span className="menu-icon">
@@ -493,20 +478,14 @@ export function ChannelMenu({
  * them out of the channel, in the danger colour. The hub decides who may.
  */
 export function MemberMenu({
-  channelPath,
   channelName,
-  member,
   name,
-  onFailed,
-  onDone,
+  onRemove,
   children,
 }: {
-  channelPath: string;
   channelName: string;
-  member: { kind: 'human' | 'agent'; id: string };
   name: string;
-  onFailed: (message: string) => void;
-  onDone: () => void;
+  onRemove: () => void;
   children: ReactNode;
 }) {
   return (
@@ -518,14 +497,7 @@ export function MemberMenu({
           <ContextMenu.Item
             className="menu-item"
             data-danger="true"
-            onSelect={() => {
-              void request(channelPath + '/participants/remove', {
-                operationKey: crypto.randomUUID(),
-                member,
-              }).then(onDone, () => {
-                onFailed(`没能把 ${name} 移出 #${channelName}，请再试一次。`);
-              });
-            }}
+            onSelect={onRemove}
           >
             <span className="menu-icon">
               <SettingsIcons.logOut size={16} />

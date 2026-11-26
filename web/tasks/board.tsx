@@ -13,8 +13,11 @@ import {
 } from '../shared/task-status.js';
 import { late, dueLabel, yours, byUrgency, byFinish } from './model.js';
 import { MemberAvatar } from './members.js';
+import { useToday } from '../shared/clock.js';
 import { memberName, topicTitle } from '../shared/names.js';
 import { ALL_TASKS, type BoardFilter } from '../shared/board-filter.js';
+import { PlaceLink } from '../shared/place-link.js';
+import { untilFound } from '../shared/until-found.js';
 
 /**
  * The channel's finished tasks older than those the board starts with
@@ -61,15 +64,19 @@ export function TaskCard({
   task,
   data,
   open,
+  href,
   onOpen,
 }: {
   task: Task;
   data: WorkspaceSnapshot;
   /** Its page is open beside the board. */
   open: boolean;
+  /** Its page's address. */
+  href: string;
   onOpen: () => void;
 }) {
   const ask = humanAsk(task, data);
+  const today = useToday();
   return (
     <article
       data-open={open ? 'true' : undefined}
@@ -89,8 +96,8 @@ export function TaskCard({
           {cardMarker(task.state.status)}
         </span>
       )}
-      <h3>
-        <button type="button" className="card-link" onClick={onOpen}>
+      <h4>
+        <PlaceLink className="card-link" href={href} onOpen={onOpen}>
           {task.priority === 'high' && (
             <span className="card-priority" title="高优先级">
               <PriorityIcon />
@@ -98,8 +105,8 @@ export function TaskCard({
             </span>
           )}
           {task.title}
-        </button>
-      </h3>
+        </PlaceLink>
+      </h4>
       {(ask ?? task.due ?? task.state.owner ?? task.state.reviewer) && (
         <footer>
           {ask && <p className="ask-label">{ask}</p>}
@@ -107,7 +114,7 @@ export function TaskCard({
             <time
               className="card-due"
               dateTime={task.due}
-              data-late={late(task) ? 'true' : undefined}
+              data-late={late(task, today) ? 'true' : undefined}
             >
               {dueLabel(task.due)}
             </time>
@@ -124,6 +131,7 @@ export function TaskCard({
 export function Board({
   data,
   openTask,
+  taskHref,
   onNewTask,
   openId = null,
   filter = ALL_TASKS,
@@ -131,6 +139,8 @@ export function Board({
 }: {
   data: WorkspaceSnapshot;
   openTask: (id: string) => void;
+  /** A task page's address. */
+  taskHref: (id: string) => string;
   onNewTask: () => void;
   /** The task whose page is open, beside the board on a wide tablet. */
   openId?: string | null;
@@ -271,6 +281,11 @@ export function Board({
               data-status={s.tone}
               data-current={column === s.id ? 'true' : undefined}
               aria-label={s.label}
+              // A stage a narrow board isn't showing is still found by find
+              // in page, which shows it.
+              ref={untilFound(column !== s.id, () => {
+                setColumn(s.id);
+              })}
             >
               <h3 className="column-heading">
                 <span className="dot" aria-hidden="true" />
@@ -282,6 +297,7 @@ export function Board({
                   task={task}
                   data={data}
                   open={task.id === openId}
+                  href={taskHref(task.id)}
                   onOpen={() => {
                     openTask(task.id);
                   }}

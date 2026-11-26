@@ -19,8 +19,9 @@ function markSignedOut() {
 }
 /**
  * What the shell does for you that reaches the hub or crosses places:
- * signing out, leaving a channel, changing how loud it is, opening a task,
- * a message or a conversation wherever it is.
+ * signing out, leaving, opening up or archiving a channel, changing how loud
+ * it is, taking a member out of it, opening a task, a message or a
+ * conversation wherever it is.
  */
 export function actionsOf(
   data: WorkspaceSnapshot,
@@ -74,6 +75,61 @@ export function actionsOf(
         notify('没能退出频道，请再试一次。');
       });
   };
+  /**
+   * Opens a channel to the whole team, or makes it private again, from its
+   * row's menu or from search.
+   */
+  const changeVisibility = (id: string, visibility: 'public' | 'private') => {
+    if (!canAct) {
+      cannot();
+      return;
+    }
+    void request(`/api/teams/${data.team.id}/channels/${id}/visibility`, {
+      operationKey: crypto.randomUUID(),
+      visibility,
+    }).catch(() => {
+      notify('没能改好，请再试一次。');
+    });
+  };
+  /** Archives a channel: out of the list, still there to read and search. */
+  const archiveChannel = (id: string) => {
+    if (!canAct) {
+      cannot();
+      return;
+    }
+    void request(`/api/teams/${data.team.id}/channels/${id}/archive`, {
+      operationKey: crypto.randomUUID(),
+      archived: true,
+    }).then(
+      () => {
+        if (id === channel?.id) selectChannel('');
+        refresh();
+      },
+      () => {
+        notify('没能归档，请再试一次。');
+      },
+    );
+  };
+  /**
+   * Takes a member out of the open channel, from their row's menu or from
+   * search. The hub decides who may.
+   */
+  const removeMember = (
+    member: { kind: 'human' | 'agent'; id: string },
+    name: string,
+  ) => {
+    if (!channel || !channelPath) return;
+    if (!canAct) {
+      cannot();
+      return;
+    }
+    void request(channelPath + '/participants/remove', {
+      operationKey: crypto.randomUUID(),
+      member,
+    }).then(refresh, () => {
+      notify(`没能把 ${name} 移出 #${channel.name}，请再试一次。`);
+    });
+  };
   /** Open a task in any joined channel; its page appears once it loads. */
   const openTaskIn = (channelId: string, id: string) => {
     if (channelId !== channel?.id) selectChannel(channelId);
@@ -81,12 +137,13 @@ export function actionsOf(
   };
   /**
    * Opens a message in its channel's conversation (every topic's messages
-   * are there too), reaching back as far as it is.
+   * are there too), reaching back as far as it is. The channel is named,
+   * even the one opened by default, so the address keeps the message.
    */
   const openMessageIn = (id: string, messageId: string) => {
     setFocus(null);
     if (id !== channel?.id) selectChannel(id);
-    else setSelection((old) => ({ ...old, topic: '' }));
+    else setSelection({ channel: id, topic: '' });
     setView('chat');
     setTarget({ channel: id, topic: '', id: messageId });
   };
@@ -103,6 +160,9 @@ export function actionsOf(
       if (channelPath && channel) leaveChannelById(channel.id);
     },
     leaveChannelById,
+    changeVisibility,
+    archiveChannel,
+    removeMember,
     changeLevel: (level: ChannelLevel) => {
       if (!channel) return;
       if (!canAct) {

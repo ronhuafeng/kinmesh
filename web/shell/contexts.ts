@@ -41,7 +41,14 @@ export function contextsOf(
       ...shared,
       refresh: workspace.refresh,
       refreshNow: workspace.refreshNow,
-      commands: commandsOf(data, place, shown, actions, workspace.refreshNow),
+      commands: commandsOf(
+        data,
+        place,
+        shown,
+        actions,
+        workspace.refreshNow,
+        phone,
+      ),
       remote: remoteSearch(data, actions.openMessageIn),
     },
   };

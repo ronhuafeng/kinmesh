@@ -3,7 +3,7 @@ import { ProfileInput, type Agent } from '../../src/domain/agents.js';
 import type { WorkspaceSnapshot } from '../../src/workspace/contracts.js';
 import { useLive } from '../shared/live.js';
 import { api, value } from '../shared/api.js';
-import { ActionForm, Field, Notice } from '../shared/forms.js';
+import { ActionForm, Field, Notice, asTyped } from '../shared/forms.js';
 import { CopyButton } from '../shared/copy-button.js';
 import {
   useSetupRequest,
@@ -146,6 +146,7 @@ export function OwnWorker({
             <Field label="T3 环境 ID">
               <input
                 name="environmentId"
+                {...asTyped}
                 required
                 defaultValue={prefs.environmentId ?? ''}
               />
@@ -154,6 +155,7 @@ export function OwnWorker({
               <Field label="隔离的提供方 ID">
                 <input
                   name="providerId"
+                  {...asTyped}
                   required
                   defaultValue={prefs.providerId ?? ''}
                 />
@@ -161,6 +163,7 @@ export function OwnWorker({
               <Field label="模型 ID">
                 <input
                   name="modelId"
+                  {...asTyped}
                   required
                   defaultValue={prefs.modelId ?? ''}
                 />

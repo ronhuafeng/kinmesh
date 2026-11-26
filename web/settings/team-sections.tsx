@@ -252,18 +252,21 @@ export function Connections({ data }: { data: WorkspaceSnapshot }) {
 export function Pairing({ teamId }: { teamId: string }) {
   const action = useRequest({ 409: '这个 T3 不能从这里配对。' });
   const [paired, setPaired] = useState<z.infer<typeof Paired> | null>(null);
-  const [now, setNow] = useState(() => Date.now());
-  // The code says when it stops working, and goes once it has.
+  // The code says when it stops working, and goes once it has: one timer,
+  // at that moment.
   useEffect(() => {
     if (paired === null) return;
-    const timer = setInterval(() => {
-      setNow(Date.now());
-    }, 1000);
+    const timer = setTimeout(
+      () => {
+        setPaired(null);
+      },
+      Math.min(Date.parse(paired.expiresAt) - Date.now(), 2 ** 31 - 1),
+    );
     return () => {
-      clearInterval(timer);
+      clearTimeout(timer);
     };
   }, [paired]);
-  const live = paired !== null && Date.parse(paired.expiresAt) > now;
+  const live = paired !== null;
   return (
     <>
       <Row label="配对码">
@@ -275,7 +278,6 @@ export function Pairing({ teamId }: { teamId: string }) {
             void action.send(`/api/teams/${teamId}/t3/pair`, {}).then((raw) => {
               if (raw === undefined) return;
               setPaired(Paired.parse(raw));
-              setNow(Date.now());
             });
           }}
         >

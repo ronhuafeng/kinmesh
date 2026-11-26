@@ -1,6 +1,9 @@
 import { useEffect, useState } from 'react';
 
-/** Copy with visible feedback; clipboard access can be refused. */
+/**
+ * Copy with visible feedback, which a screen reader hears from a status
+ * beside the button, always there; clipboard access can be refused.
+ */
 export function CopyButton({
   text,
   label,
@@ -22,21 +25,28 @@ export function CopyButton({
     };
   }, [done]);
   return (
-    <button
-      type="button"
-      className={className}
-      onClick={() => {
-        navigator.clipboard.writeText(text).then(
-          () => {
-            setDone('已复制');
-          },
-          () => {
-            setDone('复制失败');
-          },
-        );
-      }}
-    >
-      {done || label}
-    </button>
+    <>
+      <button
+        type="button"
+        className={className}
+        // Shown while it says what happened, wherever the pointer is.
+        data-done={done ? 'true' : undefined}
+        onClick={() => {
+          navigator.clipboard.writeText(text).then(
+            () => {
+              setDone('已复制');
+            },
+            () => {
+              setDone('复制失败');
+            },
+          );
+        }}
+      >
+        {done || label}
+      </button>
+      <span className="visually-hidden" role="status">
+        {done}
+      </span>
+    </>
   );
 }

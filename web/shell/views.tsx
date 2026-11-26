@@ -9,11 +9,13 @@ import { Pins } from '../chat/pins.js';
 import * as Tabs from '@radix-ui/react-tabs';
 import { Team } from '../agents/team.js';
 import { draftFromMessage } from '../shared/task-draft.js';
-import { showMessage } from '../chat/chat-message.js';
 import { useNavigation, useScreen, useActions } from './contexts.js';
+import { hrefsOf } from './place-hrefs.js';
 
 /** The views of the place on screen, and an agent's page. */
 export function Views() {
+  const navigation = useNavigation();
+  const hrefs = hrefsOf(navigation);
   const {
     selection,
     setSelection,
@@ -22,6 +24,7 @@ export function Views() {
     setBoardFilter,
     backTo,
     setView,
+    back,
     setCursors,
     focus,
     setFocus,
@@ -31,7 +34,7 @@ export function Views() {
     openAgent,
     openTask,
     startNewTask,
-  } = useNavigation();
+  } = navigation;
   const {
     data,
     channel,
@@ -43,6 +46,9 @@ export function Views() {
     loadedPlace,
   } = useScreen();
   const { openMessageIn, openDirect, incoming, refresh } = useActions();
+  // The topic the messages on screen were read for ('' for all).
+  const shownTopic =
+    new URLSearchParams(loadedPlace ?? '').get('topicId') ?? '';
   return (
     <>
       {switchingSlowly && (
@@ -60,17 +66,19 @@ export function Views() {
               data={data}
               channelPath={channelPath}
               topic={selection.topic}
-              shownTopic={
-                new URLSearchParams(loadedPlace ?? '').get('topicId') ?? ''
-              }
+              shownTopic={shownTopic}
               onTopic={(topic) => {
                 setSelection((old) => ({ ...old, topic }));
                 setCursors({});
               }}
+              // Asked for here, and here on screen: never sought among
+              // another place's messages.
               target={
                 target?.channel === selection.channel &&
-                target.topic === selection.topic
-                  ? target.id
+                target.channel === channel.id &&
+                target.topic === selection.topic &&
+                target.topic === shownTopic
+                  ? target
                   : null
               }
               onOpenMessage={(id) => {
@@ -126,6 +134,7 @@ export function Views() {
             <Board
               data={data}
               openTask={openTask}
+              taskHref={hrefs.task}
               onNewTask={startNewTask}
               openId={focus?.kind === 'task' ? focus.id : null}
               filter={boardFilter}
@@ -179,17 +188,16 @@ export function Views() {
             data={data}
             channelPath={channelPath}
             onBack={() => {
-              setView(backTo);
+              back(() => {
+                setView(backTo);
+              });
             }}
             onOwnWorker={() => {
               setFocus({ kind: 'worker', id: pageAgent.id });
             }}
             onReply={(id) => {
-              // The reply is in the chat; open it there and point to it.
-              setView('chat');
-              setTimeout(() => {
-                showMessage(id);
-              }, 60);
+              // The reply is in the conversation, however far back.
+              if (channel) openMessageIn(channel.id, id);
             }}
             onDone={refresh}
           />

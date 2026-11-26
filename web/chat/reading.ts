@@ -50,61 +50,190 @@ const toBottom = () => {
   window.scrollTo({ top: document.documentElement.scrollHeight });
 };
 /**
- * A conversation reads from the bottom: it opens there, follows what arrives
- * while you are there, and holds still while you read further back, also as
- * older messages are added above. `sent()` goes to the bottom, so what you
- * just sent comes into view however far back you were.
- */
-/**
  * Where a message ends on screen as laid out, leaving out any animation's
  * transform: a message rising in as it arrives must not count as moved.
  */
+/**
+ * Rows far from the screen skip layout (`content-visibility: auto`) and
+ * stand at an estimated size until first drawn; these have been drawn.
+ */
+const drawn = new WeakSet<Element>();
+const laidOut = (row: HTMLElement) =>
+  drawn.has(row) || getComputedStyle(row).contentVisibility !== 'auto';
 function layoutBottom(row: HTMLElement) {
   const { transform } = getComputedStyle(row);
   const shift = transform === 'none' ? 0 : new DOMMatrix(transform).m42;
   return row.getBoundingClientRect().bottom - shift;
 }
-export function useReadingPosition(place: string, messages: ChatMessage[]) {
-  const held = useRef<{
-    place: string;
-    /**
-     * The message read from: the first whose end is in view, and where that
-     * end was. Older messages folding its header into theirs change only
-     * what is above its text, so its end is what holds still.
-     */
-    anchor: string | undefined;
-    end: number;
-    bottom: boolean;
-  } | null>(null);
+/** A message a conversation is asked to open at; each asking is its own. */
+export interface Opening {
+  id: string;
+}
+/** How a place's conversation is being read. */
+interface Reading {
+  place: string;
+  /**
+   * The message read from: the first laid out whose end is in view, and
+   * where that end was. Older messages folding its header into theirs change only
+   * what is above its text, so its end is what holds still.
+   */
+  anchor: string | undefined;
+  end: number;
+  /**
+   * How far the page was scrolled then: a scroll not yet noted (its event
+   * comes a frame later) moved the view, not what is read from.
+   */
+  scrolled: number;
+  bottom: boolean;
+  /** Where you had stopped reading as it opened: the "new since" line. */
+  unread: string | null;
+  /**
+   * The message still to be reached, however far back: shown and marked
+   * (no `end`), or put back where its end was.
+   */
+  goal: { id: string; end: number | null } | null;
+  /** The last opening asked for here, gone to once. */
+  asked: Opening | null;
+}
+/**
+ * How each place was being read during this visit: coming back to it (from
+ * another view, a page, or Back) shows the message you were reading.
+ */
+const readings = new Map<string, Reading>();
+/** Signed out: nothing of where anyone was reading is left. */
+export const forgetReadings = () => {
+  readings.clear();
+};
+/**
+ * How a place opens: where you were reading it, unless you had read to its
+ * end and more has come since; else at the first message you haven't read,
+ * or the newest. A message asked for leads.
+ */
+function opening(
+  place: string,
+  firstUnread: string | null,
+  target: Opening | null,
+): Reading {
+  const kept = readings.get(place);
+  const reading: Reading =
+    kept &&
+    !(kept.bottom && firstUnread !== null && firstUnread !== kept.unread)
+      ? {
+          ...kept,
+          goal:
+            kept.goal ??
+            (kept.bottom || kept.anchor === undefined
+              ? null
+              : { id: kept.anchor, end: kept.end }),
+        }
+      : {
+          place,
+          anchor: undefined,
+          end: 0,
+          scrolled: 0,
+          bottom: true,
+          unread: firstUnread,
+          goal: firstUnread === null ? null : { id: firstUnread, end: null },
+          asked: kept?.asked ?? null,
+        };
+  if (target !== null && target !== reading.asked) {
+    reading.goal = { id: target.id, end: null };
+    reading.asked = target;
+  }
+  return reading;
+}
+/**
+ * A conversation reads from the bottom: it opens where you stopped reading
+ * (see `opening`), already there on its first paint; it follows what
+ * arrives while you are at the bottom, and holds still while you read
+ * further back, also as older messages are added above. A message it is
+ * opened at is reached however far back it is, from the top of what is
+ * there, never by way of the bottom. `sent()` goes to the bottom, so what
+ * you just sent comes into view however far back you were.
+ */
+export function useReadingPosition(
+  place: string,
+  messages: ChatMessage[],
+  {
+    firstUnread,
+    target,
+    older,
+    reachOlder,
+  }: {
+    firstUnread: string | null;
+    target: Opening | null;
+    /** The cursor to older messages; null at the channel's beginning. */
+    older: string | null;
+    reachOlder: (cursor: string) => void;
+  },
+) {
+  // Decided as the place opens, so that its first paint is already there.
+  const [opened, setOpened] = useState(() =>
+    opening(place, firstUnread, target),
+  );
+  let current = opened;
+  if (opened.place !== place) {
+    current = opening(place, firstUnread, target);
+    setOpened(current);
+  }
+  const held = useRef<Reading | null>(null);
   // Whether the newest message is in view, for the way back to it.
   const [atEnd, setAtEnd] = useState(true);
-  /** Notes what is read from, as the reader left it. */
-  const note = () => {
+  /**
+   * Notes what is read from, as the reader left it. `again`: only when the
+   * reader scrolled, or it is gone; our own holding is not reading, and
+   * noting it would add up what a pixel can't hold.
+   */
+  const note = (again = false) => {
     const h = held.current;
     if (!h) return;
-    h.anchor = undefined;
-    h.end = 0;
+    if (
+      again &&
+      window.scrollY === h.scrolled &&
+      h.anchor !== undefined &&
+      document.getElementById('message-' + h.anchor)
+    )
+      return;
+    // The first on screen that is laid out, not a far row's estimated size:
+    // what is drawn above it as it nears the screen moves only what is
+    // above. With none drawn yet (just opened, or reached), it stays what
+    // it was.
+    let first: HTMLElement | undefined;
+    let shown: HTMLElement | undefined;
     for (const row of document.querySelectorAll<HTMLElement>(
       '.messages > li[id^="message-"]',
     )) {
-      if (row.getBoundingClientRect().bottom > 0) {
-        h.anchor = row.id.slice('message-'.length);
-        h.end = layoutBottom(row);
+      const box = row.getBoundingClientRect();
+      if (box.bottom <= 0) continue;
+      first ??= row;
+      if (box.top >= window.innerHeight) break;
+      if (laidOut(row)) {
+        shown = row;
         break;
       }
     }
+    const kept =
+      h.anchor === undefined
+        ? null
+        : document.getElementById('message-' + h.anchor);
+    const row = shown ?? kept ?? first;
+    h.anchor = row?.id.slice('message-'.length);
+    h.end = row ? layoutBottom(row) : 0;
+    h.scrolled = window.scrollY;
     h.bottom = atBottom();
     setAtEnd(h.bottom);
   };
   /**
    * What the conversation shows changed or grew: at the bottom it stays
    * there; read back, what was read from stays where it was, whatever was
-   * added or drawn above it (older messages, a diagram, an image).
+   * added or drawn above it (older messages, a diagram, an image). It is
+   * measured on the page, not the screen, so a scroll made since it was
+   * noted stays as the reader made it.
    */
   const hold = () => {
     const h = held.current;
     if (!h) return;
-    if (h.bottom) {
+    if (h.bottom && (window.scrollY >= h.scrolled || atBottom())) {
       toBottom();
       return;
     }
@@ -112,27 +241,98 @@ export function useReadingPosition(place: string, messages: ChatMessage[]) {
       h.anchor === undefined
         ? null
         : document.getElementById('message-' + h.anchor);
-    const moved = row ? layoutBottom(row) - h.end : 0;
-    if (moved !== 0) window.scrollBy({ top: moved });
+    const moved = row
+      ? layoutBottom(row) - h.end + window.scrollY - h.scrolled
+      : 0;
+    // Less than a pixel is where it was: chasing it would never settle.
+    if (Math.abs(moved) < 1) return;
+    // Held: it is where it was, now this much further down the page.
+    const from = window.scrollY;
+    window.scrollBy({ top: moved });
+    const went = window.scrollY - from;
+    h.scrolled += went;
+    // What the page's edge stopped is let go, not owed: carried, it would
+    // move the reader's own next scroll.
+    h.end += moved - went;
+  };
+  /**
+   * Goes to the message still to be reached, once it is there; true when it
+   * went. One that isn't there, with nothing older, is given up.
+   */
+  const reach = (h: Reading, further: string | null) => {
+    const goal = h.goal;
+    if (!goal) return false;
+    const row = document.getElementById('message-' + goal.id);
+    if (!row) {
+      if (further === null) h.goal = null;
+      return false;
+    }
+    h.goal = null;
+    if (goal.end !== null) {
+      const moved = layoutBottom(row) - goal.end;
+      if (moved !== 0) window.scrollBy({ top: moved });
+    } else {
+      // Shown and marked, so the eye finds it.
+      row.scrollIntoView({ block: 'center' });
+      row.dataset.flash = 'true';
+      setTimeout(() => {
+        delete row.dataset.flash;
+      }, 1600);
+    }
+    // Read from it from now on, where it was put, drawn or not yet.
+    h.anchor = goal.id;
+    h.end = goal.end ?? layoutBottom(row);
+    h.scrolled = window.scrollY;
+    h.bottom = atBottom();
+    setAtEnd(h.bottom);
+    return true;
   };
   useLayoutEffect(() => {
-    if (held.current?.place !== place) {
-      held.current = { place, anchor: undefined, end: 0, bottom: true };
-      toBottom();
-    } else hold();
-    note();
-  }, [place, messages]);
+    const h = held.current;
+    if (h?.place !== place) {
+      const now = { ...current };
+      held.current = now;
+      readings.set(place, now);
+      // What isn't there yet is reached from the top of what is.
+      if (!reach(now, older)) {
+        if (now.goal) window.scrollTo({ top: 0 });
+        else toBottom();
+        note();
+      }
+    } else {
+      if (target !== null && target !== h.asked) {
+        h.goal = { id: target.id, end: null };
+        h.asked = target;
+      }
+      if (!reach(h, older)) {
+        hold();
+        note(true);
+      }
+    }
+  }, [place, messages, target, current, older]);
+  // Not there yet: read further back, a page at a time, until it is.
+  useEffect(() => {
+    const h = held.current;
+    if (h?.place === place && h.goal !== null && older !== null)
+      reachOlder(older);
+  }, [place, messages, target, older, reachOlder]);
   // Reading moves the position; so does the window changing size.
   useEffect(() => {
+    // What was laid out since it was noted (a row drawn as it nears the
+    // screen) is held first: only the reader's own scroll moves it.
+    const scrolled = () => {
+      hold();
+      note(true);
+    };
     // A window that changes size keeps you at the bottom if you were.
     const resized = () => {
       if (held.current?.bottom) toBottom();
       note();
     };
-    window.addEventListener('scroll', note, { passive: true });
+    window.addEventListener('scroll', scrolled, { passive: true });
     window.addEventListener('resize', resized);
     return () => {
-      window.removeEventListener('scroll', note);
+      window.removeEventListener('scroll', scrolled);
       window.removeEventListener('resize', resized);
     };
   }, []);
@@ -142,31 +342,33 @@ export function useReadingPosition(place: string, messages: ChatMessage[]) {
     if (!element) return;
     const grown = new ResizeObserver(hold);
     grown.observe(element);
+    const shown = (event: Event) => {
+      if (
+        event instanceof ContentVisibilityAutoStateChangeEvent &&
+        !event.skipped &&
+        event.target instanceof Element
+      )
+        drawn.add(event.target);
+    };
+    element.addEventListener('contentvisibilityautostatechange', shown, true);
     return () => {
       grown.disconnect();
+      element.removeEventListener(
+        'contentvisibilityautostatechange',
+        shown,
+        true,
+      );
     };
   }, []);
   return {
     list,
     atEnd,
+    /** Where you had stopped reading as this place opened. */
+    unread: current.unread,
     sent: () => {
       toBottom();
       if (held.current) held.current.bottom = true;
       setAtEnd(true);
-    },
-    /**
-     * Shows a message, marked, and reads from it: what grows above or below
-     * afterwards holds it still instead of going back to the bottom.
-     */
-    show: (id: string) => {
-      const row = document.getElementById('message-' + id);
-      if (!row) return;
-      row.scrollIntoView({ block: 'center' });
-      row.dataset.flash = 'true';
-      setTimeout(() => {
-        delete row.dataset.flash;
-      }, 1600);
-      note();
     },
   };
 }

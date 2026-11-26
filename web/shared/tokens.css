@@ -81,9 +81,9 @@
   --target-row: 40px;
   --target-touch: 44px;
   --text-body: 1rem;
-  --text-body-phone: 17px;
+  --text-body-phone: 1.0625rem;
   --text-code: 0.85em;
-  --text-small: 13px;
+  --text-small: 0.8125rem;
   --text-ui: 0.9375rem;
   --tint-blue: #e5efff;
   --tint-blue-text: #0058b8;

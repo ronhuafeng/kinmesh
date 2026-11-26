@@ -10,6 +10,9 @@ import { Fragment, useState } from 'react';
 import { SettingsIcons } from '../shared/icons.js';
 import { levelOf } from '../shared/levels.js';
 import { useNavigation, useScreen, useActions } from './contexts.js';
+import { PlaceLink } from '../shared/place-link.js';
+import { hrefsOf } from './place-hrefs.js';
+import { startRenaming, useRenaming } from './renaming.js';
 
 /**
  * A phone lists channels as conversations: the newest message first (by
@@ -20,7 +23,7 @@ export function byActivity(
   latest: WorkspaceSnapshot['latest'],
 ) {
   const at = new Map(latest.map((l) => [l.channelId, l.createdAt]));
-  return [...channels].sort((a, b) => {
+  return channels.toSorted((a, b) => {
     const x = at.get(a.id) ?? '';
     const y = at.get(b.id) ?? '';
     return x === y ? a.name.localeCompare(b.name, 'zh-CN') : x < y ? 1 : -1;
@@ -72,6 +75,7 @@ export function JoinableChannels({
   teamId,
   channels,
   current,
+  hrefOf,
   onOpen,
   onDone,
 }: {
@@ -79,6 +83,7 @@ export function JoinableChannels({
   channels: WorkspaceSnapshot['publicChannels'];
   /** The one open to look in. */
   current: string | null;
+  hrefOf: (id: string) => string;
   onOpen: (id: string) => void;
   onDone: (id: string) => void;
 }) {
@@ -88,15 +93,16 @@ export function JoinableChannels({
       {channels.map((c) => (
         <li key={c.id}>
           {c.visibility === 'public' ? (
-            <button
-              type="button"
+            <PlaceLink
+              className="button"
+              href={hrefOf(c.id)}
               aria-current={current === c.id ? 'page' : undefined}
-              onClick={() => {
+              onOpen={() => {
                 onOpen(c.id);
               }}
             >
               <span aria-hidden="true">#</span> {c.name}
-            </button>
+            </PlaceLink>
           ) : (
             <span>
               <span aria-hidden="true">#</span> {c.name}
@@ -121,6 +127,8 @@ export function JoinableChannels({
  * join, and more when there are more.
  */
 export function ChannelList() {
+  const navigation = useNavigation();
+  const hrefs = hrefsOf(navigation);
   const {
     selection,
     setSelection,
@@ -129,7 +137,7 @@ export function ChannelList() {
     next,
     selectChannel,
     leavePage,
-  } = useNavigation();
+  } = navigation;
   const {
     data,
     phone,
@@ -141,10 +149,25 @@ export function ChannelList() {
     looking,
     waitingIn,
   } = useScreen();
-  const { leaveChannelById, notify, refresh } = useActions();
+  const {
+    leaveChannelById,
+    changeVisibility,
+    archiveChannel,
+    notify,
+    refresh,
+  } = useActions();
   const [addingChannel, setAddingChannel] = useState(false);
   // The channel being named again, in place in its row.
-  const [renaming, setRenaming] = useState<string | null>(null);
+  const renaming = useRenaming();
+  const unread = (id: string) =>
+    data.latest.find((l) => l.channelId === id)?.unread === true;
+  /** What a row shows of a channel beyond its name, in words. */
+  const statesOf = (id: string) => [
+    ...(unread(id) ? ['未读'] : []),
+    ...(levelOf(data, id) === 'mute' ? ['已静音'] : []),
+    ...(levelOf(data, id) === 'follow' ? ['每条消息都通知你'] : []),
+    ...(waitingIn.has(id) ? ['等你处理'] : []),
+  ];
   return (
     <>
       <nav aria-label="频道">
@@ -172,7 +195,7 @@ export function ChannelList() {
                 initial={c.name}
                 taken="这个名称已被占用"
                 onClose={() => {
-                  setRenaming(null);
+                  startRenaming(null);
                 }}
                 onCreated={() => {
                   refresh();
@@ -185,29 +208,26 @@ export function ChannelList() {
                 channelName={c.name}
                 onLeave={leaveChannelById}
                 onFailed={notify}
-                onRename={setRenaming}
-                onArchived={(id) => {
-                  if (id === channel?.id) selectChannel('');
-                  refresh();
-                }}
+                onRename={startRenaming}
+                onVisibility={changeVisibility}
+                onArchive={archiveChannel}
               >
-                <button
+                <PlaceLink
+                  className="button"
+                  href={hrefs.channel(c.id)}
                   // On a phone the row also shows the newest message,
-                  // which describes it rather than naming it.
+                  // which describes it rather than naming it; its name
+                  // then says what the row shows of it.
                   {...(phone
                     ? {
-                        'aria-label': c.name,
+                        'aria-label': [c.name, ...statesOf(c.id)].join('，'),
                         'aria-describedby': 'latest-' + c.id,
                       }
                     : {})}
                   data-muted={
                     levelOf(data, c.id) === 'mute' ? 'true' : undefined
                   }
-                  data-unread={
-                    data.latest.find((l) => l.channelId === c.id)?.unread
-                      ? 'true'
-                      : undefined
-                  }
+                  data-unread={unread(c.id) ? 'true' : undefined}
                   aria-current={
                     // Only one place is current: a channel while you are
                     // in its chat or board.
@@ -217,7 +237,7 @@ export function ChannelList() {
                       ? 'page'
                       : undefined
                   }
-                  onClick={() => {
+                  onOpen={() => {
                     selectChannel(c.id);
                   }}
                 >
@@ -245,16 +265,24 @@ export function ChannelList() {
                       <span className="channel-name" title={c.name}>
                         {c.name}
                       </span>
+                      {/* What the weight and the grey say, heard. */}
+                      {unread(c.id) && (
+                        <span className="visually-hidden">未读</span>
+                      )}
+                      {levelOf(data, c.id) === 'mute' && (
+                        <span className="visually-hidden">已静音</span>
+                      )}
                     </>
                   )}
                   {/* You follow it: every message notifies you. */}
                   {levelOf(data, c.id) === 'follow' && (
                     <span className="channel-follow" title="每条消息都通知你">
                       <SettingsIcons.bell size={16} />
+                      <span className="visually-hidden">每条消息都通知你</span>
                     </span>
                   )}
                   {/* Something in this channel waits on you; once
-                              nothing does, the dot fades out. */}
+                            nothing does, the dot fades out. */}
                   <span
                     className="waiting-dot"
                     data-on={waitingIn.has(c.id) ? 'true' : undefined}
@@ -266,7 +294,7 @@ export function ChannelList() {
                       <span className="visually-hidden">等你处理</span>
                     )}
                   </span>
-                </button>
+                </PlaceLink>
               </ChannelMenu>
             )}
             {channel?.id === c.id && channelPath && (
@@ -309,6 +337,7 @@ export function ChannelList() {
           teamId={data.team.id}
           channels={[...data.publicChannels, ...data.leftChannels]}
           current={looking && channel ? channel.id : null}
+          hrefOf={hrefs.channel}
           onOpen={selectChannel}
           onDone={selectChannel}
         />

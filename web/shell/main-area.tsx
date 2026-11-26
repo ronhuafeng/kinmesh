@@ -6,13 +6,17 @@ import { useThumb } from './use-thumb.js';
 import { FocusPages } from './focus-pages.js';
 import { Views } from './views.js';
 import { useNavigation, useScreen } from './contexts.js';
+import { PlaceLink } from '../shared/place-link.js';
+import { hrefsOf } from './place-hrefs.js';
 
 /**
  * The main area: the header with the way back, the views and the
  * connection, then the place on screen or the page open over it.
  */
 export function MainArea() {
-  const { view, setView, goHome, leavePage } = useNavigation();
+  const navigation = useNavigation();
+  const { view, setView, goHome, back, leavePage } = navigation;
+  const hrefs = hrefsOf(navigation);
   const {
     data,
     phone,
@@ -32,23 +36,21 @@ export function MainArea() {
   // Where a page beside the sidebar puts its way back.
   const [headerStart, setHeaderStart] = useState<HTMLElement | null>(null);
   const viewTabs = useThumb();
+  // Each view of the channel is its own address; only a channel with pins
+  // has their view.
+  const views = (
+    [
+      ['chat', '聊天'],
+      ['board', '看板'],
+      ['team', '成员'],
+      ['files', '文件'],
+      ['pins', '置顶'],
+    ] as const
+  ).filter(([v]) => v !== 'pins' || data.pinned.length > 0 || view === 'pins');
   return (
     <main className="workspace-main">
       <HeaderStart.Provider value={headerStart}>
-        <Tabs.Root
-          className="workspace-tabs"
-          value={tabValue}
-          // Focus returning from a page or the palette must not switch views.
-          activationMode="manual"
-          onValueChange={(v) => {
-            if (v === 'inbox') return;
-            setView(
-              v === 'board' || v === 'team' || v === 'files' || v === 'pins'
-                ? v
-                : 'chat',
-            );
-          }}
-        >
+        <Tabs.Root className="workspace-tabs" value={tabValue}>
           <header
             className="workspace-header"
             // Settings beside their map hold nothing up here: no
@@ -68,7 +70,9 @@ export function MainArea() {
                   type="button"
                   className="quiet icon-button header-back"
                   aria-label="返回"
-                  onClick={goHome}
+                  onClick={() => {
+                    back(goHome);
+                  }}
                 >
                   <BackIcon size={20} />
                 </button>
@@ -108,48 +112,45 @@ export function MainArea() {
             {/* Views stay in reach however far the conversation scrolls;
                         they belong to a channel, so settings show none. */}
             {!inSettings && (
-              <Tabs.List
+              <nav
                 ref={viewTabs}
                 aria-label="工作区视图"
                 className="view-switch"
               >
-                <Tabs.Trigger value="chat" onClick={leavePage}>
-                  聊天
-                </Tabs.Trigger>
-                <Tabs.Trigger value="board" onClick={leavePage}>
-                  看板
-                </Tabs.Trigger>
-                <Tabs.Trigger value="team" onClick={leavePage}>
-                  成员
-                </Tabs.Trigger>
-                <Tabs.Trigger value="files" onClick={leavePage}>
-                  文件
-                </Tabs.Trigger>
-                {/* Only a channel with pins has their view. */}
-                {(data.pinned.length > 0 || view === 'pins') && (
-                  <Tabs.Trigger value="pins" onClick={leavePage}>
-                    置顶
-                  </Tabs.Trigger>
-                )}
-              </Tabs.List>
+                {views.map(([v, label]) => (
+                  <PlaceLink
+                    key={v}
+                    className="button"
+                    href={hrefs.view(v)}
+                    aria-current={tabValue === v ? 'page' : undefined}
+                    onOpen={() => {
+                      leavePage();
+                      setView(v);
+                    }}
+                  >
+                    {label}
+                  </PlaceLink>
+                ))}
+              </nav>
             )}
             <div className="header-end">
               {/* Healthy is silent. Out of reach, it says so here, in the
                   bar's own room, so nothing under it moves; it comes back
-                  by itself. A refresh asked for, or a slow one, says so. */}
-              {stale ? (
-                <div className="connection" data-stale="true">
-                  <span className="connection-dot" aria-hidden="true" />
-                  <span role="status">连不上 Kinmesh</span>
-                </div>
-              ) : (
-                refreshing && (
-                  <div className="connection">
+                  by itself. A refresh asked for, or a slow one, says so,
+                  inside a region that is always there, so it is heard. */}
+              <div role="status">
+                {(stale || refreshing) && (
+                  <div
+                    className="connection"
+                    data-stale={stale ? 'true' : undefined}
+                  >
                     <span className="connection-dot" aria-hidden="true" />
-                    <span role="status">正在刷新…</span>
+                    <span className="connection-text">
+                      {stale ? '连不上 Kinmesh' : '正在刷新…'}
+                    </span>
                   </div>
-                )
-              )}
+                )}
+              </div>
             </div>
           </header>
           <fieldset

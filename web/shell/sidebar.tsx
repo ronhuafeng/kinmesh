@@ -6,14 +6,15 @@ import { TeamMenu } from './menus.js';
 import { ChannelList } from './channel-list.js';
 import { PeopleList } from './people-list.js';
 import { useNavigation, useScreen, useActions } from './contexts.js';
+import { hrefsOf } from './place-hrefs.js';
 
 /**
  * The sidebar: the team and search, what waits on you, the channels and
  * the people in the open one, and you at its foot; in settings, their map.
  */
 export function Sidebar() {
-  const { focus, setFocus, setDraft, closeFocus, openSettings } =
-    useNavigation();
+  const navigation = useNavigation();
+  const { focus, setFocus, setDraft, closeFocus, openSettings } = navigation;
   const {
     data,
     phone,
@@ -39,6 +40,7 @@ export function Sidebar() {
       {inSettings && !phone ? (
         <SettingsNav
           current={settingsSection}
+          hrefOf={hrefsOf(navigation).settings}
           onSelect={openSettings}
           onBack={closeFocus}
         />

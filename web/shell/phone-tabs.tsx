@@ -40,7 +40,7 @@ export function PhoneTabs() {
       </button>
       <button
         type="button"
-        aria-label="收件箱"
+        aria-label={waiting > 0 ? '收件箱 ' + String(waiting) : '收件箱'}
         title="收件箱"
         aria-current={focus?.kind === 'inbox' ? 'page' : undefined}
         onClick={() => {

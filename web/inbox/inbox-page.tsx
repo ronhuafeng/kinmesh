@@ -10,6 +10,7 @@ import { humanAsk } from '../shared/task-status.js';
 import { Avatar } from '../shared/faces.js';
 import { Page } from '../shared/page.js';
 import { ago, workerConnected } from '../shared/format.js';
+import { useMinute } from '../shared/clock.js';
 
 /** One row: who it is about, what it is, where and when; the row opens it. */
 interface Item {
@@ -52,6 +53,8 @@ export function InboxPage({
   openChannel: (channelId: string) => void;
   openAgent: (agentId: string) => void;
 }) {
+  // How long ago each thing happened moves on as the minutes pass.
+  const now = useMinute();
   const { decide, unstuck, connect, t3 } = data.attention;
   const name = (id: string) => memberName({ kind: 'agent', id }, data);
   const items: Item[] = [
@@ -158,7 +161,6 @@ export function InboxPage({
                 <button
                   type="button"
                   className="inbox-main"
-                  aria-label={item.what}
                   onClick={item.open}
                 >
                   <span className="inbox-what">{item.what}</span>
@@ -176,7 +178,7 @@ export function InboxPage({
               )}
               {item.at && (
                 <time dateTime={item.at} className="inbox-time">
-                  {ago(item.at)}
+                  {ago(item.at, now)}
                 </time>
               )}
               {item.fix && <div className="inbox-fix">{item.fix}</div>}

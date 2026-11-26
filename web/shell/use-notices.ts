@@ -10,7 +10,8 @@ export interface Toast {
 /**
  * A short word at the foot of the screen, and what concerned you while you
  * were here as notices instead of notifications: each once, one after
- * another; a notice also opens its place.
+ * another; a notice also opens its place. A toast stays while the pointer
+ * or focus is on it.
  */
 export function useNotices(data: WorkspaceSnapshot | null) {
   // A word said here, which goes before any notice.
@@ -36,16 +37,34 @@ export function useNotices(data: WorkspaceSnapshot | null) {
   }, [noticeId]);
   const id = toast?.id;
   const lasting = toast?.url ? 8000 : 4000;
+  // What holds the toast on screen: the pointer over it, focus in it.
+  const [holding, setHolding] = useState<{
+    id: Toast['id'] | undefined;
+    by: ReadonlySet<'pointer' | 'focus'>;
+  }>({ id: undefined, by: new Set() });
+  const held = holding.id === id && holding.by.size > 0;
+  /** While held, a toast waits; let go, it has its whole time again. */
+  const hold = useCallback(
+    (by: 'pointer' | 'focus', on: boolean) => {
+      setHolding((old) => {
+        const next = new Set(old.id === id ? old.by : []);
+        if (on) next.add(by);
+        else next.delete(by);
+        return { id, by: next };
+      });
+    },
+    [id],
+  );
   useEffect(() => {
-    if (id === undefined) return;
+    if (id === undefined || held) return;
     const timer = setTimeout(dismiss, lasting);
     return () => {
       clearTimeout(timer);
     };
-  }, [id, lasting, dismiss]);
+  }, [id, lasting, dismiss, held]);
   const notify = (message: string) => {
     setSaid({ id: Date.now(), message });
   };
-  return { toast, dismiss, notify };
+  return { toast, dismiss, notify, hold };
 }
 export type Notices = ReturnType<typeof useNotices>;

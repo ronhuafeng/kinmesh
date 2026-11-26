@@ -48,26 +48,31 @@ export function CodeBlock({ lang, source }: { lang: string; source: string }) {
     };
   }, [key, lang, source]);
   return (
-    <Copyable source={source}>
-      <pre data-lang={lang}>
-        <code className={'language-' + lang}>
-          {tree ? toJsxRuntime(tree, { Fragment, jsx, jsxs }) : source}
-        </code>
-      </pre>
+    <Copyable source={source} lang={lang}>
+      <code className={'language-' + lang}>
+        {tree ? toJsxRuntime(tree, { Fragment, jsx, jsxs }) : source}
+      </code>
     </Copyable>
   );
 }
-/** A block of code that copies as written, from a button on its corner. */
+/**
+ * A block of code that copies as written, from a button on its corner. A
+ * wide one scrolls inside the message, by keyboard too, as a table does.
+ */
 export function Copyable({
   source,
+  lang,
   children,
 }: {
   source: string;
+  lang?: string;
   children: ReactNode;
 }) {
   return (
     <div className="code-block">
-      {children}
+      <pre data-lang={lang} role="region" aria-label="代码" tabIndex={0}>
+        {children}
+      </pre>
       <CopyButton text={source} label="复制" className="code-copy" />
     </div>
   );

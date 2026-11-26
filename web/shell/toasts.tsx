@@ -2,12 +2,29 @@ import { useActions } from './contexts.js';
 
 /**
  * One live region, always there, says each toast once; a notice inside it
- * stays a button that opens what it is about.
+ * stays a button that opens what it is about. It waits while pointed at
+ * or focused.
  */
 export function Toasts() {
-  const { toast, dismiss } = useActions();
+  const { toast, dismiss, hold } = useActions();
   return (
-    <div className="toast-region" role="status">
+    <div
+      className="toast-region"
+      role="status"
+      onPointerEnter={() => {
+        hold('pointer', true);
+      }}
+      onPointerLeave={() => {
+        hold('pointer', false);
+      }}
+      onFocus={() => {
+        hold('focus', true);
+      }}
+      onBlur={(event) => {
+        if (!event.currentTarget.contains(event.relatedTarget))
+          hold('focus', false);
+      }}
+    >
       {toast &&
         (toast.url ? (
           <button

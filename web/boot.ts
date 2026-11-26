@@ -68,7 +68,8 @@ if ('serviceWorker' in navigator)
       .register('/sw.js', { scope: '/' })
       .catch(() => undefined);
   });
-// Chrome offers to install the app once, early: kept for 安装 in settings.
+// Chrome offers to install the app, early, and may offer again later: the
+// newest offer is kept for 安装 in settings, which spends it.
 const isOffer = (event: Event): event is InstallOffer =>
   'prompt' in event && 'userChoice' in event;
 window.addEventListener('beforeinstallprompt', (event) => {

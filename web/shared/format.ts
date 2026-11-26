@@ -64,15 +64,18 @@ export function cjk(text: string) {
     '',
   );
 }
-/** "刚刚" or "5 分钟前", for sentences. */
+/**
+ * "刚刚" or "5 分钟前", for sentences: whole units that have passed, so 90
+ * minutes is still "1 小时前".
+ */
 export function ago(iso: string, now = Date.now()) {
-  const minutes = Math.max(0, Math.round((now - Date.parse(iso)) / 60_000));
+  const minutes = Math.max(0, Math.floor((now - Date.parse(iso)) / 60_000));
   if (minutes < 1) return '刚刚';
   if (minutes < 60) return `${String(minutes)} 分钟前`;
-  const hours = Math.round(minutes / 60);
+  const hours = Math.floor(minutes / 60);
   return hours < 24
     ? `${String(hours)} 小时前`
-    : `${String(Math.round(hours / 24))} 天前`;
+    : `${String(Math.floor(hours / 24))} 天前`;
 }
 /** Eight in the morning after now, by this browser's clock. */
 export function tomorrowMorning(now: Date) {

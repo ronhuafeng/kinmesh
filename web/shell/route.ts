@@ -128,12 +128,20 @@ export function routeUrl(place: {
   const search = query.toString().replace(/=(?=&|$)/g, '');
   return '/' + (search ? '?' + search : '');
 }
-/** Two addresses are the same place when only the topic differs. */
-export function samePlace(a: string, b: string) {
-  const strip = (url: string) => {
-    const parsed = new URL(url, window.location.origin);
-    parsed.searchParams.delete('topic');
-    return parsed.search;
+/**
+ * Going from `here` to `next` stays in the same place when only the topic
+ * differs, or when the new task written here became itself.
+ */
+export function samePlace(next: string, here: string) {
+  const query = (url: string) => {
+    const parsed = new URL(url, window.location.origin).searchParams;
+    parsed.delete('topic');
+    return parsed;
   };
-  return strip(a) === strip(b);
+  const [to, from] = [query(next), query(here)];
+  if (from.get('task') === 'new' && to.has('task')) {
+    to.delete('task');
+    from.delete('task');
+  }
+  return to.toString() === from.toString();
 }

@@ -1,10 +1,6 @@
 import { type ReactNode, useId } from 'react';
 
 /**
- * A row with its choice at the end: the segmented control. `title` says on
- * hover what the row does, when its label alone may not.
- */
-/**
  * A settings group: a small heading over its rows, which hairlines divide.
  * A page of one group has no heading; the map already names it.
  */
@@ -94,6 +90,11 @@ export function ListRow({
     </li>
   );
 }
+/**
+ * A row with its choice at the end: the segmented control. `title` says
+ * what the row does, when its label alone may not: on hover, and to a
+ * screen reader as the choices' description.
+ */
 export function ChoiceRow<T extends string>({
   label,
   title,
@@ -115,7 +116,12 @@ export function ChoiceRow<T extends string>({
       <span id={id} {...(title ? { title } : {})}>
         {label}
       </span>
-      <div className="segmented" role="group" aria-labelledby={id}>
+      <div
+        className="segmented"
+        role="group"
+        aria-labelledby={id}
+        {...(title ? { 'aria-description': title } : {})}
+      >
         {options.map((o) => (
           <button
             key={o.id}

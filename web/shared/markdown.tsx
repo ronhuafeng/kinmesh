@@ -89,11 +89,7 @@ const components: Components = {
     if (lang === 'mermaid' && source.trim() !== '')
       return <MermaidBlock source={source} />;
     if (lang) return <CodeBlock lang={lang} source={source} />;
-    return (
-      <Copyable source={source}>
-        <pre>{children}</pre>
-      </Copyable>
-    );
+    return <Copyable source={source}>{children}</Copyable>;
   },
   // Wide tables scroll inside the message, by keyboard too.
   table({ children }) {

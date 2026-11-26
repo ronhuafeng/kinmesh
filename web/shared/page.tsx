@@ -10,6 +10,7 @@ import type { ReactNode } from 'react';
 import { BackIcon } from './icons.js';
 import { useMedia } from './screen-size.js';
 import { composing } from './keys.js';
+import { useFocusReturn } from './focus-return.js';
 
 /**
  * The start of the top bar, where a page beside the sidebar puts its way
@@ -23,7 +24,8 @@ export const HeaderStart = createContext<HTMLElement | null>(null);
  * none. On a tablet the way back is at the start of the top bar, unless a
  * view's tab already leads back (`tabLeadsBack`, a task under 看板). Esc
  * goes back, unless a popover or dialog takes it; only the innermost (last)
- * page answers, so a page shown within another closes alone.
+ * page answers, so a page shown within another closes alone. Closed with
+ * focus inside, focus goes back to what opened it, else to the view's tab.
  */
 export function Page({
   label,
@@ -43,6 +45,9 @@ export function Page({
   const headerStart = useContext(HeaderStart);
   const tablet = useMedia('(min-width: 576px) and (max-width: 1279px)');
   const page = useRef<HTMLElement>(null);
+  useFocusReturn(page, () =>
+    document.querySelector('.view-switch [role="tab"][aria-selected="true"]'),
+  );
   useEffect(() => {
     page.current?.focus({ preventScroll: true });
     window.scrollTo({ top: 0 });
