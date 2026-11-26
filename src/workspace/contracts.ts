@@ -32,6 +32,8 @@ import {
   Message,
   REACH,
   NAMED_TOPICS_MOST,
+  TOPICS_FIRST,
+  TOPICS_MOST,
   Topic,
   pageOf,
 } from '../domain/communication.js';
@@ -77,7 +79,13 @@ export const WorkspaceQuery = z.strictObject({
   topicId: TopicId.optional(),
   taskId: TaskId.optional(),
   messagesCursor: z.string().min(1).max(2048).optional(),
-  topicsCursor: z.string().min(1).max(2048).optional(),
+  /** How many of the channel's topics to list (`topics`), at least the first. */
+  topicsShown: z.coerce
+    .number()
+    .int()
+    .min(TOPICS_FIRST)
+    .max(TOPICS_MOST)
+    .optional(),
   channelsCursor: z.string().min(1).max(2048).optional(),
 });
 export type WorkspaceQuery = z.infer<typeof WorkspaceQuery>;
@@ -241,17 +249,16 @@ export const WorkspaceSnapshot = z.strictObject({
     items: z.array(Message).max(REACH),
     nextCursor: z.string().nullable(),
   }),
-  topics: pageOf(Topic),
-  /**
-   * The topics something here names: those the channel's tasks are in and
-   * those of the messages shown, newest first.
-   */
-  namedTopics: z.array(Topic).max(NAMED_TOPICS_MOST),
-  /** The channel's most recently active topics, newest first. */
-  activeTopics: z.strictObject({
-    items: z.array(Topic).max(10),
+  /** The channel's topics, the most recently active first. */
+  topics: z.strictObject({
+    items: z.array(Topic).max(TOPICS_MOST),
     more: z.boolean(),
   }),
+  /**
+   * The topics something here names: the one open, those the channel's
+   * tasks are in and those of the messages shown, newest first.
+   */
+  namedTopics: z.array(Topic).max(NAMED_TOPICS_MOST),
   /**
    * The channel's board: its unfinished tasks, newest first, then its most
    * recently finished; `nextCursor` reads older finished tasks.

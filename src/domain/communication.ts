@@ -127,6 +127,10 @@ export const Topic = z.strictObject({
   author: Author,
   createdAt: z.iso.datetime(),
 });
+/** Topics the workspace lists at first, the most recently active. */
+export const TOPICS_FIRST = 50;
+/** Most topics the workspace lists, however far 更多话题 reaches. */
+export const TOPICS_MOST = 500;
 /** Most topics the workspace names for what it shows (its tasks and messages). */
 export const NAMED_TOPICS_MOST = 700;
 /** The reactions a person may add to a message: a small fixed set. */

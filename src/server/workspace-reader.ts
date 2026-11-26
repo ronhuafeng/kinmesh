@@ -6,6 +6,7 @@ import type { Principal } from '../domain/agents.js';
 import { DomainError } from '../domain/errors.js';
 import { INBOX_LIVENESS_MS } from '../domain/inbox.js';
 import { FINISHED } from '../domain/tasks.js';
+import { TOPICS_FIRST } from '../domain/communication.js';
 import type { Store } from '../persistence/store.js';
 import { together } from '../persistence/database.js';
 import { fingerprint } from '../persistence/transactional.js';
@@ -158,7 +159,6 @@ export function workspaceReader(
       avatars,
       quiet,
       topics,
-      activeTopics,
       firstUnread,
       pinned,
       archivedChannels,
@@ -207,12 +207,12 @@ export function workspaceReader(
       store.agents.avatars(principal, teamId),
       store.quiet.quiet(principal.humanId, teamId),
       channel
-        ? store.topics.topics(principal, teamId, channel.id, {
-            ...(query.topicsCursor ? { cursor: query.topicsCursor } : {}),
-          })
-        : { items: [], nextCursor: null },
-      channel
-        ? store.topics.activeTopics(principal, teamId, channel.id, 10)
+        ? store.topics.activeTopics(
+            principal,
+            teamId,
+            channel.id,
+            query.topicsShown ?? TOPICS_FIRST,
+          )
         : { items: [], more: false },
       // Where you stopped reading what is open, to open it there.
       channel
@@ -315,11 +315,15 @@ export function workspaceReader(
                   opened.id,
                 )
               : [],
-            // Names for the topics the board and the messages shown are in.
+            // Names for the topic open, and those the board and the
+            // messages shown are in.
             store.topics.named(principal, teamId, channel.id, [
-              ...new Set(
-                messages.items.flatMap((m) => (m.topicId ? [m.topicId] : [])),
-              ),
+              ...new Set([
+                ...(query.topicId ? [query.topicId] : []),
+                ...messages.items.flatMap((m) =>
+                  m.topicId ? [m.topicId] : [],
+                ),
+              ]),
             ]),
           ])
         : [[], [], [], [], []];
@@ -412,7 +416,6 @@ export function workspaceReader(
         avatars: avatars.filter((row) => known.has(AgentId.parse(row.agentId))),
         messages,
         topics,
-        activeTopics,
         tasks,
         openTask,
         taskPullRequests,

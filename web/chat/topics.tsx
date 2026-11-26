@@ -1,4 +1,6 @@
 import { useState } from 'react';
+import { TOPICS_FIRST, TOPICS_MOST } from '../../src/domain/communication.js';
+import { topicTitle } from '../shared/names.js';
 import { AddButton, InlineField } from '../shared/forms.js';
 import type { WorkspaceSnapshot } from '../../src/workspace/contracts.js';
 
@@ -39,8 +41,9 @@ export function NewTopic({
 }
 /**
  * The current channel's topics, under it in the sidebar like a tree: "All",
- * the ten most recently active, then the rest only when asked for, a "+" to
- * start one, and leaving the channel. A topic is pressed only while its
+ * the ten most recently active, then the rest of the same list only when
+ * asked for (更多话题, which reaches further each time), a "+" to start one.
+ * The topic you are in is always there. A topic is pressed only while its
  * channel's chat or board is the place on screen (`current`).
  */
 export function ChannelTopics({
@@ -59,15 +62,14 @@ export function ChannelTopics({
   next: (key: string, cursor: string | null) => void;
 }) {
   const [all, setAll] = useState(false);
-  const recent = data.activeTopics.items;
-  const shown = new Set(recent.map((t) => t.id));
+  const listed = data.topics.items;
+  const recent = listed.slice(0, 10);
+  const shown = new Set<string>(recent.map((t) => t.id));
   // The topic you are in stays in sight even when it is not among the recent.
-  const current = data.topics.items.find(
-    (t) => t.id === topic && !shown.has(t.id),
-  );
-  const rest = all
-    ? data.topics.items.filter((t) => !shown.has(t.id) && t.id !== current?.id)
-    : [];
+  const title = shown.has(topic) ? null : topicTitle(data, topic || null);
+  const current = title === null ? undefined : { id: topic, title };
+  const rest = all ? listed.slice(10).filter((t) => t.id !== current?.id) : [];
+  const further = data.topics.more && listed.length < TOPICS_MOST;
   const row = (t: { id: string; title: string }) => (
     <li key={t.id}>
       <button
@@ -101,7 +103,7 @@ export function ChannelTopics({
         {recent.map(row)}
         {current && row(current)}
         {rest.map(row)}
-        {data.activeTopics.more &&
+        {(listed.length > 10 || further) &&
           (!all ? (
             <li>
               <button
@@ -115,13 +117,18 @@ export function ChannelTopics({
               </button>
             </li>
           ) : (
-            data.topics.nextCursor && (
+            further && (
               <li>
                 <button
                   type="button"
                   className="quiet"
                   onClick={() => {
-                    next('topicsCursor', data.topics.nextCursor);
+                    next(
+                      'topicsShown',
+                      String(
+                        Math.min(listed.length + TOPICS_FIRST, TOPICS_MOST),
+                      ),
+                    );
                   }}
                 >
                   更多话题
