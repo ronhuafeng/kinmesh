@@ -9,11 +9,13 @@ import {
   eq,
   gt,
   gte,
+  inArray,
   isNotNull,
   isNull,
   lt,
   lte,
   max,
+  notInArray,
   or,
   sql,
 } from 'drizzle-orm';
@@ -38,11 +40,14 @@ import { DomainError } from '../domain/errors.js';
 import {
   memberKey,
   type Member,
-  type PageInput,
+  PageInput,
   TaskFact,
 } from '../domain/communication.js';
 import {
   Task,
+  BOARD_FINISHED_FIRST,
+  BOARD_OPEN_MOST,
+  FINISHED,
   TaskCreate,
   TaskCommand,
   TaskEvent,
@@ -58,6 +63,13 @@ import {
 import { proofOf } from './task-proof.js';
 type ChannelId = z.infer<typeof ChannelId>;
 const decode = (value: string): unknown => JSON.parse(value);
+/** Where a page of finished tasks stopped: the last one's finish and position. */
+const FinishedCursor = z.strictObject({
+  v: z.literal(3),
+  context: z.string().max(1024),
+  at: z.iso.datetime(),
+  before: z.number().int().positive(),
+});
 export function taskRepository(
   d: Database,
   agents: ReturnType<typeof agentRepository>,
@@ -87,6 +99,70 @@ export function taskRepository(
   ) => ['open', c.operationKey, c.expectedVersion, c.change];
   const asked = (data: TaskCommand) =>
     data.type === 'open-pull-request' ? opened(data) : data;
+  /** A page of a channel's finished tasks, the most recently finished first. */
+  async function finishedPage(
+    p: Principal,
+    teamId: TeamId,
+    channelId: ChannelId,
+    input: PageInput,
+  ) {
+    const { limit, cursor } = PageInput.parse(input);
+    const context = JSON.stringify([
+      'finished-tasks',
+      teamId,
+      channelId,
+      memberKey(principalMember(p)),
+    ]);
+    let from: { at: string; before: number } | null = null;
+    if (cursor !== undefined)
+      try {
+        const parsed = FinishedCursor.parse(
+          decode(Buffer.from(cursor, 'base64url').toString('utf8')),
+        );
+        if (parsed.context !== context) throw new Error('Wrong cursor');
+        from = parsed;
+      } catch {
+        throw new DomainError('invalid');
+      }
+    const rows = (
+      await q()
+        .select()
+        .from(s.tasks)
+        .where(
+          and(
+            eq(s.tasks.channelId, channelId),
+            inArray(s.tasks.status, [...FINISHED]),
+            from === null
+              ? undefined
+              : or(
+                  lt(s.tasks.updatedAt, from.at),
+                  and(
+                    eq(s.tasks.updatedAt, from.at),
+                    lt(s.tasks.position, from.before),
+                  ),
+                ),
+          ),
+        )
+        .orderBy(desc(s.tasks.updatedAt), desc(s.tasks.position))
+        .limit(limit + 1)
+    ).map(view);
+    const items = rows.slice(0, limit);
+    const last = items.at(-1);
+    return {
+      items,
+      nextCursor:
+        rows.length > limit && last !== undefined
+          ? Buffer.from(
+              JSON.stringify({
+                v: 3,
+                context,
+                at: last.updatedAt,
+                before: last.position,
+              }),
+            ).toString('base64url')
+          : null,
+    };
+  }
   async function access(
     p: Principal,
     teamId: TeamId,
@@ -550,6 +626,53 @@ export function taskRepository(
                 .limit(limit)
             ).map(view),
         );
+      });
+    },
+    /**
+     * A channel's finished tasks (accepted or cancelled), the most recently
+     * finished first. A finished task never changes again, so its last change
+     * is when it finished, and a task finishing later never enters an older
+     * page.
+     */
+    finished(
+      p: Principal,
+      teamId: TeamId,
+      channelId: ChannelId,
+      input: PageInput = {},
+    ) {
+      return atomic(async () => {
+        await access(p, teamId, channelId);
+        return finishedPage(p, teamId, channelId, input);
+      });
+    },
+    /**
+     * What a channel's board holds: every unfinished task (up to
+     * `BOARD_OPEN_MOST`, the newest), then the most recently finished page,
+     * whose cursor reads older finished tasks (`finished`).
+     */
+    board(p: Principal, teamId: TeamId, channelId: ChannelId) {
+      return atomic(async () => {
+        await access(p, teamId, channelId);
+        const open = (
+          await q()
+            .select()
+            .from(s.tasks)
+            .where(
+              and(
+                eq(s.tasks.channelId, channelId),
+                notInArray(s.tasks.status, [...FINISHED]),
+              ),
+            )
+            .orderBy(desc(s.tasks.position))
+            .limit(BOARD_OPEN_MOST)
+        ).map(view);
+        const finished = await finishedPage(p, teamId, channelId, {
+          limit: BOARD_FINISHED_FIRST,
+        });
+        return {
+          items: [...open, ...finished.items],
+          nextCursor: finished.nextCursor,
+        };
       });
     },
     /** Trusted Inbox ACK only; the enclosing transaction binds the exact native result and source. */

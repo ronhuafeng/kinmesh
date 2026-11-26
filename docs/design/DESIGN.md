@@ -708,7 +708,7 @@ Corners are tight and few, an instrument's rather than a toy's: the `rounded` to
   进行中 (working) → 审核中 (review) → 待验收 (human sign-off) → 已完成 (done). Rework
   stays in 进行中 (marked "已退回"); cancelled work goes to 已完成 (marked "已取消",
   hidden until asked for). In a column what matters most comes first (high, normal,
-  low), then what is due soonest, then the newest; 已完成 stays newest first. Columns are rounded panels of the grey canvas sharing the width (the
+  low), then what is due soonest, then the newest; 已完成 runs the most recently finished first. Columns are rounded panels of the grey canvas sharing the width (the
   board never scrolls sideways), one equal height down to the view's bottom gutter, each headed by a coloured dot and its name
   (the dot on the cards' text edge) with a bar of that colour under it in the bottom gutter (together, the lifecycle along the board's foot), no counts; 待验收 stands out with an orange edge
   and a warm tint while it holds a card. A card's column is its status. A card is white and rounded: its
@@ -719,8 +719,9 @@ Corners are tight and few, an instrument's rather than a toy's: the `rounded` to
   starts from the dashed `+` card at the end of 待开始. Below 1024 px the stages are a
   segmented control. Above the columns the board narrows: 全部 / 我的 (yours: you own,
   review or decide on it), then a picker of owners and one of topics, each only when
-  the board holds more than one to choose; the address keeps the choice. 已完成 reaches
-  back past the newest hundred tasks with **更早的任务**.
+  the board holds more than one to choose; the address keeps the choice, and an owner
+  or topic the board no longer holds narrows nothing. Every unfinished task is on the
+  board, however old; 已完成 reaches back through finished work with **更早的任务**.
 - **Task page** (new or existing, one layout): lifecycle bar — passed steps neutral
   grey, the current one in its board column's colour, what is ahead a hairline; large
   title; the description, unless it only repeats the title; on the left, in order of

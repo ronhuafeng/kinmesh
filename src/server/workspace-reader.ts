@@ -179,7 +179,7 @@ export function workspaceReader(
           )
         : { items: [], nextCursor: null },
       channel
-        ? store.tasks.list(principal, teamId, channel.id, { limit: 100 })
+        ? store.tasks.board(principal, teamId, channel.id)
         : { items: [], nextCursor: null },
       // A task opened by its address, kept below unless the board shows it.
       channel && query.taskId !== undefined

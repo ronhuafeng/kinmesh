@@ -93,6 +93,12 @@ export const TaskCreate = Mutation.extend({
   priority: TaskPriority.default('normal'),
 });
 export type TaskCreate = z.input<typeof TaskCreate>;
+/** The statuses a task ends in; a task in one never changes again. */
+export const FINISHED = ['accepted', 'cancelled'] as const;
+/** Most unfinished tasks of a channel its board holds. */
+export const BOARD_OPEN_MOST = 500;
+/** Finished tasks the board starts with, the most recently finished. */
+export const BOARD_FINISHED_FIRST = 50;
 export const Task = z
   .strictObject({
     id: TaskId,

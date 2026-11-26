@@ -8,6 +8,8 @@ import type { Store } from '../persistence/store.js';
 import { principal } from './principals.js';
 const ChannelPath = z.object({ teamId: TeamId, channelId: ChannelId });
 const TaskPath = ChannelPath.extend({ taskId: TaskId });
+/** `?finished=true` lists the finished tasks, the most recently finished first. */
+const ListQuery = PageInput.extend({ finished: z.literal('true').optional() });
 export function registerTasks(app: FastifyInstance, store: Store) {
   const base = '/api/teams/:teamId/channels/:channelId/tasks';
   app.post(base, async (request, reply) => {
@@ -25,12 +27,11 @@ export function registerTasks(app: FastifyInstance, store: Store) {
   });
   app.get(base, async (request) => {
     const { teamId, channelId } = ChannelPath.parse(request.params);
-    return store.tasks.list(
-      principal(request),
-      teamId,
-      channelId,
-      PageInput.parse(request.query),
-    );
+    const { finished, ...page } = ListQuery.parse(request.query);
+    const p = principal(request);
+    return finished
+      ? store.tasks.finished(p, teamId, channelId, page)
+      : store.tasks.list(p, teamId, channelId, page);
   });
   app.get(base + '/:taskId', async (request) => {
     const { teamId, channelId, taskId } = TaskPath.parse(request.params);

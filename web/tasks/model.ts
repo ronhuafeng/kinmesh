@@ -46,14 +46,22 @@ export const priorityLabels = {
 } as const;
 const priorityRank = { high: 0, normal: 1, low: 2 } as const;
 /**
- * A column's order: what matters most first, then what is due soonest,
- * then the newest.
+ * An open column's order: what matters most first, then what is due
+ * soonest, then the newest.
  */
 export function byUrgency(a: Task, b: Task) {
   return (
     priorityRank[a.priority] - priorityRank[b.priority] ||
-    (a.due ?? '9999').localeCompare(b.due ?? '9999')
+    (a.due ?? '9999').localeCompare(b.due ?? '9999') ||
+    b.position - a.position
   );
+}
+/**
+ * Finished work, the most recently finished first: a finished task never
+ * changes again, so its last change is when it finished.
+ */
+export function byFinish(a: Task, b: Task) {
+  return b.updatedAt.localeCompare(a.updatedAt) || b.position - a.position;
 }
 export type Intent =
   | 'claim'

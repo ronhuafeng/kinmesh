@@ -11,14 +11,14 @@ import {
   stages,
   stageOf,
 } from '../shared/task-status.js';
-import { late, dueLabel, yours, byUrgency } from './model.js';
+import { late, dueLabel, yours, byUrgency, byFinish } from './model.js';
 import { MemberAvatar } from './members.js';
 import { memberName } from '../shared/names.js';
 import { ALL_TASKS, type BoardFilter } from '../shared/board-filter.js';
 
 /**
- * The channel's tasks older than the board's newest (`data.tasks`), read a
- * page at a time from the cursor each page gives.
+ * The channel's finished tasks older than those the board starts with
+ * (`data.tasks`), read a page at a time from the cursor each page gives.
  */
 export function useOlderTasks(path: string, first: string | null) {
   const [state, setState] = useState<{
@@ -35,7 +35,9 @@ export function useOlderTasks(path: string, first: string | null) {
   const load = () => {
     if (cursor === null || busy) return;
     setBusy(true);
-    void api(path + '?limit=100&cursor=' + encodeURIComponent(cursor))
+    void api(
+      path + '?finished=true&limit=100&cursor=' + encodeURIComponent(cursor),
+    )
       .then((raw) => {
         const page = pageOf(Task).parse(raw);
         setState((old) => {
@@ -139,10 +141,10 @@ export function Board({
     `/api/teams/${data.team.id}/channels/${data.channel?.id ?? ''}/tasks`,
     data.tasks.nextCursor,
   );
-  const newest = new Set(data.tasks.items.map((t) => t.id));
+  const held = new Set(data.tasks.items.map((t) => t.id));
   const every = [
     ...data.tasks.items,
-    ...older.items.filter((t) => !newest.has(t.id)),
+    ...older.items.filter((t) => !held.has(t.id)),
   ];
   // Who and which topic the board can be narrowed to: only those it holds.
   const owners = new Map<string, string>();
@@ -155,15 +157,17 @@ export function Board({
     id,
     title: data.topics.items.find((topic) => topic.id === id)?.title ?? '话题',
   }));
-  // A topic of another channel (kept from before) narrows nothing here.
+  // An owner or topic the board doesn't hold (kept from before) narrows
+  // nothing here.
+  const who =
+    filter.who === 'mine' || owners.has(filter.who) ? filter.who : 'all';
   const topic = topics.some((t) => t.id === filter.topic) ? filter.topic : '';
   const items = every.filter(
     (t) =>
-      (filter.who === 'all' ||
-        (filter.who === 'mine'
+      (who === 'all' ||
+        (who === 'mine'
           ? yours(t, data.human.id)
-          : t.state.owner !== null &&
-            memberKey(t.state.owner) === filter.who)) &&
+          : t.state.owner !== null && memberKey(t.state.owner) === who)) &&
       (topic === '' || t.topicId === topic),
   );
   const [showCancelled, setShowCancelled] = useState(false);
@@ -172,9 +176,9 @@ export function Board({
   for (const task of items)
     if (showCancelled || task.state.status !== 'cancelled')
       byStage.get(stageOf(task.state.status))?.push(task);
-  // Open work by urgency (ties stay newest first); what is done, newest first.
+  // Open work by urgency; what is done, the most recently finished first.
   for (const [stage, list] of byStage)
-    if (stage !== 'done') list.sort(byUrgency);
+    list.sort(stage === 'done' ? byFinish : byUrgency);
   const firstAsk = stages.find((s) =>
     byStage.get(s.id)?.some((t) => humanAsk(t, data)),
   );
@@ -195,13 +199,13 @@ export function Board({
               ['all', '全部'],
               ['mine', '我的'],
             ] as const
-          ).map(([who, label]) => (
+          ).map(([value, label]) => (
             <button
-              key={who}
+              key={value}
               type="button"
-              aria-pressed={filter.who === who}
+              aria-pressed={who === value}
               onClick={() => {
-                onFilter({ ...filter, who });
+                onFilter({ ...filter, who: value });
               }}
             >
               {label}
@@ -211,7 +215,7 @@ export function Board({
         {owners.size > 1 && (
           <select
             aria-label="负责人"
-            value={owners.has(filter.who) ? filter.who : ''}
+            value={owners.has(who) ? who : ''}
             onChange={(event) => {
               onFilter({ ...filter, who: event.currentTarget.value || 'all' });
             }}
