@@ -31,6 +31,22 @@ export function memberName(
   return data.agents.find((agent) => agent.id === id)?.name ?? '智能体';
 }
 /**
+ * A topic's title wherever the workspace has it: among those its tasks and
+ * messages are in, the channel's topic list, or the most recently active;
+ * null when it has none.
+ */
+export function topicTitle(data: WorkspaceSnapshot, id: string | null) {
+  if (id === null) return null;
+  const named = (t: { id: string }) => t.id === id;
+  return (
+    (
+      data.namedTopics.find(named) ??
+      data.topics.items.find(named) ??
+      data.activeTopics.items.find(named)
+    )?.title ?? null
+  );
+}
+/**
  * The other people: in the open channel when there is one, otherwise the
  * whole team. You are not among them.
  */

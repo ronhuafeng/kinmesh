@@ -16,7 +16,12 @@ import type { Shared } from '../shared/share.js';
 import type { WorkspaceSnapshot } from '../../src/workspace/contracts.js';
 import { MutationPermission, request } from '../shared/api.js';
 import { ActionForm } from '../shared/forms.js';
-import { joinedAgents, memberName, otherPeople } from '../shared/names.js';
+import {
+  joinedAgents,
+  memberName,
+  otherPeople,
+  topicTitle,
+} from '../shared/names.js';
 import { dayOf, workerConnected } from '../shared/format.js';
 import { plainText } from '../shared/markdown.js';
 import { Composer, type Mentionable } from './composer.js';
@@ -320,8 +325,6 @@ export function Chat({
     const text = flat.length > 80 ? flat.slice(0, 77) + '…' : flat;
     return `${memberName(source.author, data)}：${text}`;
   };
-  const topicTitle = (id: string) =>
-    data.topics.items.find((t) => t.id === id)?.title ?? '话题';
   return (
     <div className="conversation">
       <div className="topic-bar">
@@ -437,7 +440,9 @@ export function Chat({
               }
               reply={origin.get(m.id)}
               topicTag={
-                topic === '' && m.topicId ? topicTitle(m.topicId) : null
+                topic === '' && m.topicId
+                  ? (topicTitle(data, m.topicId) ?? '话题')
+                  : null
               }
               mentions={unwritten(m).map((member) => ({
                 ...member,
