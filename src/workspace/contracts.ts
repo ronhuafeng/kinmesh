@@ -31,6 +31,7 @@ import {
   ChannelView,
   Message,
   REACH,
+  NAMED_TOPICS_MOST,
   Topic,
   pageOf,
 } from '../domain/communication.js';
@@ -241,6 +242,11 @@ export const WorkspaceSnapshot = z.strictObject({
     nextCursor: z.string().nullable(),
   }),
   topics: pageOf(Topic),
+  /**
+   * The topics something here names: those the channel's tasks are in and
+   * those of the messages shown, newest first.
+   */
+  namedTopics: z.array(Topic).max(NAMED_TOPICS_MOST),
   /** The channel's most recently active topics, newest first. */
   activeTopics: z.strictObject({
     items: z.array(Topic).max(10),

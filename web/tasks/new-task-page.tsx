@@ -9,6 +9,7 @@ import { value } from '../shared/api.js';
 import { ActionForm } from '../shared/forms.js';
 import { Field } from '../shared/forms.js';
 import { Page } from '../shared/page.js';
+import { topicTitle } from '../shared/names.js';
 import { type TaskDraft, keptDraft, keepDraft } from '../shared/task-draft.js';
 import { memberFrom } from './model.js';
 import { TaskLayout } from './task-layout.js';
@@ -35,9 +36,7 @@ export function NewTaskPage({
   onCreated: (taskId: string) => void;
   onNotify: (message: string) => void;
 }) {
-  const topic = draft.topicId
-    ? data.topics.items.find((t) => t.id === draft.topicId)
-    : undefined;
+  const topic = topicTitle(data, draft.topicId);
   // What was typed before a reload comes back in its place.
   const restored = keptDraft();
   const typed = restored?.draft.id === draft.id ? restored.fields : {};
@@ -167,7 +166,7 @@ export function NewTaskPage({
                 people
               />
             }
-            topic={topic?.title ?? null}
+            topic={topic}
           >
             <button type="submit" className="create-task">
               创建任务

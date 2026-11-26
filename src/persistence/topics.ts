@@ -8,11 +8,13 @@ import {
   eq,
   gt,
   getTableColumns,
+  inArray,
   lte,
   max,
+  or,
   sql,
 } from 'drizzle-orm';
-import type { z } from 'zod';
+import { z } from 'zod';
 import * as s from './schema.js';
 import { type ChannelId, type TeamId } from '../domain/contracts.js';
 import type { Principal } from '../domain/agents.js';
@@ -22,6 +24,8 @@ import {
 } from '../domain/tasks.js';
 import {
   type PageInput,
+  NAMED_TOPICS_MOST,
+  REACH,
   Topic,
   TopicId,
   TopicInput,
@@ -132,6 +136,40 @@ export function topicRepository(
                 .limit(limit)
             ).map(topicOf),
         );
+      });
+    },
+    /**
+     * The channel's topics that something on screen names: those its tasks
+     * are in, and those of the messages shown (`topicIds`); the newest first,
+     * up to `NAMED_TOPICS_MOST`.
+     */
+    named(
+      p: Principal,
+      teamId: TeamId,
+      channelId: ChannelId,
+      topicIds: string[],
+    ) {
+      return atomic(async () => {
+        await access(p, teamId, channelId);
+        const ids = z.array(z.string()).max(REACH).parse(topicIds);
+        const ofTasks = q()
+          .select({ id: s.tasks.topicId })
+          .from(s.tasks)
+          .where(eq(s.tasks.channelId, channelId));
+        const rows = await q()
+          .select()
+          .from(s.topics)
+          .where(
+            and(
+              eq(s.topics.channelId, channelId),
+              ids.length
+                ? or(inArray(s.topics.id, ofTasks), inArray(s.topics.id, ids))
+                : inArray(s.topics.id, ofTasks),
+            ),
+          )
+          .orderBy(desc(s.topics.position))
+          .limit(NAMED_TOPICS_MOST);
+        return rows.map(topicOf);
       });
     },
     /**

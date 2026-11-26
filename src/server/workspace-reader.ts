@@ -278,34 +278,51 @@ export function workspaceReader(
       step: d.step,
     });
     const messageIds = messages.items.map((m) => m.id);
-    const [deliveries, replies, reactions, taskPullRequests] = channel
-      ? await together([
-          store.inboxViews.deliveriesFor(
-            principal,
-            teamId,
-            channel.id,
-            messageIds,
-            // Only unfinished work has agents at it.
-            [
-              ...tasks.items.filter(
-                (t) =>
-                  !(FINISHED as readonly string[]).includes(t.state.status),
+    const [deliveries, replies, reactions, taskPullRequests, namedTopics] =
+      channel
+        ? await together([
+            store.inboxViews.deliveriesFor(
+              principal,
+              teamId,
+              channel.id,
+              messageIds,
+              // Only unfinished work has agents at it.
+              [
+                ...tasks.items.filter(
+                  (t) =>
+                    !(FINISHED as readonly string[]).includes(t.state.status),
+                ),
+                ...(openTask ? [openTask] : []),
+              ].map((t) => t.id),
+            ),
+            store.inboxViews.repliesFor(
+              principal,
+              teamId,
+              channel.id,
+              messageIds,
+            ),
+            store.reactions.reactions(
+              principal,
+              teamId,
+              channel.id,
+              messageIds,
+            ),
+            opened
+              ? store.tasks.pullRequests(
+                  principal,
+                  teamId,
+                  channel.id,
+                  opened.id,
+                )
+              : [],
+            // Names for the topics the board and the messages shown are in.
+            store.topics.named(principal, teamId, channel.id, [
+              ...new Set(
+                messages.items.flatMap((m) => (m.topicId ? [m.topicId] : [])),
               ),
-              ...(openTask ? [openTask] : []),
-            ].map((t) => t.id),
-          ),
-          store.inboxViews.repliesFor(
-            principal,
-            teamId,
-            channel.id,
-            messageIds,
-          ),
-          store.reactions.reactions(principal, teamId, channel.id, messageIds),
-          opened
-            ? store.tasks.pullRequests(principal, teamId, channel.id, opened.id)
-            : [],
-        ])
-      : [[], [], [], []];
+            ]),
+          ])
+        : [[], [], [], [], []];
     // Every member reaches this route; what waits on them is theirs: tasks
     // they decide on, and the deliveries and setup the team shares.
     const live = new Set(wake.filter((w) => w.connected).map((w) => w.agentId));
@@ -399,6 +416,7 @@ export function workspaceReader(
         tasks,
         openTask,
         taskPullRequests,
+        namedTopics,
       }),
     );
   };

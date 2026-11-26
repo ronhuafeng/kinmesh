@@ -5,6 +5,7 @@ import type { WorkspaceSnapshot } from '../../src/workspace/contracts.js';
 import { DeliveryLine } from '../shared/deliveries.js';
 import { taskDeliveries } from '../shared/deliveries.js';
 import { Page } from '../shared/page.js';
+import { topicTitle } from '../shared/names.js';
 import { DueIcon, PriorityIcon } from '../shared/icons.js';
 import {
   taskActions,
@@ -46,9 +47,7 @@ export function TaskPage({
   onReply: (messageId: string) => void;
   openAgent: (agentId: string) => void;
 }) {
-  const topic = task.topicId
-    ? data.topics.items.find((t) => t.id === task.topicId)
-    : undefined;
+  const topic = topicTitle(data, task.topicId);
   const acceptor = { kind: 'human', id: task.acceptorHumanId } satisfies Member;
   const { lead, rest, done } = taskActions(task, data);
   const judging = lead.some((i) => i === 'approve' || i === 'accept');
@@ -86,7 +85,7 @@ export function TaskPage({
           task={task}
           data={data}
           path={path}
-          topic={topic?.title ?? null}
+          topic={topic}
           onClose={() => {
             setEditing(false);
           }}
@@ -158,7 +157,7 @@ export function TaskPage({
               </SideValue>
             )
           }
-          topic={topic?.title ?? null}
+          topic={topic}
           decision={
             <>
               {/* What waits on you leads; then where the task is now. */}

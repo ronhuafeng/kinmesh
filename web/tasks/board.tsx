@@ -13,7 +13,7 @@ import {
 } from '../shared/task-status.js';
 import { late, dueLabel, yours, byUrgency, byFinish } from './model.js';
 import { MemberAvatar } from './members.js';
-import { memberName } from '../shared/names.js';
+import { memberName, topicTitle } from '../shared/names.js';
 import { ALL_TASKS, type BoardFilter } from '../shared/board-filter.js';
 
 /**
@@ -155,7 +155,7 @@ export function Board({
     ...new Set(every.flatMap((t) => (t.topicId ? [t.topicId] : []))),
   ].map((id) => ({
     id,
-    title: data.topics.items.find((topic) => topic.id === id)?.title ?? '话题',
+    title: topicTitle(data, id) ?? '话题',
   }));
   // An owner or topic the board doesn't hold (kept from before) narrows
   // nothing here.

@@ -127,6 +127,8 @@ export const Topic = z.strictObject({
   author: Author,
   createdAt: z.iso.datetime(),
 });
+/** Most topics the workspace names for what it shows (its tasks and messages). */
+export const NAMED_TOPICS_MOST = 700;
 /** The reactions a person may add to a message: a small fixed set. */
 export const REACTIONS = ['👍', '👀', '✅', '🎉', '❤️', '😄'] as const;
 export const Reaction = z.enum(REACTIONS);
