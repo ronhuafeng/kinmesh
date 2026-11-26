@@ -34,7 +34,12 @@ import {
   Topic,
   pageOf,
 } from '../domain/communication.js';
-import { Task, TaskId } from '../domain/tasks.js';
+import {
+  BOARD_FINISHED_FIRST,
+  BOARD_OPEN_MOST,
+  Task,
+  TaskId,
+} from '../domain/tasks.js';
 import { InboxState } from '../domain/inbox.js';
 
 /** A delivery as people see it: no leases, launches or native references. */
@@ -241,8 +246,14 @@ export const WorkspaceSnapshot = z.strictObject({
     items: z.array(Topic).max(10),
     more: z.boolean(),
   }),
-  /** The channel's newest tasks, oldest first. */
-  tasks: pageOf(Task),
+  /**
+   * The channel's board: its unfinished tasks, newest first, then its most
+   * recently finished; `nextCursor` reads older finished tasks.
+   */
+  tasks: z.strictObject({
+    items: z.array(Task).max(BOARD_OPEN_MOST + BOARD_FINISHED_FIRST),
+    nextCursor: z.string().nullable(),
+  }),
   /** The task open on the board, when it is older than those. */
   openTask: Task.nullable(),
   /** The pull requests linked to the open task, with what GitHub last said. */

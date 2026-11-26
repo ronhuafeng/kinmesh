@@ -140,10 +140,11 @@ test('two independent task cards: real agent handoff, human review, acceptance a
 });
 
 /**
- * Proves the board reaches past its newest hundred tasks, and narrows to
- * yours, keeping that in the address across a reload.
+ * Proves every unfinished task is on the board however many came after it,
+ * and the board narrows to yours, keeping that in the address across a
+ * reload.
  */
-test('the board reaches older tasks and narrows to yours, kept across a reload', async ({
+test('every unfinished task is on the board, which narrows to yours, kept across a reload', async ({
   page,
   browser,
   context,
@@ -168,7 +169,7 @@ test('the board reaches older tasks and narrows to yours, kept across a reload',
         sourceEventId: null,
       },
     });
-  // The oldest first, then a hundred more: the board holds the newest 100.
+  // The oldest first, then a hundred more.
   expect((await create(context.request, 'The very first task')).status()).toBe(
     201,
   );
@@ -190,9 +191,11 @@ test('the board reaches older tasks and narrows to yours, kept across a reload',
   await page.getByRole('tab', { name: '看板', exact: true }).click();
   const board = page.getByRole('region', { name: '任务看板' });
   await expect(board.getByText('Grace decides this')).toBeVisible();
-  await expect(board.getByText('The very first task')).toHaveCount(0);
-  await board.getByRole('button', { name: '更早的任务' }).click();
-  await expect(board.getByText('The very first task')).toBeVisible();
+  // However old, open work is in its column, with nothing to page through.
+  await expect(inStage(page, '待开始', 'The very first task')).toBeVisible();
+  await expect(board.getByRole('button', { name: '更早的任务' })).toHaveCount(
+    0,
+  );
   // Yours: Grace's task goes, and the address keeps it.
   await board.getByRole('button', { name: '我的', exact: true }).click();
   await expect(board.getByText('Grace decides this')).toHaveCount(0);
@@ -272,7 +275,12 @@ test('human claim and request-review controls, plus leave/rejoin of known member
   await expect(inStage(page, '审核中', 'Human owned task')).toBeVisible();
 });
 
-test('a task older than the board’s newest still opens by its address', async ({
+/**
+ * Proves finished work runs the most recently finished first and reaches
+ * back with 更早的任务, and a finished task the board doesn't hold still
+ * opens by its address.
+ */
+test('finished work reaches back with 更早的任务, and an old one still opens by its address', async ({
   page,
   context,
   hub,
@@ -284,9 +292,21 @@ test('a task older than the board’s newest still opens by its address', async 
   });
   await expect(oldest).toBeVisible();
   const state = await snapshot(context.request, hub.origin);
-  const task = state.tasks.items[0];
-  if (!task) throw new Error('Task missing');
-  // A hundred newer tasks, copied from it below the API.
+  const created = state.tasks.items[0];
+  if (!created || !state.channel) throw new Error('Task missing');
+  const cancelled = await context.request.post(
+    `${hub.origin}/api/teams/${state.team.id}/channels/${state.channel.id}/tasks/${created.id}/cancel`,
+    {
+      data: {
+        operationKey: randomUUID(),
+        expectedVersion: created.version,
+        note: 'Superseded',
+      },
+    },
+  );
+  expect(cancelled.status()).toBe(200);
+  const task = TaskResult.parse(await cancelled.json()).task;
+  // A hundred newer finished tasks, copied from it below the API.
   const sql = rawDatabase(hub.database);
   try {
     await sql
@@ -303,15 +323,22 @@ test('a task older than the board’s newest still opens by its address', async 
   }
   await page.goto(hub.origin + '/?task=' + task.id);
   await expect(taskPage(page, 'The oldest task')).toBeVisible();
-  // The board shows the newest tasks, with nothing to page through.
+  // The board starts with the most recently finished; 更早的任务 reaches
+  // the rest.
   await page.keyboard.press('Escape');
-  await expect(page.getByRole('region', { name: '任务看板' })).toBeVisible();
+  const board = page.getByRole('region', { name: '任务看板' });
+  await board.getByRole('button', { name: '显示已取消' }).click();
+  const done = board.getByRole('region', { name: '已完成' });
+  await expect(done.getByRole('article').first()).toHaveAccessibleName(
+    'Newer task 100',
+  );
   await expect(
-    page.getByRole('article', { name: 'Newer task 100', exact: true }),
-  ).toBeVisible();
-  await expect(
-    page.getByRole('article', { name: 'The oldest task', exact: true }),
+    board.getByRole('article', { name: 'The oldest task', exact: true }),
   ).toHaveCount(0);
+  await board.getByRole('button', { name: '更早的任务' }).click();
+  await expect(done.getByRole('article').last()).toHaveAccessibleName(
+    'The oldest task',
+  );
 });
 
 /**
