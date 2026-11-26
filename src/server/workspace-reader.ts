@@ -5,6 +5,7 @@ import { AgentId, type ChannelId } from '../domain/contracts.js';
 import type { Principal } from '../domain/agents.js';
 import { DomainError } from '../domain/errors.js';
 import { INBOX_LIVENESS_MS } from '../domain/inbox.js';
+import { FINISHED } from '../domain/tasks.js';
 import type { Store } from '../persistence/store.js';
 import { together } from '../persistence/database.js';
 import { fingerprint } from '../persistence/transactional.js';
@@ -284,7 +285,14 @@ export function workspaceReader(
             teamId,
             channel.id,
             messageIds,
-            [...tasks.items, ...(openTask ? [openTask] : [])].map((t) => t.id),
+            // Only unfinished work has agents at it.
+            [
+              ...tasks.items.filter(
+                (t) =>
+                  !(FINISHED as readonly string[]).includes(t.state.status),
+              ),
+              ...(openTask ? [openTask] : []),
+            ].map((t) => t.id),
           ),
           store.inboxViews.repliesFor(
             principal,

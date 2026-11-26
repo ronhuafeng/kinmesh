@@ -147,8 +147,8 @@ export const WorkspaceSnapshot = z.strictObject({
   agents: z.array(Agent).max(100),
   agentsTruncated: z.boolean(),
   joinedAgentIds: z.array(AgentId).max(100),
-  /** Inbox deliveries for the visible messages and tasks (allow-listed fields only). */
-  deliveries: z.array(DeliveryView).max(1000),
+  /** Inbox deliveries for the visible messages, and each agent’s latest for the board’s unfinished tasks (allow-listed fields only). */
+  deliveries: z.array(DeliveryView).max(2000),
   /** Where each visible agent reply came from; shown beside it, never in it. */
   replies: z
     .array(

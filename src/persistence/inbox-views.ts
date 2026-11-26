@@ -1,4 +1,4 @@
-import { and, asc, eq, inArray, or, sql } from 'drizzle-orm';
+import { and, asc, eq, inArray, max, or, sql } from 'drizzle-orm';
 import { z } from 'zod';
 import * as s from './schema.js';
 import type { agentRepository } from './agents.js';
@@ -12,6 +12,7 @@ import type {
 } from '../domain/contracts.js';
 import { FrozenLaunch, InboxState, PublishedOutcome } from '../domain/inbox.js';
 import { REACH } from '../domain/communication.js';
+import { BOARD_OPEN_MOST } from '../domain/tasks.js';
 
 type ChannelId = z.infer<typeof ChannelIdSchema>;
 const decode = (value: string): unknown => JSON.parse(value);
@@ -92,8 +93,11 @@ export function inboxViews(
       return atomic(async () => {
         await inChannel(p, teamId, channelId);
         const ids = z.array(z.uuid()).max(REACH).parse(messageIds);
-        // A page of tasks, and the one open beside it.
-        const tasks = z.array(z.uuid()).max(101).parse(taskIds);
+        // The board's unfinished tasks, and the one open beside it.
+        const tasks = z
+          .array(z.uuid())
+          .max(BOARD_OPEN_MOST + 1)
+          .parse(taskIds);
         if (ids.length === 0 && tasks.length === 0) return [];
         const rows = await q()
           .select({
@@ -117,7 +121,23 @@ export function inboxViews(
               or(
                 ids.length ? inArray(t.messageId, ids) : undefined,
                 ids.length ? inArray(t.resultMessageId, ids) : undefined,
-                tasks.length ? inArray(t.taskId, tasks) : undefined,
+                // Of a task, only each agent's latest delivery.
+                tasks.length
+                  ? inArray(
+                      t.position,
+                      q()
+                        .select({ position: max(t.position) })
+                        .from(t)
+                        .where(
+                          and(
+                            eq(t.teamId, teamId),
+                            eq(t.channelId, channelId),
+                            inArray(t.taskId, tasks),
+                          ),
+                        )
+                        .groupBy(t.taskId, t.agentId),
+                    )
+                  : undefined,
               ),
             ),
           )
