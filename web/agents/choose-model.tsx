@@ -4,7 +4,7 @@ import type { Agent } from '../../src/domain/agents.js';
 import type { WorkspaceSnapshot } from '../../src/workspace/contracts.js';
 import { useLive } from '../shared/live.js';
 import { api, value } from '../shared/api.js';
-import { Field } from '../shared/forms.js';
+import { Field, asTyped } from '../shared/forms.js';
 import { Notice } from '../shared/forms.js';
 import { useSetupRequest } from '../shared/t3.js';
 import { Providers } from '../shared/t3.js';
@@ -80,6 +80,7 @@ export function ChooseModel({
               <Field label="提供方">
                 <input
                   name="providerId"
+                  {...asTyped}
                   required
                   defaultValue={prefs.providerId ?? ''}
                 />
@@ -87,6 +88,7 @@ export function ChooseModel({
               <Field label="模型">
                 <input
                   name="modelId"
+                  {...asTyped}
                   required
                   defaultValue={prefs.modelId ?? ''}
                 />

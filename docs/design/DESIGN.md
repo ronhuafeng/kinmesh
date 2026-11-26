@@ -123,17 +123,17 @@ typography:
     lineHeight: 1.5
   body-phone:
     fontFamily: '-apple-system, BlinkMacSystemFont, "SF Pro Text", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", system-ui, sans-serif'
-    fontSize: 17px
+    fontSize: 1.0625rem
     fontWeight: 400
     lineHeight: 1.5
   code:
     fontFamily: '"Maple Mono", "Code Han", ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", "Noto Sans CJK SC", monospace'
-    fontSize: 13.6px
+    fontSize: 0.85rem
     fontWeight: 400
     lineHeight: 1.5
   heading:
     fontFamily: '-apple-system, BlinkMacSystemFont, "SF Pro Text", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", system-ui, sans-serif'
-    fontSize: 15px
+    fontSize: 0.9375rem
     fontWeight: 600
     lineHeight: 1.4
     letterSpacing: -0.015em
@@ -144,18 +144,18 @@ typography:
     lineHeight: 1.4
   large-title:
     fontFamily: '-apple-system, BlinkMacSystemFont, "SF Pro Text", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", system-ui, sans-serif'
-    fontSize: 34px
+    fontSize: 2.125rem
     fontWeight: 700
     lineHeight: 1.2
     letterSpacing: -0.015em
   small:
     fontFamily: '-apple-system, BlinkMacSystemFont, "SF Pro Text", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", system-ui, sans-serif'
-    fontSize: 13px
+    fontSize: 0.8125rem
     fontWeight: 400
     lineHeight: 1.4
   title:
     fontFamily: '-apple-system, BlinkMacSystemFont, "SF Pro Text", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", system-ui, sans-serif'
-    fontSize: 18px
+    fontSize: 1.125rem
     fontWeight: 700
     lineHeight: 1.3
     letterSpacing: -0.015em
@@ -303,14 +303,21 @@ Check a change against these before it ships.
 **Navigation**
 
 9. No headings where the structure already says it (a separator, not "In this
-   channel"); no back links — the sidebar and tabs navigate, Esc goes back. A phone
+   channel"); no back links — the sidebar and tabs navigate, Esc goes back, and
+   focus returns to what opened the page or field. A phone
    is the exception: no sidebar sits beside a channel or page and there is no Esc, so
    its bar leads back.
 10. The object is the link: a name, a card, a row. No separate "Open" buttons.
 11. One current place is highlighted at a time: a channel or person in the sidebar, or
     a tab. Plain words ("收件箱").
 12. A reload keeps the place and the unsent work: every page has an address, Back
-    works, drafts survive in the tab.
+    works, drafts survive in the tab until you sign out. Going back in the app (Esc, a
+    page's back, a phone's 返回) is Back: it returns to the entry it came from and never
+    adds one. A place (a channel, a view, a task's card, a settings section) is a link
+    to its address: a plain click opens it here, a ⌘/Ctrl, Shift or middle click is the
+    browser's (a new tab, the address copied). The window's title names the place —
+    `# channel` (a view other than chat before it), a task's title, 收件箱, a settings
+    section and 设置 — then Kinmesh.
 
 **Faces and presence**
 
@@ -529,8 +536,8 @@ Corners are tight and few, an instrument's rather than a toy's: the `rounded` to
   (which stays for screen readers in search); 32 px in the sidebar and on a phone,
   24 px in search. Every name beside it — channels, topics and people — starts
   on one edge, and people's faces in the sidebar are the icon's size.
-- **Segmented control**: a channel's views (聊天 | 看板 | 成员 | 文件) and a narrow board's
-  stages: a grey track, the chosen segment a raised white (dark: grey) thumb that
+- **Segmented control**: a channel's views (聊天 | 看板 | 成员 | 文件; links to their
+  addresses, the one on screen the current page) and a narrow board's stages: a grey track, the chosen segment a raised white (dark: grey) thumb that
   eases in. In the top bar it is the page's primary control: 38 px tall, 15 px labels.
 - **Menu**: what pops over the page from the control that opens it (Radix
   DropdownMenu): a white surface at the third elevation, `--radius-lg`, rows of 36 px
@@ -564,7 +571,8 @@ Corners are tight and few, an instrument's rather than a toy's: the `rounded` to
   at (or tapped), and is always read out with its author. A group ends when the
   author changes, after a five-minute gap, at a change of topic, at a new day, or at
   the "new since" line. Each day opens with its date, quiet and centred between
-  hairlines ("今天", "昨天", "11月13日周四"). Delivery lines, Stop and **转为任务**
+  hairlines ("今天", "昨天", "11月13日周四"), named against the day it is now: a
+  conversation left open past midnight calls yesterday 昨天. Delivery lines, Stop and **转为任务**
   work the same on every message of a group.
 - **Rich content**: bodies are Markdown with GitHub's extensions, rendered as React
   elements, never as HTML (raw HTML stays visible text): paragraphs, a line break for
@@ -597,8 +605,9 @@ Corners are tight and few, an instrument's rather than a toy's: the `rounded` to
   lives with the run on the agent's page. A message's actions, **回应** (six reactions
   side by side, yours ticked), **置顶** (or **取消置顶**), **复制** (its text as written),
   **复制链接** (its address), **回复** and **转为任务**, and on your own messages **编辑**
-  and **撤回**, show on hover, and on touch once the message is tapped; a code block
-  offers **复制** on its corner the same way. 编辑 turns the text into a field in place
+  and **撤回**, show on hover, and on touch once the message is tapped (until then
+  out of sight, not out of a screen reader's reach); a code block offers **复制** on
+  its corner the same way, and a wide one scrolls by keyboard, as a table does. 编辑 turns the text into a field in place
   (Enter or 保存 saves, Esc or 取消 leaves it as it was); an edited message says
   **已编辑** small under its text, with when on hover. 撤回 asks once more (**确认撤回**)
   and is offered once the message's files are removed; a withdrawn message keeps its
@@ -611,14 +620,16 @@ Corners are tight and few, an instrument's rather than a toy's: the `rounded` to
   author, how it starts and when, opening it in the conversation, with **取消置顶** at its
   end. A mention chip is a soft green tag.
 - **Conversation**: opens where you stopped reading — the first message someone else
-  wrote since, under the "new since" line — or, with nothing unread, at the newest
-  message, and stays at the bottom as messages arrive while you are there (and after
-  you send); scrolled up, nothing moves under you, and **回到最新 ↓** floats above the
-  composer. Scrolling up reads older messages in place, back to the channel's first;
-  there are no page buttons. A message opened from search, a file, a quote, a
-  notification or its link is reached however far back it is, scrolled to and
-  marked; the address keeps it, so a reload shows it again. A "_time_ 以来的新消息"
-  line marks what others wrote while the channel or topic was open.
+  wrote since, under the "new since" line, already there as it first shows — or, with
+  nothing unread, at the newest message. Coming back to it from another view, a page or
+  Back shows the message you were reading. It stays at the bottom as messages arrive
+  while you are there (and after you send); scrolled up, nothing moves under you, and
+  **回到最新 ↓** floats above the composer. Scrolling up reads older messages in place, back
+  to the channel's first; there are no page buttons. A message opened from search, a
+  file, a quote, an agent's reply from its page or a task, a notification or its link is
+  reached however far back it is, in any topic, scrolled to and marked; the address
+  keeps it, so a reload shows it again. A "_time_ 以来的新消息" line marks what others wrote
+  while the channel or topic was open.
 - **Delivery line**: under a message that mentions an agent, and on a task handed to
   one, one line per agent in plain words, the agent's name first. A new state
   cross-fades over the old words; while the agent works a slow light passes over
@@ -646,7 +657,8 @@ Corners are tight and few, an instrument's rather than a toy's: the `rounded` to
   draws a soft green ring. Hints live in the placeholder. Send is the round green
   confirm button with an upward arrow, drawn larger here, growing in once there is
   something to send. A channel or topic that opens is ready to
-  type in (a touch keyboard waits to be asked for), and sending keeps the keyboard.
+  type in (a touch keyboard waits to be asked for); coming back to it from a page
+  is not opening it. Sending keeps the keyboard.
   Sending never waits: the field empties at once, ready for the next message, and
   the message appears at the end of the conversation, grouped as it will be and
   faded until the server has it; then it comes to full strength in the same place.
@@ -684,7 +696,8 @@ Corners are tight and few, an instrument's rather than a toy's: the `rounded` to
   on screen in a visible tab, on any device (in a topic, as far as what is new is in
   that topic). There are no unread counts. Where the browser shows an app badge, it
   counts the decisions waiting on you; with none, it is a dot while anything is
-  unread; else it is clear. Each channel is as loud as you set it from its
+  unread; else it is clear. It stays current in a tab nobody sees, which draws
+  nothing new until it is shown and then shows the newest. Each channel is as loud as you set it from its
   row's **Menu** (right-click, or a long press on a phone): 与我有关 (the default),
   每条消息 or 静音, ticked, then **设为公开…** (pressed again, it reads
   确认：团队里所有人都能查看) or **设为私密**, then **重命名…** (the row becomes its name,
@@ -693,7 +706,8 @@ Corners are tight and few, an instrument's rather than a toy's: the `rounded` to
   archived channel leaves the sidebar; opened from Settings or a link it reads as
   before, and in place of the composer says "#_name_ 已归档。" with **恢复频道**. A channel you muted
   is never unread and its name is in the muted ink; one you follow ends in a small
-  bell in the subtle ink. A channel where something waits on you ends in a
+  bell in the subtle ink. A screen reader hears each in words: 未读, 已静音,
+  每条消息都通知你, and 等你处理 for the dot below. A channel where something waits on you ends in a
   decision-coloured dot, the
   size of a presence dot and on its edge; it fades out once nothing waits there. The current channel holds its topics under
   it like a tree on a hairline trunk: "全部", the ten most recently active, "更多话题"
@@ -715,10 +729,11 @@ Corners are tight and few, an instrument's rather than a toy's: the `rounded` to
   and a warm tint while it holds a card. A card's column is its status. A card is white and rounded: its
   title (a high-priority one led by an orange flag), then one line — what it asks
   of you and its due day ("11月30日", in the danger colour once past and still open,
-  with no word for it) — beside its owner/reviewer faces; a
+  from the moment that day ends, with no word for it) — beside its owner/reviewer faces; a
   decision or rework is marked by an orange or red rule on its left. A new task
   starts from the dashed `+` card at the end of 待开始. Below 1024 px the stages are a
-  segmented control. Above the columns the board narrows: 全部 / 我的 (yours: you own,
+  segmented control; the stages not shown are hidden until found, so the browser's
+  find reaches their tasks and switches to the stage of a match. Above the columns the board narrows: 全部 / 我的 (yours: you own,
   review or decide on it), then a picker of owners and one of topics, each only when
   the board holds more than one to choose; the address keeps the choice, and an owner
   or topic the board no longer holds narrows nothing. Every unfinished task is on the
@@ -831,7 +846,7 @@ Corners are tight and few, an instrument's rather than a toy's: the `rounded` to
   first, a person's T3 sign-in from a week before it ends ("T3 的登录将于11月23日周一到期",
   then "T3 的登录已到期，智能体在等待" with a red rule, or "T3 的登录已到期，智能体改为以监督模式运行"
   without one while the deployment's session carries on) with **重新连接 T3** under it,
-  the same sign-in as **连接 T3**; the deployment's own session never asks. A row is a face, what it is, where and when, an orange or red rule for a
+  the same sign-in as **连接 T3**; the deployment's own session never asks. A row is a face, what it is, where and when (刚刚, "5 分钟前", whole units passed, moving on each minute while seen), an orange or red rule for a
   decision or a problem; the row opens where it is resolved (task, channel or agent),
   or holds the fix under it.
   A row leaves when its cause is resolved; there is nothing to dismiss. Expired
@@ -911,7 +926,8 @@ Corners are tight and few, an instrument's rather than a toy's: the `rounded` to
   ("免打扰期间有 3 件事等你").
 - **Notice**: while you are in Kinmesh, what would have notified you comes as a
   notice at the foot of the screen instead — the same title and line, in the toast's
-  dark, for eight seconds — and a click opens its place.
+  dark, for eight seconds, waiting while it is pointed at or focused — and a click
+  opens its place.
 - **Notifications**: one per place, the latest replacing the one before. The title
   is who wrote and where ("小助手 · #general · 话题"), or what waits on you and
   where ("等你验收", "请你评审", "退回给你", "交给你了", "_Ada_ 卡住了"); the line is the
@@ -950,9 +966,15 @@ Corners are tight and few, an instrument's rather than a toy's: the `rounded` to
   text holds them and files whose name does, each opening its message — and holds
   the actions that have no place on
   screen: **新任务**, **静音 #_name_** (**取消静音 #_name_** once muted), **每条消息都通知
-  #_name_** (**只通知与我有关的 #_name_** once followed), **退出 #_name_** and
-  **立即刷新**. Places come before actions,
-  so a channel's name finds the channel first, not an action that mentions it.
+  #_name_** (**只通知与我有关的 #_name_** once followed), **退出 #_name_**, **立即刷新**,
+  and all the channel's and its members' **Menu**s hold, so a keyboard reaches them:
+  **重命名 #_name_** (its row becomes its name, as from the menu; not on a phone, where
+  the row is on Home), **设为公开 #_name_** (with 团队里所有人都能查看 beside it) or
+  **设为私密 #_name_**, **归档 #_name_** (with 从列表移走，仍可查看和搜索), and, last,
+  **把 _name_ 移出 #_channel_** for each member. Your own conversation with someone has
+  only the levels and 退出. Places come before actions,
+  so a channel's name finds the channel first, not an action that mentions it. The
+  arrow keys keep the highlighted result in view.
 - **收件箱** in the sidebar: what waits on you across the team is a row above the
   channels, its icon in the muted ink and how many things wait counted at its end; it
   is not among a channel's views. On a phone it is a bottom tab.
@@ -962,7 +984,7 @@ Corners are tight and few, an instrument's rather than a toy's: the `rounded` to
   a full-bleed version for Android). Its icon counts what waits on you, as 收件箱 does;
   a long press or right click offers 收件箱 and 通知设置; a Kinmesh link opens in the
   window already open. 通知 › 送达 starts with 安装: **安装到桌面** where the browser
-  offers it, how from the browser's menu where it doesn't (Safari: 分享 › 添加到主屏幕,
+  offers it (pressed once, it is gone until the browser offers again), how from the browser's menu where it doesn't (Safari: 分享 › 添加到主屏幕,
   or 文件 › 添加到程序坞), 已安装 as a green pill once it is; nothing where it can't be.
 - **分享到频道**: what another app shares to an installed Kinmesh (files, a link, some
   text) opens a page that says what came ("2 个文件和一段文字") and lists the channels;
@@ -1020,7 +1042,8 @@ hover and selection; 200 ms
 (`--dur`) for what moves or appears — the segmented thumb, the composer's focus,
 popovers, a new message, a card lifting, a page fading in when it opens — up to
 320 ms for cards travelling between status columns and checklists drawing their ticks
-on acceptance; ease-out or a gentle spring. Going from one place to another at the
+on acceptance; ease-out or a gentle spring. Only the travelling cards move: the page
+around them never cross-fades and keeps taking clicks and taps. Going from one place to another at the
 same level (one view to the next, one settings section to the next) shows the next at
 once; only opening something new eases in. With reduced motion nothing moves, slides
 or scales; colour and fades that only say a state changed keep their short ease.

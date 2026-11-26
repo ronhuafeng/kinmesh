@@ -8,6 +8,7 @@ import {
   backToBoard,
   createChannel,
   inStage,
+  openAgent,
   register,
   signIn,
   taskPage,
@@ -82,7 +83,7 @@ test('a channel opens at the first message you haven’t read, and the newest is
   }
   await page
     .getByRole('navigation', { name: '频道' })
-    .getByRole('button', { name: 'general', exact: true })
+    .getByRole('link', { name: /^general( |$)/ })
     .click();
   const first = page
     .getByRole('list', { name: '频道消息' })
@@ -96,6 +97,102 @@ test('a channel opens at the first message you haven’t read, and the newest is
   await expect(newest).toBeInViewport();
   await expect(page.getByRole('button', { name: '回到最新 ↓' })).toHaveCount(0);
 });
+/**
+ * Proves a channel with unread messages opens at the first of them without
+ * passing the bottom: at no scroll and no frame while it opens is the
+ * newest message on screen, and the channel is told read only once the
+ * newest has been seen.
+ */
+test('a channel opens at its first unread without passing the bottom, and is read only once the newest is seen', async ({
+  page,
+  context,
+  browser,
+  hub,
+}) => {
+  await signIn(page, hub, 'ada@example.com');
+  const state = await snapshot(context.request, hub.origin);
+  const general = state.channel;
+  if (!general) throw new Error('Local channel missing');
+  const composer = page.getByRole('form', { name: '给团队发消息' });
+  await composer
+    .getByLabel('消息', { exact: true })
+    .fill('Read before leaving');
+  await composer.getByRole('button', { name: '发送消息' }).click();
+  await expect(page.getByText('Read before leaving')).toBeVisible();
+  await createChannel(page, 'design');
+  const theirs = await browser.newContext();
+  try {
+    const grace = await theirs.newPage();
+    await signIn(grace, hub, 'grace@example.com');
+    for (const n of Array.from({ length: 40 }, (_, i) => i)) {
+      const response = await grace.request.post(
+        `${hub.origin}/api/teams/${state.team.id}/channels/${general.id}/messages`,
+        {
+          data: {
+            operationKey: randomUUID(),
+            body: `Grace ${String(n)}`,
+            topicId: null,
+            mentions: [],
+            sourceMessageId: null,
+            sourceEventId: null,
+          },
+        },
+      );
+      expect(response.status()).toBe(201);
+    }
+  } finally {
+    await theirs.close();
+  }
+  const unread = async () =>
+    (await snapshot(context.request, hub.origin)).latest.find(
+      (l) => l.channelId === general.id,
+    )?.unread;
+  expect(await unread()).toBe(true);
+  // Every scroll and every frame from here on: was the newest on screen?
+  await page.evaluate(() => {
+    const look = () => {
+      const newest = [
+        ...document.querySelectorAll('.messages > li[id^="message-"]'),
+      ].find((li) => li.textContent.includes('Grace 39'));
+      const box = newest?.getBoundingClientRect();
+      if (box && box.bottom > 0 && box.top < window.innerHeight)
+        document.documentElement.dataset.sawNewest = 'true';
+    };
+    window.addEventListener('scroll', look, { passive: true });
+    const frame = () => {
+      look();
+      requestAnimationFrame(frame);
+    };
+    requestAnimationFrame(frame);
+  });
+  const told: string[] = [];
+  page.on('request', (request) => {
+    if (request.method() === 'POST' && request.url().endsWith('/read'))
+      told.push(request.url());
+  });
+  await page
+    .getByRole('navigation', { name: '频道' })
+    .getByRole('link', { name: /^general( |$)/ })
+    .click();
+  const messages = page.getByRole('list', { name: '频道消息' });
+  await expect(
+    messages.getByRole('listitem').filter({ hasText: 'Grace 0' }).first(),
+  ).toBeInViewport();
+  await expect(page.getByText(/以来的新消息/)).toBeVisible();
+  const newest = messages.getByText('Grace 39', { exact: true });
+  await expect(newest).not.toBeInViewport();
+  expect(
+    await page.evaluate(() => document.documentElement.dataset.sawNewest),
+  ).toBeUndefined();
+  // Still unread: nothing was told while the newest was out of sight.
+  expect(told).toEqual([]);
+  expect(await unread()).toBe(true);
+  // Reaching the newest reads it.
+  await page.getByRole('button', { name: '回到最新 ↓' }).click();
+  await expect(newest).toBeInViewport();
+  await expect.poll(unread).toBe(false);
+  expect(told).toHaveLength(1);
+});
 
 test('keyboard mention, and a message becomes a task in its topic', async ({
   page,
@@ -104,7 +201,7 @@ test('keyboard mention, and a message becomes a task in its topic', async ({
 }) => {
   await signIn(page, hub);
   await register(page, 'Ada', 'developer');
-  await page.getByRole('tab', { name: '聊天', exact: true }).click();
+  await page.getByRole('link', { name: '聊天', exact: true }).click();
   await page.getByRole('button', { name: '新建话题' }).click();
   await page.getByLabel('话题名称').fill('Billing');
   await page.getByLabel('话题名称').press('Enter');
@@ -141,8 +238,8 @@ test('keyboard mention, and a message becomes a task in its topic', async ({
   await expect(message).toHaveValue('');
   await posted.getByRole('button', { name: '转为任务', exact: true }).click();
   await expect(
-    page.getByRole('tab', { name: '看板', exact: true }),
-  ).toHaveAttribute('aria-selected', 'true');
+    page.getByRole('link', { name: '看板', exact: true }),
+  ).toHaveAttribute('aria-current', 'page');
   const form = page.getByRole('form', { name: '新任务' });
   await expect(form.getByLabel('任务标题')).toHaveValue(
     'Validate postal codes per country @Ada',
@@ -178,7 +275,7 @@ test('keyboard mention, and a message becomes a task in its topic', async ({
   expect(tasks).toHaveLength(1);
   expect(tasks[0]?.topicId).toBe(topics.find((t) => t.title === 'Billing')?.id);
   // Search, from the magnifier by the team name, jumps straight to the task; only its acceptor may cancel it, with a note.
-  await page.getByRole('tab', { name: '聊天', exact: true }).click();
+  await page.getByRole('link', { name: '聊天', exact: true }).click();
   await page.getByRole('button', { name: '搜索', exact: true }).click();
   const search = page.getByRole('combobox', { name: /搜索/ });
   await search.fill('postal 进行中');
@@ -223,7 +320,7 @@ test('a mention says what happened to it and leads to the agent’s reply, said 
   const state = await snapshot(context.request, hub.origin);
   const ada = state.agents[0];
   if (!ada || !state.channel) throw new Error('Local fixture unavailable');
-  await page.getByRole('tab', { name: '聊天', exact: true }).click();
+  await page.getByRole('link', { name: '聊天', exact: true }).click();
   const composer = page.getByRole('form', { name: '给团队发消息' });
   const item = (text: string) =>
     page
@@ -312,6 +409,73 @@ test('a mention says what happened to it and leads to the agent’s reply, said 
     await agent.dispose();
   }
 });
+/**
+ * Proves going to an agent's reply from its page always reaches it: a
+ * reply far older than the messages the conversation has read opens the
+ * conversation at it, marked.
+ */
+test('an agent’s reply older than the messages read opens from its page, shown and marked', async ({
+  page,
+  context,
+  hub,
+}) => {
+  await signIn(page, hub);
+  await register(page, 'Ada', 'developer');
+  const state = await snapshot(context.request, hub.origin);
+  if (!state.channel) throw new Error('Local fixture unavailable');
+  // A history longer than the workspace's window; the reply is its third.
+  await seedMessages(hub.database, state.channel.id, state.human.id, 260);
+  await page.getByRole('link', { name: '聊天', exact: true }).click();
+  const composer = page.getByRole('form', { name: '给团队发消息' });
+  await composer
+    .getByLabel('消息', { exact: true })
+    .fill('@Ada please check the release notes');
+  await composer.getByRole('button', { name: '发送消息' }).click();
+  const asked = page
+    .getByRole('list', { name: '频道消息' })
+    .getByRole('listitem')
+    .filter({ hasText: 'please check the release notes' });
+  await expect(asked).not.toHaveAttribute('data-pending');
+  const db = rawDatabase(hub.database);
+  let reply = '';
+  try {
+    reply = z
+      .string()
+      .parse(
+        await db
+          .prepare(
+            "SELECT id FROM messages WHERE channel_id = ? AND body = 'Message 3'",
+          )
+          .pluck()
+          .get(state.channel.id),
+      );
+    const source = z
+      .string()
+      .parse(
+        await db
+          .prepare(
+            "SELECT id FROM messages WHERE channel_id = ? AND body LIKE '%please check the release notes'",
+          )
+          .pluck()
+          .get(state.channel.id),
+      );
+    await db
+      .prepare(
+        "UPDATE agent_inbox SET state = 'acked', reason = 'assistant-result-published', result_message_id = ? WHERE message_id = ?",
+      )
+      .run(reply, source);
+  } finally {
+    await db.close();
+  }
+  await readAgain(page);
+  const agent = await openAgent(page, 'Ada');
+  await agent.getByRole('button', { name: '查看回复' }).click();
+  const row = page.locator('#message-' + reply);
+  await expect(row).toBeInViewport({ timeout: 20_000 });
+  await expect(row).toContainText('Message 3');
+  await expect(row).toHaveAttribute('data-flash', 'true');
+  await expect(page).toHaveURL(new RegExp('message=' + reply));
+});
 
 /**
  * Proves an input method keeps its keys: the Enter that commits a pinyin
@@ -323,7 +487,7 @@ test('Enter committing an input method candidate never picks from the @ list', a
 }) => {
   await signIn(page, hub);
   await register(page, 'Ada', 'developer');
-  await page.getByRole('tab', { name: '聊天', exact: true }).click();
+  await page.getByRole('link', { name: '聊天', exact: true }).click();
   const composer = page.getByRole('form', { name: '给团队发消息' });
   const field = composer.getByLabel('消息', { exact: true });
   await field.pressSequentially('@Ad');
@@ -353,7 +517,7 @@ test('removing a mention chip takes the mention out of the message', async ({
 }) => {
   await signIn(page, hub);
   await register(page, 'Ada', 'developer');
-  await page.getByRole('tab', { name: '聊天', exact: true }).click();
+  await page.getByRole('link', { name: '聊天', exact: true }).click();
   const composer = page.getByRole('form', { name: '给团队发消息' });
   const field = composer.getByLabel('消息', { exact: true });
   await field.pressSequentially('@Ad');
@@ -387,7 +551,7 @@ test('@ reaches only the agent chosen or named in full, and a long step stays in
   await signIn(page, hub);
   await register(page, 'Pi', 'developer');
   await register(page, 'Pi 2', 'developer');
-  await page.getByRole('tab', { name: '聊天', exact: true }).click();
+  await page.getByRole('link', { name: '聊天', exact: true }).click();
   const composer = page.getByRole('form', { name: '给团队发消息' });
   const field = composer.getByLabel('消息', { exact: true });
   const responsesTo = (text: string) =>
@@ -538,7 +702,7 @@ test('lost message response retries the same committed operation; real conflict 
   await page.unroute('**/api/workspace?*');
   await register(page, 'Duplicate check', 'assistant');
   // Real server uniqueness conflict, not an intercepted/fabricated error response.
-  await page.getByRole('tab', { name: '成员', exact: true }).click();
+  await page.getByRole('link', { name: '成员', exact: true }).click();
   await page
     .getByRole('list', { name: '团队', exact: true })
     .getByRole('button', { name: '添加智能体', exact: true })
@@ -736,6 +900,68 @@ test('a long conversation opens at its newest message, follows new ones, holds s
     .press('ControlOrMeta+Enter');
   await expect(say('Sent from up top')).toBeInViewport();
 });
+/**
+ * Proves coming back to a conversation keeps your place: read back to a
+ * message from an older page, then go to 看板 and back, or to the Inbox and
+ * back with the browser's Back, and that message is exactly where it was.
+ */
+test('coming back to a conversation, from another view or with Back, shows the message you were reading', async ({
+  page,
+  context,
+  hub,
+}) => {
+  await page.setViewportSize({ width: 1280, height: 800 });
+  await signIn(page, hub);
+  const state = await snapshot(context.request, hub.origin);
+  if (!state.channel) throw new Error('Local channel missing');
+  await seedMessages(hub.database, state.channel.id, state.human.id, 120);
+  await page.reload();
+  const messages = page.getByRole('list', { name: '频道消息' });
+  const say = (text: string) => messages.getByText(text, { exact: true });
+  await expect(say('Message 120')).toBeInViewport();
+  // Read back past the first page.
+  await expect
+    .poll(async () => {
+      await page.evaluate(() => {
+        window.scrollTo({ top: 0 });
+      });
+      return say('Message 60').count();
+    })
+    .toBe(1);
+  await say('Message 60').scrollIntoViewIfNeeded();
+  await expect
+    .poll(() =>
+      page.evaluate(
+        () =>
+          document
+            .getAnimations()
+            .filter((a) => a.effect?.getTiming().iterations !== Infinity)
+            .length,
+      ),
+    )
+    .toBe(0);
+  // Reached from the top of the page, it stays where it was scrolled to.
+  await expect(say('Message 60')).toBeInViewport();
+  const at = await topOf(page, 'Message 60');
+  const moved = async () => Math.abs((await topOf(page, 'Message 60')) - at);
+  // Another view and back.
+  await page.getByRole('link', { name: '看板', exact: true }).click();
+  await expect(page.getByRole('region', { name: '任务看板' })).toBeVisible();
+  await expect(say('Message 60')).toHaveCount(0);
+  await page.getByRole('link', { name: '聊天', exact: true }).click();
+  await expect(say('Message 60')).toBeInViewport();
+  await expect.poll(moved).toBeLessThan(1);
+  // A page, and the browser's Back.
+  await page
+    .getByRole('navigation', { name: '收件箱' })
+    .getByRole('button', { name: /^收件箱/ })
+    .click();
+  await expect(page).toHaveURL(/inbox/);
+  await expect(say('Message 60')).toHaveCount(0);
+  await page.goBack();
+  await expect(say('Message 60')).toBeInViewport();
+  await expect.poll(moved).toBeLessThan(1);
+});
 
 test('“New since” marks only what others wrote while this channel or topic was open', async ({
   page,
@@ -827,7 +1053,7 @@ test('a phone channel: targets a finger can hit, fields that don’t zoom, a com
     await page.setViewportSize({ width: 375, height: 812 });
     await page
       .getByRole('navigation', { name: '频道' })
-      .getByRole('button', { name: 'general', exact: true })
+      .getByRole('link', { name: /^general( |$)/ })
       .click();
     const topics = page.getByRole('group', { name: '话题' });
     await expect(topics.getByRole('button', { name: 'Billing' })).toBeVisible();
@@ -839,7 +1065,7 @@ test('a phone channel: targets a finger can hit, fields that don’t zoom, a com
     expect(back?.width).toBeGreaterThanOrEqual(44);
     expect(back?.height).toBeGreaterThanOrEqual(44);
     for (const target of [
-      '.view-switch [role="tab"]',
+      '.view-switch a',
       '.topic-pills button[aria-pressed="false"]',
       '.topic-pills .topic-add',
     ])
@@ -868,6 +1094,22 @@ test('a phone channel: targets a finger can hit, fields that don’t zoom, a com
     );
     const send = composer.getByRole('button', { name: '发送消息' });
     await expect(send).toBeDisabled();
+    // A file's small × takes a finger's 44 px around it.
+    await composer.locator('input[type="file"]').setInputFiles({
+      name: 'notes.txt',
+      mimeType: 'text/plain',
+      buffer: Buffer.from('notes'),
+    });
+    const remove = composer.getByRole('button', { name: '移除 notes.txt' });
+    await expect(remove).toBeVisible();
+    expect(await takesTaps(page, '.composer-file-remove')).toEqual([
+      true,
+      true,
+      true,
+      true,
+    ]);
+    await remove.tap();
+    await expect(remove).toHaveCount(0);
     await field.fill('Ship the release notes');
     await expect(send).toBeEnabled();
     // Only the paperclip, "@" and Send sit beside it: the rest is the
@@ -914,11 +1156,18 @@ test('a phone channel: targets a finger can hit, fields that don’t zoom, a com
       .getByRole('listitem')
       .filter({ hasText: 'Ship the release notes' });
     await expect(posted).toBeVisible();
-    // On touch, a message shows what can be done with it once tapped.
+    // On touch, a message shows what can be done with it once tapped; before
+    // that its actions are out of sight but a screen reader finds them.
     const makeTask = posted.getByRole('button', { name: '转为任务' });
-    await expect(makeTask).toBeHidden();
+    const actions = posted.locator('.message-actions');
+    await expect(posted).toMatchAriaSnapshot(`
+      - button "回复"
+      - button "转为任务"
+    `);
+    expect(await actions.boundingBox()).toMatchObject({ width: 1, height: 1 });
     await posted.getByText('Ship the release notes').tap();
     await expect(makeTask).toBeVisible();
+    expect((await actions.boundingBox())?.width).toBeGreaterThan(44);
     // A long conversation scrolls behind the composer, which sits on the
     // bottom edge over paper: no message shows below it.
     await seedMessages(hub.database, state.channel.id, state.human.id, 40);
@@ -967,7 +1216,7 @@ test('said once: a topic’s messages carry no tag for it, and one place is curr
   const billing = topics.getByRole('button', { name: 'Billing', exact: true });
   const channelRow = page
     .getByRole('navigation', { name: '频道' })
-    .getByRole('button', { name: 'general', exact: true });
+    .getByRole('link', { name: /^general( |$)/ });
   const fill = (row: typeof billing) =>
     row.evaluate((el) => getComputedStyle(el).backgroundColor);
   const clear = 'rgba(0, 0, 0, 0)';
@@ -995,7 +1244,7 @@ test('said once: a topic’s messages carry no tag for it, and one place is curr
   // On Team the place is Team: neither the channel nor a topic is current,
   // and the row keeps its height.
   await billing.click();
-  await page.getByRole('tab', { name: '成员', exact: true }).click();
+  await page.getByRole('link', { name: '成员', exact: true }).click();
   await expect(billing).toHaveAttribute('aria-pressed', 'false');
   await expect(
     page.locator('nav[aria-label="频道"] [aria-current="page"]'),
@@ -1003,7 +1252,7 @@ test('said once: a topic’s messages carry no tag for it, and one place is curr
   expect(
     await channelRow.evaluate((el) => el.getBoundingClientRect().height),
   ).toBe(box.height);
-  await page.getByRole('tab', { name: '看板', exact: true }).click();
+  await page.getByRole('link', { name: '看板', exact: true }).click();
   await expect(billing).toHaveAttribute('aria-pressed', 'true');
 });
 
@@ -1227,18 +1476,18 @@ test('a message is pinned, listed in the 置顶 view, opened from it, and unpinn
     .getByRole('listitem')
     .filter({ hasText: 'We ship on Friday' });
   // No pins, no view for them.
-  await expect(page.getByRole('tab', { name: '置顶' })).toHaveCount(0);
+  await expect(page.getByRole('link', { name: '置顶' })).toHaveCount(0);
   await message.hover();
   await message
     .locator('.message-actions')
     .getByRole('button', { name: '置顶', exact: true })
     .click();
-  await page.getByRole('tab', { name: '置顶' }).click();
+  await page.getByRole('link', { name: '置顶' }).click();
   const pins = page.getByRole('list', { name: '置顶的消息' });
   await expect(pins).toContainText('We ship on Friday');
   await pins.getByRole('button', { name: /We ship on Friday/ }).click();
   await expect(message).toBeInViewport();
-  await page.getByRole('tab', { name: '置顶' }).click();
+  await page.getByRole('link', { name: '置顶' }).click();
   await pins.getByRole('button', { name: '取消置顶' }).click();
   await expect(page.getByText('这个频道还没有置顶的消息。')).toBeVisible();
 });
@@ -1309,6 +1558,16 @@ test('a code block and a message each copy as written', async ({
   await copyCode.click();
   await expect(copyCode).toHaveText('已复制');
   expect(await lastCopied()).toBe('npm ci\nnpm start');
+  // 已复制 is also said as a status, from a region that was there before,
+  // and the button stays in sight while it says it, wherever the pointer is.
+  await expect(block.getByRole('status')).toHaveText('已复制');
+  await page.mouse.move(0, 0);
+  await expect(copyCode).toHaveCSS('opacity', '1');
+  // A wide block scrolls by keyboard: Tab reaches it, as it does a table.
+  const code = block.getByRole('region', { name: '代码' });
+  await copyCode.focus();
+  await page.keyboard.press('Shift+Tab');
+  await expect(code).toBeFocused();
   await message.hover();
   await message
     .locator('.message-actions')
@@ -1637,10 +1896,10 @@ test('a new team is guided through its first steps, each with the control that d
   await expect(steps.first()).not.toContainText('已完成');
   await guide.getByRole('button', { name: '添加', exact: true }).click();
   await expect(
-    page.getByRole('tab', { name: '成员', exact: true }),
-  ).toHaveAttribute('aria-selected', 'true');
+    page.getByRole('link', { name: '成员', exact: true }),
+  ).toHaveAttribute('aria-current', 'page');
   // It sits in the conversation's column, on its text edge.
-  await page.getByRole('tab', { name: '聊天', exact: true }).click();
+  await page.getByRole('link', { name: '聊天', exact: true }).click();
   const [box, list] = await Promise.all([
     guide.boundingBox(),
     page.getByRole('list', { name: '频道消息' }).boundingBox(),

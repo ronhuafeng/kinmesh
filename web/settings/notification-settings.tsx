@@ -162,7 +162,11 @@ function Install() {
         type="button"
         className="link-button"
         onClick={() => {
-          void offer.prompt();
+          // An offer prompts once: spent, the row waits for the browser's
+          // next one, whatever was chosen.
+          window.kinmeshInstall = null;
+          window.dispatchEvent(new Event('kinmesh-install'));
+          void offer.prompt().catch(() => undefined);
         }}
       >
         安装到桌面

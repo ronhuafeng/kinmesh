@@ -10,7 +10,7 @@ import { useNavigation, useScreen, useActions } from './contexts.js';
 export function PeopleList() {
   const { agentId, view, setView, openAgent } = useNavigation();
   const { data, channel, channelPath, directWith, channelAgents } = useScreen();
-  const { openDirect, notify, refresh } = useActions();
+  const { openDirect, removeMember } = useActions();
   /** A member's row in the open channel: its menu takes them out of it. */
   const memberRow = (
     member: { kind: 'human' | 'agent'; id: string },
@@ -19,12 +19,11 @@ export function PeopleList() {
   ) =>
     channel && channelPath ? (
       <MemberMenu
-        channelPath={channelPath}
         channelName={channel.name}
-        member={member}
         name={name}
-        onFailed={notify}
-        onDone={refresh}
+        onRemove={() => {
+          removeMember(member, name);
+        }}
       >
         {row}
       </MemberMenu>

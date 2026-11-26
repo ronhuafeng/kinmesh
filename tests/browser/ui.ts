@@ -52,7 +52,7 @@ export function agentRow(page: Page, name: string) {
 }
 /** Registered from a channel, an agent joins it, and its page opens. */
 export async function register(page: Page, name: string, role: string) {
-  await page.getByRole('tab', { name: '成员', exact: true }).click();
+  await page.getByRole('link', { name: '成员', exact: true }).click();
   // The last tile adds an agent (the sidebar's own "添加智能体" is outside the
   // gallery).
   await page
@@ -74,7 +74,7 @@ export async function register(page: Page, name: string, role: string) {
 }
 /** An agent's own page, opened from its tile; any tab leaves it. */
 export async function openAgent(page: Page, name: string) {
-  await page.getByRole('tab', { name: '成员', exact: true }).click();
+  await page.getByRole('link', { name: '成员', exact: true }).click();
   await agentRow(page, name).click();
   const agent = page.getByRole('region', { name, exact: true });
   await expect(agent).toBeVisible();
@@ -106,7 +106,7 @@ export function taskPage(page: Page, title: string) {
 }
 /** A new task is written on its own page; created, it stays on screen as itself. */
 export async function newTask(page: Page, fields: TaskFields) {
-  await page.getByRole('tab', { name: '看板', exact: true }).click();
+  await page.getByRole('link', { name: '看板', exact: true }).click();
   await page.getByRole('button', { name: '新任务' }).click();
   const form = page.getByRole('form', { name: '新任务' });
   await form.getByLabel('任务标题').fill(fields.title);
@@ -147,10 +147,10 @@ export function inStage(page: Page, stage: string, title: string) {
 }
 /** A card opens its task's page in place of the board. */
 export async function openTask(page: Page, title: string) {
-  await page.getByRole('tab', { name: '看板', exact: true }).click();
+  await page.getByRole('link', { name: '看板', exact: true }).click();
   await page
     .getByRole('article', { name: title, exact: true })
-    .getByRole('button', { name: title, exact: true })
+    .getByRole('link', { name: title, exact: true })
     .click();
   const task = taskPage(page, title);
   await expect(task).toBeVisible();

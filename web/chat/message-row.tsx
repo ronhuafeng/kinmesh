@@ -9,6 +9,7 @@ import type { WorkspaceSnapshot } from '../../src/workspace/contracts.js';
 import { memberName } from '../shared/names.js';
 import { Avatar } from '../shared/faces.js';
 import { clockTime, dayLabel, shortTime } from '../shared/format.js';
+import { useToday } from '../shared/clock.js';
 import { CopyButton } from '../shared/copy-button.js';
 import { DeliveryLine, type DeliveryView } from '../shared/deliveries.js';
 import { ReactButton, Reactions } from './reactions.js';
@@ -183,6 +184,18 @@ function sameList<T>(a: T[], b: T[], same: (x: T, y: T) => boolean) {
   }
   return true;
 }
+/**
+ * A new day's divider, said against the shared clock's day: a conversation
+ * left open overnight says 昨天 for yesterday without anything arriving.
+ */
+function DayDivider({ at }: { at: string }) {
+  const today = useToday();
+  return (
+    <li className="day-divider" role="separator">
+      <span>{dayLabel(at, today)}</span>
+    </li>
+  );
+}
 export const MessageRow = memo(function MessageRow({
   m: given,
   o,
@@ -232,11 +245,7 @@ export const MessageRow = memo(function MessageRow({
     m.author.humanId === data.human.id;
   return (
     <>
-      {newDay && (
-        <li className="day-divider" role="separator">
-          <span>{dayLabel(m.createdAt)}</span>
-        </li>
-      )}
+      {newDay && <DayDivider at={m.createdAt} />}
       <li
         id={'message-' + m.id}
         data-kind={m.author.kind}

@@ -11,7 +11,17 @@ import { MutationPermission, useAction, value } from './api.js';
 import { PlusIcon } from './icons.js';
 import { z } from 'zod';
 import { composing } from './keys.js';
+import { useFocusReturnInPlace } from './focus-return.js';
 
+/**
+ * An ID typed as it is (an environment, a provider, a model): a phone
+ * neither capitalises nor corrects it, nor marks it misspelt.
+ */
+export const asTyped = {
+  autoCapitalize: 'none',
+  autoCorrect: 'off',
+  spellCheck: false,
+} as const;
 /** A labelled input; a hint is said in the input itself, as its placeholder. */
 export function Field({
   label,
@@ -236,7 +246,8 @@ export function AddButton({
   );
 }
 /**
- * One field typed in place: Enter creates, Esc or leaving it empty closes.
+ * One field typed in place: Enter creates, Esc or leaving it empty closes;
+ * closed with focus, focus goes back to what opened it.
  * For things that need only a name (a topic, a channel); what it made is
  * handed on by ID, so the caller can open it.
  */
@@ -269,8 +280,11 @@ export function InlineField({
   extra?: Record<string, unknown>;
 }) {
   const action = useAction(taken ? { 409: taken } : {});
+  const form = useRef<HTMLFormElement>(null);
+  useFocusReturnInPlace(form);
   return (
     <form
+      ref={form}
       className={'inline-field ' + className}
       onSubmit={(event) => {
         event.preventDefault();

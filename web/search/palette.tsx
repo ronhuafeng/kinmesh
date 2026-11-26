@@ -139,7 +139,12 @@ export function useShortcut(toggle: () => void) {
     };
   }, []);
 }
-/** The results, grouped as views, actions, channels, tasks and people. */
+/**
+ * The results, grouped as views, actions, channels, tasks and people, each
+ * group named, so the same words in a message and a task sound apart. The
+ * active one is always in view; how many were found, or that none were,
+ * is said politely once typing finds them.
+ */
 export function Results({
   search,
   run,
@@ -153,53 +158,76 @@ export function Results({
   const { results, current, listId, query } = search;
   const shown = results.map((command, index) => ({ command, index }));
   if (reversed) shown.reverse();
+  // Runs of the same group, in the order shown.
+  const groups: { name: string; items: typeof shown }[] = [];
+  for (const item of shown) {
+    const last = groups.at(-1);
+    if (last?.name === item.command.group) last.items.push(item);
+    else groups.push({ name: item.command.group, items: [item] });
+  }
+  const activeId = current ? listId + '-' + current.id : null;
+  useLayoutEffect(() => {
+    if (activeId)
+      document.getElementById(activeId)?.scrollIntoView({ block: 'nearest' });
+  }, [activeId]);
+  const typed = query.trim() !== '';
   return (
     <>
       <ul id={listId} role="listbox" aria-label="结果">
-        {shown.map(({ command, index }, at) => {
-          const heading = command.group !== shown[at - 1]?.command.group;
-          return [
-            heading && (
-              <li
-                key={'group-' + command.group}
-                role="presentation"
-                aria-hidden="true"
-                className="palette-group"
-              >
-                {command.group}
-              </li>
-            ),
-            <li
-              key={command.id}
-              id={listId + '-' + command.id}
-              role="option"
-              aria-selected={command === current}
-              onMouseMove={() => {
-                search.setActive(index);
-              }}
-              onClick={() => {
-                run(command);
-              }}
+        {groups.map((group, at) => (
+          <li
+            key={group.name + '-' + String(at)}
+            role="group"
+            aria-labelledby={listId + '-group-' + String(at)}
+          >
+            <div
+              id={listId + '-group-' + String(at)}
+              className="palette-group"
+              aria-hidden="true"
             >
-              {command.channel ? (
-                <span className="palette-label with-icon">
-                  <ChannelIcon {...command.channel} />
-                  <span>
-                    <span className="visually-hidden"># </span>
-                    {command.channel.name}
+              {group.name}
+            </div>
+            {group.items.map(({ command, index }) => (
+              <div
+                key={command.id}
+                id={listId + '-' + command.id}
+                role="option"
+                aria-selected={command === current}
+                onMouseMove={() => {
+                  search.setActive(index);
+                }}
+                onClick={() => {
+                  run(command);
+                }}
+              >
+                {command.channel ? (
+                  <span className="palette-label with-icon">
+                    <ChannelIcon {...command.channel} />
+                    <span>
+                      <span className="visually-hidden"># </span>
+                      {command.channel.name}
+                    </span>
                   </span>
-                </span>
-              ) : (
-                <span className="palette-label">{command.label}</span>
-              )}
-              {command.hint && <small>{command.hint}</small>}
-            </li>,
-          ];
-        })}
+                ) : (
+                  <span className="palette-label">{command.label}</span>
+                )}
+                {command.hint && <small>{command.hint}</small>}
+              </div>
+            ))}
+          </li>
+        ))}
       </ul>
-      {results.length === 0 && (
-        <p className="palette-empty">没有和“{query}”匹配的结果。</p>
-      )}
+      {/* Always there, so what is found is heard; none found is also shown. */}
+      <p
+        role="status"
+        className={results.length === 0 ? 'palette-empty' : 'visually-hidden'}
+      >
+        {results.length === 0
+          ? `没有和“${query}”匹配的结果。`
+          : typed
+            ? `${String(results.length)} 个结果`
+            : ''}
+      </p>
     </>
   );
 }

@@ -10,9 +10,7 @@ const marked = new WeakMap<HTMLElement, HTMLElement>();
  */
 function placeThumb(list: HTMLElement | null) {
   if (!list) return;
-  const tab = list.querySelector<HTMLElement>(
-    '[role="tab"][data-state="active"]',
-  );
+  const tab = list.querySelector<HTMLElement>('[aria-current="page"]');
   if (!tab) {
     delete list.dataset.thumb;
     return;
@@ -40,11 +38,11 @@ function placeThumb(list: HTMLElement | null) {
  * two change together, and follows the tabs when their size changes.
  */
 export function useThumb() {
-  const list = useRef<HTMLDivElement | null>(null);
+  const list = useRef<HTMLElement | null>(null);
   useLayoutEffect(() => {
     placeThumb(list.current);
   });
-  return useCallback((el: HTMLDivElement | null) => {
+  return useCallback((el: HTMLElement | null) => {
     list.current = el;
     if (!el) return;
     const resized = new ResizeObserver(() => {

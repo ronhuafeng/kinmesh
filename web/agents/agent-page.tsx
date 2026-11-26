@@ -138,9 +138,7 @@ export function NativeStatus({
           ))}
         {observation && (
           <>
-            <p title="按整个 T3 对话计数，不只是这次运行。">
-              这个对话中未处理的请求：{observation.threadPendingRequests}
-            </p>
+            <p>这个对话中未处理的请求：{observation.threadPendingRequests}</p>
             <p>
               模型：{observation.providerId ?? '未报告'} ·{' '}
               {observation.modelId ?? '未报告'}
@@ -393,9 +391,8 @@ export function Requests({
             : text;
           const what = asked(d);
           const when = d.updatedAt ?? d.queuedAt;
+          // The reply is reached however far back it is.
           const reply = d.resultMessageId;
-          const onPage =
-            reply !== null && data.messages.items.some((m) => m.id === reply);
           return (
             <li
               key={d.id}
@@ -408,7 +405,7 @@ export function Requests({
               </span>
               <span className="request-outcome">{outcome}</span>
               <span className="request-time">{when ? ago(when) : ''}</span>
-              {onPage ? (
+              {reply !== null ? (
                 <button
                   type="button"
                   className="link-button"

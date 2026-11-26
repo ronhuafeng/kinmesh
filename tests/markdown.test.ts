@@ -22,7 +22,8 @@ await test('agent replies render as formatted text: lists, links, emphasis and c
   assert.match(html('3. c\n4. d'), /<ol start="3">/);
   assert.match(
     html('```\nconst x = 1;\n```'),
-    /<pre><code>const x = 1;\s*<\/code><\/pre>/,
+    // A code block is a named region the keyboard can reach and scroll.
+    /<pre role="region" aria-label="代码" tabindex="0"><code>const x = 1;\s*<\/code><\/pre>/,
   );
   assert.match(html('> quoted'), /<blockquote><p>quoted<\/p><\/blockquote>/);
   // In chat a newline is a line break.
@@ -51,7 +52,7 @@ await test('the Markdown agents write renders: nesting, tasks, rules, fences, qu
   const fenced = html('1. run:\n\n   ```sh\n   npm i\n   ```');
   assert.match(
     fenced,
-    /<li>.*<pre data-lang="sh"><code class="language-sh">npm i/,
+    /<li>.*<pre data-lang="sh"[^>]*><code class="language-sh">npm i/,
   );
   assert.doesNotMatch(fenced, /```/);
   const tasks = html('- [ ] todo\n- [x] done');
@@ -68,10 +69,10 @@ await test('the Markdown agents write renders: nesting, tasks, rules, fences, qu
     html('[w](https://en.wikipedia.org/wiki/Foo_(bar) "Foo")'),
     /href="https:\/\/en.wikipedia.org\/wiki\/Foo_\(bar\)"/,
   );
-  assert.match(html('~~~\ncode\n~~~'), /<pre><code>code/);
+  assert.match(html('~~~\ncode\n~~~'), /<pre[^>]*><code>code/);
   assert.match(
     html('````md\n```js\nx\n```\n````'),
-    /<pre data-lang="md"><code class="language-md">```js\s*x\s*```/,
+    /<pre data-lang="md"[^>]*><code class="language-md">```js\s*x\s*```/,
   );
   assert.match(html('a\n\n---\n\nb'), /<p>a<\/p><hr\/><p>b<\/p>/);
   assert.match(html('> - one\n> - two'), /<blockquote><ul><li>one/);

@@ -7,14 +7,16 @@ import { Page } from '../shared/page.js';
 import { SearchPage } from '../search/palette.js';
 import { SettingsPage } from '../settings/settings-page.js';
 import { TaskPage } from '../tasks/task-page.js';
-import { showMessage } from '../chat/chat-message.js';
 import { useNavigation, useScreen, useActions } from './contexts.js';
+import { hrefsOf } from './place-hrefs.js';
 
 /**
  * What opens in place of the view: a task or a new one, a hand-run worker,
  * the Inbox, search on a phone, something shared to Kinmesh, or settings.
  */
 export function FocusPages() {
+  const navigation = useNavigation();
+  const hrefs = hrefsOf(navigation);
   const {
     setView,
     focus,
@@ -24,9 +26,10 @@ export function FocusPages() {
     selectChannel,
     leavePage,
     closeFocus,
+    back,
     openSettings,
     openAgent,
-  } = useNavigation();
+  } = navigation;
   const {
     data,
     phone,
@@ -64,12 +67,9 @@ export function FocusPages() {
           onClose={closeFocus}
           onDecided={notify}
           onReply={(id) => {
-            // The reply is in the chat; open it there and point to it.
+            // The reply is in the conversation, however far back.
             leavePage();
-            setView('chat');
-            setTimeout(() => {
-              showMessage(id);
-            }, 60);
+            openMessageIn(focusedTask.channelId, id);
           }}
           openAgent={openAgent}
         />
@@ -103,7 +103,9 @@ export function FocusPages() {
           data={data}
           channelPath={channelPath}
           onClose={() => {
-            setDraft(null);
+            back(() => {
+              setDraft(null);
+            });
           }}
           onCreated={(id) => {
             // The new task stays on screen, now as itself.
@@ -171,6 +173,7 @@ export function FocusPages() {
           section={settingsSection}
           phone={phone}
           data={data}
+          sectionHref={hrefs.settings}
           onSection={openSettings}
           onClose={closeFocus}
           onSignOut={signOut}

@@ -15,11 +15,19 @@ export const sameAuthorOf = (
   a.kind === 'human'
     ? b.kind === 'human' && a.humanId === b.humanId
     : b.kind === 'agent' && a.agentId === b.agentId;
-/** Scrolls to a message and flashes it, so the eye finds it. */
+/**
+ * Scrolls to a message on screen and flashes it, so the eye finds it; with
+ * reduced motion it is there at once.
+ */
 export function showMessage(id: string) {
   const target = document.getElementById('message-' + id);
   if (!target) return;
-  target.scrollIntoView({ block: 'center', behavior: 'smooth' });
+  target.scrollIntoView({
+    block: 'center',
+    behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches
+      ? 'auto'
+      : 'smooth',
+  });
   target.dataset.flash = 'true';
   setTimeout(() => {
     delete target.dataset.flash;

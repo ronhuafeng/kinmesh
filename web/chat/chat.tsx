@@ -40,7 +40,7 @@ import {
 } from './chat-message.js';
 import { useArchive } from './reading.js';
 import { useArrivals } from './reading.js';
-import { useReadingPosition } from './reading.js';
+import { type Opening, useReadingPosition } from './reading.js';
 import { useEarlier } from './reading.js';
 import { useMarkRead } from './reading.js';
 import { type RowActions, MessageRow, NONE } from './message-row.js';
@@ -69,7 +69,7 @@ export function Chat({
   channelPath: string;
   topic: string;
   /** The message the conversation is opened at, reached however far back. */
-  target?: string | null;
+  target?: Opening | null;
   /** Opens a message of this channel, as search and quotes do. */
   onOpenMessage: (id: string) => void;
   /** The topic the messages on screen were read for ('' for all). */
@@ -129,47 +129,22 @@ export function Chat({
     place: string;
     id: string;
   } | null>(null);
+  // It opens where you stopped reading, under the "new since" line, or at
+  // the message asked for, however far back.
   const {
     atEnd,
     list: listRef,
     sent: toNewest,
-    show: showMessage,
-  } = useReadingPosition(shown, messages);
-  const earlier = useEarlier(older, reachOlder);
-  // Where you stopped reading, as this place opened: it opens there, under
-  // the "new since" line, until you go elsewhere.
-  const [unreadFrom, setUnreadFrom] = useState<{
-    place: string;
-    id: string;
-  } | null>(null);
-  const openedAt = useRef<string | null>(null);
-  useEffect(() => {
-    if (openedAt.current === shown) return;
-    openedAt.current = shown;
-    setUnreadFrom(
-      data.firstUnread ? { place: shown, id: data.firstUnread } : null,
-    );
-  }, [shown, data.firstUnread]);
-  const unreadHere = unreadFrom?.place === shown ? unreadFrom.id : null;
-  // The "new since" line: what arrived while here, else where you stopped.
-  const newLine = divider ?? unreadHere;
-  const goTo = target ?? unreadHere;
-  // A message opened here is reached however far back it is, shown and
-  // marked once.
-  const reachedFor = useRef<string | null>(null);
-  const reveal = useEffectEvent((id: string) => {
-    requestAnimationFrame(() => {
-      showMessage(id);
-    });
+    unread,
+  } = useReadingPosition(shown, messages, {
+    firstUnread: data.firstUnread,
+    target,
+    older,
+    reachOlder,
   });
-  useEffect(() => {
-    if (!goTo || reachedFor.current === shown + goTo) return;
-    if (messages.some((m) => m.id === goTo)) {
-      reachedFor.current = shown + goTo;
-      reveal(goTo);
-    } else if (older !== null) reachOlder(older);
-    else reachedFor.current = shown + goTo;
-  }, [goTo, shown, messages, older, reachOlder]);
+  const earlier = useEarlier(older, reachOlder);
+  // The "new since" line: what arrived while here, else where you stopped.
+  const newLine = divider ?? unread;
   const permitted = useContext(MutationPermission);
   useMarkRead(
     channelPath,

@@ -14,7 +14,7 @@ import type { WorkspaceSnapshot } from '../../src/workspace/contracts.js';
 import { api, useRequest, MutationPermission } from '../shared/api.js';
 import { Avatar } from '../shared/faces.js';
 import { ago } from '../shared/format.js';
-import { applyTheme, readTheme, type Theme } from '../shared/theme.js';
+import { applyTheme, useTheme } from '../shared/theme.js';
 
 /** A planned section: the rows it will hold, quiet, and that it is coming. */
 export function Planned() {
@@ -179,7 +179,7 @@ export function AccountSection({
   );
 }
 export function Appearance() {
-  const [theme, setTheme] = useState<Theme>(readTheme);
+  const theme = useTheme();
   return (
     <Group>
       <ChoiceRow
@@ -193,7 +193,6 @@ export function Appearance() {
         disabled={false}
         onChoose={(next) => {
           applyTheme(next);
-          setTheme(next);
         }}
       />
     </Group>

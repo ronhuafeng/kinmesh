@@ -22,7 +22,6 @@
   accent-color: var(--primary);
   font-synthesis: none;
   line-height: 1.5;
-  font-size: 16px;
   scrollbar-width: thin;
   scrollbar-color: var(--scroll-thumb) transparent;
   -webkit-font-smoothing: antialiased;
@@ -59,7 +58,7 @@
 body {
   margin: 0;
   background: var(--paper);
-  min-height: 100vh;
+  min-height: 100dvh;
 }
 a {
   color: var(--primary);
@@ -120,7 +119,7 @@ pre code {
 }
 .muted {
   color: var(--ink-muted);
-  font-size: 13px;
+  font-size: 0.8125rem;
 }
 ::placeholder {
   color: var(--ink-muted);
@@ -129,6 +128,30 @@ pre code {
 :focus-visible {
   outline: 2px solid var(--focus);
   outline-offset: 2px;
+}
+/* Forced colours drop fills, border colours and shadows: what is current,
+ * chosen or active keeps an outline, and a surface drawn by its shadow
+ * keeps an edge. */
+@media (forced-colors: active) {
+  [aria-current='page'],
+  [aria-pressed='true'],
+  [aria-selected='true'],
+  [data-highlighted] {
+    outline: 2px solid Highlight;
+    outline-offset: -2px;
+  }
+  /* Fields mark focus with a border colour, which forced colours replace:
+   * focus is an outline here, whatever a field draws otherwise. */
+  :focus-visible,
+  input:focus,
+  textarea:focus,
+  select:focus {
+    outline: 2px solid Highlight !important;
+  }
+  .composer > .action-form,
+  .search-results {
+    border: var(--hairline-width) solid CanvasText;
+  }
 }
 /* Scrollbars are thin overlays: the page's always (the system hides it
  * when idle), a panel's only while the pointer is over it. */
@@ -174,7 +197,8 @@ pre code {
 }
 
 /* Buttons ---------------------------------------------------------- */
-/* A link that starts something is drawn as the button it acts as. */
+/* A link that starts something, or leads to a place, is drawn as the
+ * button it acts as. */
 button,
 a.button {
   font: inherit;
@@ -187,6 +211,7 @@ a.button {
   color: var(--on-primary);
   padding: 0.5rem 1rem;
   line-height: 1.3;
+  text-decoration: none;
   transition:
     background-color var(--dur-fast) ease,
     border-color var(--dur-fast) ease,
@@ -214,28 +239,25 @@ a.button:active {
   scale: 0.97;
 }
 :is(
-    .sidebar nav button,
+    .sidebar nav :is(button, a),
     .sidebar .person,
     button.inbox-main,
     .link-button,
     [role='tab'],
+    .view-switch a,
     [aria-haspopup]
   ):active:not(:disabled) {
   scale: none;
 }
 /* A card gives as a whole; its title is only the target. */
-button.card-link:active:not(:disabled) {
-  filter: none;
-  scale: none;
-}
-.task-card:has(button.card-link:active) {
+.task-card:has(a.card-link:active) {
   filter: var(--pressed);
   scale: 0.97;
 }
 @media (prefers-reduced-motion: reduce) {
   button:active:not(:disabled),
   a.button:active,
-  .task-card:has(button.card-link:active) {
+  .task-card:has(a.card-link:active) {
     scale: none;
   }
 }
@@ -308,7 +330,8 @@ select {
 input:focus,
 textarea:focus,
 select:focus {
-  outline: none;
+  /* Invisible here; drawn in forced colours, where the shadow is not. */
+  outline: 2px solid transparent;
   border-color: var(--primary);
   box-shadow: 0 0 0 3px var(--primary-soft);
 }
@@ -332,7 +355,7 @@ textarea {
   gap: 0.5rem;
 }
 .field label {
-  font-size: 13px;
+  font-size: 0.8125rem;
   font-weight: 500;
   color: var(--ink-muted);
 }
@@ -462,7 +485,7 @@ textarea {
   display: inline-flex;
   align-items: center;
   gap: 0.35rem;
-  font-size: 13px;
+  font-size: 0.8125rem;
   font-weight: 600;
   color: var(--tone);
   white-space: nowrap;
@@ -512,7 +535,7 @@ textarea {
 }
 .topic-pill.static {
   display: inline-block;
-  font-size: 13px;
+  font-size: 0.8125rem;
   padding: 0.15rem 0.65rem;
   border-radius: var(--radius-pill);
   background: var(--fill);
@@ -528,7 +551,7 @@ textarea {
   background: var(--canvas);
 }
 .auth-shell {
-  min-height: 100vh;
+  min-height: 100dvh;
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
   align-items: center;
@@ -578,7 +601,8 @@ textarea {
 /* Segmented controls (auth tabs and workspace views) ----------------- */
 /* A segmented control, as on iOS and macOS: a grey track, the chosen
  * segment a raised white thumb. */
-[role='tablist'] {
+[role='tablist'],
+.view-switch {
   display: inline-flex;
   gap: 2px;
   padding: 3px;
@@ -586,7 +610,8 @@ textarea {
   background: var(--fill);
   border: 0;
 }
-[role='tab'] {
+[role='tab'],
+.view-switch a {
   background: transparent;
   border: 0;
   color: var(--ink);
@@ -606,15 +631,18 @@ textarea {
     color var(--dur-fast) ease,
     filter var(--dur-press) var(--ease-out);
 }
-[role='tab']:hover:not(:disabled) {
+[role='tab']:hover:not(:disabled),
+.view-switch a:hover {
   background: transparent;
   color: var(--ink);
 }
-[role='tab']:focus-visible {
+[role='tab']:focus-visible,
+.view-switch a:focus-visible {
   outline-offset: 0;
 }
 [role='tab'][data-state='active'],
-[role='tab'][data-state='active']:hover:not(:disabled) {
+[role='tab'][data-state='active']:hover:not(:disabled),
+.view-switch a[aria-current='page'] {
   background: var(--selected);
   color: var(--ink);
   font-weight: 600;
@@ -627,14 +655,14 @@ textarea {
 .workspace-shell {
   display: grid;
   grid-template-columns: 272px minmax(0, 1fr);
-  min-height: 100vh;
+  min-height: 100dvh;
 }
 /* The sidebar is set apart by its tone: the grey canvas beside the white
  * content, the hairline only finishing the edge. */
 .sidebar {
   position: sticky;
   top: 0;
-  height: 100vh;
+  height: 100dvh;
   overflow-y: auto;
   display: flex;
   flex-direction: column;
@@ -665,14 +693,14 @@ textarea {
   border-radius: var(--radius-pill);
   background: var(--badge);
   color: var(--on-badge);
-  font-size: 12px;
+  font-size: 0.75rem;
   font-weight: 600;
   line-height: 1.1rem;
   text-align: center;
   font-variant-numeric: tabular-nums;
 }
 .nav-heading h2 {
-  font-size: 13px;
+  font-size: 0.8125rem;
   font-weight: 600;
   color: var(--ink-muted);
 }
@@ -683,7 +711,7 @@ textarea {
   min-width: 0;
   gap: 1px;
 }
-.sidebar nav button {
+.sidebar nav :is(button, a) {
   text-align: left;
   background: transparent;
   border-color: transparent;
@@ -693,13 +721,13 @@ textarea {
   padding: 0.25rem 0.5rem;
   border-radius: var(--radius);
 }
-.sidebar nav button:hover:not(:disabled) {
+.sidebar nav :is(button, a):hover:not(:disabled) {
   background: var(--hover);
   border-color: transparent;
   color: var(--ink);
 }
 /* The one current place: the quiet fill of a hovered row, never a card. */
-.sidebar nav button[aria-current='page'] {
+.sidebar nav :is(button, a)[aria-current='page'] {
   background: var(--hover);
   border-color: transparent;
   color: var(--ink);
@@ -707,28 +735,30 @@ textarea {
 /* In one of its topics, the topic is the place; its channel keeps only ink. */
 .sidebar
   nav
-  > button[aria-current='page']:has(
+  > :is(button, a)[aria-current='page']:has(
     + .channel-topics button[aria-pressed='true']
   ):not(:hover) {
   background: transparent;
 }
 /* A channel you muted reads quieter, in the muted ink. */
-.sidebar nav > button[data-muted] .channel-name,
-.sidebar nav > button[data-muted] .channel-row-name {
+.sidebar nav > :is(button, a)[data-muted] .channel-name,
+.sidebar nav > :is(button, a)[data-muted] .channel-row-name {
   color: var(--ink-muted);
 }
 /* Someone wrote in a channel since you last read it: its name is set in
  * semibold, as heavy as PingFang goes. */
-.sidebar nav > button[data-unread] .channel-name {
+.sidebar nav > :is(button, a)[data-unread] .channel-name {
   font-weight: 600;
 }
 /* Something in a channel waits on you: a dot in the decision colour at the
  * end of its row. */
-.sidebar nav > button {
+.sidebar nav > :is(button, a) {
   display: flex;
   align-items: center;
   gap: 0.625rem;
   min-height: 2.5rem;
+  /* A long press opens the channel's own menu, not the link's. */
+  -webkit-touch-callout: none;
 }
 .channel-name {
   flex: 1;
@@ -743,7 +773,7 @@ textarea {
     transparent
   );
 }
-.sidebar nav button span.waiting-dot {
+.sidebar nav :is(button, a) span.waiting-dot {
   flex: none;
   /* The size of a presence dot, on the same right edge as theirs. */
   width: 0.5rem;
@@ -758,7 +788,7 @@ textarea {
     margin var(--dur-fast) ease;
 }
 /* Once nothing waits there, the dot fades and gives its room back. */
-.sidebar nav button span.waiting-dot:not([data-on]) {
+.sidebar nav :is(button, a) span.waiting-dot:not([data-on]) {
   width: 0;
   margin-left: -0.625rem;
   margin-right: 0;
@@ -891,7 +921,7 @@ a.link-button {
   background: var(--agent);
   animation: pulse 1s ease-in-out infinite;
 }
-.connection [role='status'] {
+.connection-text {
   font-size: 0.82rem;
   font-weight: 600;
 }
@@ -901,7 +931,7 @@ a.link-button {
   background: var(--warn);
   animation: none;
 }
-.connection [role='status'] {
+.connection-text {
   white-space: nowrap;
 }
 .view-content[data-stale] {
@@ -1030,6 +1060,15 @@ a.link-button {
   border-radius: var(--radius);
   transition: background-color var(--dur-fast) ease;
 }
+/* Rows far from the newest are laid out and painted only near the screen;
+   until then they keep the size they last had, or a line's. The reading
+   position holds on what is laid out, so nothing moves under you. A row
+   showing its actions, which rise above it, is not clipped to itself. */
+.messages
+  > li:not(:nth-last-child(-n + 20), :hover, :focus-within, [data-chosen]) {
+  content-visibility: auto;
+  contain-intrinsic-size: auto 3rem;
+}
 .messages > li > .avatar {
   --size: 2.25rem;
   margin-top: 0.125rem;
@@ -1052,7 +1091,7 @@ a.link-button {
   grid-column: 1;
   align-self: start;
   justify-self: end;
-  font-size: 11px;
+  font-size: 0.6875rem;
   line-height: calc(var(--reading-size) * 1.6);
   color: var(--ink-muted);
   white-space: nowrap;
@@ -1094,7 +1133,7 @@ a.link-button {
   gap: 0.75rem;
   margin: 1.25rem 0 0.25rem;
   padding: 0;
-  font-size: 12px;
+  font-size: 0.75rem;
   font-weight: 600;
   color: var(--ink-muted);
   font-variant-numeric: tabular-nums;
@@ -1117,7 +1156,7 @@ a.link-button {
   align-items: center;
   gap: 0.75rem;
   margin: 0.25rem 0 0.75rem;
-  font-size: 12px;
+  font-size: 0.75rem;
   font-weight: 600;
   color: var(--decision-text);
 }
@@ -1153,14 +1192,14 @@ button.author-link:hover:not(:disabled) {
   text-decoration: underline;
 }
 .message-body time {
-  font-size: 12px;
+  font-size: 0.75rem;
   color: var(--ink-muted);
 }
 /* In the whole channel, the topic a message belongs to, after a little
  * more room than the time takes. */
 .topic-tag {
   margin-left: 0.25rem;
-  font-size: 12px;
+  font-size: 0.75rem;
   font-weight: 500;
   line-height: 1.125rem;
   padding: 0 0.5rem;
@@ -1197,7 +1236,7 @@ button.author-link:hover:not(:disabled) {
   border-radius: var(--radius-pill);
   background: var(--paper);
   color: var(--ink-muted);
-  font-size: 13px;
+  font-size: 0.8125rem;
   font-variant-numeric: tabular-nums;
 }
 .reactions button[aria-pressed='true'] {
@@ -1222,7 +1261,7 @@ button.author-link:hover:not(:disabled) {
 }
 .mention-chip {
   display: inline-block;
-  font-size: 13px;
+  font-size: 0.8125rem;
   font-weight: 500;
   padding: 0.05rem 0.45rem;
   border-radius: var(--radius-sm);
@@ -1247,14 +1286,16 @@ button.author-link:hover:not(:disabled) {
   background: var(--surface);
   border-color: transparent;
   box-shadow: var(--elev-2);
-  font-size: 13px;
+  font-size: 0.8125rem;
   padding: 0.25rem 0.625rem;
 }
-/* Touch has no hover: a message shows its actions once tapped. */
+/* Touch has no hover: a message shows its actions once tapped (or reached
+ * by a screen reader); until then they are out of sight, not out of the
+ * accessibility tree. */
 @media (hover: none) {
   .message-actions {
-    display: none;
     position: static;
+    flex-wrap: wrap;
     opacity: 1;
     margin-top: 0.25rem;
   }
@@ -1262,9 +1303,14 @@ button.author-link:hover:not(:disabled) {
     box-shadow: none;
     background: var(--fill);
   }
-  .messages > li[data-chosen] .message-actions {
-    display: flex;
-    flex-wrap: wrap;
+  .messages > li:not([data-chosen], :focus-within) .message-actions {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    margin: 0;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
   }
 }
 /* The composer floats on the bottom edge of the reading column: a band
@@ -1291,7 +1337,7 @@ button.author-link:hover:not(:disabled) {
   background: var(--surface);
   box-shadow: var(--elev-2);
   color: var(--ink);
-  font-size: 13px;
+  font-size: 0.8125rem;
   animation: fade-rise var(--dur) var(--ease-out);
 }
 /* An archived channel says so where the composer would be, with the way
@@ -1388,7 +1434,7 @@ button.author-link:hover:not(:disabled) {
   padding-left: 0.6rem;
   border-left: 2px solid var(--hairline-strong);
   color: var(--ink-muted);
-  font-size: 13px;
+  font-size: 0.8125rem;
 }
 .composer-reply span {
   min-width: 0;
@@ -1491,6 +1537,18 @@ button.author-link:hover:not(:disabled) {
   color: var(--paper);
   font-size: 0.8rem;
   line-height: 1;
+}
+/* A finger's 44 px around the small ×. */
+@media (pointer: coarse) {
+  .composer-file-remove::before {
+    content: '';
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: 2.75rem;
+    height: 2.75rem;
+    translate: -50% -50%;
+  }
 }
 /* A message's images as they are, at most 240 px tall, each holding its
  * place before it loads; other files as a row that downloads. */
@@ -1694,35 +1752,36 @@ button.author-link:hover:not(:disabled) {
 .task-card[data-status='cancelled'] {
   opacity: 0.7;
 }
-.task-card h3 {
+.task-card h4 {
   font-size: 0.9375rem;
   font-weight: 600;
   line-height: 1.35;
 }
-button.card-link,
-button.card-link:hover:not(:disabled) {
+a.card-link,
+a.card-link:hover {
   all: unset;
+  display: inline-block;
   cursor: pointer;
   overflow-wrap: anywhere;
 }
-button.card-link:focus-visible {
+a.card-link:focus-visible {
   outline: none;
 }
 /* Whole card is the click target; the title button keeps the accessible name. */
-button.card-link::after {
+a.card-link::after {
   content: '';
   position: absolute;
   inset: 0;
   border-radius: inherit;
 }
-button.card-link:focus-visible::after {
+a.card-link:focus-visible::after {
   outline: 2px solid var(--focus);
   outline-offset: 2px;
 }
 .ask-label {
   margin: 0;
   min-width: 0;
-  font-size: 13px;
+  font-size: 0.8125rem;
   font-weight: 500;
   color: var(--decision-text);
 }
@@ -1738,7 +1797,7 @@ button.card-link:focus-visible::after {
 /* When a task is due, quiet; past its day and open, in the danger colour,
  * with no word for it. */
 .card-due {
-  font-size: 13px;
+  font-size: 0.8125rem;
   color: var(--ink-muted);
   font-variant-numeric: tabular-nums;
 }
@@ -1789,7 +1848,7 @@ button.card-link:focus-visible::after {
   background: var(--tone, var(--primary));
 }
 .lifecycle li span {
-  font-size: 12px;
+  font-size: 0.75rem;
   color: var(--ink-muted);
   overflow: hidden;
   text-overflow: ellipsis;
@@ -1845,7 +1904,7 @@ dd {
 }
 .decision-help {
   margin: 0;
-  font-size: 13px;
+  font-size: 0.8125rem;
   color: var(--ink-muted);
 }
 .decision-none {
@@ -1862,7 +1921,7 @@ dd {
  * System states (P8)
  * ------------------------------------------------------------------ */
 .initial-state {
-  min-height: 100vh;
+  min-height: 100dvh;
   display: grid;
   align-content: center;
   justify-items: start;
@@ -1980,13 +2039,18 @@ dd {
     transform: scale(0.4);
   }
 }
+/* Only what is named moves (a card travelling between columns): the page
+ * itself is never captured, so it neither cross-fades nor freezes, and the
+ * transition's layer lets every click and tap through to it. */
+:root {
+  view-transition-name: none;
+}
+::view-transition {
+  pointer-events: none;
+}
 ::view-transition-group(*) {
   animation-duration: 320ms;
   animation-timing-function: var(--spring);
-}
-::view-transition-old(root),
-::view-transition-new(root) {
-  animation-duration: 160ms;
 }
 /* Reduced motion: nothing moves, slides or scales; colour and fades that
  * only say a state changed keep their short ease. */
@@ -2026,8 +2090,7 @@ dd {
     margin-bottom: 1.5rem;
   }
 }
-/* A narrow board picks one stage with these pills; they scroll sideways
- * without showing a scrollbar. */
+/* A narrow board picks one stage with these pills, which share its width. */
 /* A segmented control: a narrow board's stages, and your notifications. */
 .column-switcher,
 .segmented {
@@ -2085,6 +2148,13 @@ dd {
   background: transparent;
   border-color: transparent;
 }
+/* The stages share the board's width: all five always in sight. */
+.column-switcher button {
+  flex: 1 1 0;
+  min-width: 0;
+  gap: 0.3rem;
+  padding-inline: 0.25rem;
+}
 .column-switcher button::before {
   content: '';
   width: 0.45rem;
@@ -2113,7 +2183,7 @@ dd {
   flex: 1;
 }
 .palette-group {
-  font-size: 12px;
+  font-size: 0.75rem;
   font-weight: 600;
   color: var(--ink-muted);
   padding: 0.6rem 0.6rem 0.25rem;
@@ -2145,7 +2215,7 @@ dd {
 }
 .palette [role='option'] small {
   flex: none;
-  font-size: 12px;
+  font-size: 0.75rem;
   color: var(--ink-muted);
 }
 .palette-empty {
@@ -2242,7 +2312,7 @@ button.quiet.subtle-danger:hover:not(:disabled) {
   flex-wrap: wrap;
   align-items: baseline;
   gap: 0.25rem 0.6rem;
-  font-size: 13px;
+  font-size: 0.8125rem;
   color: var(--ink-muted);
 }
 .delivery::before {
@@ -2299,7 +2369,7 @@ button.quiet.subtle-danger:hover:not(:disabled) {
   border-radius: var(--radius-pill);
   background: var(--fill);
   color: var(--ink-muted);
-  font-size: 12px;
+  font-size: 0.75rem;
   font-weight: 600;
 }
 .first-steps li[data-done] .first-step-mark {
@@ -2327,7 +2397,7 @@ button.quiet.subtle-danger:hover:not(:disabled) {
   color: var(--decision-text);
 }
 .delivery-step code {
-  font-size: 12px;
+  font-size: 0.75rem;
 }
 /* A line's words: a new state cross-fades over the old one. */
 .delivery-words {
@@ -2395,10 +2465,10 @@ button.quiet.subtle-danger:hover:not(:disabled) {
   align-items: center;
   gap: 0.35rem 0.5rem;
   margin-top: 0.3rem;
-  font-size: 13px;
+  font-size: 0.8125rem;
 }
 .delivery-recovery button {
-  font-size: 13px;
+  font-size: 0.8125rem;
   padding: 0.25rem 0.6rem;
 }
 .delivery-recovery .notice,
@@ -2480,7 +2550,7 @@ button.quiet.subtle-danger:hover:not(:disabled) {
   overflow-x: auto;
   border-radius: var(--radius);
   background: var(--sunken);
-  font-size: 12px;
+  font-size: 0.75rem;
 }
 /* A home's path is long: it wraps rather than widen the step. */
 .codex-home code {
@@ -2551,7 +2621,7 @@ a.button-link {
 
 /* Five-stage board (#56): the column carries the status; cards name only exceptions. */
 .card-marker {
-  font-size: 12px;
+  font-size: 0.75rem;
   font-weight: 600;
   padding: 0.05rem 0.45rem;
   border-radius: var(--radius-sm);
@@ -2563,7 +2633,7 @@ a.button-link {
 }
 .column-toggle {
   justify-self: center;
-  font-size: 13px;
+  font-size: 0.8125rem;
 }
 
 /* Connect T3 and agents from the setup checklist. */
@@ -2595,7 +2665,7 @@ a.button-link {
 .approve-hints {
   margin: 0;
   padding-left: 1.1rem;
-  font-size: 13px;
+  font-size: 0.8125rem;
   color: var(--ink-muted);
 }
 .setup-status {
@@ -2622,7 +2692,7 @@ a.button-link {
   grid-column: 2;
   display: flex;
   gap: 0.9rem;
-  font-size: 13px;
+  font-size: 0.8125rem;
 }
 .channel-note {
   display: flex;
@@ -2661,7 +2731,7 @@ a.button-link {
     right: var(--gutter);
     margin: 0;
   }
-  .header-end > .connection {
+  .header-end .connection {
     box-shadow: var(--elev-2);
     background: var(--surface);
   }
@@ -2769,12 +2839,11 @@ a.button-link {
     width var(--dur) var(--ease-out),
     opacity var(--dur-fast) ease;
 }
-.view-switch [role='tab'] {
+.view-switch a {
   position: relative;
   z-index: 1;
 }
-.view-switch [role='tab'][data-state='active'],
-.view-switch [role='tab'][data-state='active']:hover:not(:disabled) {
+.view-switch a[aria-current='page'] {
   background: transparent;
   box-shadow: none;
 }
@@ -2850,13 +2919,15 @@ a.button-link {
   background: var(--surface);
   color: var(--ink-muted);
   font-family: var(--font);
-  font-size: 12px;
+  font-size: 0.75rem;
   opacity: 0;
   user-select: none;
   transition: opacity var(--dur-fast) ease;
 }
 .code-block:hover .code-copy,
-.code-copy:focus-visible {
+.code-block:has(> pre:focus-visible) .code-copy,
+.code-copy:focus-visible,
+.code-copy[data-done] {
   opacity: 1;
 }
 @media (hover: none) {
@@ -3043,7 +3114,7 @@ button.reply-to {
   border-left: 2px solid var(--hairline-strong);
   border-radius: 0;
   background: none;
-  font-size: 13px;
+  font-size: 0.8125rem;
   font-weight: 400;
   color: var(--ink-muted);
   text-align: left;
@@ -3057,7 +3128,7 @@ button.reply-to {
   align-items: baseline;
   gap: 0.2rem 0.75rem;
   margin-top: 0.4rem;
-  font-size: 12px;
+  font-size: 0.75rem;
   color: var(--ink-muted);
 }
 /* Your page: what notifies you, and signing out. */
@@ -3265,7 +3336,7 @@ button.icon-button.confirm:disabled {
   top: var(--search-top);
   left: var(--search-left);
   width: min(22rem, calc(100vw - var(--search-left) - 1rem));
-  max-height: min(28rem, calc(100vh - var(--search-top) - 1rem));
+  max-height: min(28rem, calc(100dvh - var(--search-top) - 1rem));
   margin: 0;
   padding: 0;
   border: 0;
@@ -3305,7 +3376,7 @@ span.person {
 /* A face in the sidebar is the size of a channel's icon, so every name
  * starts on one edge. */
 .sidebar .person > .avatar,
-.sidebar nav > button > .channel-icon {
+.sidebar nav > :is(button, a) > .channel-icon {
   --size: 32px;
 }
 /* Channels: "+" in the heading; a new name is typed where it will appear. */
@@ -3341,7 +3412,7 @@ span.person {
   font-size: 0.875rem;
   color: var(--ink-muted);
 }
-.left-channels li > button {
+.left-channels li > :is(button, a) {
   min-width: 0;
   padding: 0;
   border: 0;
@@ -3353,8 +3424,8 @@ span.person {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.left-channels li > button:hover,
-.left-channels li > button[aria-current='page'] {
+.left-channels li > :is(button, a):hover,
+.left-channels li > :is(button, a)[aria-current='page'] {
   color: var(--ink);
 }
 .left-channels li > form {
@@ -3367,7 +3438,7 @@ span.person {
   border: 0;
   background: none;
   color: var(--primary);
-  font-size: 13px;
+  font-size: 0.8125rem;
 }
 /* An empty board is one sentence; an empty column is just its heading. */
 .board-empty {
@@ -3389,7 +3460,7 @@ span.person {
 .agent-page h3 {
   margin: 0 0 0.5rem;
   padding-left: 1rem;
-  font-size: 13px;
+  font-size: 0.8125rem;
   font-weight: 500;
   color: var(--ink-muted);
 }
@@ -3406,7 +3477,7 @@ span.person {
   min-width: 0;
 }
 .agent-head strong {
-  font-size: 22px;
+  font-size: 1.375rem;
   font-weight: 600;
 }
 .agent-head-state {
@@ -3466,7 +3537,7 @@ span.person {
   color: var(--ok);
 }
 .agent-page .setup-status p .muted {
-  font-size: 13px;
+  font-size: 0.8125rem;
 }
 .agent-page .setup-actions {
   grid-column: 3;
@@ -3486,7 +3557,7 @@ span.person {
 }
 .setup-t3 {
   margin: 0;
-  font-size: 13px;
+  font-size: 0.8125rem;
 }
 .setup-t3 .link-button {
   padding: 0 0.25rem;
@@ -3545,7 +3616,7 @@ span.person {
 }
 .request-outcome,
 .request-time {
-  font-size: 13px;
+  font-size: 0.8125rem;
   color: var(--ink-muted);
 }
 .request[data-tone='problem'] .request-outcome {
@@ -3579,7 +3650,7 @@ span.person {
   padding: 0.6rem 1rem;
 }
 .run-head {
-  font-size: 12px;
+  font-size: 0.75rem;
   font-weight: 500;
   color: var(--ink-muted);
   background: var(--raised);
@@ -3620,7 +3691,7 @@ span.person {
 }
 .run-time,
 .run-by {
-  font-size: 13px;
+  font-size: 0.8125rem;
   color: var(--ink-muted);
   white-space: nowrap;
 }
@@ -3888,7 +3959,7 @@ button.roster-person:hover:not(:disabled) {
   display: inline-flex;
   align-items: center;
   gap: 0.35rem;
-  font-size: 13px;
+  font-size: 0.8125rem;
   color: var(--ink-muted);
 }
 .presence::before {
@@ -3912,7 +3983,7 @@ button.roster-person:hover:not(:disabled) {
 }
 .roster-tile .action-form button[type='submit'] {
   max-width: 100%;
-  font-size: 13px;
+  font-size: 0.8125rem;
   padding: 0.3rem 0.75rem;
   border-radius: var(--radius-pill);
   overflow: hidden;
@@ -3978,7 +4049,7 @@ button.roster-person:hover:not(:disabled) {
   box-shadow: 0 0 0 3px var(--hairline-strong);
 }
 .avatar-picker .link-button {
-  font-size: 13px;
+  font-size: 0.8125rem;
   padding: 0.1rem 0.3rem;
 }
 /* Board: five stages, rounded panels of the grey canvas in one row of
@@ -4086,6 +4157,28 @@ button.roster-person:hover:not(:disabled) {
   }
   .view-content[data-beside] .board-column .column-heading {
     display: none;
+  }
+}
+/* A stage the board isn't showing is hidden until found: find in page still
+ * reaches its tasks, and a match brings the stage on screen. Where all show,
+ * so does it; a browser without it hides the stage as before. */
+.board-column[hidden] {
+  content-visibility: visible;
+}
+@supports (content-visibility: hidden) {
+  @media (max-width: 1023px) {
+    .board-column[hidden='until-found'] {
+      display: block;
+      content-visibility: hidden;
+      padding: 0;
+    }
+  }
+  @media (min-width: 1024px) and (max-width: 1279px) {
+    .view-content[data-beside] .board-column[hidden='until-found'] {
+      display: block;
+      content-visibility: hidden;
+      padding: 0;
+    }
   }
 }
 .task-card .card-marker {
@@ -4214,14 +4307,14 @@ button.inbox-main:focus-visible::after {
   white-space: nowrap;
 }
 .inbox-where {
-  font-size: 13px;
+  font-size: 0.8125rem;
   color: var(--ink-muted);
 }
 .inbox-row[data-tone='decide'] .inbox-where {
   color: var(--decision-text);
 }
 .inbox-time {
-  font-size: 13px;
+  font-size: 0.8125rem;
   color: var(--ink-muted);
   white-space: nowrap;
 }
@@ -4330,7 +4423,7 @@ button.inbox-main:focus-visible::after {
 .task-history h3,
 .task-side dt {
   margin: 0;
-  font-size: 13px;
+  font-size: 0.8125rem;
   font-weight: 500;
   color: var(--ink-muted);
 }
@@ -4388,7 +4481,7 @@ button.inbox-main:focus-visible::after {
   margin: 0;
 }
 .task-decision-note strong {
-  font-size: 13px;
+  font-size: 0.8125rem;
   font-weight: 600;
   color: var(--decision-text);
 }
@@ -4518,7 +4611,7 @@ button.inbox-main:focus-visible::after {
 }
 .criterion-proof time {
   margin-left: 0.35rem;
-  font-size: 13px;
+  font-size: 0.8125rem;
   color: var(--ink-muted);
 }
 .criteria li::before,
@@ -4626,6 +4719,11 @@ button.inbox-main:focus-visible::after {
   outline: none;
   box-shadow: none;
 }
+.task-side .side-input:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+  border-radius: var(--radius-sm);
+}
 .avatar-empty {
   display: grid;
   place-items: center;
@@ -4674,7 +4772,7 @@ button.inbox-main:focus-visible::after {
   align-items: center;
   gap: 0.35rem;
   margin: 0;
-  font-size: 13px;
+  font-size: 0.8125rem;
   font-weight: 500;
   color: var(--ink-muted);
 }
@@ -4694,7 +4792,7 @@ button.inbox-main:focus-visible::after {
   flex-wrap: wrap;
   gap: 0.5rem;
   margin-left: 0.5rem;
-  font-size: 13px;
+  font-size: 0.8125rem;
   color: var(--ink-muted);
 }
 .pull-meta [data-failing] {
@@ -4702,7 +4800,7 @@ button.inbox-main:focus-visible::after {
 }
 .pull-meta code {
   font-family: var(--mono);
-  font-size: 12px;
+  font-size: 0.75rem;
   background: none;
   padding: 0;
 }
@@ -4748,7 +4846,7 @@ button.inbox-main:focus-visible::after {
   font-size: 0.9rem;
 }
 .history time {
-  font-size: 13px;
+  font-size: 0.8125rem;
   color: var(--ink-muted);
 }
 .history li > span {
@@ -5111,7 +5209,7 @@ button.list-row-main:hover:not(:disabled) .list-row-title {
   }
   .sidebar .team-name,
   .sidebar .team-name[data-long] {
-    font-size: 15px;
+    font-size: 0.9375rem;
     font-weight: 400;
     letter-spacing: 0;
     color: var(--ink-muted);
@@ -5141,7 +5239,7 @@ button.list-row-main:hover:not(:disabled) .list-row-title {
    * its name and the time of its newest message, then who wrote it and the
    * start of it, each on one line. Rows are parted by hairlines that start
    * at the text, as in an iOS list. */
-  .sidebar nav > button {
+  .sidebar nav > :is(button, a) {
     position: relative;
     min-height: 4.25rem;
     padding: 0.65rem 1rem;
@@ -5150,15 +5248,15 @@ button.list-row-main:hover:not(:disabled) .list-row-title {
     background: var(--paper);
     font-size: 1rem;
   }
-  .sidebar nav > button:first-of-type {
+  .sidebar nav > :is(button, a):first-of-type {
     border-top-left-radius: var(--radius-lg);
     border-top-right-radius: var(--radius-lg);
   }
-  .sidebar nav > button:last-of-type {
+  .sidebar nav > :is(button, a):last-of-type {
     border-bottom-left-radius: var(--radius-lg);
     border-bottom-right-radius: var(--radius-lg);
   }
-  .sidebar nav > button ~ button::before {
+  .sidebar nav > :is(button, a) ~ :is(button, a)::before {
     content: '';
     position: absolute;
     top: -1px;
@@ -5166,10 +5264,10 @@ button.list-row-main:hover:not(:disabled) .list-row-title {
     left: calc(1rem + 1px + 32px + 0.75rem);
     border-top: var(--hairline-width) solid var(--hairline);
   }
-  .sidebar nav > button:hover:not(:disabled) {
+  .sidebar nav > :is(button, a):hover:not(:disabled) {
     background: var(--paper);
   }
-  .sidebar nav > button:active:not(:disabled) {
+  .sidebar nav > :is(button, a):active:not(:disabled) {
     opacity: 1;
     background: var(--hover);
   }
@@ -5194,26 +5292,26 @@ button.list-row-main:hover:not(:disabled) .list-row-title {
     white-space: nowrap;
   }
   .channel-row-name {
-    font-size: 16px;
+    font-size: 1rem;
     font-weight: 500;
   }
   .channel-row-time {
-    font-size: 13px;
+    font-size: 0.8125rem;
     font-weight: 400;
     color: var(--ink-muted);
   }
   .sidebar nav .channel-row .channel-row-last {
     grid-column: 2 / -1;
-    font-size: 15px;
+    font-size: 0.9375rem;
     font-weight: 400;
     color: var(--ink-muted);
   }
   /* Unread, a row's name is semibold, its newest message and time in ink. */
-  .sidebar nav button[data-unread] .channel-row .channel-row-name {
+  .sidebar nav :is(button, a)[data-unread] .channel-row .channel-row-name {
     font-weight: 600;
   }
-  .sidebar nav button[data-unread] .channel-row .channel-row-last,
-  .sidebar nav button[data-unread] .channel-row .channel-row-time {
+  .sidebar nav :is(button, a)[data-unread] .channel-row .channel-row-last,
+  .sidebar nav :is(button, a)[data-unread] .channel-row .channel-row-time {
     color: var(--ink);
   }
   /* What is read all day is set larger on a phone. */
@@ -5222,7 +5320,7 @@ button.list-row-main:hover:not(:disabled) .list-row-title {
   }
   .message-body header strong,
   .author-link {
-    font-size: 16px;
+    font-size: 1rem;
   }
   /* Home's team is the gallery, so the channel's people list is not shown. */
   .sidebar .people {
@@ -5258,7 +5356,7 @@ button.list-row-main:hover:not(:disabled) .list-row-title {
     white-space: nowrap;
     font-size: 1.05rem;
   }
-  .view-switch [role='tab'] {
+  .view-switch a {
     padding: 0.3rem 0.7rem;
     font-size: 0.875rem;
   }
@@ -5266,7 +5364,7 @@ button.list-row-main:hover:not(:disabled) .list-row-title {
   input,
   textarea,
   select {
-    font-size: 16px !important;
+    font-size: 1rem !important;
   }
   /* A finger's target is 44 px. Back has no chrome to grow; the rest keep
    * their drawn size and take the taps around them. */
@@ -5275,14 +5373,14 @@ button.list-row-main:hover:not(:disabled) .list-row-title {
     min-width: 44px;
     min-height: 44px;
   }
-  .view-switch [role='tab'],
+  .view-switch a,
   .topic-pills button,
   .composer button.icon-button,
   .composer .mention-trigger,
   .delivery .link-button {
     position: relative;
   }
-  .view-switch [role='tab']::after,
+  .view-switch a::after,
   .topic-pills button::after,
   .composer button.icon-button::after,
   .composer .mention-trigger::after,
@@ -5426,7 +5524,7 @@ button.list-row-main:hover:not(:disabled) .list-row-title {
     border-radius: var(--radius-pill);
     background: var(--badge);
     color: var(--on-badge);
-    font-size: 11px;
+    font-size: 0.6875rem;
     font-weight: 600;
     line-height: 1rem;
     text-align: center;
@@ -5437,7 +5535,7 @@ button.list-row-main:hover:not(:disabled) .list-row-title {
  * tabs keep their drawn size and take the taps around them; the board's
  * stage pills grow. A mouse keeps the compact sizes. */
 @media (min-width: 576px) and (pointer: coarse) {
-  .sidebar nav > button,
+  .sidebar nav > :is(button, a),
   .person {
     min-height: 44px;
   }
@@ -5448,14 +5546,14 @@ button.list-row-main:hover:not(:disabled) .list-row-title {
   .column-switcher button {
     min-height: 44px;
   }
-  .view-switch [role='tab'],
+  .view-switch a,
   .sidebar-toggle,
   .page-bar button.icon-button,
   .nav-heading button.add-button,
   .team-row button.search-toggle {
     position: relative;
   }
-  .view-switch [role='tab']::after,
+  .view-switch a::after,
   .sidebar-toggle::after,
   .page-bar button.icon-button::after,
   .nav-heading button.add-button::after,
@@ -5652,19 +5750,19 @@ button.list-row-main:hover:not(:disabled) .list-row-title {
   border-radius: 50%;
   background: var(--primary);
   color: var(--on-primary);
-  font-size: 12px;
+  font-size: 0.75rem;
   font-weight: 600;
   line-height: 1;
 }
 .mark[data-size='lg'] {
   width: 40px;
   height: 40px;
-  font-size: 14px;
+  font-size: 0.875rem;
 }
 .phone-tabs .mark {
   width: 28px;
   height: 28px;
-  font-size: 11px;
+  font-size: 0.6875rem;
 }
 /* Notifications paused or off: a small moon on the mark's edge. */
 .mark-moon {
@@ -5726,16 +5824,16 @@ button.list-row-main:hover:not(:disabled) .list-row-title {
   min-width: 0;
 }
 .menu-identity strong {
-  font-size: 15px;
+  font-size: 0.9375rem;
 }
 .menu-identity .muted {
-  font-size: 13px;
+  font-size: 0.8125rem;
 }
 .menu-state {
   margin: 0;
   padding: 0.25rem 0.5rem 0.375rem;
   color: var(--ink-muted);
-  font-size: 13px;
+  font-size: 0.8125rem;
 }
 .menu-item {
   display: flex;
@@ -5771,7 +5869,7 @@ button.list-row-main:hover:not(:disabled) .list-row-title {
 .menu-check {
   color: var(--ink-muted);
   font-family: inherit;
-  font-size: 12px;
+  font-size: 0.75rem;
 }
 .menu-separator {
   height: var(--hairline-width);
@@ -5807,22 +5905,22 @@ button.list-row-main:hover:not(:disabled) .list-row-title {
   margin-left: -0.25rem;
 }
 .settings-nav-head h2 {
-  font-size: 17px;
+  font-size: 1.0625rem;
   font-weight: 700;
 }
-.sidebar nav button.settings-nav-item {
+.sidebar nav :is(button, a).settings-nav-item {
   display: flex;
   align-items: center;
   gap: 0.625rem;
   min-height: 2.5rem;
 }
-.sidebar nav button.settings-nav-item .icon {
+.sidebar nav :is(button, a).settings-nav-item .icon {
   color: var(--ink-muted);
 }
-.sidebar nav button.settings-nav-item[aria-current='page'] {
+.sidebar nav :is(button, a).settings-nav-item[aria-current='page'] {
   background: var(--hover);
 }
-.sidebar nav button.settings-nav-item[data-planned] {
+.sidebar nav :is(button, a).settings-nav-item[data-planned] {
   color: var(--ink-subtle);
 }
 .settings-body {
@@ -5837,7 +5935,7 @@ button.list-row-main:hover:not(:disabled) .list-row-title {
   gap: 1rem;
 }
 .settings-identity strong {
-  font-size: 20px;
+  font-size: 1.25rem;
 }
 .danger-text {
   color: var(--danger);
@@ -5847,7 +5945,7 @@ button.list-row-main:hover:not(:disabled) .list-row-title {
   border-radius: var(--radius-sm);
   background: var(--fill);
   font-family: inherit;
-  font-size: 13px;
+  font-size: 0.8125rem;
 }
 .you-row-end > * + * {
   margin-left: 0.5rem;
@@ -5894,7 +5992,7 @@ button.list-row-main:hover:not(:disabled) .list-row-title {
 .settings-list h2 {
   margin: 0 0 0.375rem 1rem;
   color: var(--ink-muted);
-  font-size: 13px;
+  font-size: 0.8125rem;
   font-weight: 600;
 }
 .settings-list ul {
@@ -5910,11 +6008,11 @@ button.list-row-main:hover:not(:disabled) .list-row-title {
   margin-left: 2.75rem;
   border-top: var(--hairline-width) solid var(--hairline);
 }
-.settings-list li + li button {
+.settings-list li + li :is(button, a) {
   width: calc(100% + 2.75rem);
   margin-left: -2.75rem;
 }
-.settings-list button {
+.settings-list :is(button, a) {
   display: flex;
   align-items: center;
   gap: 0.75rem;
@@ -5925,12 +6023,12 @@ button.list-row-main:hover:not(:disabled) .list-row-title {
   border-radius: 0;
   background: transparent;
   color: var(--ink);
-  font-size: 17px;
+  font-size: 1.0625rem;
   text-align: left;
 }
-.settings-list button .icon {
+.settings-list :is(button, a) .icon {
   color: var(--ink-muted);
 }
-.settings-list button[data-planned] {
+.settings-list :is(button, a)[data-planned] {
   color: var(--ink-subtle);
 }

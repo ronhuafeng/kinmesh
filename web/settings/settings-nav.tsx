@@ -1,3 +1,4 @@
+import { PlaceLink } from '../shared/place-link.js';
 import { BackIcon } from '../shared/icons.js';
 import { GROUPS, inOrder, lit, COMING } from './sections.js';
 
@@ -7,10 +8,13 @@ import { GROUPS, inOrder, lit, COMING } from './sections.js';
  */
 export function SettingsNav({
   current,
+  hrefOf,
   onSelect,
   onBack,
 }: {
   current: string;
+  /** A section's address. */
+  hrefOf: (id: string) => string;
   onSelect: (id: string) => void;
   onBack: () => void;
 }) {
@@ -34,40 +38,46 @@ export function SettingsNav({
             <h2>{group.label}</h2>
           </div>
           {inOrder(group.id).map((s) => (
-            <button
+            <PlaceLink
               key={s.id}
-              type="button"
-              className="settings-nav-item"
+              className="button settings-nav-item"
+              href={hrefOf(s.id)}
               aria-current={lit(current) === s.id ? 'page' : undefined}
-              onClick={() => {
+              onOpen={() => {
                 onSelect(s.id);
               }}
             >
               <s.icon size={20} />
               <span>{s.label}</span>
-            </button>
+            </PlaceLink>
           ))}
         </section>
       ))}
       <section aria-label={COMING.label}>
-        <button
-          type="button"
-          className="settings-nav-item"
+        <PlaceLink
+          className="button settings-nav-item"
+          href={hrefOf(COMING.id)}
           data-planned="true"
           aria-current={lit(current) === COMING.id ? 'page' : undefined}
-          onClick={() => {
+          onOpen={() => {
             onSelect(COMING.id);
           }}
         >
           <COMING.icon size={20} />
           <span>{COMING.label}</span>
-        </button>
+        </PlaceLink>
       </section>
     </nav>
   );
 }
 /** A phone's map: the two groups as iOS grouped lists. */
-export function SettingsList({ onSelect }: { onSelect: (id: string) => void }) {
+export function SettingsList({
+  hrefOf,
+  onSelect,
+}: {
+  hrefOf: (id: string) => string;
+  onSelect: (id: string) => void;
+}) {
   return (
     <div className="settings-list">
       {GROUPS.map((group) => (
@@ -76,15 +86,16 @@ export function SettingsList({ onSelect }: { onSelect: (id: string) => void }) {
           <ul>
             {inOrder(group.id).map((s) => (
               <li key={s.id}>
-                <button
-                  type="button"
-                  onClick={() => {
+                <PlaceLink
+                  className="button"
+                  href={hrefOf(s.id)}
+                  onOpen={() => {
                     onSelect(s.id);
                   }}
                 >
                   <s.icon size={20} />
                   <span>{s.label}</span>
-                </button>
+                </PlaceLink>
               </li>
             ))}
           </ul>
@@ -93,16 +104,17 @@ export function SettingsList({ onSelect }: { onSelect: (id: string) => void }) {
       <section aria-label={COMING.label}>
         <ul>
           <li>
-            <button
-              type="button"
+            <PlaceLink
+              className="button"
+              href={hrefOf(COMING.id)}
               data-planned="true"
-              onClick={() => {
+              onOpen={() => {
                 onSelect(COMING.id);
               }}
             >
               <COMING.icon size={20} />
               <span>{COMING.label}</span>
-            </button>
+            </PlaceLink>
           </li>
         </ul>
       </section>

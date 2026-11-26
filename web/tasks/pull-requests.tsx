@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import type { Task } from '../../src/domain/tasks.js';
 import type { WorkspaceSnapshot } from '../../src/workspace/contracts.js';
 import {
@@ -10,6 +10,7 @@ import { pullRequestWords } from './model.js';
 import { useAction } from '../shared/api.js';
 import { AddButton } from '../shared/forms.js';
 import { composing } from '../shared/keys.js';
+import { useFocusReturn } from '../shared/focus-return.js';
 import { someoneOf } from '../shared/names.js';
 import { shortTime } from '../shared/format.js';
 import { MemberAvatar } from './members.js';
@@ -152,14 +153,20 @@ function PullRequestField({
   });
   const [refusal, setRefusal] = useState('');
   const error = refusal || action.error;
+  // Closed with focus, it goes back to 关联 PR.
+  const form = useRef<HTMLFormElement>(null);
+  useFocusReturn(form);
   return (
     <form
+      ref={form}
       className="inline-field pull-request-field"
+      // A URL field for a phone's keyboard; what is wrong is said here.
+      noValidate
       onSubmit={(event) => {
         event.preventDefault();
         const text = new FormData(event.currentTarget).get('url');
-        const pullRequest =
-          typeof text === 'string' ? pullRequestFromUrl(text) : null;
+        if (typeof text !== 'string' || !text.trim()) return;
+        const pullRequest = pullRequestFromUrl(text);
         if (pullRequest === null) {
           setRefusal('这不是 GitHub 上 PR 的地址。');
           return;
@@ -181,6 +188,7 @@ function PullRequestField({
     >
       <input
         name="url"
+        type="url"
         aria-label="PR 地址"
         placeholder="粘贴 PR 的地址"
         maxLength={300}

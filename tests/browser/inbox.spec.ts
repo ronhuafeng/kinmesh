@@ -17,7 +17,7 @@ test('the Inbox gathers what waits on me across channels and leads to the fix', 
   const needs = page
     .getByRole('navigation', { name: '收件箱' })
     .getByRole('button', { name: /^收件箱/ });
-  await page.getByRole('tab', { name: '聊天', exact: true }).click();
+  await page.getByRole('link', { name: '聊天', exact: true }).click();
   const composer = page.getByRole('form', { name: '给团队发消息' });
   await composer
     .getByLabel('消息', { exact: true })
@@ -69,7 +69,7 @@ test('a stuck request says what was lost and is fixed and retried in place', asy
   const state = await snapshot(context.request, hub.origin);
   const ada = state.agents[0];
   if (!ada || !state.channel) throw new Error('Local fixture unavailable');
-  await page.getByRole('tab', { name: '聊天', exact: true }).click();
+  await page.getByRole('link', { name: '聊天', exact: true }).click();
   const composer = page.getByRole('form', { name: '给团队发消息' });
   await composer
     .getByLabel('消息', { exact: true })
@@ -149,7 +149,7 @@ test('a request waiting for an approval in T3 is stopped from its line, and one 
 }) => {
   await signIn(page, hub);
   await register(page, 'Ada', 'developer');
-  await page.getByRole('tab', { name: '聊天', exact: true }).click();
+  await page.getByRole('link', { name: '聊天', exact: true }).click();
   const composer = page.getByRole('form', { name: '给团队发消息' });
   const say = async (text: string) => {
     await composer.getByLabel('消息', { exact: true }).fill(text);
@@ -321,7 +321,7 @@ test('a week before T3’s sign-in ends anyone reconnects it from the Inbox; onc
   // A request to Ada waits, and says what it waits for. Ada's worker is
   // running; it found the sign-in ended and sent nothing to T3.
   await page.keyboard.press('Escape');
-  await page.getByRole('tab', { name: '聊天', exact: true }).click();
+  await page.getByRole('link', { name: '聊天', exact: true }).click();
   const composer = page.getByRole('form', { name: '给团队发消息' });
   await composer
     .getByLabel('消息', { exact: true })
@@ -356,4 +356,58 @@ test('a week before T3’s sign-in ends anyone reconnects it from the Inbox; onc
     }),
   ).toBeVisible();
   await page.unrouteAll({ behavior: 'ignoreErrors' });
+});
+
+/**
+ * Proves the screen reader hears an Inbox row as the screen shows it, what
+ * it asks and where, and the phone's Inbox tab with its count.
+ */
+test('an Inbox row and the phone’s Inbox tab are named as they are shown', async ({
+  page,
+  hub,
+}) => {
+  await signIn(page, hub);
+  await register(page, 'Ada', 'developer');
+  await page.getByRole('link', { name: '聊天', exact: true }).click();
+  const composer = page.getByRole('form', { name: '给团队发消息' });
+  await composer
+    .getByLabel('消息', { exact: true })
+    .fill('@Ada please check the release notes');
+  await composer.getByRole('button', { name: '发送消息' }).click();
+  // Stuck, the request is a row that says what and where.
+  await expect(
+    page
+      .getByRole('list', { name: '频道消息' })
+      .getByRole('list', { name: '智能体响应' }),
+  ).toContainText('Ada');
+  const sql = rawDatabase(hub.database);
+  try {
+    await sql
+      .prepare(
+        "UPDATE agent_inbox SET state = 'blocked', reason = 'authority-or-contract-blocked'",
+      )
+      .run();
+  } finally {
+    await sql.close();
+  }
+  await readAgain(page);
+  await page
+    .getByRole('navigation', { name: '收件箱' })
+    .getByRole('button', { name: /^收件箱/ })
+    .click();
+  const row = page
+    .getByRole('region', { name: '收件箱' })
+    .getByRole('listitem')
+    .filter({ hasText: '#general' });
+  const what = await row.locator('.inbox-what').innerText();
+  expect(what).toMatch(/Ada/);
+  await expect(row.getByRole('button').first()).toHaveAccessibleName(
+    what + ' #general',
+  );
+  await page.setViewportSize({ width: 375, height: 812 });
+  await expect(
+    page
+      .getByRole('navigation', { name: '位置' })
+      .getByRole('button', { name: /^收件箱 \d+$/ }),
+  ).toBeVisible();
 });

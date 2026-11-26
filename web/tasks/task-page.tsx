@@ -18,6 +18,7 @@ import {
   labelOf,
 } from './model.js';
 import { TaskEdit } from './task-edit.js';
+import { useToday } from '../shared/clock.js';
 import { TaskLayout } from './task-layout.js';
 import { MemberChip } from './members.js';
 import { SideValue } from './due-and-priority.js';
@@ -59,6 +60,7 @@ export function TaskPage({
   const [picked, setPicked] = useState<Intent | null>(null);
   // Edited, the task is the page it was created on, filled in.
   const [editing, setEditing] = useState(false);
+  const today = useToday();
   const chosen = picked !== null && rest.includes(picked) ? picked : null;
   // After a decision lands, buttons wait for the new task version so a second
   // click can never re-send against the old one.
@@ -141,7 +143,7 @@ export function TaskPage({
                 <time
                   className="task-due"
                   dateTime={task.due}
-                  data-late={late(task) ? 'true' : undefined}
+                  data-late={late(task, today) ? 'true' : undefined}
                 >
                   {dueLabel(task.due)}
                 </time>

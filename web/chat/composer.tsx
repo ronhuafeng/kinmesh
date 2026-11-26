@@ -72,6 +72,12 @@ function mentionedIn(
     if (!mentioned.some((m) => m.id === member.id)) mentioned.push(member);
   return mentioned;
 }
+/**
+ * The place whose composer was last made ready to type in: coming back to
+ * it from a page is not opening it, and focus stays where the page gave it
+ * back.
+ */
+let readied = '';
 export function Composer({
   channelPath,
   topicId,
@@ -213,10 +219,13 @@ export function Composer({
   // A channel or topic that opens is ready to type in. A touch keyboard
   // stays down until asked for, and typing elsewhere is never interrupted.
   useEffect(() => {
+    const place = channelPath + '\n' + topicId;
+    if (place === readied) return;
+    readied = place;
     if (!window.matchMedia('(hover: hover)').matches) return;
     if (document.activeElement?.matches('input, textarea, select')) return;
     input.current?.focus({ preventScroll: true });
-  }, [topicId]);
+  }, [channelPath, topicId]);
   const narrow = window.matchMedia('(max-width: 575px)').matches;
   return (
     <div

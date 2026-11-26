@@ -1,10 +1,13 @@
 import { WorkspaceSnapshot } from '../../src/workspace/contracts.js';
 import { flushSync } from 'react-dom';
+import { z } from 'zod';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { PageRef, Revisions, pageParam } from '../../src/workspace/events.js';
 import { api, HttpError } from '../shared/api.js';
+import { forgetAll } from '../shared/session.js';
 import { SIGNED_OUT } from './auth.js';
 import { reloadOnce } from './boundary.js';
+import { badgeFor, putBadge } from './use-app-badge.js';
 import type { Place } from './use-place.js';
 import { takeStream, useRevisions } from './use-revisions.js';
 
@@ -66,6 +69,15 @@ export function animateBoard(
     animate(apply);
   else apply();
 }
+/**
+ * What a hidden tab reads of a streamed snapshot: its revision, and what
+ * the app's badge says.
+ */
+const Glance = z.object({
+  revision: WorkspaceSnapshot.shape.revision,
+  attention: WorkspaceSnapshot.shape.attention,
+  latest: WorkspaceSnapshot.shape.latest,
+});
 /** How long a stream may stay silent before the place is read without it. */
 const SILENT_STREAM_MS = 3000;
 /** An event's JSON, or undefined when it isn't JSON (so it reads as unreadable). */
@@ -193,6 +205,9 @@ export function useWorkspace(place: Place) {
   // How many snapshots the stream has brought: a read answered after a
   // newer one arrived on it says nothing new.
   const streamedCount = useRef(0);
+  // In a tab nobody sees, only the newest snapshot is kept, to be put on
+  // screen once it is shown; its badge is put at once.
+  const unseen = useRef<(() => void) | null>(null);
   /** A snapshot of a place, read or from the stream, put on screen. */
   const show = useCallback(
     (next: WorkspaceSnapshot, readPlace: string, readChannel: string) => {
@@ -229,7 +244,10 @@ export function useWorkspace(place: Place) {
             : old,
         );
       };
-      animateBoard(shown.current, next, apply);
+      if (document.hidden) {
+        unseen.current = apply;
+        putBadge(badgeFor(next));
+      } else animateBoard(shown.current, next, apply);
     },
     [settle, setFocus],
   );
@@ -308,6 +326,11 @@ export function useWorkspace(place: Place) {
     return page.success ? pageParam(page.data) : null;
   }, [focus, view, agentId]);
   const signedOut = status === 'signedout';
+  // Signed out: what the workspace kept in the tab goes with it, once it
+  // has left the screen (so nothing on its way out writes it back).
+  useEffect(() => {
+    if (signedOut) forgetAll();
+  }, [signedOut]);
   // Signed in again: a later link from Feishu signs in by itself.
   useEffect(() => {
     if (status !== 'ready') return;
@@ -329,7 +352,27 @@ export function useWorkspace(place: Place) {
     const onWorkspace = (event: Event) => {
       if (!(event instanceof MessageEvent) || typeof event.data !== 'string')
         return;
-      const next = WorkspaceSnapshot.safeParse(parsed(event.data));
+      const raw = parsed(event.data);
+      if (document.hidden) {
+        // Unseen, a snapshot is only glanced at, for its revision and the
+        // badge; it is read in full if it is still the newest when shown.
+        const glance = Glance.safeParse(raw);
+        if (!glance.success) {
+          outdated();
+          return;
+        }
+        streamedCount.current++;
+        clearTimeout(silent);
+        settle('workspace', glance.data.revision);
+        putBadge(badgeFor(glance.data));
+        unseen.current = () => {
+          const next = WorkspaceSnapshot.safeParse(raw);
+          if (next.success) show(next.data, query, selection.channel);
+          else outdated();
+        };
+        return;
+      }
+      const next = WorkspaceSnapshot.safeParse(raw);
       if (!next.success) {
         outdated();
         return;
@@ -383,15 +426,39 @@ export function useWorkspace(place: Place) {
     receive,
     streamTry,
     outdated,
+    settle,
   ]);
-  // While the hub cannot be reached, nothing can say it is back: ask again.
+  // Whether anyone can see the tab. Shown again, it puts the newest snapshot
+  // that arrived meanwhile on screen, and one out of reach asks at once.
+  const [seen, setSeen] = useState(() => !document.hidden);
+  const offline = status === 'offline';
+  const offlineNow = useRef(offline);
   useEffect(() => {
-    if (status !== 'offline') return;
+    offlineNow.current = offline;
+  }, [offline]);
+  useEffect(() => {
+    const changed = () => {
+      setSeen(!document.hidden);
+      if (document.hidden) return;
+      const apply = unseen.current;
+      unseen.current = null;
+      apply?.();
+      if (offlineNow.current) refresh();
+    };
+    document.addEventListener('visibilitychange', changed);
+    return () => {
+      document.removeEventListener('visibilitychange', changed);
+    };
+  }, [refresh]);
+  // While the hub cannot be reached, nothing can say it is back: ask again,
+  // while the tab is seen.
+  useEffect(() => {
+    if (!offline || !seen) return;
     const timer = setTimeout(refresh, 5000);
     return () => {
       clearTimeout(timer);
     };
-  }, [status, refresh]);
+  }, [offline, seen, refresh]);
   return {
     data,
     status,
