@@ -139,9 +139,9 @@ export function topicRepository(
       });
     },
     /**
-     * The channel's topics that something on screen names: those its tasks
-     * are in, and those of the messages shown (`topicIds`); the newest first,
-     * up to `NAMED_TOPICS_MOST`.
+     * The channel's topics that something on screen names: the one open
+     * and those of the messages shown (`topicIds`), and those its tasks are
+     * in; the newest first, up to `NAMED_TOPICS_MOST`.
      */
     named(
       p: Principal,
@@ -151,7 +151,10 @@ export function topicRepository(
     ) {
       return atomic(async () => {
         await access(p, teamId, channelId);
-        const ids = z.array(z.string()).max(REACH).parse(topicIds);
+        const ids = z
+          .array(z.string())
+          .max(REACH + 1)
+          .parse(topicIds);
         const ofTasks = q()
           .select({ id: s.tasks.topicId })
           .from(s.tasks)

@@ -697,12 +697,13 @@ Corners are tight and few, an instrument's rather than a toy's: the `rounded` to
   decision-coloured dot, the
   size of a presence dot and on its edge; it fades out once nothing waits there. The current channel holds its topics under
   it like a tree on a hairline trunk: "全部", the ten most recently active, "更多话题"
-  for the rest, and a `+` that starts one. The current place carries the
+  for the rest of the same list (each press reaches further, nothing shown goes), the
+  topic you are in always among them, and a `+` that starts one. The current place carries the
   quiet hover fill, never a card: the channel, or the topic when one is open (its
   channel then keeps only ink); "全部" is never highlighted. The tree's trunk hangs
   from the channel icon's centre, and topics start on the channel names' edge. A topic is highlighted
   only while its channel's chat or board is the current place. Leaving is **退出 #_name_** in search; on a phone the topics are pills
-  above the conversation, and "退出频道" waits where the conversation begins. A channel
+  above the conversation, the same list (the one you are in first when the list doesn't reach it), and "退出频道" waits where the conversation begins. A channel
   or topic just created is opened.
 - **Board**: five stage columns, the stages of the lifecycle: 待开始 (proposed) →
   进行中 (working) → 审核中 (review) → 待验收 (human sign-off) → 已完成 (done). Rework

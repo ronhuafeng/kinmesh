@@ -10,7 +10,12 @@ import {
   useState,
 } from 'react';
 import { z } from 'zod';
-import { Message, REACH } from '../../src/domain/communication.js';
+import {
+  Message,
+  REACH,
+  TOPICS_FIRST,
+  TOPICS_MOST,
+} from '../../src/domain/communication.js';
 import { Attachment } from '../../src/domain/attachments.js';
 import type { Shared } from '../shared/share.js';
 import type { WorkspaceSnapshot } from '../../src/workspace/contracts.js';
@@ -325,12 +330,20 @@ export function Chat({
     const text = flat.length > 80 ? flat.slice(0, 77) + '…' : flat;
     return `${memberName(source.author, data)}：${text}`;
   };
+  // The topic you are in leads the pills even when not among those listed.
+  const openTitle = data.topics.items.some((t) => t.id === topic)
+    ? null
+    : topicTitle(data, topic || null);
+  const pills = [
+    ...(openTitle === null ? [] : [{ id: topic, title: openTitle }]),
+    ...data.topics.items,
+  ];
   return (
     <div className="conversation">
       <div className="topic-bar">
         <div className="topic-pills" role="group" aria-label="话题">
           {/* "All" means something only once there is a topic to filter by. */}
-          {data.topics.items.length > 0 && (
+          {pills.length > 0 && (
             <button
               type="button"
               aria-pressed={topic === ''}
@@ -341,7 +354,7 @@ export function Chat({
               全部
             </button>
           )}
-          {data.topics.items.map((t) => (
+          {pills.map((t) => (
             <button
               type="button"
               key={t.id}
@@ -353,12 +366,20 @@ export function Chat({
               {t.title}
             </button>
           ))}
-          {data.topics.nextCursor && (
+          {data.topics.more && data.topics.items.length < TOPICS_MOST && (
             <button
               type="button"
               className="quiet"
               onClick={() => {
-                next('topicsCursor', data.topics.nextCursor);
+                next(
+                  'topicsShown',
+                  String(
+                    Math.min(
+                      data.topics.items.length + TOPICS_FIRST,
+                      TOPICS_MOST,
+                    ),
+                  ),
+                );
               }}
             >
               更多话题
