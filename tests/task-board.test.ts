@@ -16,17 +16,21 @@ await test('the board holds every unfinished task, and finished ones by when the
   const f = await taskFixture();
   const raw = rawDatabase(f.dbPath);
   try {
-    // The oldest task stays open; the next two finish, the older one last.
+    // The oldest task stays open; the next one finishes now.
     const open = (await f.create({ title: 'Oldest, still open' })).task;
-    const first = (await f.create({ title: 'Created first' })).task;
-    const second = (await f.create({ title: 'Created second' })).task;
-    await f.act(f.principal, second, { type: 'cancel', note: 'Not needed' });
-    await f.act(f.principal, first, { type: 'cancel', note: 'Not needed' });
-    // When each finished, set below the API so the order never hangs on the
-    // clock's resolution.
-    const finish = raw.prepare('UPDATE tasks SET updated_at = ? WHERE id = ?');
-    await finish.run('2030-01-01T00:00:02.000Z', first.id);
-    await finish.run('2030-01-01T00:00:01.000Z', second.id);
+    const last = (await f.create({ title: 'Finished last' })).task;
+    await f.act(f.principal, last, { type: 'cancel', note: 'Not needed' });
+    // Two tasks created after it that finished long before, copied from it
+    // below the API (a finished task never changes, so they are made so).
+    const copy = raw.prepare(
+      `INSERT INTO tasks (id, team_id, channel_id, topic_id, title, description, criteria, creator,
+         acceptor_human_id, state, status, owner_key, version, created_at, updated_at)
+       SELECT gen_random_uuid()::text, team_id, channel_id, topic_id, ?, description, criteria,
+         creator, acceptor_human_id, state, status, owner_key, version, created_at, ?
+       FROM tasks WHERE id = ?`,
+    );
+    await copy.run('Finished long ago', '2000-01-02T00:00:00.000Z', last.id);
+    await copy.run('Finished longest ago', '2000-01-01T00:00:00.000Z', last.id);
 
     const workspace = await f.app.inject({
       url: '/api/workspace?channelId=' + f.channelId,
@@ -35,7 +39,12 @@ await test('the board holds every unfinished task, and finished ones by when the
     const board = WorkspaceSnapshot.parse(workspace.json()).tasks;
     assert.deepEqual(
       board.items.map((t) => t.title),
-      ['Oldest, still open', 'Created first', 'Created second'],
+      [
+        'Oldest, still open',
+        'Finished last',
+        'Finished long ago',
+        'Finished longest ago',
+      ],
     );
     assert.equal(board.nextCursor, null);
 
@@ -44,7 +53,7 @@ await test('the board holds every unfinished task, and finished ones by when the
       const response = await f.app.inject({
         url:
           f.taskPath +
-          '?finished=true&limit=1' +
+          '?finished=true&limit=2' +
           (cursor ? '&cursor=' + encodeURIComponent(cursor) : ''),
         headers: f.developerHeaders,
       });
@@ -53,16 +62,16 @@ await test('the board holds every unfinished task, and finished ones by when the
     };
     const one = await page();
     assert.deepEqual(
-      one.items.map((t) => t.id),
-      [first.id],
+      one.items.map((t) => t.title),
+      ['Finished last', 'Finished long ago'],
     );
     assert.ok(one.nextCursor);
     // Work finishing now never enters the older page.
     await f.act(f.principal, open, { type: 'cancel', note: 'Done with' });
     const two = await page(one.nextCursor);
     assert.deepEqual(
-      two.items.map((t) => t.id),
-      [second.id],
+      two.items.map((t) => t.title),
+      ['Finished longest ago'],
     );
     assert.equal(two.nextCursor, null);
     // A cursor of the other list reads nothing here.
